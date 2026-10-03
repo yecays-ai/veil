@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { PhoneShell } from "../components/phone-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,7 +17,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="en">
       <body>
-        <main className="phone">{children}</main>
+        <main className="app-root">
+          <PhoneShell>{children}</PhoneShell>
+        </main>
       </body>
     </html>
   );
