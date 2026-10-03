@@ -1,0 +1,265 @@
+/* Chat-only layout. Phone Shell, Home and Dock geometry remain owned by their
+   existing styles. The route fills the content area without changing them. */
+.theme-surface:has(.chat-app) {
+  height: 100%;
+  min-height: 0;
+}
+.chat-app {
+  flex: 1;
+  min-height: 0;
+  color: var(--theme-text);
+}
+.messages-home {
+  overflow: auto;
+  padding: max(18px, env(safe-area-inset-top))
+    max(18px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom))
+    max(18px, env(safe-area-inset-left));
+}
+.messages-header,
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.messages-header h1 {
+  margin: 0;
+  flex: 1;
+  font-size: 1.5em;
+}
+.messages-header > a:first-child,
+.chat-back {
+  font-size: 32px;
+  width: 32px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.messages-header > a:last-child {
+  font-size: 0.75em;
+}
+.conversation-list {
+  margin-top: 24px;
+}
+.conversation-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--theme-text) 10%, transparent);
+}
+.chat-avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--theme-surface);
+  font-size: 18px;
+}
+.chat-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.conversation-summary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.conversation-summary > span {
+  font-size: 0.8em;
+  opacity: 0.6;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.conversation-summary strong {
+  overflow-wrap: anywhere;
+}
+.conversation-row time {
+  font-size: 0.65em;
+  opacity: 0.5;
+  flex: none;
+}
+.chat-room {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: var(--chat-keyboard-inset, 0px);
+  overflow: hidden;
+}
+.chat-header {
+  flex: none;
+  padding: max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right)) 10px
+    max(8px, env(safe-area-inset-left));
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--theme-text) 10%, transparent);
+}
+.chat-header strong {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.9em;
+}
+.chat-settings-link {
+  font-size: 0.75em;
+  padding: 12px 4px;
+}
+.chat-history {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px max(12px, env(safe-area-inset-right)) 16px
+    max(12px, env(safe-area-inset-left));
+  padding-top: max(0px, calc(20px - var(--chat-keyboard-inset, 0px)));
+  padding-bottom: max(0px, calc(16px - var(--chat-keyboard-inset, 0px)));
+}
+.chat-turn {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.chat-turn-user {
+  justify-content: flex-end;
+}
+.chat-turn-system {
+  justify-content: center;
+}
+.chat-turn .chat-avatar {
+  width: 28px;
+  height: 28px;
+  font-size: 14px;
+}
+.chat-message {
+  max-width: 82%;
+  min-width: 0;
+}
+.chat-turn-assistant .chat-message {
+  max-width: calc(100% - 36px);
+}
+.chat-bubble {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: var(--theme-surface);
+  font-size: 0.9em;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-turn-user .chat-bubble {
+  background: color-mix(
+    in srgb,
+    var(--theme-accent) 12%,
+    var(--theme-background)
+  );
+}
+.chat-message-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 0.6em;
+  opacity: 0.6;
+}
+.chat-turn-user .chat-message-meta {
+  justify-content: flex-end;
+}
+.chat-composer {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px max(12px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  border-top: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
+}
+.chat-input-label {
+  font-size: 0.7em;
+  opacity: 0.6;
+}
+.chat-composer textarea,
+.chat-api-settings input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-size: 16px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 20%, transparent);
+  border-radius: 12px;
+  background: var(--theme-background);
+  color: inherit;
+}
+.chat-composer textarea {
+  resize: none;
+  max-height: 120px;
+}
+.chat-composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.chat-app button {
+  min-height: 40px;
+  font: inherit;
+  font-size: 0.8em;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 20%, transparent);
+  border-radius: 10px;
+  padding: 8px 14px;
+  background: var(--theme-surface);
+  color: inherit;
+  cursor: pointer;
+}
+.chat-app button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.chat-app :focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: 2px;
+}
+.chat-notice {
+  padding: 12px;
+  line-height: 1.5;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+.chat-error {
+  flex: none;
+  margin: 0;
+  opacity: 1;
+}
+.chat-api-settings {
+  overflow: auto;
+  padding: max(18px, env(safe-area-inset-top))
+    max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom))
+    max(20px, env(safe-area-inset-left));
+}
+.chat-api-settings h1 {
+  margin: 16px 0;
+}
+.chat-api-settings p {
+  font-size: 0.8em;
+  line-height: 1.5;
+}
+.chat-api-settings form,
+.chat-api-settings label {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.chat-api-settings form {
+  gap: 20px;
+}
+.chat-api-settings label {
+  font-size: 0.8em;
+}

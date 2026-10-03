@@ -2,7 +2,7 @@
 
 A phone across worlds.
 
-Minimal, character-neutral Next.js App Router and TypeScript app. Mobile-first phone viewport with a Home Screen, an empty Messages route, and Appearance settings.
+Minimal, character-neutral Next.js App Router and TypeScript app. Mobile-first phone viewport with a Home Screen, Character text conversations in Messages, and Appearance settings.
 
 ## Development
 
@@ -27,7 +27,7 @@ The Home Screen reads the App Registry and links to Messages, Appearance, User P
 
 Character and user defaults live separately in `config/character.ts` and `config/user.ts`. The only placeholder names are `Character` and `User`; generic routes and UI remain independent of identity configuration.
 
-No AI requests, credentials, authentication, database, or external services are required.
+The Foundation and Home work without external services or credentials. Optional Character text chat uses a locally configured OpenAI-compatible provider and IndexedDB. See [Chat Core v1](docs/chat-core-v1.md) for API setup, Send versus Request Reply, storage and context behavior.
 
 ## Appearance
 
