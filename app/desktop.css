@@ -315,32 +315,51 @@
   -webkit-touch-callout: none;
 }
 
-/* Mobile Home stays top-oriented; spare height belongs below navigation,
-   rather than stretching the six rows. Short screens still scroll each page. */
+/* Float's workspace -> swipe layer -> flexible grid, adapted to Home's
+   existing page wrappers. Bottom trim tightens the rows; Dock lift owns the
+   safe-area clearance. No fixed mobile row or grid height. */
 @media (max-width: 500px) and (hover: none) and (pointer: coarse),
   (display-mode: standalone) and (hover: none) and (pointer: coarse) {
   .desktop-foreground {
     --home-grid-top-offset: 18px;
-    --home-row-height: 70px;
-    --home-row-gap-y: 18px;
-    --home-grid-height: calc(6 * var(--home-row-height) + 5 * var(--home-row-gap-y));
+    --home-row-gap-y: 3px;
+    --home-grid-bottom-trim: 50px;
     --home-slot-gap-x: 12px;
     --home-slot-inset-x: 10px;
-    --home-dock-lift: 16px;
-    padding-bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--home-dock-lift));
+    --home-dock-lift: calc(max(20px, env(safe-area-inset-bottom)) + 16px);
+    flex: 1 1 auto;
+    padding-bottom: 0;
   }
   .desktop-pages {
-    flex: 0 1 var(--home-grid-height);
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
   }
   .desktop-home:not(.is-editing) .desktop-pages {
-    flex-basis: calc(var(--home-grid-height) + var(--home-grid-top-offset));
     padding-top: var(--home-grid-top-offset);
   }
+  .desktop-track {
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+  }
+  .desktop-page {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: auto;
+  }
   .desktop-grid {
-    height: var(--home-grid-height);
-    min-height: var(--home-grid-height);
-    grid-template-rows: repeat(6, var(--home-row-height));
+    flex: 1 1 auto;
+    height: auto;
+    /* Let short pages scroll before intrinsic icon/label content overlaps. */
+    min-height: min-content;
+    grid-template-rows: repeat(6, minmax(0, 1fr));
     row-gap: var(--home-row-gap-y);
+    padding-bottom: var(--home-grid-bottom-trim);
+  }
+  .desktop-dock {
+    margin-bottom: var(--home-dock-lift);
   }
   /* Both grids use the same content width, four columns and column spacing. */
   .desktop-grid,
