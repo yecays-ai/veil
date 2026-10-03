@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { PhoneShell } from "../components/phone-shell";
+import { ThemeProvider } from "../components/theme-provider";
 import "./globals.css";
+import "./appearance.css";
 
 export const metadata: Metadata = {
   title: "Companion Phone",
@@ -18,7 +20,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en">
       <body>
         <main className="app-root">
-          <PhoneShell>{children}</PhoneShell>
+          <PhoneShell><ThemeProvider>{children}</ThemeProvider></PhoneShell>
         </main>
       </body>
     </html>

@@ -1,12 +1,5 @@
-import Link from "next/link";
+import { HomeScreen } from "../components/home-screen";
 
 export default function HomePage() {
-  return (
-    <>
-      <h1>Companion Phone</h1>
-      <nav aria-label="Apps">
-        <Link className="app-link" href="/messages">Messages <span aria-hidden="true">→</span></Link>
-      </nav>
-    </>
-  );
+  return <HomeScreen />;
 }
