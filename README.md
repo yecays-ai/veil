@@ -1,4 +1,6 @@
-# Companion Phone
+# VEIL
+
+A phone across worlds.
 
 Minimal, character-neutral Next.js App Router and TypeScript app. Mobile-first phone viewport with a Home Screen, an empty Messages route, and Appearance settings.
 
