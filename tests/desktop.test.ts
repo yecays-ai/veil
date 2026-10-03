@@ -11,6 +11,7 @@ import {
   moveDesktopItem,
   normalizeDesktop,
 } from "../lib/desktop-layout";
+import { WIDGET_REGISTRY } from "../lib/widget-registry";
 import { WIDGET_SIZES } from "../lib/widget-types";
 import {
   defaultSnapshot,
@@ -20,6 +21,31 @@ import {
 import { exportTheme, importTheme } from "../lib/theme-package";
 import { applyPreset, deletePreset, savePreset } from "../lib/theme-presets";
 import { localTime, resolveTimezone } from "../lib/participant-config";
+
+function desktopWithClock() {
+  const layout = defaultDesktop();
+  return {
+    ...layout,
+    iconLayout: APP_IDS.map((id, index) => ({
+      id,
+      page: 1,
+      row: index < 4 ? 1 + Math.floor(index / 2) : 5,
+      col: index < 4 ? 3 + (index % 2) : index - 3,
+    })),
+    widgets: [
+      {
+        id: "clock-default",
+        type: "clock" as const,
+        size: "2x2" as const,
+        page: 1,
+        row: 1,
+        col: 1,
+        config: { hour12: false, showSeconds: false },
+      },
+      { ...layout.widgets[0], row: 3 },
+    ],
+  };
+}
 
 test("default App and Widget footprints share a non-overlapping four-column grid", () => {
   const layout = defaultDesktop();
@@ -32,10 +58,17 @@ test("default App and Widget footprints share a non-overlapping four-column grid
   assert.equal(buildOccupancy(layout).size, expected);
   assert.deepEqual(WIDGET_SIZES["4x2"], { cols: 4, rows: 2 });
   assert.equal(GRID_COLS, 4);
+  assert(!layout.widgets.some((w) => w.type === "clock"));
+  assert(WIDGET_REGISTRY.clock);
+  assert(
+    normalizeDesktop(desktopWithClock()).widgets.some(
+      (w) => w.type === "clock",
+    ),
+  );
 });
 
 test("moves, cross-page moves and resizes reject occupied and out-of-bounds cells", () => {
-  const layout = defaultDesktop(),
+  const layout = desktopWithClock(),
     app = layout.iconLayout[0];
   assert.throws(
     () =>
@@ -90,7 +123,7 @@ test("moves, cross-page moves and resizes reject occupied and out-of-bounds cell
 });
 
 test("normalization repairs collisions, removes unknown IDs and keeps Apps reachable", () => {
-  const defaults = defaultDesktop();
+  const defaults = desktopWithClock();
   const raw = {
     ...defaults,
     iconLayout: [
@@ -140,7 +173,7 @@ test("old appearance snapshots and presets migrate without losing decoration or 
   });
   assert.equal(document.current.profile.colors.accent, "#112233");
   assert.equal(document.current.iconLayout[0].id, APP_IDS.at(-1));
-  assert.equal(document.current.widgets.length, 2);
+  assert.equal(document.current.widgets.length, 1);
   assert.deepEqual(document.presets[0].snapshot, document.current);
 });
 
@@ -148,7 +181,7 @@ test("theme packages and presets round-trip positions, sizes and config without 
   const current = {
     ...defaultSnapshot(),
     ...moveDesktopItem(
-      defaultDesktop(),
+      desktopWithClock(),
       { kind: "widget", id: "clock-default" },
       { page: 2, row: 2, col: 1 },
       "4x2",

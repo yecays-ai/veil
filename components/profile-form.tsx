@@ -7,7 +7,8 @@ import {
   type CharacterInput,
   type UserProfile,
 } from "../lib/foundation-types";
-import { readImage } from "../lib/theme-storage";
+import { AvatarEditor } from "./avatar-editor";
+import { UI_COPY as U } from "../lib/ui-copy";
 
 type Input = UserProfile | CharacterInput;
 export function ProfileForm({
@@ -67,59 +68,17 @@ export function ProfileForm({
       ? (["appearance", "aboutMe"] as const)
       : (["appearance", "backstory", "personality", "speakingStyle"] as const);
   return (
-    <form className="foundation-form" onSubmit={submit}>
+    <form autoComplete="off" className="foundation-form" onSubmit={submit}>
       <fieldset disabled={busy}>
-        {avatarSource(avatar) && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            className="profile-avatar"
-            src={avatar}
-            alt={C.common.avatarAlt}
-          />
-        )}
-        <label>
-          {C.fields.avatar}
-          <input
-            type="text"
-            value={avatar}
-            onChange={(e) => setAvatar(e.target.value)}
-            maxLength={600000}
-          />
-        </label>
-        <label>
-          {C.common.uploadAvatar}
-          <input
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              e.target.value = "";
-              if (!file) return;
-              setBusy(true);
-              setNotice("");
-              try {
-                setAvatar(await readImage(file));
-              } catch (error) {
-                setNotice(
-                  error instanceof Error
-                    ? error.message
-                    : C.profile.avatarError,
-                );
-              } finally {
-                setBusy(false);
-              }
-            }}
-          />
-        </label>
-        <p className="form-help">{C.profile.avatarHelp}</p>
-        {avatar && (
-          <button type="button" onClick={() => setAvatar("")}>
-            {C.common.clearAvatar}
-          </button>
-        )}
+        <AvatarEditor
+          value={avatar || null}
+          name={draft.name}
+          onChange={(value) => setAvatar(value ?? "")}
+        />
         <label>
           {C.fields.name}
           <input
+            autoComplete="off"
             required
             value={draft.name}
             maxLength={100}
@@ -129,6 +88,8 @@ export function ProfileForm({
         <label>
           {C.fields.gender}
           <input
+            autoComplete="off"
+            list="gender-options"
             value={draft.gender ?? ""}
             maxLength={100}
             onChange={(e) => text("gender", e.target.value)}
@@ -137,6 +98,7 @@ export function ProfileForm({
         <label>
           {C.fields.birthday}
           <input
+            autoComplete="off"
             type="date"
             value={draft.birthday ?? ""}
             onChange={(e) => text("birthday", e.target.value)}
@@ -145,6 +107,7 @@ export function ProfileForm({
         <label>
           {C.fields.age}
           <input
+            autoComplete="off"
             type="number"
             min="0"
             step="1"
@@ -152,10 +115,11 @@ export function ProfileForm({
             onChange={(e) => setAge(e.target.value)}
           />
         </label>
-        <p className="form-help">{C.profile.birthdayHelp}</p>
+
         <label>
           {C.fields.occupation}
           <input
+            autoComplete="off"
             value={draft.occupation ?? ""}
             maxLength={200}
             onChange={(e) => text("occupation", e.target.value)}
@@ -164,6 +128,7 @@ export function ProfileForm({
         <label>
           {C.fields.location}
           <input
+            autoComplete="off"
             value={location}
             maxLength={200}
             onChange={(e) => setLocation(e.target.value)}
@@ -172,17 +137,39 @@ export function ProfileForm({
         <label>
           {C.fields.timezone}
           <input
+            autoComplete="off"
             value={draft.timezone ?? ""}
             maxLength={100}
             onChange={(e) => text("timezone", e.target.value)}
-            placeholder="UTC"
+            placeholder={U.deviceTimezone}
+            list="timezone-options"
           />
         </label>
-        <p className="form-help">{C.profile.timezoneHelp}</p>
+
+        <datalist id="timezone-options">
+          {[
+            "UTC",
+            "America/New_York",
+            "America/Los_Angeles",
+            "Europe/London",
+            "Europe/Paris",
+            "Asia/Tokyo",
+            "Asia/Shanghai",
+            "Australia/Sydney",
+          ].map((zone) => (
+            <option key={zone} value={zone} />
+          ))}
+        </datalist>
+        <datalist id="gender-options">
+          {U.genderSuggestions.map((value) => (
+            <option key={value} value={value} />
+          ))}
+        </datalist>
         {areas.map((key) => (
           <section key={key}>
             <label htmlFor={`profile-${key}`}>{C.fields[key]}</label>
             <textarea
+              autoComplete="off"
               id={`profile-${key}`}
               rows={4}
               maxLength={12000}
@@ -193,12 +180,6 @@ export function ProfileForm({
                 setDraft((d) => ({ ...d, [key]: e.target.value || null }))
               }
             />
-            {key === "appearance" && (
-              <p className="form-help">{C.profile.appearanceHelp}</p>
-            )}
-            {key === "aboutMe" && (
-              <p className="form-help">{C.profile.aboutHelp}</p>
-            )}
           </section>
         ))}
         <div className="foundation-actions">

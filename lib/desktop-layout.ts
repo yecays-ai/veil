@@ -106,26 +106,16 @@ export function defaultDesktop(): DesktopLayout {
     iconLayout: APP_IDS.map((id, index) => ({
       id,
       page: 1,
-      row:
-        index < 4 ? 1 + Math.floor(index / 2) : 5 + Math.floor((index - 4) / 4),
-      col: index < 4 ? 3 + (index % 2) : 1 + ((index - 4) % 4),
+      row: 3 + Math.floor(index / 4),
+      col: 1 + (index % 4),
     })),
     widgets: [
-      {
-        id: "clock-default",
-        type: "clock",
-        size: "2x2",
-        page: 1,
-        row: 1,
-        col: 1,
-        config: { hour12: false, showSeconds: false },
-      },
       {
         id: "here-there-default",
         type: "here-there",
         size: "4x2",
         page: 1,
-        row: 3,
+        row: 1,
         col: 1,
         config: { hour12: false, showSeconds: false },
       },

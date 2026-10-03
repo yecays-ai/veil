@@ -30,13 +30,11 @@ function Weather({ state }: { state: WeatherState }) {
 }
 
 function Side({
-  title,
   config,
   now,
   widget,
   weather,
 }: {
-  title: string;
   config: ParticipantConfig;
   now: Date | null;
   widget: WidgetInstance;
@@ -46,7 +44,6 @@ function Side({
   const zone = now ? resolveTimezone(config.timezone) : null;
   return (
     <div className="here-there-side">
-      <span className="widget-eyebrow">{title}</span>
       <strong>{config.name}</strong>
       <span className="participant-location">
         {config.location?.label || C.hereThere.noLocation}
@@ -91,7 +88,6 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
       </span>
       <div className="here-there-sides">
         <Side
-          title={C.hereThere.here}
           config={document.user}
           now={now}
           widget={widget}
@@ -99,7 +95,6 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
         />
         {character ? (
           <Side
-            title={C.hereThere.there}
             config={character}
             now={now}
             widget={widget}
@@ -107,8 +102,6 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
           />
         ) : (
           <div className="here-there-side">
-            <span className="widget-eyebrow">{C.hereThere.there}</span>
-            <span>{C.hereThere.noCharacter}</span>
             <Link href="/characters">{C.hereThere.chooseCharacter}</Link>
           </div>
         )}

@@ -1,9 +1,9 @@
 "use client";
-
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
+import { UI_COPY as U } from "../lib/ui-copy";
 import {
   createCharacter,
   deleteCharacter,
@@ -18,48 +18,59 @@ import {
 } from "../lib/foundation-types";
 import { useFoundation } from "./foundation-provider";
 import { ProfileForm } from "./profile-form";
+import { Avatar, ProfileView } from "./profile-view";
 
 export function UserProfilePage() {
   const { document, ready, commit } = useFoundation();
+  const [editing, setEditing] = useState(false);
   return (
-    <div className="theme-page foundation-page">
+    <div className="foundation-page">
       <Link className="back-link" href="/">
         {C.common.home}
       </Link>
-      <h1>{C.profile.title}</h1>
-      <p>{C.profile.description}</p>
-      {ready ? (
-        <ProfileForm
-          initial={document.user}
-          kind="user"
-          onSave={async (input) => {
-            await commit((d) => saveUser(d, input as UserProfile));
-          }}
-        />
-      ) : (
+      {!ready ? (
         <p>{C.common.loading}</p>
+      ) : editing ? (
+        <>
+          <h1>{U.editProfile}</h1>
+          <ProfileForm
+            initial={document.user}
+            kind="user"
+            onCancel={() => setEditing(false)}
+            onSave={async (input) => {
+              await commit((d) => saveUser(d, input as UserProfile));
+              setEditing(false);
+            }}
+          />
+        </>
+      ) : (
+        <ProfileView profile={document.user} kind="user">
+          <button onClick={() => setEditing(true)}>{C.common.edit}</button>
+        </ProfileView>
       )}
     </div>
   );
 }
-
 export function CharactersPage() {
-  const { document, ready, commit } = useFoundation();
-  const [notice, setNotice] = useState("");
+  const { document, ready } = useFoundation();
   return (
-    <div className="theme-page foundation-page">
-      <Link className="back-link" href="/">
-        {C.common.home}
-      </Link>
-      <h1>{C.characters.title}</h1>
-      <div className="foundation-actions">
-        <Link href="/characters/new">{C.characters.new}</Link>
+    <div className="foundation-page">
+      <nav>
+        <Link className="back-link" href="/">
+          {C.common.home}
+        </Link>
         <Link href="/universe">{C.characters.universe}</Link>
-      </div>
+      </nav>
+      <header className="list-header">
+        <h1>{C.characters.title}</h1>
+        <Link className="foundation-link primary-button" href="/characters/new">
+          {C.characters.new}
+        </Link>
+      </header>
       {!ready ? (
         <p>{C.common.loading}</p>
-      ) : document.characters.length === 0 ? (
-        <p>{C.characters.empty}</p>
+      ) : !document.characters.length ? (
+        <p className="empty-copy subtle">{C.characters.empty}</p>
       ) : (
         <ul className="character-list">
           {document.characters.map((c) => (
@@ -68,185 +79,145 @@ export function CharactersPage() {
                 className="character-link"
                 href={`/characters/${c.characterId}`}
               >
-                {c.avatar && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={c.avatar} alt="" />
+                <Avatar avatar={c.avatar} name={c.name} />
+                <span className="contact-details">
+                  <strong>{c.name}</strong>
+                  {(c.occupation || c.location?.label) && (
+                    <small className="subtle">
+                      {c.occupation || c.location?.label}
+                    </small>
+                  )}
+                </span>
+                {document.selectedCharacterId === c.characterId && (
+                  <span className="active-badge">{C.characters.current}</span>
                 )}
-                <span>{c.name}</span>
+                <span className="subtle" aria-hidden="true">
+                  ›
+                </span>
               </Link>
-              {document.selectedCharacterId === c.characterId ? (
-                <span className="form-help">{C.characters.current}</span>
-              ) : (
-                <button
-                  onClick={async () => {
-                    try {
-                      await commit((d) => selectCharacter(d, c.characterId));
-                      setNotice(C.common.selected);
-                    } catch (e) {
-                      setNotice(
-                        e instanceof Error ? e.message : C.profile.saveError,
-                      );
-                    }
-                  }}
-                >
-                  {C.characters.select}
-                </button>
-              )}
             </li>
           ))}
         </ul>
       )}
-      <p role="status">{notice}</p>
     </div>
   );
 }
-
 export function CharacterPage({ characterId }: { characterId?: string }) {
   const { document, ready, commit } = useFoundation();
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-  const character = characterId
-    ? document.characters.find((c) => c.characterId === characterId)
-    : null;
-  if (!ready)
-    return <div className="theme-page foundation-page">{C.common.loading}</div>;
+  const [editing, setEditing] = useState(false),
+    [confirmDelete, setConfirmDelete] = useState(false),
+    [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState("");
+  const character = document.characters.find(
+    (c) => c.characterId === characterId,
+  );
+  if (!ready) return <div className="foundation-page">{C.common.loading}</div>;
   if (characterId && !character)
     return (
-      <div className="theme-page foundation-page">
+      <div className="foundation-page">
         <Link href="/characters">{C.common.back}</Link>
         <p>{C.characters.notFound}</p>
       </div>
     );
-  const isNew = !characterId;
-  const input = character ?? { ...normalizeCharacterInput(null), name: "" };
+  const isNew = !characterId,
+    active = document.selectedCharacterId === characterId;
+  async function action(operation: () => Promise<unknown>) {
+    setBusy(true);
+    setNotice("");
+    try {
+      await operation();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : C.profile.saveError);
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
-    <div className="theme-page foundation-page">
+    <div className="foundation-page">
       <Link className="back-link" href="/characters">
         {C.common.back}
       </Link>
-      <h1>
-        {isNew
-          ? C.characters.create
-          : editing
-            ? C.characters.edit
-            : character!.name}
-      </h1>
       {isNew || editing ? (
-        <ProfileForm
-          key={characterId ?? "new"}
-          kind="character"
-          initial={input}
-          saveLabel={isNew ? C.characters.create : C.common.save}
-          onCancel={() =>
-            isNew ? router.push("/characters") : setEditing(false)
-          }
-          onSave={async (input) => {
-            const next = await commit((d) =>
-              characterId
-                ? updateCharacter(d, characterId, input as CharacterInput)
-                : createCharacter(d, input as CharacterInput),
-            );
-            setEditing(false);
-            router.push(
-              `/characters/${characterId ?? next.characters.at(-1)!.characterId}`,
-            );
-          }}
-        />
+        <>
+          <h1>{isNew ? C.characters.create : C.characters.edit}</h1>
+          <ProfileForm
+            key={characterId ?? "new"}
+            kind="character"
+            initial={
+              character ?? { ...normalizeCharacterInput(null), name: "" }
+            }
+            saveLabel={isNew ? C.characters.create : C.common.save}
+            onCancel={() =>
+              isNew ? router.push("/characters") : setEditing(false)
+            }
+            onSave={async (input) => {
+              const next = await commit((d) =>
+                characterId
+                  ? updateCharacter(d, characterId, input as CharacterInput)
+                  : createCharacter(d, input as CharacterInput),
+              );
+              setEditing(false);
+              router.push(
+                `/characters/${characterId ?? next.characters.at(-1)!.characterId}`,
+              );
+            }}
+          />
+        </>
       ) : (
         <>
-          {character!.avatar && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              className="profile-avatar"
-              src={character!.avatar}
-              alt={C.common.avatarAlt}
-            />
-          )}
-          <div className="foundation-actions">
+          <ProfileView profile={character!} kind="character">
             <button onClick={() => setEditing(true)}>{C.common.edit}</button>
-            <button
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                try {
-                  await commit((d) => selectCharacter(d, characterId!));
-                  setNotice(C.common.selected);
-                } catch (e) {
-                  setNotice(
-                    e instanceof Error ? e.message : C.profile.saveError,
-                  );
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            >
-              {C.characters.select}
-            </button>
-            <button onClick={() => setConfirmDelete(true)}>
-              {C.common.delete}
-            </button>
-          </div>
-          <dl className="profile-details">
-            {(
-              [
-                "gender",
-                "birthday",
-                "age",
-                "occupation",
-                "location",
-                "timezone",
-              ] as const
-            ).map((key) => (
-              <div key={key}>
-                <dt>{C.fields[key]}</dt>
-                <dd>
-                  {key === "location"
-                    ? character!.location?.label || C.common.empty
-                    : String(character![key] ?? C.common.empty)}
-                </dd>
-              </div>
-            ))}
-          </dl>
-          {(
-            ["appearance", "backstory", "personality", "speakingStyle"] as const
-          ).map((key) => (
-            <section className="profile-body" key={key}>
-              <h2>{C.fields[key]}</h2>
-              <p>{character![key] || C.common.empty}</p>
-            </section>
-          ))}
-          {confirmDelete && (
-            <div className="foundation-confirm">
-              <p>{C.characters.deleteQuestion}</p>
+            {active ? (
+              <span className="active-badge">{C.characters.current}</span>
+            ) : (
               <button
+                className="primary-button"
                 disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await commit((d) => deleteCharacter(d, characterId!));
-                    router.push("/characters");
-                  } catch (e) {
-                    setNotice(
-                      e instanceof Error ? e.message : C.profile.saveError,
-                    );
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
+                onClick={() =>
+                  void action(() =>
+                    commit((d) => selectCharacter(d, characterId!)),
+                  )
+                }
               >
-                {C.characters.confirmDelete}
+                {C.characters.select}
               </button>
-              <button onClick={() => setConfirmDelete(false)}>
-                {C.common.cancel}
+            )}
+          </ProfileView>
+          <footer className="danger-area">
+            {confirmDelete ? (
+              <>
+                <p>{C.characters.deleteQuestion}</p>
+                <div className="foundation-actions">
+                  <button
+                    className="danger-button"
+                    disabled={busy}
+                    onClick={() =>
+                      void action(async () => {
+                        await commit((d) => deleteCharacter(d, characterId!));
+                        router.push("/characters");
+                      })
+                    }
+                  >
+                    {C.characters.confirmDelete}
+                  </button>
+                  <button onClick={() => setConfirmDelete(false)}>
+                    {C.common.cancel}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                className="text-button danger-button"
+                onClick={() => setConfirmDelete(true)}
+              >
+                {U.deleteCharacter}
               </button>
-            </div>
-          )}
+            )}
+          </footer>
         </>
       )}
-      <p role="status">{notice}</p>
+      {notice && <p role="alert">{notice}</p>}
     </div>
   );
 }

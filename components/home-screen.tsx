@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { AppIcon } from "./app-icon";
 import { WidgetRenderer } from "./widgets/widget-renderer";
 import { useTheme } from "./theme-provider";
@@ -13,6 +13,8 @@ import {
 } from "../lib/desktop-layout";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
 import type { WidgetSize } from "../lib/widget-types";
+
+import { UI_COPY as U } from "../lib/ui-copy";
 
 export function HomeScreen() {
   const { document, ready, commit } = useTheme();
@@ -32,6 +34,17 @@ export function HomeScreen() {
     dy: number;
   } | null>(null);
   const suppressClick = useRef(false);
+  const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function cancelHold() {
+    if (hold.current) clearTimeout(hold.current);
+    hold.current = null;
+  }
+  useEffect(
+    () => () => {
+      if (hold.current) clearTimeout(hold.current);
+    },
+    [],
+  );
   const wallpaper = profile.wallpaper;
   const selectedWidget =
     selected?.kind === "widget"
@@ -54,12 +67,10 @@ export function HomeScreen() {
           ),
         },
       }));
-      setNotice("Layout saved.");
+      setNotice(U.home.saved);
       setSelected(null);
     } catch (error) {
-      setNotice(
-        error instanceof Error ? error.message : "Could not save layout.",
-      );
+      setNotice(error instanceof Error ? error.message : U.home.saveError);
     } finally {
       setSaving(false);
     }
@@ -67,6 +78,15 @@ export function HomeScreen() {
 
   function swipeStart(event: PointerEvent<HTMLDivElement>) {
     if (!event.isPrimary || event.button !== 0) return;
+    cancelHold();
+    if (!editing && ready)
+      hold.current = setTimeout(() => {
+        setEditing(true);
+        setSelected(null);
+        setNotice("");
+        suppressClick.current = true;
+        hold.current = null;
+      }, 550);
     suppressClick.current = false;
     swipe.current = {
       id: event.pointerId,
@@ -81,6 +101,7 @@ export function HomeScreen() {
     if (!gesture || gesture.id !== event.pointerId) return;
     gesture.dx = event.clientX - gesture.x;
     gesture.dy = event.clientY - gesture.y;
+    if (Math.hypot(gesture.dx, gesture.dy) > 8) cancelHold();
     if (
       Math.abs(gesture.dx) > 12 &&
       Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3
@@ -90,6 +111,7 @@ export function HomeScreen() {
     }
   }
   function swipeEnd(event: PointerEvent<HTMLDivElement>) {
+    cancelHold();
     const gesture = swipe.current;
     swipe.current = null;
     if (!gesture || gesture.id !== event.pointerId) return;
@@ -108,7 +130,7 @@ export function HomeScreen() {
   }
 
   return (
-    <div className="home-screen desktop-home">
+    <div className={`home-screen desktop-home ${editing ? "is-editing" : ""}`}>
       {wallpaper.source && (
         <div
           className="home-wallpaper"
@@ -124,34 +146,36 @@ export function HomeScreen() {
         />
       )}
       <div className="desktop-foreground">
-        <div className="desktop-toolbar">
-          <span role="status" className="desktop-notice">
-            {notice ||
-              (editing
-                ? selected
-                  ? "Choose a free grid cell."
-                  : "Select an item to move."
-                : "")}
-          </span>
-          <button
-            className="desktop-edit"
-            disabled={!ready || saving}
-            onClick={() => {
-              setEditing(!editing);
-              setSelected(null);
-              setNotice("");
-            }}
-          >
-            {editing ? "Done" : "Edit"}
-          </button>
-        </div>
+        {editing && (
+          <div className="desktop-toolbar">
+            <span role="status" className="desktop-notice">
+              {notice ||
+                (editing
+                  ? selected
+                    ? U.home.chooseCell
+                    : U.home.selectItem
+                  : "")}
+            </span>
+            <button
+              className="desktop-edit"
+              disabled={!ready || saving}
+              onClick={() => {
+                setEditing(!editing);
+                setSelected(null);
+                setNotice("");
+              }}
+            >
+              {U.home.done}
+            </button>
+          </div>
+        )}
         {editing && (
           <div className="desktop-edit-tools">
             {selectedWidget && (
               <label>
-                Size
+                {U.home.size}
                 <select
-                  aria-label="Widget size"
+                  aria-label={U.home.widgetSize}
                   value={selectedWidget.size}
                   disabled={saving}
                   onChange={(e) =>
@@ -183,29 +207,44 @@ export function HomeScreen() {
                     },
                   }));
                   setPage(pageCount + 1);
-                  setNotice("Page added.");
+                  setNotice(U.home.pageAdded);
                 } catch (error) {
                   setNotice(
-                    error instanceof Error
-                      ? error.message
-                      : "Could not add page.",
+                    error instanceof Error ? error.message : U.home.pageError,
                   );
                 } finally {
                   setSaving(false);
                 }
               }}
             >
-              Add page
+              {U.home.addPage}
             </button>
           </div>
         )}
         <div
           className="desktop-pages"
-          aria-label="Desktop pages"
+          aria-label={U.home.title}
+          tabIndex={0}
+          onKeyDown={(event) => {
+            if (
+              event.key === "ContextMenu" ||
+              (event.shiftKey && event.key === "F10")
+            ) {
+              event.preventDefault();
+              setEditing(true);
+            }
+            if (event.key === "Escape") {
+              setEditing(false);
+              setSelected(null);
+              setNotice("");
+            }
+          }}
+          onContextMenu={(event) => event.preventDefault()}
           onPointerDown={swipeStart}
           onPointerMove={swipeMove}
           onPointerUp={swipeEnd}
           onPointerCancel={() => {
+            cancelHold();
             swipe.current = null;
           }}
           onClickCapture={(event) => {
@@ -231,7 +270,7 @@ export function HomeScreen() {
                   <div
                     className="desktop-grid"
                     role="group"
-                    aria-label={`Desktop page ${number}`}
+                    aria-label={U.home.page(number)}
                     data-page={number}
                   >
                     {editing &&
@@ -245,7 +284,7 @@ export function HomeScreen() {
                               className="desktop-cell"
                               key={`cell-${index}`}
                               disabled={!selected || saving}
-                              aria-label={`Place selected item at row ${row} column ${col}`}
+                              aria-label={U.home.place(row, col)}
                               style={{ gridRow: row, gridColumn: col }}
                               onClick={() => void move(row, col)}
                             />
@@ -291,23 +330,18 @@ export function HomeScreen() {
                           />
                         </div>
                       ))}
-                    {!editing &&
-                      !widgets.some((w) => w.page === number) &&
-                      !iconLayout.some((a) => a.page === number) && (
-                        <p className="desktop-empty">No items on this page.</p>
-                      )}
                   </div>
                 </div>
               ),
             )}
           </div>
         </div>
-        <nav className="desktop-indicator" aria-label="Desktop pagination">
+        <nav className="desktop-indicator" aria-label={U.home.pagination}>
           {Array.from({ length: pageCount }, (_, index) => index + 1).map(
             (number) => (
               <button
                 key={number}
-                aria-label={`Go to page ${number}`}
+                aria-label={U.home.goPage(number)}
                 aria-current={number === currentPage ? "page" : undefined}
                 onClick={() => setPage(number)}
               >
@@ -318,7 +352,7 @@ export function HomeScreen() {
         </nav>
         <nav
           className="home-dock desktop-dock"
-          aria-label="Dock"
+          aria-label={U.home.dock}
           style={{
             borderRadius: profile.dock.radius,
             backgroundImage: profile.dock.image
