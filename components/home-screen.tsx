@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { AppIcon } from "./app-icon";
+import { APP_REGISTRY } from "../lib/app-registry";
 import { WidgetRenderer } from "./widgets/widget-renderer";
 import { useTheme } from "./theme-provider";
 import {
@@ -83,7 +84,7 @@ export function HomeScreen() {
     }
   }
 
-  async function removeWidget(id: string) {
+  async function removeItem(item: DesktopItem) {
     if (!editing || !ready || saving) return;
     setSaving(true);
     try {
@@ -91,10 +92,15 @@ export function HomeScreen() {
         ...d,
         current: {
           ...d.current,
-          widgets: d.current.widgets.filter((w) => w.id !== id),
+          widgets: item.kind === "widget"
+            ? d.current.widgets.filter((w) => w.id !== item.id)
+            : d.current.widgets,
+          iconLayout: item.kind === "app"
+            ? d.current.iconLayout.filter((app) => app.id !== item.id)
+            : d.current.iconLayout,
         },
       }));
-      if (selected?.kind === "widget" && selected.id === id) setSelected(null);
+      if (selected?.kind === item.kind && selected.id === item.id) setSelected(null);
       setNotice("");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : U.home.removeError);
@@ -334,7 +340,7 @@ export function HomeScreen() {
                             setNotice("");
                           }}
                           disabled={saving}
-                          onRemove={() => void removeWidget(widget.id)}
+                          onRemove={() => void removeItem({ kind: "widget", id: widget.id })}
                         />
                       ))}
                     {iconLayout
@@ -357,6 +363,16 @@ export function HomeScreen() {
                               setNotice("");
                             }}
                           />
+                          {editing && (
+                            <button
+                              className="desktop-app-remove"
+                              aria-label={U.home.removeApp(APP_REGISTRY.find((entry) => entry.id === app.id)!.label)}
+                              disabled={!ready || saving}
+                              onClick={() => void removeItem({ kind: "app", id: app.id })}
+                            >
+                              <span aria-hidden="true">−</span>
+                            </button>
+                          )}
                         </div>
                       ))}
                   </div>

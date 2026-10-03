@@ -108,7 +108,7 @@ export function defaultDesktop(): DesktopLayout {
       page: 1,
       row: 3 + Math.floor(index / 4),
       col: 1 + (index % 4),
-    })),
+    })).filter((app) => app.id !== "messages"),
     widgets: [
       {
         id: "here-there-default",
@@ -124,7 +124,7 @@ export function defaultDesktop(): DesktopLayout {
 }
 
 // Used at the storage/import boundary. Repair collisions deterministically, filter
-// unknown registry IDs, and keep every registered app reachable after migration.
+// unknown registry IDs, and preserve explicitly saved shortcut removals.
 export function normalizeDesktop(value: unknown): DesktopLayout {
   const raw = record(value),
     defaults = defaultDesktop();
@@ -171,7 +171,7 @@ export function normalizeDesktop(value: unknown): DesktopLayout {
   const icons = Array.isArray(raw.iconLayout)
     ? raw.iconLayout
     : defaults.iconLayout;
-  for (const value of [...icons, ...APP_IDS]) {
+  for (const value of icons) {
     const candidate = record(value),
       id = typeof value === "string" ? value : candidate.id;
     if (!isAppId(id) || seen.has(id)) continue;

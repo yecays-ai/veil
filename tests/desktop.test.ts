@@ -68,6 +68,33 @@ test("default App and Widget footprints share a non-overlapping four-column grid
   );
 });
 
+test("default Messages is Dock-only while saved shortcuts and removals survive normalization", () => {
+  const defaults = defaultSnapshot();
+  assert(defaults.dockLayout.includes("messages"));
+  assert(!defaults.iconLayout.some((app) => app.id === "messages"));
+  const legacy = {
+    ...defaults,
+    iconLayout: [
+      { id: "messages" as const, page: 1, row: 3, col: 1 },
+      ...defaults.iconLayout,
+    ],
+  };
+  assert.deepEqual(normalizeSnapshot(legacy), legacy);
+  const removed = {
+    ...legacy,
+    iconLayout: legacy.iconLayout.filter((app) => app.id !== "appearance"),
+  };
+  const reloaded = normalizeDocument(JSON.parse(JSON.stringify({ current: removed })));
+  assert.deepEqual(reloaded.current, removed);
+  assert.deepEqual(reloaded.current.dockLayout, legacy.dockLayout);
+  assert.deepEqual(reloaded.current.widgets, legacy.widgets);
+  const empty = normalizeSnapshot({ ...removed, iconLayout: [] });
+  assert.deepEqual(empty.iconLayout, []);
+  assert.deepEqual(normalizeSnapshot(empty), empty);
+  assert(APP_IDS.includes("appearance"));
+  assert(APP_IDS.includes("messages"));
+});
+
 test("moves, cross-page moves and resizes reject occupied and out-of-bounds cells", () => {
   const layout = desktopWithClock(),
     app = layout.iconLayout[0];
@@ -175,7 +202,7 @@ test("cell placement preserves 2x2 and app moves and rejects full-footprint coll
   assert.deepEqual(crossPage.widgets[0], { ...original.widgets[0], page: 2, row: 5, col: 1 });
 });
 
-test("normalization repairs collisions, removes unknown IDs and keeps Apps reachable", () => {
+test("normalization repairs collisions and removes unknown IDs without adding shortcuts", () => {
   const defaults = desktopWithClock();
   const raw = {
     ...defaults,
@@ -198,7 +225,7 @@ test("normalization repairs collisions, removes unknown IDs and keeps Apps reach
   assert.equal(buildOccupancy(layout).size, area);
   assert.deepEqual(
     layout.iconLayout.map((a) => a.id),
-    APP_IDS,
+    [APP_IDS[0]],
   );
   assert.deepEqual(normalizeDesktop(layout), layout);
   const full = normalizeDesktop({
@@ -207,7 +234,7 @@ test("normalization repairs collisions, removes unknown IDs and keeps Apps reach
       id: `full-${i}`,
     })),
   });
-  assert.equal(full.iconLayout.length, APP_IDS.length);
+  assert.equal(full.iconLayout.length, defaultDesktop().iconLayout.length);
   assert(buildOccupancy(full).size <= MAX_PAGES * GRID_COLS * GRID_ROWS);
 });
 

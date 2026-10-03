@@ -85,6 +85,7 @@
   position: relative;
 }
 .desktop-app {
+  position: relative;
   min-width: 0;
   z-index: 1;
   align-self: start;
@@ -130,7 +131,8 @@
   cursor: pointer;
   border-radius: inherit;
 }
-.widget-remove {
+.widget-remove,
+.desktop-app-remove {
   position: absolute;
   top: 0;
   right: 0;
@@ -145,7 +147,8 @@
   color: var(--theme-text);
   cursor: pointer;
 }
-.widget-remove span {
+.widget-remove span,
+.desktop-app-remove span {
   width: 24px;
   height: 24px;
   display: grid;
@@ -156,9 +159,14 @@
   font-size: 18px;
   line-height: 1;
 }
-.widget-remove:disabled {
+.widget-remove:disabled,
+.desktop-app-remove:disabled {
   opacity: 0.45;
   cursor: default;
+}
+.desktop-app-remove {
+  top: -16px;
+  right: -16px;
 }
 .desktop-cell {
   border: 1px dashed #999;

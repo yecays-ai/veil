@@ -21,7 +21,8 @@ export const UI_COPY = {
     `How ${from} sees and understands ${to}.`,
   home: {
     removeWidget: (name: string) => `Remove ${name}`,
-    removeError: "Could not remove widget.",
+    removeApp: (name: string) => `Remove ${name} shortcut`,
+    removeError: "Could not remove Home item.",
     title: "Desktop — hold to edit",
     done: "Done",
     chooseCell: "Choose a free space.",
