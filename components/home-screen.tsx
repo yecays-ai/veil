@@ -9,6 +9,7 @@ import {
   GRID_ROWS,
   MAX_PAGES,
   moveDesktopItem,
+  moveDesktopItemToCell,
   type DesktopItem,
 } from "../lib/desktop-layout";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
@@ -59,12 +60,18 @@ export function HomeScreen() {
         ...d,
         current: {
           ...d.current,
-          ...moveDesktopItem(
-            d.current,
-            selected,
-            { page: currentPage, row, col },
-            size,
-          ),
+          ...(size === undefined
+            ? moveDesktopItemToCell(
+                d.current,
+                selected,
+                { page: currentPage, row, col },
+              )
+            : moveDesktopItem(
+                d.current,
+                selected,
+                { page: currentPage, row, col },
+                size,
+              )),
         },
       }));
       setNotice(U.home.saved);

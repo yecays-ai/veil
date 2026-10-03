@@ -211,6 +211,29 @@ export function buildOccupancy(
   return occupied;
 }
 
+// A destination cell is a pointer target, not necessarily a multi-cell item's
+// top-left corner. Anchor at the nearest in-bounds rectangle, then use the same
+// footprint/collision validation as resizing. Never search for another free area.
+export function moveDesktopItemToCell(
+  layout: DesktopLayout,
+  item: DesktopItem,
+  cell: GridPosition,
+): DesktopLayout {
+  if (!canPlace(new Set(), cell, "1x1"))
+    throw new Error("That space is occupied or outside the grid.");
+  const widget = item.kind === "widget"
+    ? layout.widgets.find((w) => w.id === item.id)
+    : null;
+  if (item.kind === "widget" && !widget)
+    throw new Error("Desktop item not found.");
+  const dims = widget ? WIDGET_SIZES[widget.size] : { rows: 1, cols: 1 };
+  return moveDesktopItem(layout, item, {
+    ...cell,
+    row: Math.min(cell.row, GRID_ROWS - dims.rows + 1),
+    col: Math.min(cell.col, GRID_COLS - dims.cols + 1),
+  });
+}
+
 // Interactive moves never silently displace another item or overflow the grid.
 export function moveDesktopItem(
   layout: DesktopLayout,

@@ -9,6 +9,7 @@ import {
   GRID_ROWS,
   MAX_PAGES,
   moveDesktopItem,
+  moveDesktopItemToCell,
   normalizeDesktop,
 } from "../lib/desktop-layout";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
@@ -120,6 +121,58 @@ test("moves, cross-page moves and resizes reject occupied and out-of-bounds cell
     canPlace(buildOccupancy(resized), { page: 2, row: 1, col: 3 }, "1x1"),
     false,
   );
+});
+
+test("4x2 placement uses an in-bounds anchor before and after the 2x2 resize workaround", () => {
+  const original = defaultDesktop();
+  const item = { kind: "widget" as const, id: original.widgets[0].id };
+  // Rows 5 and 6 are empty across all four columns. The user targets a
+  // cell inside that rectangle, rather than precisely its top-left corner.
+  const destination = { page: 1, row: 5, col: 2 };
+  assert(canPlace(buildOccupancy(original), { ...destination, col: 1 }, "4x2"));
+  const direct = moveDesktopItemToCell(original, item, destination);
+  assert.deepEqual(direct.widgets[0], {
+    ...original.widgets[0], row: 5, col: 1,
+  });
+
+  const small = moveDesktopItem(original, item, original.widgets[0], "2x2");
+  // The reported workaround targets the leftmost cell in the same region.
+  const movedSmall = moveDesktopItemToCell(small, item, {
+    ...destination, col: 1,
+  });
+  const restored = moveDesktopItem(movedSmall, item, movedSmall.widgets[0], "4x2");
+  assert.deepEqual(restored.widgets[0], direct.widgets[0]);
+  for (const col of [1, 2, 3, 4]) {
+    const movedBack = moveDesktopItemToCell(restored, item, { page: 1, row: 1, col });
+    assert.deepEqual(movedBack.widgets[0], original.widgets[0]);
+    // Moving within the current footprint must not collide with itself;
+    // the last row resolves to the last in-bounds two-row anchor.
+    const samePlace = moveDesktopItemToCell(restored, item, { page: 1, row: 6, col });
+    assert.deepEqual(samePlace.widgets[0], restored.widgets[0]);
+  }
+  assert.deepEqual(direct.iconLayout, original.iconLayout);
+  assert.deepEqual(original, defaultDesktop());
+});
+
+test("cell placement preserves 2x2 and app moves and rejects full-footprint collisions", () => {
+  const original = defaultDesktop();
+  const item = { kind: "widget" as const, id: original.widgets[0].id };
+  const small = moveDesktopItem(original, item, original.widgets[0], "2x2");
+  const moved = moveDesktopItemToCell(small, item, { page: 1, row: 6, col: 4 });
+  assert.equal(moved.widgets[0].row, 5);
+  assert.equal(moved.widgets[0].col, 3);
+  // Resizing still validates the existing anchor, without moving the widget.
+  assert.throws(() => moveDesktopItem(moved, item, moved.widgets[0], "4x2"), /outside/);
+  const app = { kind: "app" as const, id: original.iconLayout[0].id };
+  const appMove = moveDesktopItemToCell(original, app, { page: 1, row: 6, col: 4 });
+  assert.deepEqual(appMove.iconLayout[0], { id: app.id, page: 1, row: 6, col: 4 });
+  // A blocker in the far corner must fail, even though the anchor is empty.
+  assert.throws(() => moveDesktopItemToCell(appMove, item, { page: 1, row: 5, col: 2 }), /occupied/);
+  assert.deepEqual(appMove.widgets, original.widgets);
+  assert.throws(() => moveDesktopItemToCell(original, item, { page: 1, row: 7, col: 1 }), /outside/);
+  assert.throws(() => moveDesktopItemToCell(original, item, { page: 1, row: 5, col: 0 }), /outside/);
+  const crossPage = moveDesktopItemToCell(original, item, { page: 2, row: 6, col: 4 });
+  assert.deepEqual(crossPage.widgets[0], { ...original.widgets[0], page: 2, row: 5, col: 1 });
 });
 
 test("normalization repairs collisions, removes unknown IDs and keeps Apps reachable", () => {
