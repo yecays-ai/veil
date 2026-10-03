@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { APP_IDS } from "../lib/app-registry";
+import { APP_IDS, APP_REGISTRY, isAppId } from "../lib/app-registry";
 import {
   buildOccupancy,
   canPlace,
@@ -94,6 +94,26 @@ test("default Messages is Dock-only while saved shortcuts and removals survive n
   assert.deepEqual(normalizeSnapshot(empty), empty);
   assert(APP_IDS.includes("appearance"));
   assert(APP_IDS.includes("messages"));
+});
+
+test("Settings is a registered Home app without rewriting saved layouts", () => {
+  assert.deepEqual(APP_REGISTRY.find(app => app.id === "settings"), {
+    id: "settings", label: "Settings", href: "/settings", glyph: "S",
+  });
+  assert(isAppId("settings"));
+  const defaults = defaultSnapshot();
+  const settings = defaults.iconLayout.find(app => app.id === "settings");
+  assert(settings);
+  assert.equal(settings.page, 1);
+  assert.deepEqual(normalizeSnapshot(defaults), defaults);
+  const existing = { ...defaults, iconLayout: defaults.iconLayout.filter(app => app.id !== "settings") };
+  assert.deepEqual(normalizeSnapshot(JSON.parse(JSON.stringify(existing))), existing);
+  assert.deepEqual(normalizeSnapshot({ ...existing, iconLayout: [] }).iconLayout, []);
+  // A Settings shortcut uses the same placement and persistence path as any app.
+  const placed = { ...existing, iconLayout: [...existing.iconLayout, { ...settings, page: 2, row: 6, col: 4 }] };
+  assert.deepEqual(normalizeSnapshot(JSON.parse(JSON.stringify(placed))), placed);
+  const moved = moveDesktopItem(placed, { kind: "app", id: "settings" }, { page: 2, row: 5, col: 3 });
+  assert.deepEqual(moved.iconLayout.find(app => app.id === "settings"), { id: "settings", page: 2, row: 5, col: 3 });
 });
 
 test("deleting an empty page only renumbers subsequent pages and survives reload", () => {
