@@ -314,6 +314,46 @@
   user-select: none;
   -webkit-touch-callout: none;
 }
+
+/* Mobile Home stays top-oriented; spare height belongs below navigation,
+   rather than stretching the six rows. Short screens still scroll each page. */
+@media (max-width: 500px) and (hover: none) and (pointer: coarse),
+  (display-mode: standalone) and (hover: none) and (pointer: coarse) {
+  .desktop-foreground {
+    --home-grid-top-offset: 18px;
+    --home-row-height: 70px;
+    --home-row-gap-y: 18px;
+    --home-grid-height: calc(6 * var(--home-row-height) + 5 * var(--home-row-gap-y));
+    --home-slot-gap-x: 12px;
+    --home-slot-inset-x: 10px;
+    --home-dock-lift: 16px;
+    padding-bottom: calc(max(20px, env(safe-area-inset-bottom)) + var(--home-dock-lift));
+  }
+  .desktop-pages {
+    flex: 0 1 var(--home-grid-height);
+  }
+  .desktop-home:not(.is-editing) .desktop-pages {
+    flex-basis: calc(var(--home-grid-height) + var(--home-grid-top-offset));
+    padding-top: var(--home-grid-top-offset);
+  }
+  .desktop-grid {
+    height: var(--home-grid-height);
+    min-height: var(--home-grid-height);
+    grid-template-rows: repeat(6, var(--home-row-height));
+    row-gap: var(--home-row-gap-y);
+  }
+  /* Both grids use the same content width, four columns and column spacing. */
+  .desktop-grid,
+  .desktop-dock {
+    padding-inline: var(--home-slot-inset-x);
+    column-gap: var(--home-slot-gap-x);
+  }
+  @media (max-width: 360px) {
+    .desktop-foreground {
+      --home-slot-gap-x: 10px;
+    }
+  }
+}
 .here-there-title {
   letter-spacing: 0.12em;
   opacity: 0.5;
