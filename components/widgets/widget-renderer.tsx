@@ -9,6 +9,7 @@ import {
 } from "../../lib/widget-types";
 import { ClockWidget } from "./clock-widget";
 import { HereThereWidget } from "./here-there-widget";
+import { UI_COPY as U } from "../../lib/ui-copy";
 
 const WIDGET_VIEWS: Record<
   WidgetType,
@@ -23,11 +24,15 @@ export function WidgetRenderer({
   editing,
   selected,
   onSelect,
+  onRemove,
+  disabled,
 }: {
   widget: WidgetInstance;
   editing: boolean;
   selected: boolean;
   onSelect: () => void;
+  onRemove: () => void;
+  disabled: boolean;
 }) {
   const View = WIDGET_VIEWS[widget.type];
   const dimensions = WIDGET_SIZES[widget.size];
@@ -44,12 +49,23 @@ export function WidgetRenderer({
     >
       <View widget={widget} />
       {editing && (
-        <button
-          className="widget-select"
-          aria-label={`Move ${WIDGET_REGISTRY[widget.type].label}`}
-          aria-pressed={selected}
-          onClick={onSelect}
-        />
+        <>
+          <button
+            className="widget-select"
+            aria-label={`Move ${WIDGET_REGISTRY[widget.type].label}`}
+            aria-pressed={selected}
+            onClick={onSelect}
+            disabled={disabled}
+          />
+          <button
+            className="widget-remove"
+            aria-label={U.home.removeWidget(WIDGET_REGISTRY[widget.type].label)}
+            disabled={disabled}
+            onClick={onRemove}
+          >
+            <span aria-hidden="true">−</span>
+          </button>
+        </>
       )}
     </section>
   );

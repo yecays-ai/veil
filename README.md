@@ -47,11 +47,21 @@ Uploads support PNG/JPEG/WebP/GIF (first frame), at most 10 MB before resizing t
 
 Import this repository, select the Next.js framework preset, and use the repository root. Keep the default install and build commands. Use Node.js 24.x. No environment variables are needed.
 
+## iPhone Home Screen presentation
+
+`app/manifest.ts` serves `/manifest.webmanifest` with VEIL naming, standalone display and the UI's light background/theme color. Root metadata includes Apple standalone-capable tags and `viewport-fit=cover`. No existing install icon asset is available; no new artwork or service worker is added.
+
+On mobile standalone launch, the simulated status bar and visible phone bezel are suppressed in portrait and landscape. Existing content safe-area padding protects native status/Home Indicator areas without doubling insets. Desktop shell dimensions and normal mobile browsing remain unchanged. `StandaloneMode` handles standard display-mode detection and the iOS `navigator.standalone` fallback without changing stored themes.
+
+After deployment, replace the old Home Screen shortcut using Safari's Share → Add to Home Screen so iOS picks up the new metadata. Verify launch on a physical iPhone; browser automation simulates standalone modes and inset values.
+
 ## Home Desktop v1
 
 The desktop uses four columns and six rows per page. Positions are 1-based `page / row / col`. Two pages are available by default; swipe horizontally or use the page dots. Dock stays outside the page scroller and reads Appearance's existing layout and decoration (at most four registered Apps).
 
 Hold the desktop (mouse or touch) to enter edit mode, or focus it and press Shift+F10. Use **Done** or Escape to leave. Select an App or Widget, then choose a free grid cell. Switch pages while selected to move across pages. Widgets can resize to `2x2` or `4x2` (columns × rows); occupied or out-of-bounds moves are rejected. Add page supports up to eight pages. Short screens scroll the grid vertically while the Dock stays fixed.
+
+The edit-mode minus button removes only its Widget instance from the current desktop. Registry entries, presets, decoration, App/Dock layouts and profile/Universe data are retained. Empty Widget layouts persist without restoring defaults.
 
 `lib/desktop-layout.ts` owns occupancy, collision repair, movement and legacy App-order migration independently of the Theme Engine. The theme snapshot composes this desktop data for atomic persistence, presets and import/export. All existing decoration is retained when loading older snapshots.
 

@@ -20,6 +20,8 @@ export const UI_COPY = {
   contextHelp: (from: string, to: string) =>
     `How ${from} sees and understands ${to}.`,
   home: {
+    removeWidget: (name: string) => `Remove ${name}`,
+    removeError: "Could not remove widget.",
     title: "Desktop — hold to edit",
     done: "Done",
     chooseCell: "Choose a free space.",

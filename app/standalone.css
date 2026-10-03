@@ -1,0 +1,102 @@
+/* Fullscreen presentation only on real touch devices running standalone.
+   The page/Home content already owns env(safe-area-inset-*) padding. Keep it
+   there to protect the Home Indicator without applying the inset twice. */
+@media (display-mode: standalone) and (hover: none) and (pointer: coarse) {
+  :root {
+    --phone-screen-width: 100vw;
+    --phone-screen-height: 100lvh;
+    --phone-screen-radius: 0px;
+    --phone-frame-size: 0px;
+    --phone-frame-radius: 0px;
+    --phone-case-padding: 0px;
+    --phone-case-radius: 0px;
+  }
+  html,
+  body {
+    width: 100%;
+    height: 100lvh;
+    overflow: hidden;
+    background: #fafafa;
+  }
+  .app-root {
+    width: 100vw;
+    height: 100lvh;
+    min-height: 0;
+    padding: 0;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+    overflow: hidden;
+    background: #fafafa;
+  }
+  .phone-shell-wrap,
+  .phone-case,
+  .phone-frame {
+    width: var(--phone-screen-width);
+    margin: 0;
+  }
+  .phone-case,
+  .phone-frame {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .phone-case::before,
+  .phone-case::after,
+  .phone-frame::before,
+  .phone-frame::after,
+  .theme-status-bar {
+    display: none;
+  }
+}
+
+/* iOS navigator.standalone fallback uses the same touch-device gate. */
+html[data-mobile-standalone="true"] {
+  --phone-screen-width: 100vw;
+  --phone-screen-height: 100lvh;
+  --phone-screen-radius: 0px;
+  --phone-frame-size: 0px;
+  --phone-frame-radius: 0px;
+  --phone-case-padding: 0px;
+  --phone-case-radius: 0px;
+  width: 100%;
+  height: 100lvh;
+  overflow: hidden;
+  background: #fafafa;
+}
+html[data-mobile-standalone="true"] body {
+  width: 100%;
+  height: 100lvh;
+  overflow: hidden;
+  background: #fafafa;
+}
+html[data-mobile-standalone="true"] .app-root {
+  width: 100vw;
+  height: 100lvh;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: hidden;
+  background: #fafafa;
+}
+html[data-mobile-standalone="true"]
+  :is(.phone-shell-wrap, .phone-case, .phone-frame) {
+  width: var(--phone-screen-width);
+  margin: 0;
+}
+html[data-mobile-standalone="true"] :is(.phone-case, .phone-frame) {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+html[data-mobile-standalone="true"] :is(.phone-case, .phone-frame)::before,
+html[data-mobile-standalone="true"] :is(.phone-case, .phone-frame)::after,
+html[data-mobile-standalone="true"] .theme-status-bar {
+  display: none;
+}

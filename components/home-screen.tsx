@@ -76,6 +76,26 @@ export function HomeScreen() {
     }
   }
 
+  async function removeWidget(id: string) {
+    if (!editing || !ready || saving) return;
+    setSaving(true);
+    try {
+      await commit((d) => ({
+        ...d,
+        current: {
+          ...d.current,
+          widgets: d.current.widgets.filter((w) => w.id !== id),
+        },
+      }));
+      if (selected?.kind === "widget" && selected.id === id) setSelected(null);
+      setNotice("");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : U.home.removeError);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function swipeStart(event: PointerEvent<HTMLDivElement>) {
     if (!event.isPrimary || event.button !== 0) return;
     cancelHold();
@@ -306,6 +326,8 @@ export function HomeScreen() {
                             setSelected({ kind: "widget", id: widget.id });
                             setNotice("");
                           }}
+                          disabled={saving}
+                          onRemove={() => void removeWidget(widget.id)}
                         />
                       ))}
                     {iconLayout
