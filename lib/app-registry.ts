@@ -1,6 +1,15 @@
+import { FOUNDATION_COPY as C } from "./foundation-copy";
 export const APP_REGISTRY = [
   { id: "messages", label: "Messages", href: "/messages", glyph: "M" },
   { id: "appearance", label: "Appearance", href: "/appearance", glyph: "A" },
+  { id: "profile", label: C.profile.title, href: "/profile", glyph: "U" },
+  {
+    id: "characters",
+    label: C.characters.title,
+    href: "/characters",
+    glyph: "C",
+  },
+  { id: "universe", label: C.universe.title, href: "/universe", glyph: "◎" },
 ] as const;
 
 export type AppId = (typeof APP_REGISTRY)[number]["id"];

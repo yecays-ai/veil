@@ -23,7 +23,7 @@ npm test
 npm start
 ```
 
-The Home Screen links to `/messages` and `/appearance`. Both pages link back to `/`.
+The Home Screen reads the App Registry and links to Messages, Appearance, User Profile, Characters, and Universe.
 
 Character and user defaults live separately in `config/character.ts` and `config/user.ts`. The only placeholder names are `Character` and `User`; generic routes and UI remain independent of identity configuration.
 
@@ -31,7 +31,7 @@ No AI requests, credentials, authentication, database, or external services are 
 
 ## Appearance
 
-`lib/app-registry.ts` registers only Messages and Appearance. `lib/theme-types.ts` defines and validates the independent `ThemeProfile` and `ThemeSnapshot` (profile, positioned Apps, Widgets, page count and Dock order). Character/user configuration does not form part of a theme.
+`lib/app-registry.ts` registers the available routes. `lib/theme-types.ts` defines and validates the independent `ThemeProfile` and `ThemeSnapshot` (profile, positioned Apps, Widgets, page count and Dock order). Character/user configuration does not form part of a theme.
 
 `components/theme-provider.tsx` connects the UI to the asynchronous `ThemeStorage` interface in `lib/theme-storage.ts`. The current adapter persists a single document in browser localStorage. Replacing this adapter can introduce user-isolated storage without changing the Appearance controls. Failed writes report an error and retain the previous theme.
 
@@ -55,8 +55,18 @@ Use **Edit** to select an App or Widget, then choose a free grid cell. Switch pa
 
 `lib/desktop-layout.ts` owns occupancy, collision repair, movement and legacy App-order migration independently of the Theme Engine. The theme snapshot composes this desktop data for atomic persistence, presets and import/export. All existing decoration is retained when loading older snapshots.
 
-`lib/widget-registry.ts` owns supported sizes and normalized config; `components/widgets/widget-renderer.tsx` maps registered types to views. Adding a Widget requires its type, registry definition and view, without changing the Home grid. Clock reads local device time/date and updates every second. Here & There reads `config/user.ts` and `config/character.ts`; an unset timezone explicitly falls back to the device timezone, while an invalid IANA timezone is labeled as invalid.
+`lib/widget-registry.ts` owns supported sizes and normalized config; `components/widgets/widget-renderer.tsx` maps registered types to views. Adding a Widget requires its type, registry definition and view, without changing the Home grid. Clock reads local device time/date and updates every second. Here & There reads the singleton User and selected Character from the Foundation provider; an unset timezone explicitly falls back to the device timezone. Without Characters it offers a link to create/select one.
 
 Each participant's location is either unset or a manually chosen label with optional latitude/longitude. `lib/participant-config.ts` defines the future coordinates-based `WeatherProvider` and weather state. v1 always displays **Weather not connected** and makes no weather or location requests. Names, locations and timezones are never stored in theme packages.
 
 `npm test` exercises collision/bounds handling, full-layout normalization, legacy migration, preset/package round trips and IANA timezone/DST behavior using Node's built-in test runner. Test compilation goes to `/tmp/veil-desktop-tests`.
+
+## Character & Universe Foundation v1
+
+One User ↔ one fixed Universe → many Characters. `/profile` edits the unique User; `/characters` creates, selects, views, edits and deletes Characters with permanent UUIDs. Birthday and Age remain independent. Character Appearance, Backstory, Personality and Speaking Style are distinct fields. `/universe` edits the singleton's name/world setting and owns Character relationships, directional context and shared history. Drag glass nodes to arrange the canvas, or use focused-node arrow keys; click nodes for profiles and connection labels for relation editing.
+
+`lib/foundation-types.ts` validates the whitelisted document; `lib/foundation.ts` owns immutable operations and cascade deletion. `lib/foundation-storage.ts` exposes asynchronous load/transaction operations with a serialized browser adapter at `veil.foundation.v1`. Profile data is separate from themes, presets and decoration exports. Failed writes retain stored data. Clearing browser storage removes this local prototype's profiles; no cloud backup is provided. UI consumes `components/foundation-provider.tsx`; replacing the storage adapter does not require changing forms. User-facing foundation copy lives in `lib/foundation-copy.ts`, without an i18n runtime.
+
+`lib/bindings.ts` defines optional configuration references and resolves Global → Character → Character × registered App. Missing fields inherit; scalar `null` and list `[]` clear inherited bindings, and lists replace instead of merge. `lib/binding-storage.ts` persists bindings atomically in the same Foundation document. There are no binding editors or service calls. Deleting a Character removes its relations, node position and binding overrides, then selects a remaining Character or none.
+
+Foundation tests cover independent ages/birthdays, stable IDs, singleton normalization, directional relationships, deletion cleanup, node positions, resolver precedence, storage round trips and failed writes.

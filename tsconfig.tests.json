@@ -8,6 +8,6 @@
     "outDir": "/tmp/veil-desktop-tests",
     "rootDir": "."
   },
-  "include": ["tests/desktop.test.ts"],
+  "include": ["tests/*.test.ts"],
   "exclude": ["node_modules"]
 }

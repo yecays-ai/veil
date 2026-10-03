@@ -1,7 +1,8 @@
 "use client";
 
-import { userConfig } from "../../config/user";
-import { characterConfig } from "../../config/character";
+import Link from "next/link";
+import { useFoundation } from "../foundation-provider";
+import { FOUNDATION_COPY as C } from "../../lib/foundation-copy";
 import {
   localTime,
   resolveTimezone,
@@ -20,11 +21,11 @@ function Weather({ state }: { state: WeatherState }) {
         </span>
       );
     case "loading":
-      return <span>Weather loading</span>;
+      return <span>{C.hereThere.weatherLoading}</span>;
     case "error":
-      return <span>Weather unavailable</span>;
+      return <span>{C.hereThere.weatherError}</span>;
     default:
-      return <span>Weather not connected</span>;
+      return <span>{C.hereThere.weatherNone}</span>;
   }
 }
 
@@ -48,7 +49,7 @@ function Side({
       <span className="widget-eyebrow">{title}</span>
       <strong>{config.name}</strong>
       <span className="participant-location">
-        {config.location?.label || "Location not set"}
+        {config.location?.label || C.hereThere.noLocation}
       </span>
       <time dateTime={now?.toISOString()}>
         {now && zone
@@ -61,11 +62,13 @@ function Side({
           : "--:--"}
       </time>
       <span className="participant-zone">
-        {!zone ? "Timezone loading" : zone.state === "configured"
-          ? zone.timezone
-          : zone.state === "invalid"
-            ? `Invalid timezone · ${zone.timezone}`
-            : `Device · ${zone.timezone}`}
+        {!zone
+          ? C.hereThere.loadingZone
+          : zone.state === "configured"
+            ? zone.timezone
+            : zone.state === "invalid"
+              ? `${C.hereThere.invalidZone} · ${zone.timezone}`
+              : `${C.hereThere.device} · ${zone.timezone}`}
       </span>
       <span className="participant-weather">
         <Weather state={weather} />
@@ -76,25 +79,39 @@ function Side({
 
 export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const now = useDeviceClock();
+  const { document } = useFoundation();
+  const character = document.characters.find(
+    (c) => c.characterId === document.selectedCharacterId,
+  );
   const weather: WeatherState = { status: "not-configured" };
   return (
     <div className={`here-there-widget size-${widget.size}`}>
-      <span className="widget-eyebrow here-there-title">Here &amp; There</span>
+      <span className="widget-eyebrow here-there-title">
+        {C.hereThere.title}
+      </span>
       <div className="here-there-sides">
         <Side
-          title="Here"
-          config={userConfig}
+          title={C.hereThere.here}
+          config={document.user}
           now={now}
           widget={widget}
           weather={weather}
         />
-        <Side
-          title="There"
-          config={characterConfig}
-          now={now}
-          widget={widget}
-          weather={weather}
-        />
+        {character ? (
+          <Side
+            title={C.hereThere.there}
+            config={character}
+            now={now}
+            widget={widget}
+            weather={weather}
+          />
+        ) : (
+          <div className="here-there-side">
+            <span className="widget-eyebrow">{C.hereThere.there}</span>
+            <span>{C.hereThere.noCharacter}</span>
+            <Link href="/characters">{C.hereThere.chooseCharacter}</Link>
+          </div>
+        )}
       </div>
     </div>
   );

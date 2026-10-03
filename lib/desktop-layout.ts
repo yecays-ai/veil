@@ -106,8 +106,9 @@ export function defaultDesktop(): DesktopLayout {
     iconLayout: APP_IDS.map((id, index) => ({
       id,
       page: 1,
-      row: 1 + Math.floor(index / 2),
-      col: 3 + (index % 2),
+      row:
+        index < 4 ? 1 + Math.floor(index / 2) : 5 + Math.floor((index - 4) / 4),
+      col: index < 4 ? 3 + (index % 2) : 1 + ((index - 4) % 4),
     })),
     widgets: [
       {
