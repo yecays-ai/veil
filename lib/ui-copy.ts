@@ -33,6 +33,8 @@ export const UI_COPY = {
     widgetSize: "Widget size",
     addPage: "Add page",
     pageAdded: "Page added.",
+    deleteEmptyPage: "Delete empty page",
+    pageDeleted: "Page deleted.",
     pageError: "Could not add page.",
     pages: "Desktop pages",
     pagination: "Desktop pagination",

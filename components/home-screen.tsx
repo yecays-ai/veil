@@ -9,6 +9,7 @@ import {
   GRID_COLS,
   GRID_ROWS,
   MAX_PAGES,
+  deleteEmptyDesktopPage,
   moveDesktopItem,
   moveDesktopItemToCell,
   type DesktopItem,
@@ -28,6 +29,8 @@ export function HomeScreen() {
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const currentPage = Math.min(page, pageCount);
+  const currentPageEmpty = !iconLayout.some((app) => app.page === currentPage) &&
+    !widgets.some((widget) => widget.page === currentPage);
   const swipe = useRef<{
     id: number;
     x: number;
@@ -251,6 +254,29 @@ export function HomeScreen() {
               }}
             >
               {U.home.addPage}
+            </button>
+            <button
+              disabled={!ready || saving || pageCount <= 1 || !currentPageEmpty}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await commit((d) => ({
+                    ...d,
+                    current: {
+                      ...d.current,
+                      ...deleteEmptyDesktopPage(d.current, currentPage),
+                    },
+                  }));
+                  setPage(Math.min(currentPage, pageCount - 1));
+                  setNotice(U.home.pageDeleted);
+                } catch (error) {
+                  setNotice(error instanceof Error ? error.message : U.home.pageError);
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {U.home.deleteEmptyPage}
             </button>
           </div>
         )}

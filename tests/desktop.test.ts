@@ -5,6 +5,7 @@ import {
   buildOccupancy,
   canPlace,
   defaultDesktop,
+  deleteEmptyDesktopPage,
   GRID_COLS,
   GRID_ROWS,
   MAX_PAGES,
@@ -93,6 +94,36 @@ test("default Messages is Dock-only while saved shortcuts and removals survive n
   assert.deepEqual(normalizeSnapshot(empty), empty);
   assert(APP_IDS.includes("appearance"));
   assert(APP_IDS.includes("messages"));
+});
+
+test("deleting an empty page only renumbers subsequent pages and survives reload", () => {
+  const initial = defaultSnapshot();
+  const layout = {
+    ...initial,
+    pageCount: 3,
+    widgets: initial.widgets.map((widget) => ({ ...widget, page: 3 })),
+  };
+  const deleted = { ...layout, ...deleteEmptyDesktopPage(layout, 2) };
+  assert.equal(deleted.pageCount, 2);
+  assert.deepEqual(deleted.iconLayout, layout.iconLayout);
+  assert.deepEqual(deleted.widgets, layout.widgets.map((widget) => ({ ...widget, page: 2 })));
+  assert.deepEqual(deleted.dockLayout, layout.dockLayout);
+  assert.deepEqual(normalizeSnapshot(JSON.parse(JSON.stringify(deleted))), deleted);
+  assert.equal(layout.pageCount, 3);
+  assert.equal(layout.widgets[0].page, 3);
+  assert.throws(() => deleteEmptyDesktopPage(layout, 1), /empty/);
+  assert.throws(() => deleteEmptyDesktopPage(layout, 3), /empty/);
+  assert.throws(() => deleteEmptyDesktopPage(layout, 0), /not found/);
+  assert.throws(() => deleteEmptyDesktopPage(layout, 4), /not found/);
+  assert.throws(() => deleteEmptyDesktopPage(layout, 1.5), /not found/);
+  const firstEmpty = { ...layout, iconLayout: [] };
+  assert.equal(deleteEmptyDesktopPage(firstEmpty, 1).widgets[0].page, 2);
+  const single = { ...initial, ...deleteEmptyDesktopPage(initial, 2) };
+  assert.equal(single.pageCount, 1);
+  assert.deepEqual(single.iconLayout, initial.iconLayout);
+  assert.deepEqual(single.widgets, initial.widgets);
+  assert.deepEqual(normalizeSnapshot(single), single);
+  assert.throws(() => deleteEmptyDesktopPage({ ...single, iconLayout: [], widgets: [] }, 1), /last/);
 });
 
 test("moves, cross-page moves and resizes reject occupied and out-of-bounds cells", () => {

@@ -186,7 +186,7 @@ export function normalizeDesktop(value: unknown): DesktopLayout {
     iconLayout.push({ id, ...pos });
   }
   const lastPage = Math.max(
-    2,
+    1,
     ...iconLayout.map((i) => i.page),
     ...widgets.map((w) => w.page),
   );
@@ -194,6 +194,28 @@ export function normalizeDesktop(value: unknown): DesktopLayout {
     iconLayout,
     widgets,
     pageCount: Math.max(lastPage, integer(raw.pageCount, 2, MAX_PAGES)),
+  };
+}
+
+export function deleteEmptyDesktopPage(
+  layout: DesktopLayout,
+  page: number,
+): DesktopLayout {
+  if (!Number.isInteger(page) || page < 1 || page > layout.pageCount)
+    throw new Error("Desktop page not found.");
+  if (layout.pageCount <= 1)
+    throw new Error("Cannot delete the last Home page.");
+  if (layout.iconLayout.some((app) => app.page === page) ||
+      layout.widgets.some((widget) => widget.page === page))
+    throw new Error("Only an empty Home page can be deleted.");
+  return {
+    ...layout,
+    pageCount: layout.pageCount - 1,
+    // Keep each remaining page's contents and row/column positions intact.
+    iconLayout: layout.iconLayout.map((app) =>
+      app.page > page ? { ...app, page: app.page - 1 } : app),
+    widgets: layout.widgets.map((widget) =>
+      widget.page > page ? { ...widget, page: widget.page - 1 } : widget),
   };
 }
 
