@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noEmit": false,
+    "incremental": false,
+    "outDir": "/tmp/veil-desktop-tests",
+    "rootDir": "."
+  },
+  "include": ["tests/desktop.test.ts"],
+  "exclude": ["node_modules"]
+}

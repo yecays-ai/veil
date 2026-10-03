@@ -1,4 +1,10 @@
 import { APP_IDS, isAppId, type AppId } from "./app-registry";
+import {
+  defaultDesktop,
+  DOCK_MAX,
+  normalizeDesktop,
+  type DesktopLayout,
+} from "./desktop-layout";
 
 export type ThemeProfile = {
   version: 1;
@@ -23,9 +29,8 @@ export type ThemeProfile = {
   cssOverrides: Record<string, string>;
 };
 
-export type ThemeSnapshot = {
+export type ThemeSnapshot = DesktopLayout & {
   profile: ThemeProfile;
-  iconLayout: AppId[];
   dockLayout: AppId[];
 };
 
@@ -36,7 +41,7 @@ export type ThemeDocument = {
   presets: ThemePreset[];
 };
 
-// Add future Home Screen data to ThemeSnapshot; no widget engine is required here.
+// Compose theme decoration with desktop data; layout algorithms remain independent.
 export function defaultSnapshot(): ThemeSnapshot {
   return {
     profile: {
@@ -62,7 +67,7 @@ export function defaultSnapshot(): ThemeSnapshot {
       text: { font: "system", size: 16, weight: 400 },
       cssOverrides: {},
     },
-    iconLayout: [...APP_IDS],
+    ...defaultDesktop(),
     dockLayout: ["messages"],
   };
 }
@@ -148,9 +153,6 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
     const source = imageSource(record(p.icons)[id]);
     if (source) icons[id] = source;
   }
-  const order = Array.isArray(raw.iconLayout)
-    ? [...new Set(raw.iconLayout.filter(isAppId))]
-    : [];
   return {
     profile: {
       version: 1,
@@ -190,9 +192,9 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
       },
       cssOverrides: normalizeOverrides(p.cssOverrides),
     },
-    iconLayout: [...order, ...APP_IDS.filter((id) => !order.includes(id))],
+    ...normalizeDesktop(raw),
     dockLayout: Array.isArray(raw.dockLayout)
-      ? [...new Set(raw.dockLayout.filter(isAppId))]
+      ? [...new Set(raw.dockLayout.filter(isAppId))].slice(0, DOCK_MAX)
       : d.dockLayout,
   };
 }

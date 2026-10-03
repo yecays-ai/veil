@@ -1,43 +1,114 @@
 "use client";
 
-import Link from "next/link";
-import { APP_REGISTRY, type AppId } from "../lib/app-registry";
+import { useRef, useState, type PointerEvent } from "react";
+import { AppIcon } from "./app-icon";
+import { WidgetRenderer } from "./widgets/widget-renderer";
 import { useTheme } from "./theme-provider";
-
-function AppIcon({ id }: { id: AppId }) {
-  const { document } = useTheme();
-  const app = APP_REGISTRY.find((app) => app.id === id)!;
-  const source = document.current.profile.icons[id];
-  return (
-    <Link className="home-app" href={app.href}>
-      <span className="home-icon">
-        <span aria-hidden="true">{app.glyph}</span>
-        {/* User-provided URLs and inline uploads do not require Next image hosting configuration. */}
-        {source && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={source}
-            alt=""
-            onError={(event) => {
-              event.currentTarget.style.visibility = "hidden";
-            }}
-            onLoad={(event) => {
-              event.currentTarget.style.visibility = "visible";
-            }}
-          />
-        )}
-      </span>
-      <span>{app.label}</span>
-    </Link>
-  );
-}
+import {
+  GRID_COLS,
+  GRID_ROWS,
+  MAX_PAGES,
+  moveDesktopItem,
+  type DesktopItem,
+} from "../lib/desktop-layout";
+import { WIDGET_REGISTRY } from "../lib/widget-registry";
+import type { WidgetSize } from "../lib/widget-types";
 
 export function HomeScreen() {
-  const { document } = useTheme();
-  const { profile, iconLayout, dockLayout } = document.current;
+  const { document, ready, commit } = useTheme();
+  const layout = document.current;
+  const { profile, iconLayout, dockLayout, widgets, pageCount } = layout;
+  const [page, setPage] = useState(1);
+  const [editing, setEditing] = useState(false);
+  const [selected, setSelected] = useState<DesktopItem | null>(null);
+  const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+  const currentPage = Math.min(page, pageCount);
+  const swipe = useRef<{
+    id: number;
+    x: number;
+    y: number;
+    dx: number;
+    dy: number;
+  } | null>(null);
+  const suppressClick = useRef(false);
   const wallpaper = profile.wallpaper;
+  const selectedWidget =
+    selected?.kind === "widget"
+      ? widgets.find((w) => w.id === selected.id)
+      : null;
+
+  async function move(row: number, col: number, size?: WidgetSize) {
+    if (!selected || saving) return;
+    setSaving(true);
+    try {
+      await commit((d) => ({
+        ...d,
+        current: {
+          ...d.current,
+          ...moveDesktopItem(
+            d.current,
+            selected,
+            { page: currentPage, row, col },
+            size,
+          ),
+        },
+      }));
+      setNotice("Layout saved.");
+      setSelected(null);
+    } catch (error) {
+      setNotice(
+        error instanceof Error ? error.message : "Could not save layout.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function swipeStart(event: PointerEvent<HTMLDivElement>) {
+    if (!event.isPrimary || event.button !== 0) return;
+    suppressClick.current = false;
+    swipe.current = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      dx: 0,
+      dy: 0,
+    };
+  }
+  function swipeMove(event: PointerEvent<HTMLDivElement>) {
+    const gesture = swipe.current;
+    if (!gesture || gesture.id !== event.pointerId) return;
+    gesture.dx = event.clientX - gesture.x;
+    gesture.dy = event.clientY - gesture.y;
+    if (
+      Math.abs(gesture.dx) > 12 &&
+      Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3
+    ) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+      suppressClick.current = true;
+    }
+  }
+  function swipeEnd(event: PointerEvent<HTMLDivElement>) {
+    const gesture = swipe.current;
+    swipe.current = null;
+    if (!gesture || gesture.id !== event.pointerId) return;
+    const threshold = Math.max(40, event.currentTarget.clientWidth * 0.16);
+    if (
+      Math.abs(gesture.dx) > threshold &&
+      Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.3
+    ) {
+      setPage(
+        Math.max(
+          1,
+          Math.min(pageCount, currentPage + (gesture.dx < 0 ? 1 : -1)),
+        ),
+      );
+    }
+  }
+
   return (
-    <div className="home-screen">
+    <div className="home-screen desktop-home">
       {wallpaper.source && (
         <div
           className="home-wallpaper"
@@ -52,15 +123,201 @@ export function HomeScreen() {
           }}
         />
       )}
-      <div className="home-foreground">
-        <h1>Companion Phone</h1>
-        <nav className="home-apps" aria-label="Apps">
-          {iconLayout.map((id) => (
-            <AppIcon key={id} id={id} />
-          ))}
+      <div className="desktop-foreground">
+        <div className="desktop-toolbar">
+          <span role="status" className="desktop-notice">
+            {notice ||
+              (editing
+                ? selected
+                  ? "Choose a free grid cell."
+                  : "Select an item to move."
+                : "")}
+          </span>
+          <button
+            className="desktop-edit"
+            disabled={!ready || saving}
+            onClick={() => {
+              setEditing(!editing);
+              setSelected(null);
+              setNotice("");
+            }}
+          >
+            {editing ? "Done" : "Edit"}
+          </button>
+        </div>
+        {editing && (
+          <div className="desktop-edit-tools">
+            {selectedWidget && (
+              <label>
+                Size
+                <select
+                  aria-label="Widget size"
+                  value={selectedWidget.size}
+                  disabled={saving}
+                  onChange={(e) =>
+                    void move(
+                      selectedWidget.row,
+                      selectedWidget.col,
+                      e.target.value as WidgetSize,
+                    )
+                  }
+                >
+                  {WIDGET_REGISTRY[selectedWidget.type].sizes.map((size) => (
+                    <option key={size} value={size}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <button
+              disabled={pageCount >= MAX_PAGES || saving}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  await commit((d) => ({
+                    ...d,
+                    current: {
+                      ...d.current,
+                      pageCount: Math.min(MAX_PAGES, d.current.pageCount + 1),
+                    },
+                  }));
+                  setPage(pageCount + 1);
+                  setNotice("Page added.");
+                } catch (error) {
+                  setNotice(
+                    error instanceof Error
+                      ? error.message
+                      : "Could not add page.",
+                  );
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              Add page
+            </button>
+          </div>
+        )}
+        <div
+          className="desktop-pages"
+          aria-label="Desktop pages"
+          onPointerDown={swipeStart}
+          onPointerMove={swipeMove}
+          onPointerUp={swipeEnd}
+          onPointerCancel={() => {
+            swipe.current = null;
+          }}
+          onClickCapture={(event) => {
+            if (suppressClick.current) {
+              event.preventDefault();
+              event.stopPropagation();
+              suppressClick.current = false;
+            }
+          }}
+        >
+          <div
+            className="desktop-track"
+            style={{ transform: `translateX(-${(currentPage - 1) * 100}%)` }}
+          >
+            {Array.from({ length: pageCount }, (_, index) => index + 1).map(
+              (number) => (
+                <div
+                  className="desktop-page"
+                  key={number}
+                  inert={number !== currentPage}
+                  aria-hidden={number !== currentPage}
+                >
+                  <div
+                    className="desktop-grid"
+                    role="group"
+                    aria-label={`Desktop page ${number}`}
+                    data-page={number}
+                  >
+                    {editing &&
+                      Array.from(
+                        { length: GRID_ROWS * GRID_COLS },
+                        (_, index) => {
+                          const row = Math.floor(index / GRID_COLS) + 1,
+                            col = (index % GRID_COLS) + 1;
+                          return (
+                            <button
+                              className="desktop-cell"
+                              key={`cell-${index}`}
+                              disabled={!selected || saving}
+                              aria-label={`Place selected item at row ${row} column ${col}`}
+                              style={{ gridRow: row, gridColumn: col }}
+                              onClick={() => void move(row, col)}
+                            />
+                          );
+                        },
+                      )}
+                    {widgets
+                      .filter((widget) => widget.page === number)
+                      .map((widget) => (
+                        <WidgetRenderer
+                          key={widget.id}
+                          widget={widget}
+                          editing={editing}
+                          selected={
+                            selected?.kind === "widget" &&
+                            selected.id === widget.id
+                          }
+                          onSelect={() => {
+                            setSelected({ kind: "widget", id: widget.id });
+                            setNotice("");
+                          }}
+                        />
+                      ))}
+                    {iconLayout
+                      .filter((app) => app.page === number)
+                      .map((app) => (
+                        <div
+                          className="desktop-app"
+                          key={app.id}
+                          data-app-id={app.id}
+                          style={{ gridRow: app.row, gridColumn: app.col }}
+                        >
+                          <AppIcon
+                            id={app.id}
+                            editing={editing}
+                            selected={
+                              selected?.kind === "app" && selected.id === app.id
+                            }
+                            onSelect={() => {
+                              setSelected({ kind: "app", id: app.id });
+                              setNotice("");
+                            }}
+                          />
+                        </div>
+                      ))}
+                    {!editing &&
+                      !widgets.some((w) => w.page === number) &&
+                      !iconLayout.some((a) => a.page === number) && (
+                        <p className="desktop-empty">No items on this page.</p>
+                      )}
+                  </div>
+                </div>
+              ),
+            )}
+          </div>
+        </div>
+        <nav className="desktop-indicator" aria-label="Desktop pagination">
+          {Array.from({ length: pageCount }, (_, index) => index + 1).map(
+            (number) => (
+              <button
+                key={number}
+                aria-label={`Go to page ${number}`}
+                aria-current={number === currentPage ? "page" : undefined}
+                onClick={() => setPage(number)}
+              >
+                <span />
+              </button>
+            ),
+          )}
         </nav>
         <nav
-          className="home-dock"
+          className="home-dock desktop-dock"
           aria-label="Dock"
           style={{
             borderRadius: profile.dock.radius,
@@ -69,11 +326,9 @@ export function HomeScreen() {
               : undefined,
           }}
         >
-          {dockLayout.length ? (
-            dockLayout.map((id) => <AppIcon key={id} id={id} />)
-          ) : (
-            <span>Dock</span>
-          )}
+          {dockLayout.map((id) => (
+            <AppIcon key={id} id={id} />
+          ))}
         </nav>
       </div>
     </div>

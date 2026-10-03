@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, type ChangeEvent } from "react";
 import { APP_REGISTRY } from "../lib/app-registry";
+import { reverseAppPositions } from "../lib/desktop-layout";
 import { applyPreset, deletePreset, savePreset } from "../lib/theme-presets";
 import { exportTheme, importTheme } from "../lib/theme-package";
 import { readImage } from "../lib/theme-storage";
@@ -284,7 +285,7 @@ export function Appearance() {
                     ...d,
                     current: {
                       ...d.current,
-                      iconLayout: [...d.current.iconLayout].reverse(),
+                      iconLayout: reverseAppPositions(d.current),
                     },
                   })),
                 )
