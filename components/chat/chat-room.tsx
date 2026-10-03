@@ -129,7 +129,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <strong>{session?.remark || character.name}</strong>
         <Link
           className="chat-settings-link"
-          href="/messages/settings"
+          href="/settings/text-api"
           aria-label="API settings"
         >
           API

@@ -51,7 +51,7 @@ export function createChatEngine(
         );
         if (!config)
           throw new Error(
-            "Configure your API in Messages → API settings before requesting a reply.",
+            "The selected Text API is missing. Choose a saved config in Settings → Text API.",
           );
         validateApiConfig(config);
         controller.signal.throwIfAborted();

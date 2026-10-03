@@ -380,7 +380,7 @@ test("API errors are visible, reserved batches are not retried, and missing conf
   );
   await assert.rejects(
     () => engine.requestReply(session.id),
-    /Configure your API/,
+    /selected Text API is missing/,
   );
   assert.equal(
     (await storage.readSession(session.id)).messages[0].requestedBy,

@@ -26,7 +26,7 @@ export function completionUrl(baseUrl: string): string {
 export function validateApiConfig(config: ApiConfig) {
   completionUrl(config.baseUrl);
   if (!config.apiKey.trim() || !config.model.trim())
-    throw new Error("Configure API Key and Model in Messages → API settings.");
+    throw new Error("Configure API Key and Model in Settings → Text API.");
 }
 export type TextProvider = (
   config: ApiConfig,

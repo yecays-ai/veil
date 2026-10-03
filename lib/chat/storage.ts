@@ -1,5 +1,7 @@
 import {
   DEFAULT_API_CONFIG_ID,
+  normalizeApiConfig,
+  type NamedApiConfig,
   type ApiConfig,
   type ChatMessage,
   type ChatSession,
@@ -267,13 +269,33 @@ export class ChatStorage {
     });
   }
   getApiConfig(id = DEFAULT_API_CONFIG_ID): Promise<ApiConfig | undefined> {
-    return this.transaction("readonly", (tx) =>
-      request(tx.objectStore("apiConfigs").get(id)),
-    );
+    return this.transaction("readonly", async (tx) => {
+      const config: ApiConfig | undefined = await request(
+        tx.objectStore("apiConfigs").get(id),
+      );
+      return config ? normalizeApiConfig(config) : undefined;
+    });
+  }
+  listApiConfigs(): Promise<NamedApiConfig[]> {
+    return this.transaction("readonly", async (tx) => {
+      const configs: ApiConfig[] = await request(
+        tx.objectStore("apiConfigs").getAll(),
+      );
+      return configs.map(normalizeApiConfig);
+    });
+  }
+  // Keep dangling binding IDs deliberately: deleting a reference would inherit
+  // another provider. Missing resources fail closed in the chat engine.
+  deleteApiConfig(id: string): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      await request(tx.objectStore("apiConfigs").delete(id));
+    });
   }
   saveApiConfig(config: ApiConfig): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
-      await request(tx.objectStore("apiConfigs").put(config));
+      await request(
+        tx.objectStore("apiConfigs").put(normalizeApiConfig(config)),
+      );
     });
   }
 }

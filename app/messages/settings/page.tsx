@@ -1,4 +1,4 @@
-import { ChatApiSettings } from "../../../components/chat/api-settings";
+import { redirect } from "next/navigation";
 export default function Page() {
-  return <ChatApiSettings />;
+  redirect("/settings/text-api");
 }

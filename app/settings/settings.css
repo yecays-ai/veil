@@ -1,0 +1,68 @@
+.settings-app {
+  padding: max(24px, env(safe-area-inset-top)) 20px
+    max(28px, env(safe-area-inset-bottom));
+  min-width: 0;
+}
+.settings-app h1 {
+  font-size: 26px;
+  margin: 22px 0 12px;
+}
+.settings-app p,
+.settings-app small {
+  color: var(--muted, #777);
+  line-height: 1.5;
+}
+.settings-app nav,
+.settings-app form,
+.settings-app label {
+  display: grid;
+  gap: 14px;
+}
+.settings-row {
+  display: grid;
+  gap: 6px;
+  padding: 16px 0;
+  border-bottom: 1px solid #8883;
+  text-decoration: none;
+  color: inherit;
+}
+.settings-row span {
+  font-size: 13px;
+  color: var(--muted, #777);
+}
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.settings-app button,
+.settings-app input,
+.settings-app select {
+  font: inherit;
+  border: 1px solid #8885;
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: transparent;
+  color: inherit;
+  min-width: 0;
+}
+.settings-app input,
+.settings-app select {
+  width: 100%;
+  box-sizing: border-box;
+}
+.settings-app button {
+  cursor: pointer;
+}
+.settings-app button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.settings-app [role="alert"] {
+  color: #af3d3d;
+}
+.settings-app label {
+  gap: 7px;
+  font-size: 14px;
+}

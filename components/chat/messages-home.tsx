@@ -50,7 +50,7 @@ export function MessagesHome() {
           ‹
         </Link>
         <h1>Messages</h1>
-        <Link href="/messages/settings">API settings</Link>
+        <Link href="/settings/text-api">API settings</Link>
       </header>
       {error && (
         <p role="alert" className="chat-notice">
