@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Bookmark,
   CircleCheck,
@@ -24,6 +24,8 @@ import { ChatAvatar } from "./avatar";
 import { useChatSession } from "./use-chat-session";
 import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
 import { createTransientFeedback, hasPendingUserContent, sendThenRequestReply, visibleReplyText } from "../../lib/chat/usability";
+import { groupVisibleMessages, hiddenForReveal } from "../../lib/chat/bubble-pacing";
+import { useBubbleReveal } from "./use-bubble-reveal";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -45,6 +47,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
   currentSessionId.current = session?.characterId === characterId ? session.id : undefined;
+  const { queue: revealQueue, state: revealState } = useBubbleReveal(
+    currentSessionId.current, messages, session?.streamOnline === true, !!loadError,
+  );
   function showFeedback(text: string) {
     feedbackController.show(text);
   }
@@ -147,14 +152,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }
   async function deleteConfirmed() {
     if (!session || !confirmDelete) return;
-    try { await chatStorage.deleteMessages(session.id, confirmDelete); showFeedback("Deleted");
+    try { await chatStorage.deleteMessages(session.id, confirmDelete); revealQueue.discard(confirmDelete); showFeedback("Deleted");
       setConfirmDelete(null); setMultiSelect(false); setSelectedIds(new Set()); }
     catch (e) { setError(e instanceof Error ? e.message : "Messages could not be deleted."); }
   }
   useEffect(() => {
     if (nearBottom.current)
       history.current?.scrollTo({ top: history.current.scrollHeight });
-  }, [messages]);
+  }, [messages, revealState]);
   // Keep the chat composer above the visual viewport's keyboard, without
   // changing Phone Shell or Home sizing. Blur is deliberately not generation.
   const shell = useRef<HTMLDivElement>(null);
@@ -218,6 +223,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       chatEngine.isGenerating(session.id) || loadError) return;
     const sessionId = session.id;
     replyLock.current = true;
+    let revealToken: number | undefined;
     setGenerating(true);
     setError("");
     nearBottom.current = true;
@@ -225,8 +231,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       await sendThenRequestReply(draft,
         (content) => persistDraft(content, sessionId, false),
         async () => {
-          if (mounted.current && currentSessionId.current === sessionId)
-            return chatEngine.requestReply(sessionId);
+          if (mounted.current && currentSessionId.current === sessionId) {
+            revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now());
+            const token = revealToken;
+            return chatEngine.requestReply(sessionId, (completed) => {
+              if (mounted.current && currentSessionId.current === sessionId)
+                revealQueue.complete(sessionId, completed, performance.now(), token);
+            });
+          }
         });
     } catch (e) {
       if (mounted.current)
@@ -234,6 +246,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           e instanceof Error ? e.message : "Reply could not be requested.",
         );
     } finally {
+      revealQueue.settle(sessionId, revealToken);
       replyLock.current = false;
       if (mounted.current) setGenerating(false);
     }
@@ -241,7 +254,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useKeyboardDismissAutoReply(shell, {
     sessionId: session?.characterId === characterId ? session.id : undefined,
     enabled: session?.autoReplyOnKeyboardDismiss === true,
-    blocked: generating || sending || multiSelect || !!activeMessage || !!editingMessage ||
+    blocked: generating || !!revealState?.pending || sending || multiSelect || !!activeMessage || !!editingMessage ||
       settingsOpen || confirmClear || !!confirmDelete,
     onReply: reply,
   });
@@ -265,6 +278,20 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     );
   const pending = hasPendingUserContent(messages);
   const selectable = messages.filter((message) => message.status !== "streaming");
+  const hidden = (message: ChatMessage) =>
+    (!!revealState && hiddenForReveal(message, revealState)) ||
+    (generating && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
+  const visibleMessages = messages.filter((message) => !hidden(message));
+  const groupedMessages = groupVisibleMessages(visibleMessages);
+  const typing = !!revealState?.pending || (generating && session?.streamOnline !== true);
+  const firstHiddenIndex = messages.findIndex(hidden);
+  const typingBeforeId = firstHiddenIndex < 0 ? undefined :
+    messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
+  const typingIndicator = typing && <div className="chat-turn chat-turn-assistant" role="status" aria-label="Replying">
+    <ChatAvatar profile={character} /><div className="chat-message">
+      <p className="chat-bubble">…</p><span className="chat-message-meta">Replying…</span>
+    </div>
+  </div>;
   return (
     <div className="chat-app chat-room" ref={shell}
       data-context-menu-open={activeMessage ? "" : undefined}>
@@ -310,9 +337,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </p>
         )}
         {empty && <p className="chat-empty-state">No messages yet</p>}
-        {messages.map((message) => (
+        {groupedMessages.map(({ message, showTimestamp }) => (
+          <Fragment key={message.id}>
+            {typingBeforeId === message.id && typingIndicator}
+            {showTimestamp && <div className="chat-time-separator">
+              <time dateTime={new Date(message.createdAt).toISOString()}>
+                {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </time>
+            </div>}
           <div
-            key={message.id}
             className={`chat-turn chat-turn-${message.role}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
             data-message-id={message.id}
             data-active={activeMessage?.id === message.id ? "" : undefined}
@@ -335,12 +368,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <span className="chat-message-meta">
-                <time dateTime={new Date(message.createdAt).toISOString()}>
-                  {new Date(message.createdAt).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </time>
                 {message.status === "streaming" && (
                   <span>{generating ? "Replying…" : "Interrupted reply"}</span>
                 )}
@@ -351,7 +378,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               </span>
             </div>
           </div>
+          </Fragment>
         ))}
+        {!typingBeforeId && typingIndicator}
       </div>
       {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
@@ -398,10 +427,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           >
             Send
           </button>
-          {generating ? (
+          {generating || revealState?.pending ? (
             <button
               type="button"
-              onClick={() => session && chatEngine.stop(session.id)}
+              onClick={() => {
+                revealQueue.cancel();
+                if (session) chatEngine.stop(session.id);
+              }}
             >
               Stop reply
             </button>
@@ -452,7 +484,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         text={`Delete all ${messages.length} messages from this conversation?`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
           if (!session) return;
-          try { await chatStorage.clearSession(session.id); setConfirmClear(false); showFeedback("Conversation cleared"); }
+          try { await chatStorage.clearSession(session.id); revealQueue.cancel(); setConfirmClear(false); showFeedback("Conversation cleared"); }
           catch (reason) { setError(reason instanceof Error ? reason.message : "Conversation could not be cleared."); }
         }} />}
     </div>

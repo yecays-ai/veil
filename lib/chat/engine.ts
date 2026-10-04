@@ -25,7 +25,7 @@ export function createChatEngine(
       storage.send(sessionId, content),
     isGenerating: (sessionId: string) => active.has(sessionId),
     stop: (sessionId: string) => active.get(sessionId)?.abort(),
-    async requestReply(sessionId: string): Promise<ChatMessage | null> {
+    async requestReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void): Promise<ChatMessage | null> {
       if (active.has(sessionId)) return null;
       const controller = new AbortController();
       active.set(sessionId, controller);
@@ -88,7 +88,10 @@ export function createChatEngine(
         }
         controller.signal.throwIfAborted();
         if (!content.trim()) throw new Error("The API returned no reply text.");
-        return (await storage.finalizeReply(assistant.id, content))[0];
+        const completed = await storage.finalizeReply(assistant.id, content);
+        // Optional presentation notification; it cannot turn a committed reply into an error.
+        try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
+        return completed[0];
       } catch (error) {
         if (!assistant) {
           if (controller.signal.aborted) return null;
