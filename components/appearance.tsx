@@ -238,7 +238,13 @@ export function Appearance() {
               onApply={(source) =>
                 updateProfile((p) => ({
                   ...p,
-                  wallpaper: { ...p.wallpaper, source },
+                  wallpaper: {
+                    ...p.wallpaper,
+                    source,
+                    scale: 100,
+                    x: 50,
+                    y: 50,
+                  },
                 }))
               }
             />
@@ -267,9 +273,6 @@ export function Appearance() {
               [
                 ["opacity", 0, 1, 0.05],
                 ["blur", 0, 20, 1],
-                ["scale", 100, 200, 1],
-                ["x", 0, 100, 1],
-                ["y", 0, 100, 1],
               ] as const
             ).map(([key, min, max, step]) => (
               <label key={key}>
