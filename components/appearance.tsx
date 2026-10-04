@@ -14,10 +14,15 @@ import {
 } from "../lib/theme-types";
 import { useTheme } from "./theme-provider";
 import { PageShell } from "./page-shell";
+import {
+  ImageCropDialog,
+  type CropShape,
+} from "./image-crop-dialog";
 
 type ImageEditorProps = {
   label: string;
   source: string | null;
+  cropShape: CropShape;
   onApply: (source: string | null) => Promise<void>;
 };
 
@@ -31,15 +36,18 @@ const checkedChange =
   (event: ChangeEvent<HTMLInputElement>) =>
     action(event.currentTarget.checked);
 
-function ImageEditor({ label, source, onApply }: ImageEditorProps) {
+function ImageEditor({ label, source, cropShape, onApply }: ImageEditorProps) {
   const [draft, setDraft] = useState<string | null>(null);
+  const [cropSource, setCropSource] = useState<string | null>(null);
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [broken, setBroken] = useState(false);
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setError("");
+    setMessage("");
     try {
       await action();
     } catch (e) {
@@ -47,6 +55,16 @@ function ImageEditor({ label, source, onApply }: ImageEditorProps) {
     } finally {
       setBusy(false);
     }
+  }
+  async function saveUpload(value: string) {
+    setError("");
+    setMessage("");
+    await onApply(value);
+    setCropSource(null);
+    setDraft(null);
+    setUrl("");
+    setBroken(false);
+    setMessage(`${label} saved.`);
   }
   const preview = draft ?? source;
   return (
@@ -75,7 +93,7 @@ function ImageEditor({ label, source, onApply }: ImageEditorProps) {
             event.target.value = "";
             if (file)
               void run(async () => {
-                setDraft(await readImage(file));
+                setCropSource(await readImage(file));
                 setBroken(false);
               });
           }}
@@ -133,7 +151,19 @@ function ImageEditor({ label, source, onApply }: ImageEditorProps) {
           Default {label}
         </button>
       </div>
+      {message && <p role="status">{message}</p>}
       {error && <p role="alert">{error}</p>}
+      {cropSource && (
+        <ImageCropDialog
+          source={cropSource}
+          shape={cropShape}
+          title={`Adjust ${label}`}
+          alt={`${label} crop preview`}
+          onSave={saveUpload}
+          onUseOriginal={() => saveUpload(cropSource)}
+          onCancel={() => setCropSource(null)}
+        />
+      )}
     </fieldset>
   );
 }
@@ -199,6 +229,7 @@ export function Appearance() {
             <summary>壁纸</summary>
             <ImageEditor
               label="Wallpaper"
+              cropShape="portrait"
               source={profile.wallpaper.source}
               onApply={(source) =>
                 updateProfile((p) => ({
@@ -264,6 +295,7 @@ export function Appearance() {
               <ImageEditor
                 key={app.id}
                 label={`${app.label} icon`}
+                cropShape="square"
                 source={profile.icons[app.id] ?? null}
                 onApply={(source) =>
                   updateProfile((p) => {
@@ -329,6 +361,7 @@ export function Appearance() {
             </label>
             <ImageEditor
               label="Dock image"
+              cropShape="wide"
               source={profile.dock.image}
               onApply={(image) =>
                 updateProfile((p) => ({ ...p, dock: { ...p.dock, image } }))

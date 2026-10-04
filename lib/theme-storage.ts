@@ -116,12 +116,20 @@ export async function readImage(file: File): Promise<string> {
       new Promise<Blob | null>((resolve) =>
         canvas.toBlob(resolve, type, quality),
       );
-    let output = await encode("image/webp", 0.8);
-    if (!output || output.type !== "image/webp") {
-      output = await encode(
+    let output: Blob | null = null;
+    for (const quality of [0.8, 0.68, 0.56, 0.44]) {
+      const candidate = await encode("image/webp", quality);
+      if (!candidate || candidate.type !== "image/webp") break;
+      output = candidate;
+      // Base64 adds roughly one third; keep the stored data URL below 600 kB.
+      if (candidate.size <= 440_000) break;
+    }
+    if (!output || output.size > 440_000) {
+      const fallback = await encode(
         file.type === "image/png" ? "image/png" : "image/jpeg",
-        0.82,
+        0.72,
       );
+      if (fallback && (!output || fallback.size < output.size)) output = fallback;
     }
     if (!output?.size)
       throw new Error("This browser could not encode the image.");
@@ -139,7 +147,7 @@ export async function readImage(file: File): Promise<string> {
     });
     if (source.length > 600_000)
       throw new Error(
-        "The processed image is too large to store. Choose a smaller photo.",
+        "This image is still too detailed to store after compression. Try a smaller crop or image.",
       );
     return source;
   } finally {
