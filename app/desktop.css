@@ -26,6 +26,15 @@
   display: flex;
   justify-content: space-between;
 }
+.home-edit-shell .home-edit-actions button {
+  min-height: 44px;
+  min-width: 76px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 20px;
+  border-radius: 22px;
+  padding: 12px 20px;
+}
 .home-edit-shell button {
   pointer-events: auto;
   font: inherit;
@@ -52,6 +61,9 @@
 .home-edit-menu button {
   text-align: left;
   border-radius: 0;
+  font-size: 15px;
+  line-height: 20px;
+  padding: 10px 16px;
 }
 .home-edit-notice {
   position: absolute;
@@ -94,6 +106,14 @@
   min-width: 0;
   z-index: 1;
   align-self: start;
+}
+/* The 44px editing control band uses Home's existing 50px bottom trim.
+   Move cell contents together, keeping tracks and all cell sizes unchanged. */
+.desktop-home.is-editing .desktop-grid > * {
+  translate: 0 44px;
+}
+.desktop-home.is-editing .desktop-app {
+  align-self: center;
 }
 .desktop-home .home-app {
   min-width: 0;
