@@ -20,7 +20,7 @@ function createV1Database(
   includeCharacterIndex = true,
 ): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = factory.open(CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION);
+    const request = factory.open(CHAT_DATABASE_NAME, 1);
     request.onupgradeneeded = () => {
       const db = request.result;
       const sessions = db.createObjectStore("sessions", { keyPath: "id" });
@@ -42,7 +42,7 @@ function finish(transaction: IDBTransaction): Promise<void> {
   });
 }
 
-test("a new chat database installs the complete v1 schema", async () => {
+test("a new chat database installs the complete current schema", async () => {
   const factory = new IDBFactory();
   await new ChatStorage(() => factory).listSessions();
   const db = await openDatabase(factory);
@@ -50,6 +50,8 @@ test("a new chat database installs the complete v1 schema", async () => {
     assert.equal(db.version, CHAT_DATABASE_VERSION);
     assert.deepEqual(Array.from(db.objectStoreNames).sort(), [
       "apiConfigs",
+      "assets",
+      "chatSettings",
       "messages",
       "sessions",
     ]);
@@ -64,7 +66,7 @@ test("a new chat database installs the complete v1 schema", async () => {
   }
 });
 
-test("an existing v1 database preserves records and reopens safely", async () => {
+test("an existing v1 database preserves records while adding chat background stores", async () => {
   const factory = new IDBFactory();
   const db = await createV1Database(factory);
   const transaction = db.transaction(
@@ -107,6 +109,13 @@ test("an existing v1 database preserves records and reopens safely", async () =>
     ["Stored message"],
   );
   assert.equal((await second.getApiConfig("legacy-api"))?.model, "test-model");
+  const upgraded = await openDatabase(factory);
+  try {
+    assert.equal(upgraded.objectStoreNames.contains("assets"), true);
+    assert.equal(upgraded.objectStoreNames.contains("chatSettings"), true);
+  } finally {
+    upgraded.close();
+  }
 });
 
 test("a damaged same-version database is not silently repaired", async () => {

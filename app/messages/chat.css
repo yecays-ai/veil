@@ -89,7 +89,10 @@
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: transparent;
+  background-color: var(--theme-background);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
 }
 .chat-settings-button {
   flex: none;
@@ -515,6 +518,40 @@
 .chat-info-settings .chat-session-setting + .chat-session-setting {
   border-top: 1px solid color-mix(in srgb, var(--theme-text) 9%, transparent);
 }
+.chat-info-row {
+  width: 100%;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit;
+  text-align: left;
+}
+.chat-info-row > svg { width: 20px; height: 20px; opacity: .45; }
+.chat-background-preview {
+  aspect-ratio: 16 / 10;
+  display: grid;
+  place-items: center;
+  margin-bottom: 18px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
+  border-radius: 16px;
+  background-color: var(--theme-surface);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  overflow: hidden;
+}
+.chat-background-preview > svg { width: 32px; height: 32px; opacity: .28; }
+.chat-background-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
+  border-radius: 14px;
+  background: var(--theme-surface);
+}
+.chat-background-section > div { display: flex; justify-content: space-between; gap: 12px; }
+.chat-background-section small { opacity: .55; }
 .chat-app button.chat-info-clear {
   width: 100%;
   margin-top: 18px;

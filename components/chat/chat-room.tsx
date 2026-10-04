@@ -22,7 +22,7 @@ import {
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { chatStorage } from "../../lib/chat/storage";
-import type { ChatMessage } from "../../lib/chat/types";
+import type { ChatMessage, ChatSession } from "../../lib/chat/types";
 import {
   messageMenuPosition,
   selectMessageRange,
@@ -34,6 +34,8 @@ import { createTransientFeedback, hasPendingUserContent, sendThenRequestReply, v
 import { groupVisibleMessages, hiddenForReveal } from "../../lib/chat/bubble-pacing";
 import { resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../lib/chat/delivery";
 import { useBubbleReveal } from "./use-bubble-reveal";
+import { useChatBackground } from "./use-chat-background";
+import { ChatBackgroundSettings } from "./chat-background-settings";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -44,6 +46,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     characterId,
     ready && !!character,
   );
+  const chatBackgroundUrl = useChatBackground(session);
   const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -252,7 +255,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       chatInfoOpen || confirmClear || !!confirmDelete,
     onReply: reply,
   });
-  async function updateSetting(patch: { streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean }) {
+  async function updateSetting(patch: {
+    streamOnline?: boolean;
+    autoReplyOnKeyboardDismiss?: boolean;
+    backgroundImage?: string | null;
+  }) {
     if (!session) return;
     try { await chatStorage.updateSessionSettings(session.id, patch); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Setting could not be saved."); }
@@ -288,6 +295,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   </div>;
   return (
     <div className="chat-app chat-room" ref={shell}
+      style={chatBackgroundUrl ? { backgroundImage: `url(${JSON.stringify(chatBackgroundUrl)})` } : undefined}
+      data-chat-background={chatBackgroundUrl ? "custom" : "default"}
       data-context-menu-open={activeMessage ? "" : undefined}>
       <header className="chat-header">
         <Link
@@ -455,6 +464,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </div>
       </form>
       {chatInfoOpen && <ChatInfoScreen
+        session={session}
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
         canClear={messages.length > 0 && !generating}
@@ -504,14 +514,21 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
 }
 
-function ChatInfoScreen({ streamOnline, autoReplyOnKeyboardDismiss, canClear, onBack, onUpdate, onClear }: {
+function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, canClear, onBack, onUpdate, onClear }: {
+  session: ChatSession | null;
   streamOnline: boolean;
   autoReplyOnKeyboardDismiss: boolean;
   canClear: boolean;
   onBack: () => void;
-  onUpdate: (patch: { streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean }) => Promise<void>;
+  onUpdate: (patch: {
+    streamOnline?: boolean;
+    autoReplyOnKeyboardDismiss?: boolean;
+  }) => Promise<void>;
   onClear: () => void;
 }) {
+  const [backgroundOpen, setBackgroundOpen] = useState(false);
+  if (backgroundOpen && session)
+    return <ChatBackgroundSettings session={session} onBack={() => setBackgroundOpen(false)} />;
   return <section className="chat-info-screen" aria-label="Chat Info">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
@@ -522,6 +539,11 @@ function ChatInfoScreen({ streamOnline, autoReplyOnKeyboardDismiss, canClear, on
     </header>
     <div className="chat-info-body">
       <div className="chat-info-settings">
+        <button type="button" className="chat-session-setting chat-info-row"
+          disabled={!session} onClick={() => setBackgroundOpen(true)}>
+          <span>Chat Background<small>{session?.backgroundImage ? "Custom background" : "Following global"}</small></span>
+          <ChevronRight aria-hidden="true" />
+        </button>
         <label className="chat-session-setting"><span>Streaming Replies
           <small>Show replies as they are generated.</small></span>
           <input type="checkbox" checked={streamOnline}

@@ -4,6 +4,8 @@ import {
   type NamedApiConfig,
   type ApiConfig,
   type ChatMessage,
+  type ChatBackgroundSettings,
+  type ChatImageAsset,
   type ChatSession,
   type ReplyBatch,
 } from "./types";
@@ -12,9 +14,11 @@ import { sameBackupChat } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
-export const CHAT_DATABASE_VERSION = 1;
+export const CHAT_DATABASE_VERSION = 2;
 const CONVERSATION_STORES = ["sessions", "messages"];
-const STORES = [...CONVERSATION_STORES, "apiConfigs"];
+const STORES = [...CONVERSATION_STORES, "apiConfigs", "chatSettings", "assets"];
+const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
+const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
 function backupSession(session: ChatSession): BackupSession {
   return {
@@ -87,6 +91,11 @@ function ensureV1Schema(db: IDBDatabase, transaction: IDBTransaction) {
   storeForUpgrade(db, transaction, "apiConfigs");
 }
 
+function ensureV2Schema(db: IDBDatabase, transaction: IDBTransaction) {
+  storeForUpgrade(db, transaction, "chatSettings");
+  storeForUpgrade(db, transaction, "assets");
+}
+
 const request = <T>(req: IDBRequest<T>): Promise<T> =>
   new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -117,6 +126,11 @@ export class ChatStorage {
             const transaction = req.transaction;
             if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
             ensureV1Schema(req.result, transaction);
+          }
+          if (event.oldVersion < 2) {
+            const transaction = req.transaction;
+            if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
+            ensureV2Schema(req.result, transaction);
           }
         };
         req.onsuccess = () => {
@@ -278,6 +292,7 @@ export class ChatStorage {
 
   updateSessionSettings(sessionId: string, patch: {
     streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean;
+    backgroundImage?: string | null;
   }): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
@@ -289,7 +304,69 @@ export class ChatStorage {
           if (typeof patch[key] !== "boolean") throw new Error("Invalid conversation setting.");
           next[key] = patch[key];
         }
+      if (patch.backgroundImage !== undefined) {
+        if (patch.backgroundImage !== null) {
+          if (typeof patch.backgroundImage !== "string" || !patch.backgroundImage)
+            throw new Error("Invalid conversation background.");
+          const asset = await request(tx.objectStore("assets").get(patch.backgroundImage));
+          if (!asset) throw new Error("Conversation background image was not found.");
+          next.backgroundImage = patch.backgroundImage;
+        } else {
+          delete next.backgroundImage;
+        }
+      }
       await request(table.put(next));
+    });
+  }
+
+  saveChatImage(blob: Blob): Promise<string> {
+    if (!blob.type.startsWith("image/"))
+      return Promise.reject(new Error("Choose an image file."));
+    if (!blob.size || blob.size > MAX_CHAT_IMAGE_BYTES)
+      return Promise.reject(new Error("Chat background images must be 25 MiB or smaller."));
+    return this.transaction("readwrite", async (tx) => {
+      const asset: ChatImageAsset = {
+        id: crypto.randomUUID(),
+        blob,
+        createdAt: Date.now(),
+      };
+      await request(tx.objectStore("assets").add(asset));
+      return asset.id;
+    });
+  }
+
+  readChatImage(id: string): Promise<Blob | null> {
+    if (!id) return Promise.resolve(null);
+    return this.transaction("readonly", async (tx) => {
+      const asset: ChatImageAsset | undefined = await request(
+        tx.objectStore("assets").get(id),
+      );
+      return asset?.blob ?? null;
+    });
+  }
+
+  readChatBackgroundSettings(): Promise<ChatBackgroundSettings> {
+    return this.transaction("readonly", async (tx) => {
+      const settings: ChatBackgroundSettings | undefined = await request(
+        tx.objectStore("chatSettings").get(CHAT_BACKGROUND_SETTINGS_ID),
+      );
+      return settings ?? { id: CHAT_BACKGROUND_SETTINGS_ID };
+    });
+  }
+
+  updateGlobalChatBackground(backgroundImage: string | null): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      if (backgroundImage !== null) {
+        if (!backgroundImage)
+          throw new Error("Invalid global chat background.");
+        const asset = await request(tx.objectStore("assets").get(backgroundImage));
+        if (!asset) throw new Error("Global chat background image was not found.");
+      }
+      const settings: ChatBackgroundSettings = {
+        id: CHAT_BACKGROUND_SETTINGS_ID,
+        ...(backgroundImage ? { globalChatBackgroundImage: backgroundImage } : {}),
+      };
+      await request(tx.objectStore("chatSettings").put(settings));
     });
   }
 

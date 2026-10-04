@@ -7,7 +7,19 @@ export type ChatSession = {
   remark: string | null;
   autoReplyOnKeyboardDismiss: boolean;
   streamOnline?: boolean;
+  backgroundImage?: string;
   nextOrder: number;
+};
+
+export type ChatBackgroundSettings = {
+  id: "chat-background";
+  globalChatBackgroundImage?: string;
+};
+
+export type ChatImageAsset = {
+  id: string;
+  blob: Blob;
+  createdAt: number;
 };
 
 export type ChatMessage = {

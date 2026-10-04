@@ -29,7 +29,7 @@ test("legacy default config is readable without rewriting or losing its ID/key",
   const store = new ChatStorage(() => factory);
   await store.listSessions();
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const req = factory.open(CHAT_DATABASE_NAME, 1);
+    const req = factory.open(CHAT_DATABASE_NAME);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });

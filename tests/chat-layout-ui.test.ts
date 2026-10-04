@@ -15,7 +15,7 @@ test("chat header is a glass overlay with the requested lightweight controls", (
   assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;/);
   assert.doesNotMatch(room, /--chat-viewport-offset-top|--chat-visual-height/);
   assert.match(css, /\.chat-history\s*\{[^}]*overflow-y:\s*auto/);
-  assert.match(appearance, /:not\(:has\(\.chat-room\)\)/);
+  assert.match(appearance, /\.theme-surface:not\(:has\(\.home-screen\)\) \.theme-home-wallpaper/);
 });
 
 test("assistant groups retain one avatar and a shared gutter while delivery uses group end", () => {
@@ -60,6 +60,9 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.doesNotMatch(css, /\.chat-settings-menu/);
   assert.match(css, /\.chat-info-screen\s*\{[^}]*position:\s*absolute/);
   assert.match(css, /\.chat-info-body\s*\{[^}]*overflow-y:\s*auto/);
+  assert.match(room, /<span>Chat Background/);
+  assert.match(room, /<ChatBackgroundSettings session=\{session\}/);
+  assert.match(room, /data-chat-background=\{chatBackgroundUrl \? "custom" : "default"\}/);
 });
 
 test("message input focus has no accent outline, ring, or shadow", () => {

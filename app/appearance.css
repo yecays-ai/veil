@@ -34,7 +34,7 @@
   background-repeat: no-repeat;
   pointer-events: none;
 }
-.theme-surface:not(:has(.home-screen)):not(:has(.chat-room)) .theme-home-wallpaper {
+.theme-surface:not(:has(.home-screen)) .theme-home-wallpaper {
   display: none;
 }
 .home-screen {
