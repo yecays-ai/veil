@@ -50,7 +50,6 @@ export function HomeScreen() {
     },
     [],
   );
-  const wallpaper = profile.wallpaper;
   const selectedWidget =
     selected?.kind === "widget"
       ? widgets.find((w) => w.id === selected.id)
@@ -167,20 +166,6 @@ export function HomeScreen() {
 
   return (
     <div className={`home-screen desktop-home ${editing ? "is-editing" : ""}`}>
-      {wallpaper.source && (
-        <div
-          className="home-wallpaper"
-          data-testid="home-wallpaper"
-          style={{
-            backgroundImage: `url(${JSON.stringify(wallpaper.source)})`,
-            backgroundSize: wallpaper.fit,
-            backgroundPosition: `${wallpaper.x}% ${wallpaper.y}%`,
-            opacity: wallpaper.opacity,
-            filter: `blur(${wallpaper.blur}px)`,
-            transform: `scale(${wallpaper.scale / 100})`,
-          }}
-        />
-      )}
       <div className="desktop-foreground">
         {editing && (
           <div className="desktop-toolbar">

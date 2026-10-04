@@ -15,7 +15,11 @@ export const metadata: Metadata = {
   description: "A character-neutral companion phone app.",
   applicationName: "VEIL",
   manifest: "/manifest.webmanifest",
-  appleWebApp: { capable: true, title: "VEIL", statusBarStyle: "default" },
+  appleWebApp: {
+    capable: true,
+    title: "VEIL",
+    statusBarStyle: "black-translucent",
+  },
   other: { "apple-mobile-web-app-capable": "yes" },
 };
 
