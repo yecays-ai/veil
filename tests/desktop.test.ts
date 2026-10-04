@@ -17,6 +17,7 @@ import { WIDGET_REGISTRY } from "../lib/widget-registry";
 import { WIDGET_SIZES } from "../lib/widget-types";
 import {
   defaultSnapshot,
+  imageUrlInput,
   normalizeDocument,
   normalizeSnapshot,
 } from "../lib/theme-types";
@@ -29,6 +30,15 @@ import {
   localTime,
   resolveTimezone,
 } from "../lib/participant-config";
+
+test("image URL input accepts direct, Markdown, and HTML image links", () => {
+  const url = "https://images.example/photo.jpg";
+  assert.equal(imageUrlInput(url), url);
+  assert.equal(imageUrlInput(`![wallpaper](${url})`), url);
+  assert.equal(imageUrlInput(`<img alt="wallpaper" src='${url}'>`), url);
+  assert.equal(imageUrlInput("https://user:secret@example.com/photo.jpg"), null);
+  assert.equal(imageUrlInput("not an image link"), null);
+});
 
 function desktopWithClock() {
   const layout = defaultDesktop();

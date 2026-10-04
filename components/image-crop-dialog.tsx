@@ -5,6 +5,7 @@ import {
   rectangularCropGeometry,
   type CropPoint,
 } from "../lib/avatar-crop";
+import { encodeStoredImage } from "../lib/image-processing";
 
 export type CropShape = "square" | "portrait" | "wide";
 
@@ -16,28 +17,6 @@ const SHAPES: Record<
   portrait: { viewport: { width: 180, height: 280 }, output: { width: 720, height: 1120 } },
   wide: { viewport: { width: 240, height: 96 }, output: { width: 900, height: 360 } },
 };
-
-async function canvasDataUrl(canvas: HTMLCanvasElement): Promise<string> {
-  for (const quality of [0.84, 0.72, 0.6, 0.48, 0.36, 0.28]) {
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/webp", quality),
-    );
-    if (!blob) continue;
-    if (blob.size > 440_000) continue;
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () =>
-        typeof reader.result === "string"
-          ? resolve(reader.result)
-          : reject(new Error("This browser could not read the cropped image."));
-      reader.onerror = () => reject(new Error("This browser could not read the cropped image."));
-      reader.readAsDataURL(blob);
-    });
-  }
-  throw new Error(
-    "The cropped image is still too detailed to store. Try a tighter crop or a simpler image.",
-  );
-}
 
 export function ImageCropDialog({
   source,
@@ -116,7 +95,12 @@ export function ImageCropDialog({
         output.width,
         output.height,
       );
-      await onSave(await canvasDataUrl(canvas));
+      await onSave(
+        await encodeStoredImage(
+          canvas,
+          shape === "portrait" ? "image/jpeg" : "image/png",
+        ),
+      );
     });
   }
 

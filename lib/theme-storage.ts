@@ -1,4 +1,5 @@
 import { normalizeDocument, type ThemeDocument } from "./theme-types";
+import { encodeStoredImage } from "./image-processing";
 
 // Replace this adapter when user-isolated cloud storage becomes available.
 export interface ThemeStorage {
@@ -108,44 +109,10 @@ export async function readImage(file: File): Promise<string> {
         "This photo could not be processed. Try a smaller JPEG or PNG image.",
       );
     }
-    const encode = (type: string, quality?: number) =>
-      new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, type, quality),
-      );
-    let output: Blob | null = null;
-    for (const quality of [0.8, 0.68, 0.56, 0.44]) {
-      const candidate = await encode("image/webp", quality);
-      if (!candidate || candidate.type !== "image/webp") break;
-      output = candidate;
-      // Base64 adds roughly one third; keep the stored data URL below 600 kB.
-      if (candidate.size <= 440_000) break;
-    }
-    if (!output || output.size > 440_000) {
-      const fallback = await encode(
-        file.type === "image/png" ? "image/png" : "image/jpeg",
-        0.72,
-      );
-      if (fallback && (!output || fallback.size < output.size)) output = fallback;
-    }
-    if (!output?.size)
-      throw new Error("This browser could not encode the image.");
-    const source = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () =>
-        typeof reader.result === "string"
-          ? resolve(reader.result)
-          : reject(
-              new Error("This browser could not read the processed image."),
-            );
-      reader.onerror = () =>
-        reject(new Error("This browser could not read the processed image."));
-      reader.readAsDataURL(output);
-    });
-    if (source.length > 600_000)
-      throw new Error(
-        "This image is still too detailed to store after compression. Try a smaller crop or image.",
-      );
-    return source;
+    return encodeStoredImage(
+      canvas,
+      file.type === "image/png" ? "image/png" : "image/jpeg",
+    );
   } finally {
     URL.revokeObjectURL(url);
   }

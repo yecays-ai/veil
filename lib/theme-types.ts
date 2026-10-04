@@ -111,6 +111,16 @@ export function imageSource(value: unknown): string | null {
   return null;
 }
 
+export function imageUrlInput(value: string): string | null {
+  const input = value.trim();
+  const markdown = input.match(/!\[[^\]]*\]\(\s*(https?:\/\/[^\s)]+).*\)/i);
+  const html = input.match(/<img\b[^>]*\bsrc=["'](https?:\/\/[^"']+)["']/i);
+  const source = imageSource(markdown?.[1] ?? html?.[1] ?? input);
+  return source?.startsWith("http:") || source?.startsWith("https:")
+    ? source
+    : null;
+}
+
 export const CSS_VARIABLES = {
   "--theme-background": "color",
   "--theme-surface": "color",

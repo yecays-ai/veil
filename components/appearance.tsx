@@ -9,7 +9,7 @@ import { readImage } from "../lib/theme-storage";
 import {
   CSS_VARIABLES,
   defaultSnapshot,
-  imageSource,
+  imageUrlInput,
   normalizeOverrides,
 } from "../lib/theme-types";
 import { useTheme } from "./theme-provider";
@@ -102,19 +102,23 @@ function ImageEditor({ label, source, cropShape, onApply }: ImageEditorProps) {
       <label>
         {label} URL
         <input
-          type="url"
+          type="text"
+          inputMode="url"
           value={url}
-          placeholder="https://example.com/image.png"
+          placeholder="Direct URL, Markdown image, or <img src>"
           onChange={(e) => setUrl(e.target.value)}
         />
       </label>
+      <small className="settings-hint">
+        Direct image links are stored as links and do not use local image space.
+      </small>
       <div className="button-row">
         <button
           type="button"
           onClick={() => {
-            const source = imageSource(url.trim());
-            if (!source || !/^https?:/.test(source)) {
-              setError("Enter a valid HTTP or HTTPS image URL.");
+            const source = imageUrlInput(url);
+            if (!source) {
+              setError("Enter a direct image URL, Markdown image, or <img src> code.");
               return;
             }
             setDraft(source);
