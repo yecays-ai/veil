@@ -7,9 +7,77 @@ import {
   type ChatSession,
   type ReplyBatch,
 } from "./types";
+import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
 
-const DATABASE = "veil-chat-v1";
+export const CHAT_DATABASE_NAME = "veil-chat-v1";
+export const CHAT_DATABASE_VERSION = 1;
 const STORES = ["sessions", "messages", "apiConfigs"];
+
+function backupSession(session: ChatSession): BackupSession {
+  return {
+    id: session.id,
+    characterId: session.characterId,
+    updatedAt: session.updatedAt,
+    ...(session.lastMessageId ? { lastMessageId: session.lastMessageId } : {}),
+    ...(session.lastMessagePreview
+      ? { lastMessagePreview: session.lastMessagePreview }
+      : {}),
+    remark: session.remark,
+    autoReplyOnKeyboardDismiss: session.autoReplyOnKeyboardDismiss,
+    nextOrder: session.nextOrder,
+  };
+}
+
+function backupMessage(message: ChatMessage): BackupMessage {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    role: message.role,
+    content: message.content,
+    status: message.status,
+    createdAt: message.createdAt,
+    order: message.order,
+    ...(message.requestedBy ? { requestedBy: message.requestedBy } : {}),
+    ...(message.error ? { error: message.error } : {}),
+  };
+}
+
+function sameBackupChat(a: BackupChat, b: BackupChat) {
+  const sort = (chat: BackupChat) => ({
+    version: 1,
+    sessions: [...chat.sessions].sort((x, y) => x.id.localeCompare(y.id)),
+    messages: [...chat.messages].sort(
+      (x, y) =>
+        x.sessionId.localeCompare(y.sessionId) ||
+        x.order - y.order ||
+        x.id.localeCompare(y.id),
+    ),
+  });
+  return JSON.stringify(sort(a)) === JSON.stringify(sort(b));
+}
+
+function storeForUpgrade(
+  db: IDBDatabase,
+  transaction: IDBTransaction,
+  name: string,
+) {
+  return db.objectStoreNames.contains(name)
+    ? transaction.objectStore(name)
+    : db.createObjectStore(name, { keyPath: "id" });
+}
+
+function ensureV1Schema(db: IDBDatabase, transaction: IDBTransaction) {
+  const sessions = storeForUpgrade(db, transaction, "sessions");
+  if (!sessions.indexNames.contains("characterId"))
+    sessions.createIndex("characterId", "characterId", { unique: true });
+
+  const messages = storeForUpgrade(db, transaction, "messages");
+  if (!messages.indexNames.contains("sessionId"))
+    messages.createIndex("sessionId", "sessionId");
+
+  storeForUpgrade(db, transaction, "apiConfigs");
+}
+
 const request = <T>(req: IDBRequest<T>): Promise<T> =>
   new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -28,15 +96,19 @@ export class ChatStorage {
   private open(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
-        const req = this.factory().open(DATABASE, 1);
+        const req = this.factory().open(
+          CHAT_DATABASE_NAME,
+          CHAT_DATABASE_VERSION,
+        );
         let blocked = false;
-        req.onupgradeneeded = () => {
-          const db = req.result;
-          const sessions = db.createObjectStore("sessions", { keyPath: "id" });
-          sessions.createIndex("characterId", "characterId", { unique: true });
-          const messages = db.createObjectStore("messages", { keyPath: "id" });
-          messages.createIndex("sessionId", "sessionId");
-          db.createObjectStore("apiConfigs", { keyPath: "id" });
+        req.onupgradeneeded = (event) => {
+          // Each numbered migration must remain safe when a later version opens
+          // a database that already has this version's stores and indexes.
+          if (event.oldVersion < 1) {
+            const transaction = req.transaction;
+            if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
+            ensureV1Schema(req.result, transaction);
+          }
         };
         req.onsuccess = () => {
           if (blocked) {
@@ -110,7 +182,7 @@ export class ChatStorage {
       typeof window !== "undefined" &&
       typeof BroadcastChannel !== "undefined"
     ) {
-      this.channel = new BroadcastChannel(DATABASE);
+      this.channel = new BroadcastChannel(CHAT_DATABASE_NAME);
       this.channel.onmessage = () => this.listeners.forEach((fn) => fn());
     }
     this.listeners.add(listener);
@@ -123,6 +195,111 @@ export class ChatStorage {
     return this.transaction("readonly", (tx) =>
       request(tx.objectStore("sessions").getAll()),
     );
+  }
+  async exportBackup(): Promise<BackupChat> {
+    const db = await this.open();
+    // API configuration and keys are intentionally outside this transaction.
+    const tx = db.transaction(["sessions", "messages"], "readonly");
+    const done = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () =>
+        reject(new Error("Chat storage could not be read for backup."));
+    });
+    try {
+      const [sessions, messages] = await Promise.all([
+        request(tx.objectStore("sessions").getAll()),
+        request(tx.objectStore("messages").getAll()),
+      ]);
+      await done;
+      return {
+        version: 1,
+        sessions: sessions.map(backupSession),
+        messages: messages.map(backupMessage),
+      };
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        /* Already completed/aborted. */
+      }
+      await done.catch(() => {});
+      throw error;
+    }
+  }
+  async importBackup(backup: BackupChat): Promise<void> {
+    const db = await this.open();
+    // This transaction deliberately excludes apiConfigs: provider credentials
+    // are neither preflighted nor restored from a backup.
+    const tx = db.transaction(["sessions", "messages"], "readwrite");
+    const done = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () =>
+        reject(new Error("Chat backup could not be restored. Existing chats were retained."));
+    });
+    try {
+      const sessions = tx.objectStore("sessions");
+      const messages = tx.objectStore("messages");
+      const [sessionCount, messageCount] = await Promise.all([
+        request(sessions.count()),
+        request(messages.count()),
+      ]);
+      if (sessionCount || messageCount)
+        throw new Error("Chat data is no longer empty. Restore was not applied.");
+      for (const session of backup.sessions) await request(sessions.add(session));
+      for (const message of backup.messages) await request(messages.add(message));
+      await done;
+      this.notify();
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        /* Already completed/aborted. */
+      }
+      await done.catch(() => {});
+      throw error;
+    }
+  }
+  async replaceBackup(expectedCurrent: BackupChat, backup: BackupChat): Promise<void> {
+    const db = await this.open();
+    // Keep credentials out of both the replacement and its rollback snapshot.
+    const tx = db.transaction(["sessions", "messages"], "readwrite");
+    const done = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () =>
+        reject(new Error("Chat backup could not replace existing conversations."));
+    });
+    try {
+      const sessions = tx.objectStore("sessions");
+      const messages = tx.objectStore("messages");
+      const [currentSessions, currentMessages] = await Promise.all([
+        request(sessions.getAll()),
+        request(messages.getAll()),
+      ]);
+      if (
+        !sameBackupChat(
+          {
+            version: 1,
+            sessions: currentSessions.map(backupSession),
+            messages: currentMessages.map(backupMessage),
+          },
+          expectedCurrent,
+        )
+      )
+        throw new Error("Chat data changed while restore was being prepared.");
+      await Promise.all([request(sessions.clear()), request(messages.clear())]);
+      for (const session of backup.sessions) await request(sessions.add(session));
+      for (const message of backup.messages) await request(messages.add(message));
+      await done;
+      this.notify();
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        /* Already completed/aborted. */
+      }
+      await done.catch(() => {});
+      throw error;
+    }
   }
   openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)
