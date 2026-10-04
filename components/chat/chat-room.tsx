@@ -1,14 +1,23 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  Bookmark,
+  CircleCheck,
+  Copy,
+  Heart,
+  Pencil,
+  Quote,
+  RotateCcw,
+  Trash2,
+  type LucideIcon,
+} from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatMessage } from "../../lib/chat/types";
 import {
-  MESSAGE_LONG_PRESS_MS,
   messageMenuPosition,
-  movedPastLongPressTolerance,
   selectMessageRange,
 } from "../../lib/chat/message-actions";
 import { ChatAvatar } from "./avatar";
@@ -45,26 +54,27 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const composer = useRef<HTMLTextAreaElement>(null);
   const actionMenu = useRef<HTMLDivElement>(null);
   const positionMenu = useRef<() => void>(() => {});
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPressStart = useRef<{ x: number; y: number } | null>(null);
-  const longPressTriggered = useRef(false);
+  const nativeSelectionActive = useRef(false);
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
     };
   }, []);
+  useEffect(() => {
+    const trackSelection = () => {
+      const selection = window.getSelection();
+      nativeSelectionActive.current = !!selection && !selection.isCollapsed &&
+        !!selection.toString();
+    };
+    globalThis.document.addEventListener("selectionchange", trackSelection);
+    return () => globalThis.document.removeEventListener("selectionchange", trackSelection);
+  }, []);
 
   const closeActions = useCallback(() => {
     setActiveMessage(null);
     setMenuAnchor(null);
   }, []);
-  const cancelLongPress = useCallback(() => {
-    longPressStart.current = null;
-    if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    longPressTimer.current = null;
-  }, []);
-  useEffect(() => () => cancelLongPress(), [cancelLongPress]);
   useLayoutEffect(() => {
     if (!activeMessage || !menuAnchor || !actionMenu.current || !shell.current) return;
     const menu = actionMenu.current;
@@ -109,30 +119,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     };
   }, [activeMessage, menuAnchor]);
 
-  function startLongPress(e: React.PointerEvent<HTMLElement>, message: ChatMessage) {
-    if (multiSelect || message.status === "streaming" ||
-      (e.pointerType === "mouse" && e.button !== 0)) return;
-    e.preventDefault();
-    const anchor = e.currentTarget;
-    longPressStart.current = { x: e.clientX, y: e.clientY };
-    longPressTriggered.current = false;
-    cancelLongPress();
-    longPressStart.current = { x: e.clientX, y: e.clientY };
-    longPressTimer.current = setTimeout(() => {
-      longPressTriggered.current = true;
-      setActiveMessage(message); setMenuAnchor(anchor); setSettingsOpen(false);
-      longPressTimer.current = null;
-    }, MESSAGE_LONG_PRESS_MS);
-  }
-  function finishLongPress(e: React.PointerEvent) {
-    cancelLongPress();
-    if (longPressTriggered.current) {
-      e.preventDefault(); e.stopPropagation(); longPressTriggered.current = false;
-    }
-  }
-  function moveLongPress(e: React.PointerEvent) {
-    if (longPressStart.current && movedPastLongPressTolerance(longPressStart.current,
-      { x: e.clientX, y: e.clientY })) cancelLongPress();
+  function openActions(e: React.MouseEvent<HTMLElement>, message: ChatMessage) {
+    if (multiSelect || message.status === "streaming") return;
+    const selection = window.getSelection();
+    if (nativeSelectionActive.current ||
+      (selection && !selection.isCollapsed && selection.toString())) return;
+    setActiveMessage(message);
+    setMenuAnchor(e.currentTarget);
+    setSettingsOpen(false);
   }
   async function copyMessage() {
     if (!activeMessage) return;
@@ -290,15 +284,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             {message.role === "assistant" && <ChatAvatar profile={character} />}
             <div className="chat-message">
               <p className="chat-bubble"
-                onPointerDown={(e) => startLongPress(e, message)}
-                onPointerMove={moveLongPress}
-                onPointerUp={finishLongPress}
-                onPointerCancel={cancelLongPress}
-                onPointerLeave={cancelLongPress}
-                onContextMenu={(e) => {
-                  if (message.status === "streaming") return;
-                  e.preventDefault(); setActiveMessage(message); setMenuAnchor(e.currentTarget);
-                }}>
+                onPointerDown={() => { nativeSelectionActive.current = false; }}
+                onContextMenu={() => { nativeSelectionActive.current = true; }}
+                onClick={(e) => openActions(e, message)}>
                 {message.content ||
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
@@ -388,16 +376,16 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <div ref={actionMenu} className="chat-message-actions" role="menu" aria-label="Message actions"
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
-            <Action label="Copy" icon="⧉" onClick={() => void copyMessage()} />
-            <Action label="Edit" icon="✎" onClick={() => { setEditingMessage(activeMessage);
+            <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
+            <Action label="Edit" icon={Pencil} onClick={() => { setEditingMessage(activeMessage);
               setEditText(activeMessage.content); closeActions(); }} />
-            <Action label="Quote" icon="❞" disabled />
-            <Action label="React" icon="♡" disabled />
-            <Action label="Select" icon="☑" onClick={() => { const id = activeMessage.id;
+            <Action label="Quote" icon={Quote} disabled />
+            <Action label="React" icon={Heart} disabled />
+            <Action label="Select" icon={CircleCheck} onClick={() => { const id = activeMessage.id;
               setMultiSelect(true); setSelectionStartId(id); setSelectedIds(new Set([id])); closeActions(); }} />
-            <Action label="Favorite" icon="☆" disabled />
-            <Action label="Delete" icon="⌫" danger onClick={() => { setConfirmDelete([activeMessage.id]); closeActions(); }} />
-            <Action label="Regenerate" icon="↻" disabled />
+            <Action label="Favorite" icon={Bookmark} disabled />
+            <Action label="Delete" icon={Trash2} danger onClick={() => { setConfirmDelete([activeMessage.id]); closeActions(); }} />
+            <Action label="Regenerate" icon={RotateCcw} disabled />
           </div>
         </div>
       </>}
@@ -426,10 +414,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
 }
 
 function Action({ label, icon, disabled, danger, onClick }: {
-  label: string; icon: string; disabled?: boolean; danger?: boolean; onClick?: () => void;
+  label: string; icon: LucideIcon; disabled?: boolean; danger?: boolean; onClick?: () => void;
 }) {
+  const Icon = icon;
   return <button type="button" role="menuitem" disabled={disabled} onClick={onClick}
-    className={danger ? "chat-danger" : undefined}><span aria-hidden="true">{icon}</span><small>{label}</small></button>;
+    className={danger ? "chat-danger" : undefined}><Icon size={25} strokeWidth={1.75}
+      aria-hidden="true" /><small>{label}</small></button>;
 }
 
 function ConfirmDialog({ title, text, onCancel, onConfirm }: {

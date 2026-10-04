@@ -1,16 +1,6 @@
-export const MESSAGE_LONG_PRESS_MS = 500;
-export const MESSAGE_LONG_PRESS_MOVE_PX = 10;
 export const MESSAGE_MENU_GAP_PX = 9;
 
 export type Box = { left: number; right: number; top: number; bottom: number };
-
-export function movedPastLongPressTolerance(
-  start: { x: number; y: number },
-  current: { x: number; y: number },
-) {
-  return Math.abs(current.x - start.x) > MESSAGE_LONG_PRESS_MOVE_PX ||
-    Math.abs(current.y - start.y) > MESSAGE_LONG_PRESS_MOVE_PX;
-}
 
 export function messageMenuPosition(
   bubble: Box,

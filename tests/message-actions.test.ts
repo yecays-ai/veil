@@ -3,14 +3,8 @@ import test from "node:test";
 import {
   MESSAGE_MENU_GAP_PX,
   messageMenuPosition,
-  movedPastLongPressTolerance,
   selectMessageRange,
 } from "../lib/chat/message-actions";
-
-test("long press movement tolerance ignores slight movement and cancels at more than 10px", () => {
-  assert.equal(movedPastLongPressTolerance({ x: 10, y: 10 }, { x: 20, y: 20 }), false);
-  assert.equal(movedPastLongPressTolerance({ x: 10, y: 10 }, { x: 21, y: 10 }), true);
-});
 
 test("message menu stays anchored 9px below and horizontally clamped", () => {
   const position = messageMenuPosition(
