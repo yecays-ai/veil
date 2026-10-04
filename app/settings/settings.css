@@ -115,15 +115,11 @@
   padding-top: 8px;
   font-size: 12px;
 }
-.settings-intro,
 .settings-hint {
   font-size: 13px;
   line-height: 1.5;
   opacity: 0.65;
   margin: 0 0 18px;
-}
-.settings-app .app-page-body > .settings-hint {
-  margin-top: 24px;
 }
 .settings-empty {
   display: flex;
@@ -240,6 +236,13 @@
   padding: 10px 12px;
   font-size: 13px !important;
   line-height: 1.4;
+}
+.settings-page-add {
+  display: block;
+  margin: 0 0 12px;
+}
+.settings-empty .settings-page-add {
+  margin: 16px 0 0;
 }
 .settings-editor .settings-hint {
   margin: 0;

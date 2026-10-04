@@ -167,10 +167,6 @@ export function Appearance() {
       backLabel="Back to Home"
       bodyClassName="theme-page appearance-page"
     >
-      <p className="appearance-help">
-        Changes are saved on this browser. Uploaded images are resized; GIF
-        uploads use the first frame. Image URLs remain external links.
-      </p>
       <p className="theme-notice" role="status" aria-live="polite">
         {notice || (!ready ? "Loading appearance…" : "")}
       </p>
@@ -382,57 +378,6 @@ export function Appearance() {
         </section>
         <section aria-labelledby="system-settings-heading">
           <h2 id="system-settings-heading">System Settings</h2>
-          <details>
-            <summary>状态栏</summary>
-            <label>
-              <input
-                type="checkbox"
-                checked={profile.statusBar.visible}
-                onChange={checkedChange(
-                  (checked) =>
-                    void run(() =>
-                      updateProfile((p) => ({
-                        ...p,
-                        statusBar: { ...p.statusBar, visible: checked },
-                      })),
-                    ),
-                )}
-              />
-              Show status bar
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={profile.statusBar.island}
-                onChange={checkedChange(
-                  (checked) =>
-                    void run(() =>
-                      updateProfile((p) => ({
-                        ...p,
-                        statusBar: { ...p.statusBar, island: checked },
-                      })),
-                    ),
-                )}
-              />
-              Show island
-            </label>
-            <label>
-              Status bar color
-              <input
-                type="color"
-                value={profile.statusBar.color}
-                onChange={valueChange(
-                  (value) =>
-                    void run(() =>
-                      updateProfile((p) => ({
-                        ...p,
-                        statusBar: { ...p.statusBar, color: value },
-                      })),
-                    ),
-                )}
-              />
-            </label>
-          </details>
           <details>
             <summary>文字</summary>
             <label>

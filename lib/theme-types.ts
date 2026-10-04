@@ -20,7 +20,6 @@ export type ThemeProfile = {
   };
   icons: Partial<Record<AppId, string>>;
   dock: { background: string; image: string | null; radius: number };
-  statusBar: { visible: boolean; color: string; island: boolean };
   text: {
     font: "system" | "serif" | "monospace";
     size: number;
@@ -63,7 +62,6 @@ export function defaultSnapshot(): ThemeSnapshot {
       },
       icons: {},
       dock: { background: "#e9e9ec", image: null, radius: 24 },
-      statusBar: { visible: false, color: "#171717", island: true },
       text: { font: "system", size: 16, weight: 400 },
       cssOverrides: {},
     },
@@ -119,7 +117,6 @@ export const CSS_VARIABLES = {
   "--theme-text": "color",
   "--theme-accent": "color",
   "--theme-dock-background": "color",
-  "--theme-status-color": "color",
   "--theme-font-size": "size",
   "--theme-icon-radius": "radius",
 } as const;
@@ -146,7 +143,6 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
   const c = record(p.colors),
     w = record(p.wallpaper),
     dock = record(p.dock),
-    status = record(p.statusBar),
     text = record(p.text);
   const icons: ThemeProfile["icons"] = {};
   for (const id of APP_IDS) {
@@ -176,11 +172,6 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
         background: color(dock.background, d.profile.dock.background),
         image: imageSource(dock.image),
         radius: number(dock.radius, 24, 0, 40),
-      },
-      statusBar: {
-        visible: status.visible === true,
-        color: color(status.color, d.profile.statusBar.color),
-        island: status.island !== false,
       },
       text: {
         font:

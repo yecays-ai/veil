@@ -5,6 +5,7 @@
 }
 .desktop-home {
   min-height: 0;
+  --home-grid-origin-shift: 36px;
 }
 .desktop-foreground {
   display: flex;
@@ -14,52 +15,65 @@
   min-height: 0;
   padding: var(--home-grid-top-offset) var(--home-slot-inset-x) 0;
 }
-@media (pointer: fine) and (hover: hover) {
-  .theme-surface:has(.home-screen):has(.theme-status-bar) .desktop-foreground {
-    padding-top: calc(
-      var(--theme-status-bar-height) + var(--home-grid-top-offset)
-    );
-  }
+.home-edit-shell {
+  position: absolute;
+  top: calc(var(--app-safe-top) + 8px);
+  left: var(--home-slot-inset-x);
+  right: var(--home-slot-inset-x);
+  z-index: 10;
+  pointer-events: none;
 }
-.desktop-toolbar {
-  flex: none;
+.home-edit-actions {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 32px;
-  margin-bottom: 20px;
+  justify-content: space-between;
 }
-.desktop-notice {
-  flex: 1;
-  font-size: 0.7em;
-  line-height: 1.3;
+.home-edit-shell .home-edit-actions button {
+  min-height: 44px;
+  min-width: 76px;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 20px;
+  border-radius: 22px;
+  padding: 12px 20px;
 }
-.desktop-edit,
-.desktop-edit-tools button,
-.desktop-edit-tools select {
+.home-edit-shell button {
+  pointer-events: auto;
   font: inherit;
-  font-size: 0.75em;
-  color: inherit;
+  font-size: 14px;
+  color: var(--theme-text);
   background: var(--theme-surface);
-  border: 1px solid #999;
-  border-radius: 8px;
-  padding: 6px 10px;
-  min-height: 32px;
+  border: 0;
+  border-radius: 18px;
+  padding: 8px 16px;
   cursor: pointer;
 }
-.desktop-edit-tools {
+.home-edit-menu {
+  pointer-events: auto;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  max-width: 100%;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+  flex-direction: column;
+  background: var(--theme-surface);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px #0002;
+  overflow: hidden;
 }
-.desktop-edit-tools label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75em;
+.home-edit-menu button {
+  text-align: left;
+  border-radius: 0;
+  font-size: 15px;
+  line-height: 20px;
+  padding: 10px 16px;
+  overflow-wrap: anywhere;
+}
+.home-edit-notice {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .desktop-pages {
   flex: 1;
@@ -76,6 +90,7 @@
   flex: 0 0 100%;
   min-width: 0;
   height: 100%;
+  padding-top: var(--home-grid-origin-shift);
   overflow-y: auto;
   overscroll-behavior: contain;
   touch-action: pan-y;
@@ -94,7 +109,7 @@
   position: relative;
   min-width: 0;
   z-index: 1;
-  align-self: start;
+  align-self: center;
 }
 .desktop-home .home-app {
   min-width: 0;
@@ -171,8 +186,8 @@
   cursor: default;
 }
 .desktop-app-remove {
-  top: -16px;
-  right: -16px;
+  top: 0;
+  right: 0;
 }
 .desktop-cell {
   border: 1px dashed #999;
@@ -356,7 +371,7 @@
     min-height: 0;
     grid-template-rows: repeat(6, minmax(0, 1fr));
     row-gap: var(--home-row-gap-y);
-    padding-bottom: var(--home-grid-bottom-trim);
+    padding-bottom: calc(var(--home-grid-bottom-trim) - var(--home-grid-origin-shift));
   }
 }
 .here-there-title {

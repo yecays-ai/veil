@@ -52,8 +52,7 @@
   .phone-case::before,
   .phone-case::after,
   .phone-frame::before,
-  .phone-frame::after,
-  .theme-status-bar {
+  .phone-frame::after {
     display: none;
   }
 }
@@ -106,7 +105,6 @@ html[data-mobile-standalone="true"] :is(.phone-case, .phone-frame) {
   box-shadow: none;
 }
 html[data-mobile-standalone="true"] :is(.phone-case, .phone-frame)::before,
-html[data-mobile-standalone="true"] :is(.phone-case, .phone-frame)::after,
-html[data-mobile-standalone="true"] .theme-status-bar {
+html[data-mobile-standalone="true"] :is(.phone-case, .phone-frame)::after {
   display: none;
 }

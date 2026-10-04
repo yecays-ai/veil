@@ -1,6 +1,9 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import {
+  useState,
+  type FormEvent,
+} from "react";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import {
   avatarSource,
@@ -9,8 +12,10 @@ import {
 } from "../lib/foundation-types";
 import { AvatarEditor } from "./avatar-editor";
 import { UI_COPY as U } from "../lib/ui-copy";
+import { TIMEZONE_OFFSET_OPTIONS, timezoneLabel } from "../lib/timezone-label";
 
 type Input = UserProfile | CharacterInput;
+
 export function ProfileForm({
   initial,
   kind,
@@ -136,30 +141,23 @@ export function ProfileForm({
         </label>
         <label>
           {C.fields.timezone}
-          <input
-            autoComplete="off"
+          <select
             value={draft.timezone ?? ""}
-            maxLength={100}
-            onChange={(e) => text("timezone", e.target.value)}
-            placeholder={U.deviceTimezone}
-            list="timezone-options"
-          />
+            onChange={(event) => text("timezone", event.target.value)}
+          >
+            <option value="">{U.useDeviceTimezone}</option>
+            {draft.timezone && !TIMEZONE_OFFSET_OPTIONS.some(
+              (option) => option.timezone === draft.timezone,
+            ) && (
+              <option value={draft.timezone}>
+                {timezoneLabel(draft.timezone)}
+              </option>
+            )}
+            {TIMEZONE_OFFSET_OPTIONS.map(({ timezone, label }) => (
+              <option key={timezone} value={timezone}>{label}</option>
+            ))}
+          </select>
         </label>
-
-        <datalist id="timezone-options">
-          {[
-            "UTC",
-            "America/New_York",
-            "America/Los_Angeles",
-            "Europe/London",
-            "Europe/Paris",
-            "Asia/Tokyo",
-            "Asia/Shanghai",
-            "Australia/Sydney",
-          ].map((zone) => (
-            <option key={zone} value={zone} />
-          ))}
-        </datalist>
         <datalist id="gender-options">
           {U.genderSuggestions.map((value) => (
             <option key={value} value={value} />

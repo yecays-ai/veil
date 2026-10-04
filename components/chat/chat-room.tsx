@@ -15,6 +15,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     characterId,
     ready && !!character,
   );
+  const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -127,16 +128,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </Link>
         <ChatAvatar profile={character} />
         <strong>{session?.remark || character.name}</strong>
-        <Link
-          className="chat-settings-link"
-          href="/settings/text-api"
-          aria-label="API settings"
-        >
-          API
-        </Link>
       </header>
       <div
-        className="chat-history"
+        className={`chat-history${empty ? " chat-history-empty" : ""}`}
         ref={history}
         aria-label="Conversation history"
         onScroll={() => {
@@ -151,11 +145,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             {loadError ? "Conversation unavailable." : "Loading conversation…"}
           </p>
         )}
-        {session && !messages.length && (
-          <p className="chat-notice">
-            Send a message, then request a reply when you’re ready.
-          </p>
-        )}
+        {empty && <p className="chat-empty-state">No messages yet</p>}
         {messages.map((message) => (
           <div
             key={message.id}

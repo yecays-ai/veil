@@ -96,7 +96,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     "--theme-text": profile.colors.text,
     "--theme-accent": profile.colors.accent,
     "--theme-dock-background": profile.dock.background,
-    "--theme-status-color": profile.statusBar.color,
     "--theme-font-size": `${profile.text.size}px`,
     "--theme-font-family": fonts[profile.text.font],
     "--theme-font-weight": profile.text.weight,
@@ -140,15 +139,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           <p role="alert" className="theme-notice">
             {error}
           </p>
-        )}
-        {profile.statusBar.visible && (
-          <div className="theme-status-bar" aria-label="Simulated status bar">
-            <span>9:41</span>
-            {profile.statusBar.island && (
-              <span className="theme-status-island" aria-hidden="true" />
-            )}
-            <span aria-label="Battery full">▰</span>
-          </div>
         )}
         {children}
       </div>

@@ -43,7 +43,7 @@ The application does not reset persisted drafts merely because a page loaded.
 
 ## API configuration
 
-Open **Settings → Text API** (also linked from Messages). Create a named config,
+Open **Settings → Text API**. Create a named config,
 enter Base URL, API Key and Model, save, then explicitly choose **Use as default**.
 Existing `chat-default` credentials remain usable without re-entry. The Base URL
 may end at the provider API root (`https://provider.example/v1`) or the full

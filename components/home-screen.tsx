@@ -2,20 +2,16 @@
 
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { AppIcon } from "./app-icon";
+import { HomeEditShell } from "./home-edit-shell";
 import { APP_REGISTRY } from "../lib/app-registry";
 import { WidgetRenderer } from "./widgets/widget-renderer";
 import { useTheme } from "./theme-provider";
 import {
   GRID_COLS,
   GRID_ROWS,
-  MAX_PAGES,
-  deleteEmptyDesktopPage,
-  moveDesktopItem,
   moveDesktopItemToCell,
   type DesktopItem,
 } from "../lib/desktop-layout";
-import { WIDGET_REGISTRY } from "../lib/widget-registry";
-import type { WidgetSize } from "../lib/widget-types";
 
 import { UI_COPY as U } from "../lib/ui-copy";
 
@@ -29,8 +25,6 @@ export function HomeScreen() {
   const [notice, setNotice] = useState("");
   const [saving, setSaving] = useState(false);
   const currentPage = Math.min(page, pageCount);
-  const currentPageEmpty = !iconLayout.some((app) => app.page === currentPage) &&
-    !widgets.some((widget) => widget.page === currentPage);
   const swipe = useRef<{
     id: number;
     x: number;
@@ -50,12 +44,7 @@ export function HomeScreen() {
     },
     [],
   );
-  const selectedWidget =
-    selected?.kind === "widget"
-      ? widgets.find((w) => w.id === selected.id)
-      : null;
-
-  async function move(row: number, col: number, size?: WidgetSize) {
+  async function move(row: number, col: number) {
     if (!selected || saving) return;
     setSaving(true);
     try {
@@ -63,18 +52,9 @@ export function HomeScreen() {
         ...d,
         current: {
           ...d.current,
-          ...(size === undefined
-            ? moveDesktopItemToCell(
-                d.current,
-                selected,
-                { page: currentPage, row, col },
-              )
-            : moveDesktopItem(
-                d.current,
-                selected,
-                { page: currentPage, row, col },
-                size,
-              )),
+          ...moveDesktopItemToCell(d.current, selected, {
+            page: currentPage, row, col,
+          }),
         },
       }));
       setNotice(U.home.saved);
@@ -166,105 +146,18 @@ export function HomeScreen() {
 
   return (
     <div className={`home-screen desktop-home ${editing ? "is-editing" : ""}`}>
+      {editing && (
+        <HomeEditShell
+          disabled={!ready || saving}
+          onDone={() => {
+            setEditing(false);
+            setSelected(null);
+            setNotice("");
+          }}
+        />
+      )}
+      <span className="home-edit-notice" role="status">{notice}</span>
       <div className="desktop-foreground">
-        {editing && (
-          <div className="desktop-toolbar">
-            <span role="status" className="desktop-notice">
-              {notice ||
-                (editing
-                  ? selected
-                    ? U.home.chooseCell
-                    : U.home.selectItem
-                  : "")}
-            </span>
-            <button
-              className="desktop-edit"
-              disabled={!ready || saving}
-              onClick={() => {
-                setEditing(!editing);
-                setSelected(null);
-                setNotice("");
-              }}
-            >
-              {U.home.done}
-            </button>
-          </div>
-        )}
-        {editing && (
-          <div className="desktop-edit-tools">
-            {selectedWidget && (
-              <label>
-                {U.home.size}
-                <select
-                  aria-label={U.home.widgetSize}
-                  value={selectedWidget.size}
-                  disabled={saving}
-                  onChange={(e) =>
-                    void move(
-                      selectedWidget.row,
-                      selectedWidget.col,
-                      e.target.value as WidgetSize,
-                    )
-                  }
-                >
-                  {WIDGET_REGISTRY[selectedWidget.type].sizes.map((size) => (
-                    <option key={size} value={size}>
-                      {size}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <button
-              disabled={pageCount >= MAX_PAGES || saving}
-              onClick={async () => {
-                setSaving(true);
-                try {
-                  await commit((d) => ({
-                    ...d,
-                    current: {
-                      ...d.current,
-                      pageCount: Math.min(MAX_PAGES, d.current.pageCount + 1),
-                    },
-                  }));
-                  setPage(pageCount + 1);
-                  setNotice(U.home.pageAdded);
-                } catch (error) {
-                  setNotice(
-                    error instanceof Error ? error.message : U.home.pageError,
-                  );
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              {U.home.addPage}
-            </button>
-            <button
-              disabled={!ready || saving || pageCount <= 1 || !currentPageEmpty}
-              onClick={async () => {
-                setSaving(true);
-                try {
-                  await commit((d) => ({
-                    ...d,
-                    current: {
-                      ...d.current,
-                      ...deleteEmptyDesktopPage(d.current, currentPage),
-                    },
-                  }));
-                  setPage(Math.min(currentPage, pageCount - 1));
-                  setNotice(U.home.pageDeleted);
-                } catch (error) {
-                  setNotice(error instanceof Error ? error.message : U.home.pageError);
-                } finally {
-                  setSaving(false);
-                }
-              }}
-            >
-              {U.home.deleteEmptyPage}
-            </button>
-          </div>
-        )}
         <div
           className="desktop-pages"
           aria-label={U.home.title}
@@ -417,7 +310,7 @@ export function HomeScreen() {
           }}
         >
           {dockLayout.map((id) => (
-            <AppIcon key={id} id={id} />
+            <AppIcon key={id} id={id} editing={editing} />
           ))}
         </nav>
       </div>
