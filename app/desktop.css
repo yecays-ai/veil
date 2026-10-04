@@ -14,45 +14,51 @@
   min-height: 0;
   padding: var(--home-grid-top-offset) var(--home-slot-inset-x) 0;
 }
-.desktop-toolbar {
-  flex: none;
+.home-edit-shell {
+  position: absolute;
+  top: calc(var(--app-safe-top) + 8px);
+  left: var(--home-slot-inset-x);
+  right: var(--home-slot-inset-x);
+  z-index: 10;
+  pointer-events: none;
+}
+.home-edit-actions {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 32px;
-  margin-bottom: 20px;
+  justify-content: space-between;
 }
-.desktop-notice {
-  flex: 1;
-  font-size: 0.7em;
-  line-height: 1.3;
-}
-.desktop-edit,
-.desktop-edit-tools button,
-.desktop-edit-tools select {
+.home-edit-shell button {
+  pointer-events: auto;
   font: inherit;
-  font-size: 0.75em;
-  color: inherit;
+  font-size: 14px;
+  color: var(--theme-text);
   background: var(--theme-surface);
-  border: 1px solid #999;
-  border-radius: 8px;
-  padding: 6px 10px;
-  min-height: 32px;
+  border: 0;
+  border-radius: 18px;
+  padding: 8px 16px;
   cursor: pointer;
 }
-.desktop-edit-tools {
+.home-edit-menu {
+  pointer-events: auto;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+  flex-direction: column;
+  background: var(--theme-surface);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px #0002;
+  overflow: hidden;
 }
-.desktop-edit-tools label {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.75em;
+.home-edit-menu button {
+  text-align: left;
+  border-radius: 0;
+}
+.home-edit-notice {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
 }
 .desktop-pages {
   flex: 1;
