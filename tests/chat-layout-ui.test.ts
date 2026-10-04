@@ -18,13 +18,27 @@ test("chat header is a glass overlay with the requested lightweight controls", (
   assert.match(appearance, /:not\(:has\(\.chat-room\)\)/);
 });
 
-test("avatar, tail and delivery UI consume the shared visual group boundaries", () => {
+test("assistant groups retain one avatar and a shared gutter while delivery uses group end", () => {
   assert.match(room, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
-  assert.match(room, /message\.role === "assistant" && isGroupStart && <ChatAvatar/);
+  assert.match(room, /message\.role === "assistant" && <div className="chat-avatar-column">\s*\{isGroupStart && <ChatAvatar/);
+  assert.match(css, /\.chat-avatar-column\s*\{[^}]*width:\s*40px;[^}]*flex:\s*0 0 40px;/);
+  assert.match(css, /\.chat-turn-assistant \.chat-avatar\s*\{[^}]*width:\s*40px;[^}]*height:\s*40px;[^}]*border-radius:\s*20px;/);
+  assert.match(css, /\.chat-turn-assistant \.chat-message\s*\{[^}]*max-width:\s*calc\(100% - 48px\);/);
+  assert.doesNotMatch(css, /\.chat-turn-assistant:not\(\.chat-group-start\)/);
+  assert.doesNotMatch(room, /message\.role === "user" &&[^\n]*<(?:ChatAvatar|div className="chat-avatar-column")/);
   assert.match(room, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);
   assert.match(room, /isGroupEnd \? " chat-group-end"/);
-  assert.match(css, /\.chat-group-end\.chat-turn-assistant \.chat-bubble::after/);
-  assert.match(css, /\.chat-group-end\.chat-turn-user \.chat-bubble::after/);
+  assert.doesNotMatch(css, /\.chat-bubble::(?:before|after)/);
+  assert.match(css, /\.chat-turn-user\s*\{\s*justify-content:\s*flex-end;\s*\}/);
+});
+
+test("typing copy and enabled Send retain lightweight presentation", () => {
+  assert.match(room, /Typing…/);
+  assert.doesNotMatch(room, /Replying/);
+  const enabledSend = css.match(/\.chat-app button\.chat-send:not\(:disabled\)\s*\{([^}]*)\}/)?.[1];
+  assert.ok(enabledSend);
+  assert.doesNotMatch(enabledSend, /background|color:/);
+  assert.match(css, /\.chat-app button\.chat-send:disabled\s*\{[^}]*opacity:/);
 });
 
 test("More opens a full-screen scrollable Chat Info view instead of a popover", () => {

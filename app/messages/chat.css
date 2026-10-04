@@ -243,9 +243,14 @@
 .chat-turn-system {
   justify-content: center;
 }
-.chat-turn .chat-avatar {
-  width: 33px;
-  height: 33px;
+.chat-avatar-column {
+  width: 40px;
+  flex: 0 0 40px;
+}
+.chat-turn-assistant .chat-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
   font-size: 14px;
 }
 .chat-message {
@@ -253,10 +258,7 @@
   min-width: 0;
 }
 .chat-turn-assistant .chat-message {
-  max-width: calc(100% - 41px);
-}
-.chat-turn-assistant:not(.chat-group-start) .chat-message {
-  max-width: 82%;
+  max-width: calc(100% - 48px);
 }
 .chat-bubble {
   position: relative;
@@ -268,24 +270,6 @@
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-.chat-group-end .chat-bubble::after {
-  content: "";
-  position: absolute;
-  bottom: 1px;
-  width: 11px;
-  height: 13px;
-  pointer-events: none;
-}
-.chat-group-end.chat-turn-assistant .chat-bubble::after {
-  left: -7px;
-  background: var(--theme-surface);
-  clip-path: polygon(100% 0, 100% 100%, 0 100%);
-}
-.chat-group-end.chat-turn-user .chat-bubble::after {
-  right: -7px;
-  background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-background));
-  clip-path: polygon(0 0, 100% 100%, 0 100%);
 }
 .chat-turn-user .chat-bubble {
   background: color-mix(
@@ -420,8 +404,7 @@
   background: transparent;
 }
 .chat-app button.chat-send:not(:disabled) {
-  background: var(--theme-accent);
-  color: var(--theme-background);
+  opacity: 1;
 }
 .chat-app button.chat-send:disabled {
   opacity: .28;

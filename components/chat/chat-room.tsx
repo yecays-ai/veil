@@ -281,9 +281,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
-  const typingIndicator = typing && <div className="chat-turn chat-turn-assistant" role="status" aria-label="Replying">
-    <ChatAvatar profile={character} /><div className="chat-message">
-      <p className="chat-bubble">…</p><span className="chat-message-meta">Replying…</span>
+  const typingIndicator = typing && <div className="chat-turn chat-turn-assistant" role="status" aria-label="Typing">
+    <div className="chat-avatar-column"><ChatAvatar profile={character} /></div><div className="chat-message">
+      <p className="chat-bubble">…</p><span className="chat-message-meta">Typing…</span>
     </div>
   </div>;
   return (
@@ -347,7 +347,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             {multiSelect && <span className="chat-selection-control" aria-hidden="true">
               {selectedIds.has(message.id) ? "✓" : ""}
             </span>}
-            {message.role === "assistant" && isGroupStart && <ChatAvatar profile={character} />}
+            {message.role === "assistant" && <div className="chat-avatar-column">
+              {isGroupStart && <ChatAvatar profile={character} />}
+            </div>}
             <div className="chat-message">
               <p className="chat-bubble"
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
@@ -358,7 +360,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               </p>
               <span className="chat-message-meta">
                 {message.status === "streaming" && (
-                  <span>{generating ? "Replying…" : "Interrupted reply"}</span>
+                  <span>{generating ? "Typing…" : "Interrupted reply"}</span>
                 )}
                 {message.status === "cancelled" && <span>Reply stopped</span>}
                 {message.status === "error" && (
