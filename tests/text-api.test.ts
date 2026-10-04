@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { ChatStorage } from "../lib/chat/storage";
+import { CHAT_DATABASE_NAME, ChatStorage } from "../lib/chat/storage";
 import { DEFAULT_API_CONFIG_ID, type NamedApiConfig } from "../lib/chat/types";
 import {
   defaultFoundation,
@@ -29,7 +29,7 @@ test("legacy default config is readable without rewriting or losing its ID/key",
   const store = new ChatStorage(() => factory);
   await store.listSessions();
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const req = factory.open("veil-chat-v1", 1);
+    const req = factory.open(CHAT_DATABASE_NAME, 1);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });

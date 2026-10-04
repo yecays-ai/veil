@@ -8,8 +8,32 @@ import {
   type ReplyBatch,
 } from "./types";
 
-const DATABASE = "veil-chat-v1";
+export const CHAT_DATABASE_NAME = "veil-chat-v1";
+export const CHAT_DATABASE_VERSION = 1;
 const STORES = ["sessions", "messages", "apiConfigs"];
+
+function storeForUpgrade(
+  db: IDBDatabase,
+  transaction: IDBTransaction,
+  name: string,
+) {
+  return db.objectStoreNames.contains(name)
+    ? transaction.objectStore(name)
+    : db.createObjectStore(name, { keyPath: "id" });
+}
+
+function ensureV1Schema(db: IDBDatabase, transaction: IDBTransaction) {
+  const sessions = storeForUpgrade(db, transaction, "sessions");
+  if (!sessions.indexNames.contains("characterId"))
+    sessions.createIndex("characterId", "characterId", { unique: true });
+
+  const messages = storeForUpgrade(db, transaction, "messages");
+  if (!messages.indexNames.contains("sessionId"))
+    messages.createIndex("sessionId", "sessionId");
+
+  storeForUpgrade(db, transaction, "apiConfigs");
+}
+
 const request = <T>(req: IDBRequest<T>): Promise<T> =>
   new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -28,15 +52,19 @@ export class ChatStorage {
   private open(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
-        const req = this.factory().open(DATABASE, 1);
+        const req = this.factory().open(
+          CHAT_DATABASE_NAME,
+          CHAT_DATABASE_VERSION,
+        );
         let blocked = false;
-        req.onupgradeneeded = () => {
-          const db = req.result;
-          const sessions = db.createObjectStore("sessions", { keyPath: "id" });
-          sessions.createIndex("characterId", "characterId", { unique: true });
-          const messages = db.createObjectStore("messages", { keyPath: "id" });
-          messages.createIndex("sessionId", "sessionId");
-          db.createObjectStore("apiConfigs", { keyPath: "id" });
+        req.onupgradeneeded = (event) => {
+          // Each numbered migration must remain safe when a later version opens
+          // a database that already has this version's stores and indexes.
+          if (event.oldVersion < 1) {
+            const transaction = req.transaction;
+            if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
+            ensureV1Schema(req.result, transaction);
+          }
         };
         req.onsuccess = () => {
           if (blocked) {
@@ -110,7 +138,7 @@ export class ChatStorage {
       typeof window !== "undefined" &&
       typeof BroadcastChannel !== "undefined"
     ) {
-      this.channel = new BroadcastChannel(DATABASE);
+      this.channel = new BroadcastChannel(CHAT_DATABASE_NAME);
       this.channel.onmessage = () => this.listeners.forEach((fn) => fn());
     }
     this.listeners.add(listener);

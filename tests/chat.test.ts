@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { ChatStorage } from "../lib/chat/storage";
+import { CHAT_DATABASE_NAME, ChatStorage } from "../lib/chat/storage";
 import { createChatEngine } from "../lib/chat/engine";
 import { assembleChatPrompt, emptyMemorySlot } from "../lib/chat/prompt";
 import {
@@ -91,7 +91,7 @@ async function editDatabase(
   edit: (table: IDBObjectStore) => void,
 ) {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const req = factory.open("veil-chat-v1");
+    const req = factory.open(CHAT_DATABASE_NAME);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
