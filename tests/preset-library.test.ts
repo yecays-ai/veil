@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { activePreset, BUILTIN_PRESET_ID, createBuiltinPreset, createPresetDocument, validatePresetDocument } from "../lib/preset";
-import { copyPreset, deletePreset, deletePrompt, exportPreset, importPreset, movePrompt, newPreset, savePrompt, setActivePreset, updatePreset } from "../lib/preset-library";
+import { buildDisplayedPrompts, copyPreset, deletePreset, deletePrompt, exportPreset, importPreset, movePrompt,
+  newPreset, promptEnabled, savePrompt, setActivePreset, setPromptEnabled, updatePreset } from "../lib/preset-library";
 import { createPresetStorage } from "../lib/preset-storage";
 import { assembleChatPrompt } from "../lib/chat/prompt";
 import { createChatEngine } from "../lib/chat/engine";
@@ -189,6 +190,46 @@ test("reordering changes promptOrder, and runtime respects both enabled flags", 
   assert(!JSON.stringify(assembleChatPrompt(document, character, [], [], undefined, ordered)).includes("UNIQUE EXTRA"));
   ordered.prompts.find((entry) => entry.identifier === "extra")!.enabled = true;
   assert(JSON.stringify(assembleChatPrompt(document, character, [], [], undefined, ordered)).includes("UNIQUE EXTRA"));
+});
+
+test("displayed Prompt pipeline follows order, de-duplicates, and safely appends orphans", () => {
+  const { preset } = custom();
+  const orphan = { identifier: "orphan", name: "Orphan", source: "prompt" as const,
+    role: "system" as const, enabled: false, content: "orphan content" };
+  const withOrphan = { ...preset,
+    prompts: [...preset.prompts, orphan],
+    promptOrder: [preset.promptOrder[2], preset.promptOrder[0], ...preset.promptOrder.slice(3)],
+  };
+  const displayed = buildDisplayedPrompts(withOrphan);
+  assert.deepEqual(displayed.map((entry) => entry.identifier), [
+    preset.promptOrder[2].identifier, preset.promptOrder[0].identifier,
+    ...preset.promptOrder.slice(3).map((entry) => entry.identifier),
+    preset.promptOrder[1].identifier, "orphan",
+  ]);
+  assert.equal(new Set(displayed.map((entry) => entry.identifier)).size, displayed.length);
+  const moved = movePrompt(withOrphan, "orphan", -1);
+  assert.equal(moved.promptOrder.at(-2)?.identifier, "orphan");
+  const movedOrphan = moved.prompts.at(-1);
+  assert(movedOrphan?.source === "prompt");
+  assert.equal(movedOrphan.content, "orphan content");
+  assert.equal(moved.prompts.at(-1)?.enabled, false);
+  assert.equal(moved.promptOrder.at(-2)?.enabled, false);
+});
+
+test("effective enabled state keeps prompt and order layers synchronized", () => {
+  const { preset } = custom();
+  const identifier = preset.prompts[0].identifier;
+  preset.promptOrder[0].enabled = false;
+  assert.equal(promptEnabled(preset, identifier), false);
+  const enabled = setPromptEnabled(preset, identifier, true);
+  assert.equal(enabled.prompts[0].enabled, true);
+  assert.equal(enabled.promptOrder[0].enabled, true);
+  assert.equal(promptEnabled(enabled, identifier), true);
+  const disabled = setPromptEnabled(enabled, identifier, false);
+  assert.equal(disabled.prompts[0].enabled, false);
+  assert.equal(disabled.promptOrder[0].enabled, false);
+  assert.equal(promptEnabled(disabled, identifier), false);
+  assert.throws(() => setPromptEnabled(createBuiltinPreset(), identifier, false), /read-only/);
 });
 
 test("Export/Import preserves configuration, handles ID collisions and never impersonates built-in", () => {

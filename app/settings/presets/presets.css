@@ -25,3 +25,47 @@
 .preset-manager .preset-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
 .preset-manager .preset-prompt-content { min-height: 260px; }
 .preset-manager .preset-delete { margin-top: 24px; }
+.preset-manager .preset-generation > summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 600;
+  list-style: none;
+}
+.preset-manager .preset-generation > summary::-webkit-details-marker { display: none; }
+.preset-manager .preset-generation[open] > summary svg { transform: rotate(180deg); }
+.preset-manager .preset-generation .settings-editor { margin-top: 14px; }
+.preset-manager .preset-pipeline {
+  overflow: hidden;
+  border: 1px solid var(--settings-border);
+  border-radius: 16px;
+  background: var(--theme-surface);
+}
+.preset-manager .preset-prompt + .preset-prompt { border-top: 1px solid var(--settings-border); }
+.preset-manager .preset-prompt-summary { display: flex; align-items: center; min-height: 58px; padding: 5px 12px 5px 6px; }
+.preset-manager .preset-prompt-expand {
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 5px 8px;
+  border: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  text-align: left;
+}
+.preset-manager .preset-prompt-expand > svg { flex: none; transform: rotate(-90deg); opacity: .65; }
+.preset-manager .preset-prompt-expand[aria-expanded="true"] > svg { transform: none; }
+.preset-manager .preset-prompt[data-enabled] .preset-copy { opacity: 1; }
+.preset-manager .preset-prompt:not([data-enabled]) .preset-copy { opacity: .5; }
+.preset-manager .preset-prompt-editor { padding: 2px 16px 16px 38px; }
+.preset-manager .preset-marker-note { padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--theme-text) 5%, transparent); }
+.preset-manager .preset-marker-note strong { font-size: 14px; }
+.preset-manager .preset-marker-note p { margin: 7px 0 0; font-size: 13px; line-height: 1.5; opacity: .65; }
+.preset-manager .preset-prompt-controls { display: flex; align-items: center; gap: 4px; margin-top: 12px; font-size: 13px; }
+.preset-manager .preset-prompt-controls > span { margin-right: 4px; opacity: .65; }
+.preset-manager .preset-delete-prompt { margin-left: auto; min-height: 44px; border: 0; background: transparent; color: #ae3636; }

@@ -70,12 +70,49 @@ export function deletePrompt(preset: Preset, identifier: string): Preset {
     promptOrder: preset.promptOrder.filter((item) => item.identifier !== identifier) });
 }
 
+export function buildDisplayedPrompts(preset: Preset): PresetPrompt[] {
+  const prompts = new Map(preset.prompts.map((prompt) => [prompt.identifier, prompt]));
+  const seen = new Set<string>();
+  const displayed: PresetPrompt[] = [];
+  const append = (prompt?: PresetPrompt) => {
+    if (prompt && !seen.has(prompt.identifier)) {
+      seen.add(prompt.identifier);
+      displayed.push(prompt);
+    }
+  };
+  for (const entry of preset.promptOrder) append(prompts.get(entry.identifier));
+  for (const prompt of preset.prompts) append(prompt);
+  return displayed;
+}
+
+export function promptEnabled(preset: Preset, identifier: string) {
+  const prompt = preset.prompts.find((item) => item.identifier === identifier);
+  if (!prompt) return false;
+  const order = preset.promptOrder.find((item) => item.identifier === identifier);
+  return prompt.enabled && (order?.enabled ?? true);
+}
+
+export function setPromptEnabled(preset: Preset, identifier: string, enabled: boolean): Preset {
+  if (preset.builtIn) throw new Error("VEIL Default is read-only.");
+  if (!preset.prompts.some((item) => item.identifier === identifier))
+    throw new Error("This Prompt no longer exists.");
+  return validatePreset({ ...preset,
+    prompts: preset.prompts.map((item) => item.identifier === identifier ? { ...item, enabled } : item),
+    promptOrder: preset.promptOrder.map((item) => item.identifier === identifier ? { ...item, enabled } : item),
+  });
+}
+
 export function movePrompt(preset: Preset, identifier: string, direction: -1 | 1): Preset {
   if (preset.builtIn) throw new Error("VEIL Default is read-only.");
-  const promptOrder = structuredClone(preset.promptOrder);
-  const index = promptOrder.findIndex((entry) => entry.identifier === identifier), target = index + direction;
-  if (index < 0 || target < 0 || target >= promptOrder.length) return structuredClone(preset);
-  [promptOrder[index], promptOrder[target]] = [promptOrder[target], promptOrder[index]];
+  const displayed = buildDisplayedPrompts(preset);
+  const index = displayed.findIndex((entry) => entry.identifier === identifier), target = index + direction;
+  if (index < 0 || target < 0 || target >= displayed.length) return structuredClone(preset);
+  [displayed[index], displayed[target]] = [displayed[target], displayed[index]];
+  const enabled = new Map(preset.promptOrder.map((entry) => [entry.identifier, entry.enabled]));
+  const promptOrder = displayed.map((entry) => ({
+    identifier: entry.identifier,
+    enabled: enabled.get(entry.identifier) ?? entry.enabled,
+  }));
   return validatePreset({ ...preset, promptOrder });
 }
 

@@ -2,13 +2,14 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Copy, Download, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronDown, Copy, Download, Plus, Trash2 } from "lucide-react";
 import { PageShell } from "../../page-shell";
-import { Input } from "../ui/form";
+import { Input, Select } from "../ui/form";
 import { Alert } from "../ui/feedback";
 import { ConfirmDialog } from "../ui/modal";
-import { presetFingerprint, type Preset } from "../../../lib/preset";
-import { copyPreset, deletePreset, exportPreset, movePrompt, setActivePreset, updatePreset } from "../../../lib/preset-library";
+import { presetFingerprint, type Preset, type PresetPrompt } from "../../../lib/preset";
+import { buildDisplayedPrompts, copyPreset, deletePreset, deletePrompt, exportPreset, movePrompt,
+  promptEnabled, setActivePreset, updatePreset } from "../../../lib/preset-library";
 import { usePresetLibrary } from "./use-preset-library";
 
 export function PresetDetail({ presetId }: { presetId: string }) {
@@ -25,19 +26,39 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
   const [draft, setDraft] = useState(() => structuredClone(saved));
   const [baseline, setBaseline] = useState(saved);
   const [deleting, setDeleting] = useState(false);
+  const [deletingPrompt, setDeletingPrompt] = useState<string>();
+  const [editingPromptId, setEditingPromptId] = useState<string>();
   const router = useRouter();
   const dirty = presetFingerprint(draft) !== presetFingerprint(baseline);
   const readOnly = saved.builtIn;
   const baseHref = `/settings/presets/${encodeURIComponent(saved.id)}`;
-  const entryHref = (identifier: string) => `${baseHref}/prompts/${encodeURIComponent(identifier)}`;
-  const directive = draft.prompts.find((entry) => entry.identifier === "response-directive");
+  const displayedPrompts = buildDisplayedPrompts(draft);
   function update(patch: Partial<Preset>) { setDraft({ ...draft, ...patch }); }
   function parameter(key: "temperature" | "maxTokens", value: string) {
     const generation = { ...draft.generation };
     if (value === "") delete generation[key]; else generation[key] = Number(value);
     update({ generation });
   }
-  const overlay = deleting ? <ConfirmDialog title="Delete Preset?" confirmLabel="Delete" busy={busy}
+  function updatePrompt(identifier: string, next: PresetPrompt) {
+    setDraft((current) => ({ ...current,
+      prompts: current.prompts.map((entry) => entry.identifier === identifier ? next : entry),
+      promptOrder: current.promptOrder.map((entry) => entry.identifier === identifier
+        ? { ...entry, identifier: next.identifier } : entry),
+    }));
+    if (identifier !== next.identifier) setEditingPromptId(next.identifier);
+  }
+  function togglePrompt(identifier: string, enabled: boolean) {
+    setDraft((current) => ({ ...current,
+      prompts: current.prompts.map((entry) => entry.identifier === identifier ? { ...entry, enabled } : entry),
+      promptOrder: current.promptOrder.map((entry) => entry.identifier === identifier ? { ...entry, enabled } : entry),
+    }));
+  }
+  const overlay = deletingPrompt ? <ConfirmDialog title="Delete Prompt?" confirmLabel="Delete" busy={busy}
+    onCancel={() => setDeletingPrompt(undefined)} onConfirm={() => {
+      setDraft((current) => deletePrompt(current, deletingPrompt));
+      setEditingPromptId(undefined); setDeletingPrompt(undefined);
+    }}>Delete {draft.prompts.find((entry) => entry.identifier === deletingPrompt)?.name} from this Preset?</ConfirmDialog>
+    : deleting ? <ConfirmDialog title="Delete Preset?" confirmLabel="Delete" busy={busy}
     onCancel={() => { if (!busy) setDeleting(false); }} onConfirm={() => void run(async () => {
       await change((current) => deletePreset(current, saved.id)); router.push("/settings/presets");
     })}>Delete {saved.name}? If active, VEIL Default will be used.</ConfirmDialog> : undefined;
@@ -72,33 +93,49 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
       <label>Name<Input value={draft.name} onChange={(event) => update({ name: event.target.value })} /></label>
       <label>Description<textarea className="settings-input" rows={3} value={draft.description} onChange={(event) => update({ description: event.target.value })} /></label>
     </fieldset></section>
-    <section className="preset-section"><h2>Generation Parameters</h2><fieldset disabled={readOnly || busy} className="settings-editor">
+    <details className="preset-section preset-generation"><summary>Generation Parameters<ChevronDown size={18} aria-hidden="true" /></summary>
+      <fieldset disabled={readOnly || busy} className="settings-editor">
       {(["temperature", "maxTokens"] as const).map((key) => <div className="preset-parameter" key={key}>
         <label>{key === "temperature" ? "Temperature" : "Max Tokens"}<Input type="number" min={key === "temperature" ? 0 : 1}
           max={key === "temperature" ? 2 : 1000000} step={key === "temperature" ? "any" : 1} placeholder="Default"
           value={draft.generation[key] ?? ""} onChange={(event) => parameter(key, event.target.value)} /></label>
         <button className="settings-button" type="button" onClick={() => parameter(key, "")}>Default</button>
       </div>)}
-    </fieldset></section>
-    {directive && <section className="preset-section"><h2>Response Directive</h2>
-      <Link className="preset-entry-link" href={entryHref(directive.identifier)}>{readOnly ? "View" : "Edit"} Response Directive</Link>
-    </section>}
+    </fieldset></details>
     <section className="preset-section"><div className="preset-section-heading"><h2>Prompt Entries</h2>
       {!readOnly && <Link className="preset-entry-link" href={`${baseHref}/new-prompt`}><Plus size={17} />Add Prompt</Link>}</div>
-      <div className="preset-rows">{draft.prompts.map((entry) => <div className="preset-row" key={entry.identifier}>
-        <Link className="preset-copy" href={entryHref(entry.identifier)}><strong>{entry.name}</strong><small>{entry.source === "marker" ? `Marker · ${entry.marker}` : entry.role}</small></Link>
-        <input type="checkbox" aria-label={`Enable Prompt ${entry.name}`} checked={entry.enabled} disabled={readOnly || busy}
-          onChange={(event) => update({ prompts: draft.prompts.map((item) => item.identifier === entry.identifier ? { ...item, enabled: event.target.checked } : item) })} />
-      </div>)}</div>
+      <div className="preset-pipeline">{displayedPrompts.map((entry, index) => {
+        const expanded = editingPromptId === entry.identifier;
+        const enabled = promptEnabled(draft, entry.identifier);
+        return <article className="preset-prompt" data-expanded={expanded || undefined} data-enabled={enabled || undefined} key={entry.identifier}>
+          <div className="preset-prompt-summary">
+            <button className="preset-prompt-expand" type="button" aria-expanded={expanded}
+              aria-controls={`prompt-${entry.identifier}`} onClick={() => setEditingPromptId(expanded ? undefined : entry.identifier)}>
+              <ChevronDown size={17} aria-hidden="true" /><span className="preset-copy"><strong>{entry.name}</strong>
+                <small>{entry.source === "marker" ? `Marker · ${entry.marker}` : entry.role}</small></span>
+            </button>
+            <input type="checkbox" aria-label={`Enable Prompt ${entry.name}`} checked={enabled} disabled={readOnly || busy}
+              onChange={(event) => togglePrompt(entry.identifier, event.target.checked)} />
+          </div>
+          {expanded && <div className="preset-prompt-editor" id={`prompt-${entry.identifier}`}>
+            {entry.source === "prompt" ? <fieldset disabled={readOnly || busy} className="settings-editor">
+              <label>Name<Input value={entry.name} onChange={(event) => updatePrompt(entry.identifier, { ...entry, name: event.target.value })} /></label>
+              <label>Identifier<Input value={entry.identifier} onChange={(event) => updatePrompt(entry.identifier, { ...entry, identifier: event.target.value })} /></label>
+              <label>Role<Select value={entry.role} onChange={(event) => updatePrompt(entry.identifier, { ...entry, role: event.target.value as PresetPrompt["role"] })}>
+                <option value="system">System</option><option value="user">User</option><option value="assistant">Assistant</option>
+              </Select></label>
+              <label>Content<textarea className="settings-input preset-prompt-content" rows={10} value={entry.content}
+                onChange={(event) => updatePrompt(entry.identifier, { ...entry, content: event.target.value })} /></label>
+            </fieldset> : <div className="preset-marker-note"><strong>Runtime marker · {entry.marker}</strong>
+              <p>Content is supplied dynamically by VEIL.</p></div>}
+            <div className="preset-prompt-controls"><span>Move</span>
+              <button className="preset-order-button" disabled={readOnly || busy || index === 0} aria-label={`Move ${entry.identifier} up`} onClick={() => setDraft(movePrompt(draft, entry.identifier, -1))}><ArrowUp size={18} /></button>
+              <button className="preset-order-button" disabled={readOnly || busy || index === displayedPrompts.length - 1} aria-label={`Move ${entry.identifier} down`} onClick={() => setDraft(movePrompt(draft, entry.identifier, 1))}><ArrowDown size={18} /></button>
+              {!readOnly && entry.source === "prompt" && <button className="preset-delete-prompt" type="button" onClick={() => setDeletingPrompt(entry.identifier)}>Delete</button>}
+            </div>
+          </div>}
+        </article>;
+      })}</div>
     </section>
-    <section className="preset-section"><h2>Prompt Order</h2><ol className="preset-rows">
-      {draft.promptOrder.map((entry, index) => <li className="preset-row" key={entry.identifier}>
-        <span className="preset-copy"><strong>{draft.prompts.find((item) => item.identifier === entry.identifier)?.name}</strong></span>
-        <input type="checkbox" aria-label={`Enable Order ${entry.identifier}`} checked={entry.enabled} disabled={readOnly || busy}
-          onChange={(event) => update({ promptOrder: draft.promptOrder.map((item) => item.identifier === entry.identifier ? { ...item, enabled: event.target.checked } : item) })} />
-        <button className="preset-order-button" disabled={readOnly || busy || index === 0} aria-label={`Move ${entry.identifier} up`} onClick={() => setDraft(movePrompt(draft, entry.identifier, -1))}><ArrowUp size={18} /></button>
-        <button className="preset-order-button" disabled={readOnly || busy || index === draft.promptOrder.length - 1} aria-label={`Move ${entry.identifier} down`} onClick={() => setDraft(movePrompt(draft, entry.identifier, 1))}><ArrowDown size={18} /></button>
-      </li>)}
-    </ol></section>
   </PageShell></div>;
 }
