@@ -37,8 +37,6 @@ export const FOUNDATION_COPY = {
       "Tell the people in this Universe who you are. There is one User Profile.",
     birthdayHelp:
       "Birthday and Age are independent. Age is never calculated from Birthday.",
-    timezoneHelp:
-      "Use an IANA timezone or leave it empty to use your device timezone.",
     appearanceHelp: "An objective description of physical appearance.",
     aboutHelp:
       "Identity, background, personality, and anything you want Characters to know.",

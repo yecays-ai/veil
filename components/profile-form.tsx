@@ -3,6 +3,7 @@
 import {
   useEffect,
   useId,
+  useMemo,
   useState,
   type FormEvent,
   type KeyboardEvent,
@@ -19,6 +20,7 @@ import {
   getDeviceTimezone,
   getTimezoneOptions,
 } from "../lib/participant-config";
+import { timezoneLabel } from "../lib/timezone-label";
 
 type Input = UserProfile | CharacterInput;
 
@@ -33,7 +35,7 @@ function TimezoneField({
 }) {
   const id = useId();
   const listId = `${id}-options`;
-  const [query, setQuery] = useState(value);
+  const [query, setQuery] = useState("");
   const [deviceTimezone, setDeviceTimezone] = useState<string | null>(null);
   const [options, setOptions] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
@@ -44,14 +46,19 @@ function TimezoneField({
     setDeviceTimezone(device);
     setOptions(getTimezoneOptions(savedTimezone, device));
   }, [savedTimezone]);
-  useEffect(() => setQuery(value), [value]);
-
+  const labeledOptions = useMemo(
+    () => options.map((zone) => ({ zone, label: timezoneLabel(zone) })),
+    [options],
+  );
+  const selectedLabel = value ? timezoneLabel(value) : U.deviceTimezone;
   const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredOptions = options
-    .filter((zone) => zone.toLocaleLowerCase().includes(normalizedQuery));
+  const filteredOptions = labeledOptions.filter(({ zone, label }) =>
+    `${label} ${zone}`.toLocaleLowerCase().replaceAll("−", "-")
+      .includes(normalizedQuery.replaceAll("−", "-")),
+  );
 
   function selectTimezone(zone: string) {
-    setQuery(zone);
+    setQuery("");
     onChange(zone);
     setOpen(false);
     setActiveIndex(-1);
@@ -77,7 +84,7 @@ function TimezoneField({
       filteredOptions[activeIndex]
     ) {
       event.preventDefault();
-      selectTimezone(filteredOptions[activeIndex]);
+      selectTimezone(filteredOptions[activeIndex].zone);
     } else if (event.key === "Escape") {
       setOpen(false);
       setActiveIndex(-1);
@@ -103,9 +110,11 @@ function TimezoneField({
           }
           autoComplete="off"
           maxLength={100}
-          value={query}
-          placeholder={U.deviceTimezone}
-          onFocus={() => setOpen(true)}
+          value={open ? query : selectedLabel}
+          onFocus={() => {
+            setQuery("");
+            setOpen(true);
+          }}
           onBlur={() =>
             window.setTimeout(() => {
               setOpen(false);
@@ -115,7 +124,6 @@ function TimezoneField({
           onKeyDown={keyDown}
           onChange={(event) => {
             setQuery(event.target.value);
-            onChange(event.target.value);
             setActiveIndex(-1);
             setOpen(true);
           }}
@@ -127,24 +135,25 @@ function TimezoneField({
           aria-label={C.fields.timezone}
           hidden={!open || filteredOptions.length === 0}
         >
-          {filteredOptions.map((zone, index) => (
+          {filteredOptions.map(({ zone, label }, index) => (
             <li
               className="timezone-option"
               id={`${listId}-${index}`}
               key={zone}
               role="option"
-              aria-selected={index === activeIndex}
+              aria-selected={zone === value}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => selectTimezone(zone)}
             >
-              {zone}
+              <span>{label}</span>{" "}
+              <small>{zone}</small>
             </li>
           ))}
         </ul>
       </div>
       <small>
         {deviceTimezone
-          ? U.deviceTimezoneValue(deviceTimezone)
+          ? U.deviceTimezoneValue(timezoneLabel(deviceTimezone))
           : U.deviceTimezoneUnavailable}
       </small>
       <button
