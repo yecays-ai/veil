@@ -212,6 +212,39 @@ export class ChatStorage {
       throw error;
     }
   }
+  async importBackup(backup: BackupChat): Promise<void> {
+    const db = await this.open();
+    // This transaction deliberately excludes apiConfigs: provider credentials
+    // are neither preflighted nor restored from a backup.
+    const tx = db.transaction(["sessions", "messages"], "readwrite");
+    const done = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () =>
+        reject(new Error("Chat backup could not be restored. Existing chats were retained."));
+    });
+    try {
+      const sessions = tx.objectStore("sessions");
+      const messages = tx.objectStore("messages");
+      const [sessionCount, messageCount] = await Promise.all([
+        request(sessions.count()),
+        request(messages.count()),
+      ]);
+      if (sessionCount || messageCount)
+        throw new Error("Chat data is no longer empty. Restore was not applied.");
+      for (const session of backup.sessions) await request(sessions.add(session));
+      for (const message of backup.messages) await request(messages.add(message));
+      await done;
+      this.notify();
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        /* Already completed/aborted. */
+      }
+      await done.catch(() => {});
+      throw error;
+    }
+  }
   openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)
       return Promise.reject(new Error("Character is required."));

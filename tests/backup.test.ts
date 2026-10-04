@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { exportBackupV1 } from "../lib/backup/export";
+import {
+  parseBackupV1,
+  restoreBackupV1,
+  type RestoreSources,
+} from "../lib/backup/import";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupSources } from "../lib/backup/types";
 import { validateBackupV1 } from "../lib/backup/validate";
 import { ChatStorage } from "../lib/chat/storage";
@@ -118,6 +123,21 @@ test("backup rejects malformed envelopes, duplicate orders, and stale previews",
   const stalePreview = await exportBackupV1(sources());
   stalePreview.backup.chat.sessions[0].lastMessageId = "missing";
   assert.throws(() => validateBackupV1(stalePreview.backup), /last message/);
+
+  const invalidProfile = await exportBackupV1(sources());
+  (invalidProfile.backup.foundation as { extra?: string }).extra = "unknown";
+  assert.throws(() => validateBackupV1(invalidProfile.backup), /profile or appearance/);
+
+  const duplicateCharacter = await exportBackupV1(sources());
+  duplicateCharacter.backup.chat.sessions.push({
+    ...duplicateCharacter.backup.chat.sessions[0],
+    id: "character:duplicate",
+  });
+  assert.throws(() => validateBackupV1(duplicateCharacter.backup), /session IDs/);
+
+  const invalidBatch = await exportBackupV1(sources());
+  invalidBatch.backup.chat.messages[0].requestedBy = "missing-reply";
+  assert.throws(() => validateBackupV1(invalidBatch.backup), /reply batch/);
 });
 
 test("ChatStorage backup reads conversations but omits saved API keys", async () => {
@@ -135,4 +155,96 @@ test("ChatStorage backup reads conversations but omits saved API keys", async ()
   assert.equal(exported.sessions.length, 1);
   assert.equal(exported.messages[0].content, "private conversation");
   assert(!JSON.stringify(exported).includes("never-export-this"));
+});
+
+test("restore preflights an empty installation and can parse its V1 JSON", async () => {
+  const exportSources = sources();
+  exportSources.foundation = {
+    load: async () => ({ ...defaultFoundation(), user: { ...defaultFoundation().user, name: "Restored" } }),
+  };
+  exportSources.theme = {
+    load: async () => ({
+      ...normalizeDocument(null),
+      current: {
+        ...normalizeDocument(null).current,
+        profile: {
+          ...normalizeDocument(null).current.profile,
+          colors: { ...normalizeDocument(null).current.profile.colors, accent: "#112233" },
+        },
+      },
+    }),
+  };
+  const { backup, json } = await exportBackupV1(exportSources);
+  assert.deepEqual(parseBackupV1(json), backup);
+  let foundationWrites = 0;
+  let themeWrites = 0;
+  let chatWrites = 0;
+  const restoreSources: RestoreSources = {
+    foundation: {
+      load: async () => defaultFoundation(),
+      hasStoredDocument: async () => false,
+      replaceIfEmpty: async () => {
+        foundationWrites++;
+        return defaultFoundation();
+      },
+    },
+    theme: {
+      load: async () => normalizeDocument(null),
+      hasStoredDocument: async () => false,
+      saveIfEmpty: async () => {
+        themeWrites++;
+      },
+    },
+    chat: {
+      exportBackup: async () => ({ version: 1, sessions: [], messages: [] }),
+      importBackup: async () => {
+        chatWrites++;
+      },
+    },
+  };
+  await restoreBackupV1(backup, restoreSources);
+  assert.deepEqual([foundationWrites, themeWrites, chatWrites], [1, 1, 1]);
+});
+
+test("restore never overwrites an existing installation", async () => {
+  const { backup } = await exportBackupV1(sources());
+  const current = defaultFoundation();
+  current.user.name = "Already configured";
+  let writes = 0;
+  const source: RestoreSources = {
+    foundation: {
+      load: async () => current,
+      hasStoredDocument: async () => true,
+      replaceIfEmpty: async () => {
+        writes++;
+        return current;
+      },
+    },
+    theme: {
+      load: async () => normalizeDocument(null),
+      hasStoredDocument: async () => false,
+      saveIfEmpty: async () => {},
+    },
+    chat: {
+      exportBackup: async () => ({ version: 1, sessions: [], messages: [] }),
+      importBackup: async () => {},
+    },
+  };
+  await assert.rejects(() => restoreBackupV1(backup, source), /empty installation/);
+  assert.equal(writes, 0);
+});
+
+test("ChatStorage restore writes only sessions and messages, retaining API configs", async () => {
+  const factory = new IDBFactory();
+  const storage = new ChatStorage(() => factory);
+  await storage.saveApiConfig({
+    id: "api",
+    baseUrl: "https://provider.example/v1",
+    apiKey: "keep-this-key",
+    model: "model",
+  });
+  await storage.importBackup(chat());
+  assert.equal((await storage.readSession("character:a")).messages[0].content, "hello");
+  assert.equal((await storage.getApiConfig("api"))?.apiKey, "keep-this-key");
+  await assert.rejects(() => storage.importBackup(chat()), /no longer empty/);
 });

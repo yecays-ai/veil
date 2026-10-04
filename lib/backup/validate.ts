@@ -19,6 +19,18 @@ const text = (value: unknown) => typeof value === "string" && !!value;
 const integer = (value: unknown) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
+  if (value && typeof value === "object") {
+    const item = value as Record<string, unknown>;
+    return `{${Object.keys(item)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(item[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "undefined";
+}
+
 function validSession(session: BackupSession) {
   return (
     text(session.id) &&
@@ -59,10 +71,16 @@ function stableChat(chat: BackupChat): BackupChat {
       a.id.localeCompare(b.id),
   );
   const ids = new Set<string>();
+  const characterIds = new Set<string>();
   for (const session of sessions) {
-    if (!validSession(session) || ids.has(session.id))
+    if (
+      !validSession(session) ||
+      ids.has(session.id) ||
+      characterIds.has(session.characterId)
+    )
       throw new Error("Chat backup contains duplicate or invalid session IDs.");
     ids.add(session.id);
+    characterIds.add(session.characterId);
   }
   const messageIds = new Set<string>();
   const orders = new Set<string>();
@@ -91,6 +109,17 @@ function stableChat(chat: BackupChat): BackupChat {
       !sessionMessages.some((message) => message.id === session.lastMessageId)
     )
       throw new Error("Chat backup contains an invalid last message reference.");
+    for (const message of sessionMessages) {
+      if (
+        message.requestedBy !== undefined &&
+        !sessionMessages.some(
+          (candidate) =>
+            candidate.id === message.requestedBy &&
+            candidate.role === "assistant",
+        )
+      )
+        throw new Error("Chat backup contains an invalid reply batch reference.");
+    }
   }
   return { version: 1, sessions, messages };
 }
@@ -113,6 +142,11 @@ export function validateBackupV1(value: unknown): BackupV1 {
     throw new Error("Backup has invalid chat data.");
   const foundation: FoundationDocument = normalizeFoundation(backup.foundation);
   const theme: ThemeDocument = normalizeDocument(backup.theme);
+  if (
+    canonical(backup.foundation) !== canonical(foundation) ||
+    canonical(backup.theme) !== canonical(theme)
+  )
+    throw new Error("Backup contains invalid profile or appearance data.");
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,

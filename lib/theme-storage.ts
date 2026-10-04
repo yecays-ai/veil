@@ -3,7 +3,9 @@ import { normalizeDocument, type ThemeDocument } from "./theme-types";
 // Replace this adapter when user-isolated cloud storage becomes available.
 export interface ThemeStorage {
   load(): Promise<ThemeDocument>;
+  hasStoredDocument(): Promise<boolean>;
   save(document: ThemeDocument): Promise<void>;
+  saveIfEmpty(document: ThemeDocument): Promise<void>;
 }
 
 const KEY = "companion-phone.appearance.v1";
@@ -19,6 +21,9 @@ export const browserThemeStorage: ThemeStorage = {
       );
     }
   },
+  async hasStoredDocument() {
+    return window.localStorage.getItem(KEY) !== null;
+  },
   async save(document) {
     try {
       window.localStorage.setItem(KEY, JSON.stringify(document));
@@ -27,6 +32,12 @@ export const browserThemeStorage: ThemeStorage = {
         "Could not save appearance. Browser storage may be full or unavailable. Remove a preset or use smaller images.",
       );
     }
+  },
+  async saveIfEmpty(document) {
+    // Re-read immediately before writing so a concurrent settings save wins.
+    if (window.localStorage.getItem(KEY) !== null)
+      throw new Error("Appearance data is no longer empty. Restore was not applied.");
+    await this.save(normalizeDocument(document));
   },
 };
 
