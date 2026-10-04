@@ -5,10 +5,8 @@ import { exportBackupV1 } from "../lib/backup/export";
 import {
   parseBackupV1,
   isOverwriteConfirmationValid,
-  overwriteRestoreBackupV1,
   restoreBackupV1,
   type RestoreSources,
-  type OverwriteRestoreSources,
 } from "../lib/backup/import";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupSources } from "../lib/backup/types";
 import { validateBackupV1 } from "../lib/backup/validate";
@@ -160,81 +158,50 @@ test("ChatStorage backup reads conversations but omits saved API keys", async ()
   assert(!JSON.stringify(exported).includes("never-export-this"));
 });
 
+function restoreSources(): RestoreSources {
+  function documentStore() {
+    let raw: string | null = null;
+    return {
+      readRaw: async () => raw,
+      replaceIfCurrent: async (expected: string | null, document: unknown) => {
+        assert.equal(raw, expected);
+        return raw = JSON.stringify(document);
+      },
+      rollbackIfCurrent: async (expected: string, previous: string | null) => {
+        if (raw !== expected) return false;
+        raw = previous;
+        return true;
+      },
+    };
+  }
+  return {
+    foundation: documentStore(),
+    theme: documentStore(),
+    chat: new ChatStorage(() => new IDBFactory()),
+  };
+}
+
 test("restore preflights an empty installation and can parse its V1 JSON", async () => {
-  const exportSources = sources();
-  exportSources.foundation = {
-    load: async () => ({ ...defaultFoundation(), user: { ...defaultFoundation().user, name: "Restored" } }),
-  };
-  exportSources.theme = {
-    load: async () => ({
-      ...normalizeDocument(null),
-      current: {
-        ...normalizeDocument(null).current,
-        profile: {
-          ...normalizeDocument(null).current.profile,
-          colors: { ...normalizeDocument(null).current.profile.colors, accent: "#112233" },
-        },
-      },
-    }),
-  };
-  const { backup, json } = await exportBackupV1(exportSources);
+  const { backup, json } = await exportBackupV1(sources());
   assert.deepEqual(parseBackupV1(json), backup);
-  let foundationWrites = 0;
-  let themeWrites = 0;
-  let chatWrites = 0;
-  const restoreSources: RestoreSources = {
-    foundation: {
-      load: async () => defaultFoundation(),
-      hasStoredDocument: async () => false,
-      replaceIfEmpty: async () => {
-        foundationWrites++;
-        return defaultFoundation();
-      },
-    },
-    theme: {
-      load: async () => normalizeDocument(null),
-      hasStoredDocument: async () => false,
-      saveIfEmpty: async () => {
-        themeWrites++;
-      },
-    },
-    chat: {
-      exportBackup: async () => ({ version: 1, sessions: [], messages: [] }),
-      importBackup: async () => {
-        chatWrites++;
-      },
-    },
-  };
-  await restoreBackupV1(backup, restoreSources);
-  assert.deepEqual([foundationWrites, themeWrites, chatWrites], [1, 1, 1]);
+  const target = restoreSources();
+  await restoreBackupV1(backup, target);
+  assert.deepEqual(JSON.parse((await target.foundation.readRaw())!), backup.foundation);
+  assert.deepEqual(JSON.parse((await target.theme.readRaw())!), backup.theme);
+  assert.deepEqual(await target.chat.exportBackup(), backup.chat);
+  await restoreBackupV1(backup, target); // Retrying the identical backup is safe.
 });
 
-test("restore never overwrites an existing installation", async () => {
+test("restore never overwrites an existing installation without confirmation", async () => {
   const { backup } = await exportBackupV1(sources());
+  const target = restoreSources();
   const current = defaultFoundation();
   current.user.name = "Already configured";
-  let writes = 0;
-  const source: RestoreSources = {
-    foundation: {
-      load: async () => current,
-      hasStoredDocument: async () => true,
-      replaceIfEmpty: async () => {
-        writes++;
-        return current;
-      },
-    },
-    theme: {
-      load: async () => normalizeDocument(null),
-      hasStoredDocument: async () => false,
-      saveIfEmpty: async () => {},
-    },
-    chat: {
-      exportBackup: async () => ({ version: 1, sessions: [], messages: [] }),
-      importBackup: async () => {},
-    },
-  };
-  await assert.rejects(() => restoreBackupV1(backup, source), /empty installation/);
-  assert.equal(writes, 0);
+  await target.foundation.replaceIfCurrent(null, current);
+  await assert.rejects(() => restoreBackupV1(backup, target), /empty installation/);
+  assert.deepEqual(JSON.parse((await target.foundation.readRaw())!), current);
+  await restoreBackupV1(backup, target, true);
+  assert.deepEqual(JSON.parse((await target.foundation.readRaw())!), backup.foundation);
 });
 
 test("ChatStorage restore writes only sessions and messages, retaining API configs", async () => {
@@ -272,7 +239,7 @@ test("overwrite restore replaces all backup sections while retaining API configu
 test("overwrite restore rolls back earlier stores when a later replacement fails", async () => {
   const { backup } = await exportBackupV1(sources());
   let foundation = "before-foundation";
-  const source: OverwriteRestoreSources = {
+  const source: RestoreSources = {
     foundation: {
       readRaw: async () => foundation,
       replaceIfCurrent: async (expected) => {
@@ -298,7 +265,7 @@ test("overwrite restore rolls back earlier stores when a later replacement fails
       replaceBackup: async () => assert.fail("chat replacement must not run"),
     },
   };
-  await assert.rejects(() => overwriteRestoreBackupV1(backup, source), /Previous data was restored/);
+  await assert.rejects(() => restoreBackupV1(backup, source, true), /Previous data was restored/);
   assert.equal(foundation, "before-foundation");
 });
 
@@ -306,4 +273,42 @@ test("overwrite restore confirmation requires an exact RESTORE token", () => {
   assert.equal(isOverwriteConfirmationValid("RESTORE"), true);
   assert.equal(isOverwriteConfirmationValid("restore"), false);
   assert.equal(isOverwriteConfirmationValid(" RESTORE"), false);
+});
+
+test("chat failure rolls back both documents for empty and overwrite restores", async () => {
+  const { backup } = await exportBackupV1(sources());
+  for (const overwrite of [false, true]) {
+    const target = restoreSources();
+    if (overwrite) {
+      await target.foundation.replaceIfCurrent(null, defaultFoundation());
+      await target.theme.replaceIfCurrent(null, normalizeDocument(null));
+    }
+    const before = await Promise.all([target.foundation.readRaw(), target.theme.readRaw()]);
+    target.chat.replaceBackup = async () => { throw new Error("chat failed"); };
+    await assert.rejects(() => restoreBackupV1(backup, target, overwrite), /Previous data was restored/);
+    assert.deepEqual(await Promise.all([target.foundation.readRaw(), target.theme.readRaw()]), before);
+  }
+});
+
+test("rollback reports concurrent changes instead of overwriting them", async () => {
+  const { backup } = await exportBackupV1(sources());
+  const target = restoreSources();
+  const edited = defaultFoundation();
+  edited.user.name = "Concurrent edit";
+  target.chat.replaceBackup = async () => {
+    await target.foundation.replaceIfCurrent(await target.foundation.readRaw(), edited);
+    throw new Error("chat failed");
+  };
+  await assert.rejects(() => restoreBackupV1(backup, target), /Rollback was incomplete/);
+  assert.equal(JSON.parse((await target.foundation.readRaw())!).user.name, "Concurrent edit");
+});
+
+test("failed chat replacement is atomic and preserves the previous conversations", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  await storage.importBackup(chat());
+  const before = await storage.exportBackup();
+  const invalid = chat();
+  invalid.messages.push({ ...invalid.messages[0] });
+  await assert.rejects(() => storage.replaceBackup(before, invalid));
+  assert.deepEqual(await storage.exportBackup(), before);
 });

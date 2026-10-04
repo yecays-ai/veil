@@ -4,9 +4,7 @@ import { encodeStoredImage } from "./image-processing";
 // Replace this adapter when user-isolated cloud storage becomes available.
 export interface ThemeStorage {
   load(): Promise<ThemeDocument>;
-  hasStoredDocument(): Promise<boolean>;
   save(document: ThemeDocument): Promise<void>;
-  saveIfEmpty(document: ThemeDocument): Promise<void>;
   readRaw(): Promise<string | null>;
   replaceIfCurrent(expected: string | null, document: ThemeDocument): Promise<string>;
   rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
@@ -25,9 +23,6 @@ export const browserThemeStorage: ThemeStorage = {
       );
     }
   },
-  async hasStoredDocument() {
-    return window.localStorage.getItem(KEY) !== null;
-  },
   async readRaw() {
     return window.localStorage.getItem(KEY);
   },
@@ -39,12 +34,6 @@ export const browserThemeStorage: ThemeStorage = {
         "Could not save appearance. Browser storage may be full or unavailable. Remove a preset or use smaller images.",
       );
     }
-  },
-  async saveIfEmpty(document) {
-    // Re-read immediately before writing so a concurrent settings save wins.
-    if (window.localStorage.getItem(KEY) !== null)
-      throw new Error("Appearance data is no longer empty. Restore was not applied.");
-    await this.save(normalizeDocument(document));
   },
   async replaceIfCurrent(expected, document) {
     if (window.localStorage.getItem(KEY) !== expected)

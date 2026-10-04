@@ -6,8 +6,6 @@ import {
 
 export interface FoundationStorage {
   load(): Promise<FoundationDocument>;
-  hasStoredDocument(): Promise<boolean>;
-  replaceIfEmpty(document: FoundationDocument): Promise<FoundationDocument>;
   readRaw(): Promise<string | null>;
   replaceIfCurrent(expected: string | null, document: FoundationDocument): Promise<string>;
   rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
@@ -38,31 +36,8 @@ export function createFoundationStorage(
   };
   return {
     load,
-    async hasStoredDocument() {
-      return getStorage().getItem(KEY) !== null;
-    },
     async readRaw() {
       return getStorage().getItem(KEY);
-    },
-    replaceIfEmpty(document) {
-      const operation = queue.then(async () => {
-        // Check the raw key at write time: a deliberately saved default is not
-        // an empty installation and must never be replaced by a backup.
-        if (getStorage().getItem(KEY) !== null)
-          throw new Error("Profile data is no longer empty. Restore was not applied.");
-        const next = normalizeFoundation(document);
-        try {
-          getStorage().setItem(KEY, JSON.stringify(next));
-        } catch {
-          throw new Error("Could not restore profile data. Browser storage may be unavailable.");
-        }
-        return next;
-      });
-      queue = operation.then(
-        () => {},
-        () => {},
-      );
-      return operation;
     },
     replaceIfCurrent(expected, document) {
       const operation = queue.then(async () => {

@@ -51,64 +51,34 @@ function validMessage(message: BackupMessage) {
 }
 
 function stableChat(chat: BackupChat): BackupChat {
+  if (chat.sessions.some((s) => !s || !validSession(s)) ||
+      chat.messages.some((m) => !m || !validMessage(m)))
+    throw new Error("Chat backup contains invalid sessions or messages.");
   const sessions = [...chat.sessions].sort((a, b) => a.id.localeCompare(b.id));
-  const messages = [...chat.messages].sort(
-    (a, b) =>
-      a.sessionId.localeCompare(b.sessionId) ||
-      a.order - b.order ||
-      a.createdAt - b.createdAt ||
-      a.id.localeCompare(b.id),
-  );
-  const ids = new Set<string>();
-  const characterIds = new Set<string>();
-  for (const session of sessions) {
-    if (
-      !validSession(session) ||
-      ids.has(session.id) ||
-      characterIds.has(session.characterId)
-    )
-      throw new Error("Chat backup contains duplicate or invalid session IDs.");
-    ids.add(session.id);
-    characterIds.add(session.characterId);
-  }
-  const messageIds = new Set<string>();
-  const orders = new Set<string>();
+  const messages = [...chat.messages].sort((a, b) =>
+    a.sessionId.localeCompare(b.sessionId) || a.order - b.order || a.id.localeCompare(b.id));
+  const sessionById = new Map(sessions.map((s) => [s.id, s]));
+  const messageById = new Map(messages.map((m) => [m.id, m]));
+  if (sessionById.size !== sessions.length ||
+      new Set(sessions.map((s) => s.characterId)).size !== sessions.length)
+    throw new Error("Chat backup contains duplicate or invalid session IDs.");
+  if (messageById.size !== messages.length ||
+      new Set(messages.map((m) => JSON.stringify([m.sessionId, m.order]))).size !== messages.length)
+    throw new Error("Chat backup contains duplicate messages or orders.");
   for (const message of messages) {
-    const orderKey = `${message.sessionId}:${message.order}`;
-    if (
-      !validMessage(message) ||
-      messageIds.has(message.id) ||
-      !ids.has(message.sessionId) ||
-      orders.has(orderKey)
-    )
-      throw new Error("Chat backup contains messages without a valid session.");
-    messageIds.add(message.id);
-    orders.add(orderKey);
-  }
-  for (const session of sessions) {
-    const sessionMessages = messages.filter(
-      (message) => message.sessionId === session.id,
-    );
-    const maxOrder = sessionMessages
-      .reduce((max, message) => Math.max(max, message.order), 0);
-    if (session.nextOrder <= maxOrder)
+    const session = sessionById.get(message.sessionId);
+    if (!session || message.order >= session.nextOrder)
       throw new Error("Chat backup contains an invalid session message order.");
-    if (
-      session.lastMessageId !== undefined &&
-      !sessionMessages.some((message) => message.id === session.lastMessageId)
-    )
-      throw new Error("Chat backup contains an invalid last message reference.");
-    for (const message of sessionMessages) {
-      if (
-        message.requestedBy !== undefined &&
-        !sessionMessages.some(
-          (candidate) =>
-            candidate.id === message.requestedBy &&
-            candidate.role === "assistant",
-        )
-      )
+    if (message.requestedBy !== undefined) {
+      const reply = messageById.get(message.requestedBy);
+      if (!reply || reply.sessionId !== message.sessionId || reply.role !== "assistant")
         throw new Error("Chat backup contains an invalid reply batch reference.");
     }
+  }
+  for (const session of sessions) {
+    if (session.lastMessageId !== undefined &&
+        messageById.get(session.lastMessageId)?.sessionId !== session.id)
+      throw new Error("Chat backup contains an invalid last message reference.");
   }
   return { version: 1, sessions, messages };
 }
