@@ -103,19 +103,6 @@
   width: 23px;
   height: 23px;
 }
-.chat-settings-menu {
-  width: min(310px, calc(100% - 24px));
-  position: absolute;
-  z-index: 30;
-  top: calc(var(--app-safe-top) + 58px);
-  right: max(12px, env(safe-area-inset-right));
-  padding: 6px;
-  border: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent);
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--theme-surface) 88%, transparent);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
-  backdrop-filter: blur(16px);
-}
 .chat-session-setting {
   display: flex;
   align-items: center;
@@ -144,18 +131,15 @@
 .chat-header {
   position: absolute;
   z-index: 20;
-  inset: 0 0 auto;
-  min-height: calc(var(--app-safe-top) + 58px);
+  top: var(--chat-viewport-offset-top, 0px);
+  right: 0;
+  left: 0;
+  min-height: calc(var(--app-safe-top) + 62px);
   padding: var(--app-safe-top) max(8px, var(--app-safe-right)) 0
     max(8px, var(--app-safe-left));
   justify-content: space-between;
   gap: 4px;
-  background: linear-gradient(to bottom,
-    rgb(255 255 255 / 62%) 0%,
-    rgb(255 255 255 / 48%) 82%,
-    rgb(255 255 255 / 28%) 100%);
-  border-bottom: 1px solid rgb(255 255 255 / 22%);
-  box-shadow: 0 6px 18px rgb(0 0 0 / 3%);
+  background: rgb(255 255 255 / 48%);
   backdrop-filter: blur(18px) saturate(145%);
   -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
@@ -165,22 +149,22 @@
   font-size: inherit;
 }
 .chat-back svg {
-  width: 26px;
-  height: 26px;
+  width: 27px;
+  height: 27px;
   stroke-width: 1.8;
 }
 .chat-contact-summary {
   flex: 1;
   min-width: 0;
-  height: 52px;
+  height: 56px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
 }
 .chat-contact-summary .chat-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   background: color-mix(in srgb, var(--theme-surface) 78%, transparent);
   box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
 }
@@ -190,11 +174,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.86em;
+  font-size: 0.94em;
 }
 .chat-contact-summary > svg {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   flex: none;
   opacity: .46;
   stroke-width: 1.7;
@@ -341,7 +325,8 @@
   background: color-mix(in srgb, var(--theme-surface) 72%, transparent);
 }
 .chat-input-shell:focus-within {
-  border-color: color-mix(in srgb, var(--theme-accent) 50%, transparent);
+  border-color: color-mix(in srgb, var(--theme-text) 17%, transparent);
+  box-shadow: none;
 }
 .chat-input-shell textarea,
 .chat-api-settings input {
@@ -363,6 +348,11 @@
   background: transparent;
   outline: none;
   line-height: 20px;
+}
+.chat-input-shell textarea:focus,
+.chat-input-shell textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
 }
 .chat-voice-slot {
   position: absolute;
@@ -422,6 +412,72 @@
 .chat-app :focus-visible {
   outline: 2px solid var(--theme-accent);
   outline-offset: 2px;
+}
+.chat-info-screen {
+  position: absolute;
+  z-index: 60;
+  top: var(--chat-viewport-offset-top, 0px);
+  right: 0;
+  left: 0;
+  height: var(--chat-visual-height, 100%);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--theme-background);
+}
+.chat-info-header {
+  flex: none;
+  min-height: calc(var(--app-safe-top) + 58px);
+  padding: var(--app-safe-top) max(8px, var(--app-safe-right)) 0 max(8px, var(--app-safe-left));
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 9%, transparent);
+  background: var(--theme-background);
+}
+.chat-info-header h1 {
+  margin: 0;
+  text-align: center;
+  font-size: 1em;
+  letter-spacing: 0;
+}
+.chat-app button.chat-info-back {
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-color: transparent;
+  background: transparent;
+}
+.chat-info-back svg {
+  width: 26px;
+  height: 26px;
+  stroke-width: 1.8;
+}
+.chat-info-header-spacer {
+  width: 44px;
+}
+.chat-info-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 20px max(16px, var(--app-safe-right)) max(24px, var(--app-safe-bottom))
+    max(16px, var(--app-safe-left));
+}
+.chat-info-settings {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
+  border-radius: 14px;
+  background: var(--theme-surface);
+}
+.chat-info-settings .chat-session-setting + .chat-session-setting {
+  border-top: 1px solid color-mix(in srgb, var(--theme-text) 9%, transparent);
+}
+.chat-app button.chat-info-clear {
+  width: 100%;
+  margin-top: 18px;
+  background: var(--theme-surface);
 }
 .chat-notice {
   padding: 12px;

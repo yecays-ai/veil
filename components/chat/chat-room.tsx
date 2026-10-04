@@ -69,7 +69,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const history = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
@@ -166,7 +166,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       (selection && !selection.isCollapsed && selection.toString())) return;
     setActiveMessage(message);
     setMenuAnchor(e.currentTarget);
-    setSettingsOpen(false);
+    setChatInfoOpen(false);
   }
   async function copyMessage() {
     if (!activeMessage) return;
@@ -201,6 +201,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       shell.current?.style.setProperty(
         "--chat-keyboard-inset",
         `${obscured}px`,
+      );
+      shell.current?.style.setProperty(
+        "--chat-viewport-offset-top",
+        `${mobile ? viewport.offsetTop : 0}px`,
+      );
+      shell.current?.style.setProperty(
+        "--chat-visual-height",
+        `${mobile ? viewport.height : shell.current?.clientHeight ?? viewport.height}px`,
       );
       if (nearBottom.current)
         history.current?.scrollTo({ top: history.current.scrollHeight });
@@ -278,7 +286,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     sessionId: session?.characterId === characterId ? session.id : undefined,
     enabled: session?.autoReplyOnKeyboardDismiss === true,
     blocked: generating || !!revealState?.pending || sending || multiSelect || !!activeMessage || !!editingMessage ||
-      settingsOpen || confirmClear || !!confirmDelete,
+      chatInfoOpen || confirmClear || !!confirmDelete,
     onReply: reply,
   });
   async function updateSetting(patch: { streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean }) {
@@ -332,19 +340,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           <ChevronRight aria-hidden="true" />
         </div>
         <button type="button" className="chat-settings-button" aria-label="Conversation settings"
-          title="Conversation settings" aria-expanded={settingsOpen}
-          onClick={() => setSettingsOpen((open) => !open)}><Ellipsis aria-hidden="true" /></button>
-        {settingsOpen && <div className="chat-settings-menu">
-          <label className="chat-session-setting"><span>Streaming Replies
-            <small>Show replies as they are generated.</small></span>
-            <input type="checkbox" checked={session?.streamOnline === true}
-              onChange={(e) => void updateSetting({ streamOnline: e.target.checked })} /></label>
-          <label className="chat-session-setting"><span>Reply When Keyboard Closes</span>
-            <input type="checkbox" checked={session?.autoReplyOnKeyboardDismiss === true}
-              onChange={(e) => void updateSetting({ autoReplyOnKeyboardDismiss: e.target.checked })} /></label>
-          <button type="button" className="chat-danger" disabled={!messages.length || generating}
-            onClick={() => { setSettingsOpen(false); setConfirmClear(true); }}>Clear Chat</button>
-        </div>}
+          title="Conversation settings"
+          onClick={() => setChatInfoOpen(true)}><Ellipsis aria-hidden="true" /></button>
       </header>
       <div
         className={`chat-history${empty ? " chat-history-empty" : ""}`}
@@ -486,6 +483,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </button>
         </div>
       </form>
+      {chatInfoOpen && <ChatInfoScreen
+        streamOnline={session?.streamOnline === true}
+        autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
+        canClear={messages.length > 0 && !generating}
+        onBack={() => setChatInfoOpen(false)}
+        onUpdate={updateSetting}
+        onClear={() => setConfirmClear(true)}
+      />}
       {activeMessage && <>
         <button className="chat-context-backdrop" aria-label="Close message actions" onClick={closeActions} />
         <div ref={actionMenu} className="chat-message-actions" role="menu" aria-label="Message actions"
@@ -526,6 +531,39 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         }} />}
     </div>
   );
+}
+
+function ChatInfoScreen({ streamOnline, autoReplyOnKeyboardDismiss, canClear, onBack, onUpdate, onClear }: {
+  streamOnline: boolean;
+  autoReplyOnKeyboardDismiss: boolean;
+  canClear: boolean;
+  onBack: () => void;
+  onUpdate: (patch: { streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean }) => Promise<void>;
+  onClear: () => void;
+}) {
+  return <section className="chat-info-screen" aria-label="Chat Info">
+    <header className="chat-info-header">
+      <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
+        <ChevronLeft aria-hidden="true" />
+      </button>
+      <h1>Chat Info</h1>
+      <span className="chat-info-header-spacer" aria-hidden="true" />
+    </header>
+    <div className="chat-info-body">
+      <div className="chat-info-settings">
+        <label className="chat-session-setting"><span>Streaming Replies
+          <small>Show replies as they are generated.</small></span>
+          <input type="checkbox" checked={streamOnline}
+            onChange={(event) => void onUpdate({ streamOnline: event.target.checked })} /></label>
+        <label className="chat-session-setting"><span>Reply When Keyboard Closes</span>
+          <input type="checkbox" checked={autoReplyOnKeyboardDismiss}
+            onChange={(event) => void onUpdate({ autoReplyOnKeyboardDismiss: event.target.checked })} /></label>
+      </div>
+      <button type="button" className="chat-info-clear chat-danger" disabled={!canClear} onClick={onClear}>
+        Clear Chat
+      </button>
+    </div>
+  </section>;
 }
 
 function Action({ label, icon, disabled, danger, onClick }: {
