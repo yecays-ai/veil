@@ -3,12 +3,19 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Bookmark,
+  ChevronLeft,
+  ChevronRight,
   CircleCheck,
   Copy,
+  Ellipsis,
   Heart,
   Pencil,
+  Plus,
   Quote,
   RotateCcw,
+  SendHorizontal,
+  Sparkles,
+  Square,
   Trash2,
   type LucideIcon,
 } from "lucide-react";
@@ -67,7 +74,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const history = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
   const mounted = useRef(true);
+  const shell = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const composerBar = useRef<HTMLFormElement>(null);
   const actionMenu = useRef<HTMLDivElement>(null);
   const positionMenu = useRef<() => void>(() => {});
   const nativeSelectionActive = useRef(false);
@@ -76,6 +85,21 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     return () => {
       mounted.current = false;
     };
+  }, []);
+  useLayoutEffect(() => {
+    const textarea = composer.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+  }, [draft]);
+  useLayoutEffect(() => {
+    const bar = composerBar.current;
+    if (!bar || !shell.current) return;
+    const update = () => shell.current?.style.setProperty("--chat-composer-height", `${bar.offsetHeight}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(bar);
+    return () => observer.disconnect();
   }, []);
   useEffect(() => {
     const trackSelection = () => {
@@ -162,7 +186,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }, [messages, revealState]);
   // Keep the chat composer above the visual viewport's keyboard, without
   // changing Phone Shell or Home sizing. Blur is deliberately not generation.
-  const shell = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -301,12 +324,16 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           className="chat-back"
           aria-label="Back to Messages"
         >
-          ‹
+          <ChevronLeft aria-hidden="true" />
         </Link>
-        <ChatAvatar profile={character} />
-        <strong>{session?.remark || character.name}</strong>
+        <div className="chat-contact-summary" aria-label={`${session?.remark || character.name} contact details`}>
+          <ChatAvatar profile={character} />
+          <strong>{session?.remark || character.name}</strong>
+          <ChevronRight aria-hidden="true" />
+        </div>
         <button type="button" className="chat-settings-button" aria-label="Conversation settings"
-          aria-expanded={settingsOpen} onClick={() => setSettingsOpen((open) => !open)}>•••</button>
+          title="Conversation settings" aria-expanded={settingsOpen}
+          onClick={() => setSettingsOpen((open) => !open)}><Ellipsis aria-hidden="true" /></button>
         {settingsOpen && <div className="chat-settings-menu">
           <label className="chat-session-setting"><span>Streaming Replies
             <small>Show replies as they are generated.</small></span>
@@ -401,52 +428,62 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       </div>}
       <form
         className="chat-composer"
+        ref={composerBar}
         onSubmit={(e) => {
           e.preventDefault();
           void send();
         }}
       >
-        <label className="chat-input-label" htmlFor="chat-input">
-          Message
-        </label>
-        <textarea
-          id="chat-input"
-          ref={composer}
-          rows={2}
-          maxLength={12000}
-          value={draft}
-          disabled={!session || !!loadError}
-          placeholder="Write a message…"
-          onChange={(e) => setDraft(e.target.value)}
-        />
+        <button type="button" className="chat-composer-icon chat-composer-plus"
+          aria-label="More message options" title="More message options">
+          <Plus aria-hidden="true" />
+        </button>
+        <div className="chat-input-shell">
+          <label className="chat-input-label" htmlFor="chat-input">Message</label>
+          <textarea
+            id="chat-input"
+            ref={composer}
+            rows={1}
+            maxLength={12000}
+            value={draft}
+            disabled={!session || !!loadError}
+            placeholder="Message…"
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <span className="chat-voice-slot" aria-hidden="true" />
+        </div>
         <div className="chat-composer-actions">
-          <button
-            type="submit"
-            onPointerDown={(e) => e.preventDefault()}
-            disabled={!session || sending || !draft.trim() || !!loadError}
-          >
-            Send
-          </button>
           {generating || revealState?.pending ? (
-            <button
-              type="button"
+            <button type="button" className="chat-composer-icon" aria-label="Stop reply" title="Stop reply"
               onClick={() => {
                 revealQueue.cancel();
                 if (session) chatEngine.stop(session.id);
-              }}
-            >
-              Stop reply
+              }}>
+              <Square aria-hidden="true" />
             </button>
-          ) : (
+          ) : session?.autoReplyOnKeyboardDismiss !== true ? (
             <button
               type="button"
+              className="chat-composer-icon chat-request-reply"
+              aria-label="Request Reply"
+              title="Request Reply"
               onPointerDown={(e) => e.preventDefault()}
               disabled={!session || (!pending && !draft.trim()) || sending || !!loadError}
               onClick={() => void reply()}
             >
-              Request Reply
+              <Sparkles aria-hidden="true" />
             </button>
-          )}
+          ) : null}
+          <button
+            type="submit"
+            className="chat-composer-icon chat-send"
+            aria-label="Send"
+            title="Send"
+            onPointerDown={(e) => e.preventDefault()}
+            disabled={!session || sending || !draft.trim() || !!loadError}
+          >
+            <SendHorizontal aria-hidden="true" />
+          </button>
         </div>
       </form>
       {activeMessage && <>

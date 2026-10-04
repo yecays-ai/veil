@@ -1,6 +1,6 @@
 import type { ChatMessage } from "./types";
 
-export const CHAT_TIMESTAMP_GAP_MS = 3 * 60 * 1000;
+export const CHAT_TIMESTAMP_GAP_MS = 15 * 60 * 1000;
 
 export function bubbleDelayMs(content: string) {
   return Math.min(2400, Math.max(600, 450 + Array.from(content).length * 15));

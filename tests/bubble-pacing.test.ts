@@ -88,14 +88,14 @@ test("streaming bypasses reveal; awaiting OFF hides previews without hiding know
   assert.equal(hiddenForReveal(message("new"), queue.getSnapshot()), false);
 });
 
-test("timestamp grouping uses adjacent visible messages, inclusive three-minute boundary", () => {
-  const rows = [message("a"), { ...message("b", "user", 179999), role: "user" as const },
-    message("c", "reply", 180000), message("d", "reply", 360000), message("e", "reply", 360000)];
+test("timestamp grouping uses adjacent visible messages, inclusive fifteen-minute boundary", () => {
+  const rows = [message("a"), { ...message("b", "user", 899999), role: "user" as const },
+    message("c", "reply", 900000), message("d", "reply", 1800000), message("e", "reply", 1800000)];
   const before = structuredClone(rows);
   assert.deepEqual(groupVisibleMessages(rows).map((row) => row.showTimestamp), [true, false, false, true, false]);
   assert.deepEqual(rows, before);
-  const hidden = message("hidden", "hidden", 120000);
-  const visible = [rows[0], hidden, message("later", "later", 180000)].filter((row) => row.id !== "hidden");
+  const hidden = message("hidden", "hidden", 600000);
+  const visible = [rows[0], hidden, message("later", "later", 900000)].filter((row) => row.id !== "hidden");
   assert.deepEqual(groupVisibleMessages(visible).map((row) => row.showTimestamp), [true, true]);
   const continuous = Array.from({ length: 40 }, (_, i) => message(String(i), "chat", i * 60000));
   assert.equal(groupVisibleMessages(continuous).filter((row) => row.showTimestamp).length, 1);
