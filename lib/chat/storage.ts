@@ -7,10 +7,40 @@ import {
   type ChatSession,
   type ReplyBatch,
 } from "./types";
+import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
 export const CHAT_DATABASE_VERSION = 1;
 const STORES = ["sessions", "messages", "apiConfigs"];
+
+function backupSession(session: ChatSession): BackupSession {
+  return {
+    id: session.id,
+    characterId: session.characterId,
+    updatedAt: session.updatedAt,
+    ...(session.lastMessageId ? { lastMessageId: session.lastMessageId } : {}),
+    ...(session.lastMessagePreview
+      ? { lastMessagePreview: session.lastMessagePreview }
+      : {}),
+    remark: session.remark,
+    autoReplyOnKeyboardDismiss: session.autoReplyOnKeyboardDismiss,
+    nextOrder: session.nextOrder,
+  };
+}
+
+function backupMessage(message: ChatMessage): BackupMessage {
+  return {
+    id: message.id,
+    sessionId: message.sessionId,
+    role: message.role,
+    content: message.content,
+    status: message.status,
+    createdAt: message.createdAt,
+    order: message.order,
+    ...(message.requestedBy ? { requestedBy: message.requestedBy } : {}),
+    ...(message.error ? { error: message.error } : {}),
+  };
+}
 
 function storeForUpgrade(
   db: IDBDatabase,
@@ -151,6 +181,36 @@ export class ChatStorage {
     return this.transaction("readonly", (tx) =>
       request(tx.objectStore("sessions").getAll()),
     );
+  }
+  async exportBackup(): Promise<BackupChat> {
+    const db = await this.open();
+    // API configuration and keys are intentionally outside this transaction.
+    const tx = db.transaction(["sessions", "messages"], "readonly");
+    const done = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () =>
+        reject(new Error("Chat storage could not be read for backup."));
+    });
+    try {
+      const [sessions, messages] = await Promise.all([
+        request(tx.objectStore("sessions").getAll()),
+        request(tx.objectStore("messages").getAll()),
+      ]);
+      await done;
+      return {
+        version: 1,
+        sessions: sessions.map(backupSession),
+        messages: messages.map(backupMessage),
+      };
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        /* Already completed/aborted. */
+      }
+      await done.catch(() => {});
+      throw error;
+    }
   }
   openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)
