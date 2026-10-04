@@ -8,6 +8,10 @@ export interface FoundationStorage {
   load(): Promise<FoundationDocument>;
   hasStoredDocument(): Promise<boolean>;
   replaceIfEmpty(document: FoundationDocument): Promise<FoundationDocument>;
+  replace(document: FoundationDocument): Promise<FoundationDocument>;
+  readRaw(): Promise<string | null>;
+  replaceIfCurrent(expected: string | null, document: FoundationDocument): Promise<string>;
+  rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
   transact(
     update: (document: FoundationDocument) => FoundationDocument,
   ): Promise<FoundationDocument>;
@@ -15,6 +19,7 @@ export interface FoundationStorage {
 export interface StringStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 const KEY = "veil.foundation.v1";
 export function createFoundationStorage(
@@ -37,6 +42,9 @@ export function createFoundationStorage(
     async hasStoredDocument() {
       return getStorage().getItem(KEY) !== null;
     },
+    async readRaw() {
+      return getStorage().getItem(KEY);
+    },
     replaceIfEmpty(document) {
       const operation = queue.then(async () => {
         // Check the raw key at write time: a deliberately saved default is not
@@ -55,6 +63,47 @@ export function createFoundationStorage(
         () => {},
         () => {},
       );
+      return operation;
+    },
+    replace(document) {
+      const operation = queue.then(async () => {
+        const next = normalizeFoundation(document);
+        try {
+          getStorage().setItem(KEY, JSON.stringify(next));
+        } catch {
+          throw new Error("Could not replace profile data. Browser storage may be unavailable.");
+        }
+        return next;
+      });
+      queue = operation.then(
+        () => {},
+        () => {},
+      );
+      return operation;
+    },
+    replaceIfCurrent(expected, document) {
+      const operation = queue.then(async () => {
+        if (getStorage().getItem(KEY) !== expected)
+          throw new Error("Profile data changed while restore was being prepared.");
+        const raw = JSON.stringify(normalizeFoundation(document));
+        getStorage().setItem(KEY, raw);
+        return raw;
+      });
+      queue = operation.then(() => {}, () => {});
+      return operation;
+    },
+    rollbackIfCurrent(expected, previous) {
+      const operation = queue.then(async () => {
+        if (getStorage().getItem(KEY) !== expected) return false;
+        if (previous === null) {
+          const storage = getStorage();
+          if (!storage.removeItem)
+            throw new Error("Profile rollback is unavailable for this storage.");
+          storage.removeItem(KEY);
+        } else getStorage().setItem(KEY, previous);
+        return true;
+      });
+      queue = operation.then(() => {}, () => {});
       return operation;
     },
     transact(update) {

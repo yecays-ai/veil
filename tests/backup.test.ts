@@ -4,8 +4,11 @@ import { IDBFactory } from "fake-indexeddb";
 import { exportBackupV1 } from "../lib/backup/export";
 import {
   parseBackupV1,
+  isOverwriteConfirmationValid,
+  overwriteRestoreBackupV1,
   restoreBackupV1,
   type RestoreSources,
+  type OverwriteRestoreSources,
 } from "../lib/backup/import";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupSources } from "../lib/backup/types";
 import { validateBackupV1 } from "../lib/backup/validate";
@@ -247,4 +250,60 @@ test("ChatStorage restore writes only sessions and messages, retaining API confi
   assert.equal((await storage.readSession("character:a")).messages[0].content, "hello");
   assert.equal((await storage.getApiConfig("api"))?.apiKey, "keep-this-key");
   await assert.rejects(() => storage.importBackup(chat()), /no longer empty/);
+});
+
+test("overwrite restore replaces all backup sections while retaining API configuration", async () => {
+  const factory = new IDBFactory();
+  const storage = new ChatStorage(() => factory);
+  const original = await storage.openSession("old");
+  await storage.send(original.id, "old message");
+  await storage.saveApiConfig({
+    id: "api",
+    baseUrl: "https://provider.example/v1",
+    apiKey: "keep-this-key",
+    model: "model",
+  });
+  const expected = await storage.exportBackup();
+  await storage.replaceBackup(expected, chat());
+  assert.equal((await storage.readSession("character:a")).messages[0].content, "hello");
+  assert.equal((await storage.getApiConfig("api"))?.apiKey, "keep-this-key");
+});
+
+test("overwrite restore rolls back earlier stores when a later replacement fails", async () => {
+  const { backup } = await exportBackupV1(sources());
+  let foundation = "before-foundation";
+  const source: OverwriteRestoreSources = {
+    foundation: {
+      readRaw: async () => foundation,
+      replaceIfCurrent: async (expected) => {
+        assert.equal(expected, "before-foundation");
+        foundation = "backup-foundation";
+        return foundation;
+      },
+      rollbackIfCurrent: async (expected, previous) => {
+        if (foundation !== expected) return false;
+        foundation = previous ?? "";
+        return true;
+      },
+    },
+    theme: {
+      readRaw: async () => "before-theme",
+      replaceIfCurrent: async () => {
+        throw new Error("theme write failed");
+      },
+      rollbackIfCurrent: async () => true,
+    },
+    chat: {
+      exportBackup: async () => ({ version: 1, sessions: [], messages: [] }),
+      replaceBackup: async () => assert.fail("chat replacement must not run"),
+    },
+  };
+  await assert.rejects(() => overwriteRestoreBackupV1(backup, source), /Previous data was restored/);
+  assert.equal(foundation, "before-foundation");
+});
+
+test("overwrite restore confirmation requires an exact RESTORE token", () => {
+  assert.equal(isOverwriteConfirmationValid("RESTORE"), true);
+  assert.equal(isOverwriteConfirmationValid("restore"), false);
+  assert.equal(isOverwriteConfirmationValid(" RESTORE"), false);
 });

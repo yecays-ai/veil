@@ -42,6 +42,20 @@ function backupMessage(message: ChatMessage): BackupMessage {
   };
 }
 
+function sameBackupChat(a: BackupChat, b: BackupChat) {
+  const sort = (chat: BackupChat) => ({
+    version: 1,
+    sessions: [...chat.sessions].sort((x, y) => x.id.localeCompare(y.id)),
+    messages: [...chat.messages].sort(
+      (x, y) =>
+        x.sessionId.localeCompare(y.sessionId) ||
+        x.order - y.order ||
+        x.id.localeCompare(y.id),
+    ),
+  });
+  return JSON.stringify(sort(a)) === JSON.stringify(sort(b));
+}
+
 function storeForUpgrade(
   db: IDBDatabase,
   transaction: IDBTransaction,
@@ -231,6 +245,48 @@ export class ChatStorage {
       ]);
       if (sessionCount || messageCount)
         throw new Error("Chat data is no longer empty. Restore was not applied.");
+      for (const session of backup.sessions) await request(sessions.add(session));
+      for (const message of backup.messages) await request(messages.add(message));
+      await done;
+      this.notify();
+    } catch (error) {
+      try {
+        tx.abort();
+      } catch {
+        /* Already completed/aborted. */
+      }
+      await done.catch(() => {});
+      throw error;
+    }
+  }
+  async replaceBackup(expectedCurrent: BackupChat, backup: BackupChat): Promise<void> {
+    const db = await this.open();
+    // Keep credentials out of both the replacement and its rollback snapshot.
+    const tx = db.transaction(["sessions", "messages"], "readwrite");
+    const done = new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onabort = tx.onerror = () =>
+        reject(new Error("Chat backup could not replace existing conversations."));
+    });
+    try {
+      const sessions = tx.objectStore("sessions");
+      const messages = tx.objectStore("messages");
+      const [currentSessions, currentMessages] = await Promise.all([
+        request(sessions.getAll()),
+        request(messages.getAll()),
+      ]);
+      if (
+        !sameBackupChat(
+          {
+            version: 1,
+            sessions: currentSessions.map(backupSession),
+            messages: currentMessages.map(backupMessage),
+          },
+          expectedCurrent,
+        )
+      )
+        throw new Error("Chat data changed while restore was being prepared.");
+      await Promise.all([request(sessions.clear()), request(messages.clear())]);
       for (const session of backup.sessions) await request(sessions.add(session));
       for (const message of backup.messages) await request(messages.add(message));
       await done;

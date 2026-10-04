@@ -82,6 +82,104 @@ const browserRestoreSources: RestoreSources = {
   chat: chatStorage,
 };
 
+export type OverwriteRestoreSources = {
+  foundation: {
+    readRaw(): Promise<string | null>;
+    replaceIfCurrent(
+      expected: string | null,
+      document: ReturnType<typeof normalizeFoundation>,
+    ): Promise<string>;
+    rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
+  };
+  theme: {
+    readRaw(): Promise<string | null>;
+    replaceIfCurrent(
+      expected: string | null,
+      document: ReturnType<typeof normalizeDocument>,
+    ): Promise<string>;
+    rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
+  };
+  chat: {
+    exportBackup(): Promise<BackupChat>;
+    replaceBackup(expected: BackupChat, backup: BackupChat): Promise<void>;
+  };
+};
+
+const browserOverwriteSources: OverwriteRestoreSources = {
+  foundation: browserFoundationStorage,
+  theme: browserThemeStorage,
+  chat: chatStorage,
+};
+
+export async function requiresOverwriteRestore(
+  sources: Pick<OverwriteRestoreSources, "foundation" | "theme" | "chat"> =
+    browserOverwriteSources,
+): Promise<boolean> {
+  const [foundation, theme, chat] = await Promise.all([
+    sources.foundation.readRaw(),
+    sources.theme.readRaw(),
+    sources.chat.exportBackup(),
+  ]);
+  return foundation !== null || theme !== null || !!chat.sessions.length || !!chat.messages.length;
+}
+
+export function isOverwriteConfirmationValid(value: string): boolean {
+  return value === "RESTORE";
+}
+
+export async function overwriteRestoreBackupV1(
+  backup: BackupV1,
+  sources: OverwriteRestoreSources = browserOverwriteSources,
+): Promise<void> {
+  const safeBackup = validateBackupV1(backup);
+  const [foundationBefore, themeBefore, chatBefore] = await Promise.all([
+    sources.foundation.readRaw(),
+    sources.theme.readRaw(),
+    sources.chat.exportBackup(),
+  ]);
+  let foundationTarget: string | undefined;
+  let themeTarget: string | undefined;
+  try {
+    foundationTarget = await sources.foundation.replaceIfCurrent(
+      foundationBefore,
+      normalizeFoundation(safeBackup.foundation),
+    );
+    themeTarget = await sources.theme.replaceIfCurrent(
+      themeBefore,
+      normalizeDocument(safeBackup.theme),
+    );
+    await sources.chat.replaceBackup(chatBefore, safeBackup.chat);
+  } catch (error) {
+    const rollbackErrors: string[] = [];
+    if (themeTarget) {
+      try {
+        if (!(await sources.theme.rollbackIfCurrent(themeTarget, themeBefore)))
+          rollbackErrors.push("appearance changed before rollback");
+      } catch {
+        rollbackErrors.push("appearance rollback failed");
+      }
+    }
+    if (foundationTarget) {
+      try {
+        if (
+          !(await sources.foundation.rollbackIfCurrent(
+            foundationTarget,
+            foundationBefore,
+          ))
+        )
+          rollbackErrors.push("profile data changed before rollback");
+      } catch {
+        rollbackErrors.push("profile rollback failed");
+      }
+    }
+    const message = error instanceof Error ? error.message : "Restore could not be completed.";
+    const rollback = rollbackErrors.length
+      ? ` Rollback was incomplete: ${rollbackErrors.join(", ")}.`
+      : " Previous data was restored.";
+    throw new Error(`${message}${rollback} Reload VEIL before trying again.`);
+  }
+}
+
 export async function restoreBackupV1(
   backup: BackupV1,
   sources: RestoreSources = browserRestoreSources,
