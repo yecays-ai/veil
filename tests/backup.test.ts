@@ -78,7 +78,16 @@ test("Preset edits are exported and restored while generated defaults remain an 
   assert.deepEqual(backup.preset.activePreset.prompts.find((entry) =>
     entry.identifier === "response-directive"), directive);
   const target = restoreSources();
-  await target.preset.replaceIfCurrent(null, createPresetDocument());
+  const legacyDefault = structuredClone(createPresetDocument()) as unknown as {
+    version: number;
+    activePreset: ReturnType<typeof createPresetDocument>["activePreset"];
+  };
+  legacyDefault.version = 1;
+  legacyDefault.activePreset.prompts = legacyDefault.activePreset.prompts.filter((entry) =>
+    entry.identifier !== "chat_output_format");
+  legacyDefault.activePreset.promptOrder = legacyDefault.activePreset.promptOrder.filter((entry) =>
+    entry.identifier !== "chat_output_format");
+  await target.preset.replaceIfCurrent(null, legacyDefault as never);
   assert.equal(await requiresOverwriteRestore(target), false);
   await restoreBackupV1(backup, target);
   assert.deepEqual(JSON.parse((await target.preset.readRaw())!), preset);

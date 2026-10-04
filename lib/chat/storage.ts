@@ -9,6 +9,7 @@ import {
 } from "./types";
 import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
 import { sameBackupChat } from "../backup/equality";
+import { splitAssistantReply } from "./reply-splitter";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
 export const CHAT_DATABASE_VERSION = 1;
@@ -381,6 +382,52 @@ export class ChatStorage {
         );
       }
       return next;
+    });
+  }
+  finalizeReply(id: string, content: string): Promise<ChatMessage[]> {
+    const parts = splitAssistantReply(content);
+    if (!parts.length)
+      return Promise.reject(new Error("The API returned no reply text."));
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const existing: ChatMessage | undefined = await request(table.get(id));
+      if (!existing || existing.role !== "assistant")
+        throw new Error("Reply not found.");
+      if (existing.status !== "streaming") return [existing];
+      const sessionTable = tx.objectStore("sessions");
+      const session: ChatSession = await request(sessionTable.get(existing.sessionId));
+      const later: ChatMessage[] = (await request<ChatMessage[]>(
+        table.index("sessionId").getAll(existing.sessionId),
+      )).filter((message) => message.order > existing.order);
+      const extra = parts.length - 1;
+      for (const message of later)
+        await request(table.put({ ...message, order: message.order + extra }));
+      const completed: ChatMessage[] = [{ ...existing, content: parts[0], status: "complete" }];
+      await request(table.put(completed[0]));
+      for (let index = 1; index < parts.length; index++) {
+        const message: ChatMessage = {
+          id: crypto.randomUUID(),
+          sessionId: existing.sessionId,
+          role: "assistant",
+          content: parts[index],
+          status: "complete",
+          createdAt: existing.createdAt,
+          order: existing.order + index,
+        };
+        await request(table.add(message));
+        completed.push(message);
+      }
+      const final = completed.at(-1)!;
+      await request(sessionTable.put({
+        ...session,
+        nextOrder: session.nextOrder + extra,
+        ...(session.lastMessageId === id ? {
+          updatedAt: Date.now(),
+          lastMessageId: final.id,
+          lastMessagePreview: final.content.slice(0, 120),
+        } : {}),
+      }));
+      return completed;
     });
   }
   getApiConfig(id = DEFAULT_API_CONFIG_ID): Promise<ApiConfig | undefined> {

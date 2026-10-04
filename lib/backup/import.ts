@@ -2,7 +2,7 @@ import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
 import { browserPresetStorage } from "../preset-storage";
-import { createPresetDocument } from "../preset";
+import { createPresetDocument, validatePresetDocument } from "../preset";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupV1 } from "./types";
 import { validateBackupV1 } from "./validate";
 import { sameBackupChat, stableJson } from "./equality";
@@ -32,10 +32,16 @@ const snapshot = (sources: RestoreSources) => Promise.all([
   sources.foundation.readRaw(), sources.theme.readRaw(), sources.preset.readRaw(),
   sources.chat.exportBackup(),
 ]);
-function replacement<T>(store: RestoreDocument<T>, before: string | null, next: T, empty?: T) {
+function replacement<T>(
+  store: RestoreDocument<T>,
+  before: string | null,
+  next: T,
+  empty?: T,
+  normalize: (value: unknown) => unknown = (value) => value,
+) {
   return {
-    matches: () => before === null || stableJson(JSON.parse(before)) === stableJson(next) ||
-      (empty !== undefined && stableJson(JSON.parse(before)) === stableJson(empty)),
+    matches: () => before === null || stableJson(normalize(JSON.parse(before))) === stableJson(next) ||
+      (empty !== undefined && stableJson(normalize(JSON.parse(before))) === stableJson(empty)),
     async apply() {
       const target = await store.replaceIfCurrent(before, next);
       return () => store.rollbackIfCurrent(target, before);
@@ -54,8 +60,8 @@ export async function requiresOverwriteRestore(sources = browserSources) {
   const [foundation, theme, preset, chat] = await snapshot(sources);
   let customPreset = false;
   try {
-    customPreset = preset !== null &&
-      stableJson(JSON.parse(preset)) !== stableJson(createPresetDocument());
+    customPreset = preset !== null && stableJson(validatePresetDocument(JSON.parse(preset))) !==
+      stableJson(createPresetDocument());
   } catch { customPreset = true; }
   return foundation !== null || theme !== null || customPreset ||
     !!chat.sessions.length || !!chat.messages.length;
@@ -71,7 +77,7 @@ export async function restoreBackupV1(
   const documents = [
     replacement(sources.foundation, foundation, safe.foundation),
     replacement(sources.theme, theme, safe.theme),
-    replacement(sources.preset, preset, safe.preset, createPresetDocument()),
+    replacement(sources.preset, preset, safe.preset, createPresetDocument(), validatePresetDocument),
   ];
   if (!overwrite && (
     documents.some(({ matches }) => !matches()) ||

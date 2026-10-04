@@ -18,7 +18,12 @@ export function createPresetStorage(getStorage: () => StringStorage): PresetStor
   const read = () => {
     const raw = getStorage().getItem(KEY);
     if (raw === null) return null;
-    try { return validatePresetDocument(JSON.parse(raw)); }
+    try {
+      const document = validatePresetDocument(JSON.parse(raw));
+      const migrated = JSON.stringify(document);
+      if (migrated !== raw) getStorage().setItem(KEY, migrated);
+      return document;
+    }
     catch { throw new Error("Saved Preset data could not be read. Restore a valid backup to repair it."); }
   };
   return {

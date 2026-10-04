@@ -184,12 +184,78 @@ test("atomic reservation across clients cannot claim the same pending batch twic
   assert.equal((await storage.readSession(session.id)).messages.length, 2);
 });
 
+test("one streamed generation finalizes atomically as ordered assistant bubbles and history uses only parts", async () => {
+  const { storage } = create();
+  const session = await storage.openSession("a");
+  await storage.saveApiConfig(config);
+  await storage.send(session.id, "first question");
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const streaming = new Promise<void>((resolve) => { started = resolve; });
+  let calls = 0;
+  let secondPrompt: PromptTurn[] = [];
+  const engine = createChatEngine(storage, async () => foundation(), async function* (_config, prompt) {
+    calls++;
+    if (calls === 1) {
+      yield "Bugs. BUGS.\n\n";
+      started();
+      await gate;
+      yield "Lan, I'm literally the guy for this.\n\nWhat language?";
+    } else {
+      secondPrompt = prompt;
+      yield "next reply";
+    }
+  });
+  const generation = engine.requestReply(session.id);
+  await streaming;
+  const during = await storage.readSession(session.id);
+  assert.equal(during.messages.filter((message) => message.role === "assistant").length, 1);
+  assert.equal(during.messages.at(-1)?.status, "streaming");
+  await engine.send(session.id, "sent while streaming");
+  release();
+  await generation;
+  assert.equal(calls, 1);
+  const finalized = await storage.readSession(session.id);
+  const replies = finalized.messages.filter((message) => message.role === "assistant");
+  assert.deepEqual(replies.map((message) => message.content), [
+    "Bugs. BUGS.",
+    "Lan, I'm literally the guy for this.",
+    "What language?",
+  ]);
+  assert.equal(new Set(replies.map((message) => message.id)).size, 3);
+  assert.deepEqual(finalized.messages.map((message) => message.order), [1, 2, 3, 4, 5]);
+  assert.equal(finalized.messages[0].requestedBy, replies[0].id);
+  assert.equal(finalized.messages.at(-1)?.content, "sent while streaming");
+  await engine.requestReply(session.id);
+  assert.equal(calls, 2);
+  for (const part of replies)
+    assert.equal(secondPrompt.filter((turn) => turn.content === part.content).length, 1);
+  assert(!secondPrompt.some((turn) => turn.content.includes("Bugs. BUGS.\n\nLan")));
+  assert.equal(secondPrompt.filter((turn) => turn.content === "sent while streaming").length, 1);
+});
+
+test("multi-bubble finalization updates session order and preview to the last part", async () => {
+  const { storage } = create();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "question");
+  const batch = await storage.beginReply(session.id);
+  assert(batch);
+  await storage.updateReply(batch.assistant.id, { content: "one\n\ntwo", status: "streaming" });
+  const parts = await storage.finalizeReply(batch.assistant.id, "one\n\ntwo");
+  assert.equal(parts.length, 2);
+  const saved = await storage.readSession(session.id);
+  assert.equal(saved.session.nextOrder, 4);
+  assert.equal(saved.session.lastMessageId, parts[1].id);
+  assert.equal(saved.session.lastMessagePreview, "two");
+  assert.deepEqual(saved.messages.map((message) => message.content), ["question", "one", "two"]);
+});
+
 test("default prompt includes profiles and only direct relations while empty Memory is skipped", () => {
   const document = foundation();
   const prompt = assembleChatPrompt(document, document.characters[0], [], []);
   assert.deepEqual(
     prompt.sections.map((s) => s.identifier),
-    ["base", "user", "universe", "character", "relations"],
+    ["base", "user", "universe", "character", "relations", "chat_output_format"],
   );
   const text = prompt.messages[0].content;
   for (const value of [
@@ -236,7 +302,7 @@ test("context window is bounded and pending, edited or deleted content is never 
     [...history, ...pending],
     pending,
   );
-  assert.equal(prompt.messages.length, 43);
+  assert.equal(prompt.messages.length, 44);
   assert(!prompt.messages.some((m) => m.content === "turn-0"));
   assert.equal(
     prompt.messages.filter((m) => m.content === "pending one").length,
@@ -253,7 +319,7 @@ test("context window is bounded and pending, edited or deleted content is never 
       [...history, ...pending],
       [...pending, ...pending],
     ).messages.length,
-    43,
+    44,
   );
   const updated = assembleChatPrompt(
     document,
@@ -336,7 +402,7 @@ test("stop preserves streamed content and keeps the claimed batch consumed; new 
     storage,
     async () => foundation(),
     async function* (_config, _messages, signal) {
-      yield "partial";
+      yield "first part\n\nsecond part";
       streamed();
       await new Promise<void>((resolve) =>
         signal.addEventListener("abort", () => resolve(), { once: true }),
@@ -349,8 +415,9 @@ test("stop preserves streamed content and keeps the claimed batch consumed; new 
   engine.stop(session.id);
   const stopped = await generating;
   assert.equal(stopped?.status, "cancelled");
-  assert.equal(stopped?.content, "partial");
+  assert.equal(stopped?.content, "first part\n\nsecond part");
   const messages = (await storage.readSession(session.id)).messages;
+  assert.equal(messages.filter((message) => message.role === "assistant").length, 1);
   assert(messages[0].requestedBy);
   assert.equal(messages[2].requestedBy, undefined);
   assert.equal(engine.isGenerating(session.id), false);
@@ -375,6 +442,7 @@ test("API errors are visible, reserved batches are not retried, and missing conf
     async () => foundation(),
     async function* () {
       calls++;
+      yield "first part\n\nsecond part";
       throw new Error("API request failed (HTTP 401).");
     },
   );
@@ -388,6 +456,8 @@ test("API errors are visible, reserved batches are not retried, and missing conf
   );
   await storage.saveApiConfig(config);
   assert.equal((await engine.requestReply(session.id))?.status, "error");
+  assert.equal((await storage.readSession(session.id)).messages.filter(
+    (message) => message.role === "assistant").length, 1);
   assert(
     (await storage.readSession(session.id)).messages[1].error?.includes("401"),
   );

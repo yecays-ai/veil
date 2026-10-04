@@ -6,7 +6,12 @@ import { createChatEngine } from "../lib/chat/engine";
 import { ChatStorage } from "../lib/chat/storage";
 import { DEFAULT_API_CONFIG_ID, type ChatMessage, type PromptTurn } from "../lib/chat/types";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
-import { createBuiltinPreset, createPresetDocument, validatePresetDocument } from "../lib/preset";
+import {
+  CHAT_OUTPUT_FORMAT,
+  createBuiltinPreset,
+  createPresetDocument,
+  validatePresetDocument,
+} from "../lib/preset";
 import { createPresetStorage } from "../lib/preset-storage";
 
 function foundation() {
@@ -45,6 +50,48 @@ test("built-in Preset is created once, persists edits, and initialization never 
   assert.deepEqual(reloaded, document);
   assert.equal((await first.load()).activePreset.prompts.find((entry) =>
     entry.identifier === "response-directive")?.source, "prompt");
+});
+
+test("v1 Preset storage adds chat output format once without overwriting user edits", async () => {
+  const memory = memoryStorage();
+  const legacy = createPresetDocument() as unknown as { version: number; activePreset: ReturnType<typeof createBuiltinPreset> };
+  legacy.version = 1;
+  legacy.activePreset.prompts = legacy.activePreset.prompts.filter((entry) =>
+    entry.identifier !== "chat_output_format");
+  legacy.activePreset.promptOrder = legacy.activePreset.promptOrder.filter((entry) =>
+    entry.identifier !== "chat_output_format");
+  const directive = legacy.activePreset.prompts.find((entry) =>
+    entry.identifier === "response-directive")!;
+  assert(directive.source === "prompt");
+  directive.content = "My saved directive";
+  memory.storage.setItem("veil.preset.v1", JSON.stringify(legacy));
+  const store = createPresetStorage(() => memory.storage);
+  const migrated = await store.load();
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.activePreset.prompts.filter((entry) =>
+    entry.identifier === "chat_output_format").length, 1);
+  assert.equal(migrated.activePreset.prompts.find((entry) =>
+    entry.identifier === "response-directive")?.source, "prompt");
+  assert.equal((migrated.activePreset.prompts.find((entry) =>
+    entry.identifier === "response-directive") as { content: string }).content,
+  "My saved directive");
+  assert(migrated.activePreset.promptOrder.findIndex((entry) =>
+    entry.identifier === "history") < migrated.activePreset.promptOrder.findIndex((entry) =>
+    entry.identifier === "chat_output_format"));
+  assert(migrated.activePreset.promptOrder.findIndex((entry) =>
+    entry.identifier === "chat_output_format") < migrated.activePreset.promptOrder.findIndex((entry) =>
+    entry.identifier === "response-directive"));
+  assert.deepEqual(await store.load(), migrated);
+});
+
+test("default chat output format contains only the text multi-bubble protocol", () => {
+  const preset = createBuiltinPreset();
+  const format = preset.prompts.find((entry) => entry.identifier === "chat_output_format");
+  assert(format?.source === "prompt");
+  assert.equal(format.content, CHAT_OUTPUT_FORMAT);
+  assert(format.content.includes("one blank line"));
+  for (const excluded of ["red packet", "transfer", "voice call", "group chat", "sticker"])
+    assert(!format.content.toLowerCase().includes(excluded));
 });
 
 test("Preset schema separates ordinary content from runtime markers", () => {

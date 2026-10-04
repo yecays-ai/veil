@@ -85,10 +85,7 @@ export function createChatEngine(
         }
         controller.signal.throwIfAborted();
         if (!content.trim()) throw new Error("The API returned no reply text.");
-        return await storage.updateReply(assistant.id, {
-          content,
-          status: "complete",
-        });
+        return (await storage.finalizeReply(assistant.id, content))[0];
       } catch (error) {
         if (!assistant) {
           if (controller.signal.aborted) return null;
