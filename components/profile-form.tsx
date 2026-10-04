@@ -1,12 +1,8 @@
 "use client";
 
 import {
-  useEffect,
-  useId,
-  useMemo,
   useState,
   type FormEvent,
-  type KeyboardEvent,
 } from "react";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import {
@@ -16,157 +12,9 @@ import {
 } from "../lib/foundation-types";
 import { AvatarEditor } from "./avatar-editor";
 import { UI_COPY as U } from "../lib/ui-copy";
-import {
-  getDeviceTimezone,
-  getTimezoneOptions,
-} from "../lib/participant-config";
-import { timezoneLabel } from "../lib/timezone-label";
+import { TIMEZONE_OFFSET_OPTIONS, timezoneLabel } from "../lib/timezone-label";
 
 type Input = UserProfile | CharacterInput;
-
-function TimezoneField({
-  value,
-  savedTimezone,
-  onChange,
-}: {
-  value: string;
-  savedTimezone: string | null;
-  onChange: (value: string) => void;
-}) {
-  const id = useId();
-  const listId = `${id}-options`;
-  const [query, setQuery] = useState("");
-  const [deviceTimezone, setDeviceTimezone] = useState<string | null>(null);
-  const [options, setOptions] = useState<string[]>([]);
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
-
-  useEffect(() => {
-    const device = getDeviceTimezone();
-    setDeviceTimezone(device);
-    setOptions(getTimezoneOptions(savedTimezone, device));
-  }, [savedTimezone]);
-  const labeledOptions = useMemo(
-    () => options.map((zone) => ({ zone, label: timezoneLabel(zone) })),
-    [options],
-  );
-  const selectedLabel = value ? timezoneLabel(value) : U.deviceTimezone;
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const filteredOptions = labeledOptions.filter(({ zone, label }) =>
-    `${label} ${zone}`.toLocaleLowerCase().replaceAll("−", "-")
-      .includes(normalizedQuery.replaceAll("−", "-")),
-  );
-
-  function selectTimezone(zone: string) {
-    setQuery("");
-    onChange(zone);
-    setOpen(false);
-    setActiveIndex(-1);
-  }
-
-  function keyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "ArrowDown" && filteredOptions.length) {
-      event.preventDefault();
-      setOpen(true);
-      setActiveIndex((index) =>
-        index < 0 ? 0 : Math.min(index + 1, filteredOptions.length - 1),
-      );
-    } else if (event.key === "ArrowUp" && filteredOptions.length) {
-      event.preventDefault();
-      setOpen(true);
-      setActiveIndex((index) =>
-        index < 0 ? 0 : Math.max(index - 1, 0),
-      );
-    } else if (
-      event.key === "Enter" &&
-      open &&
-      activeIndex >= 0 &&
-      filteredOptions[activeIndex]
-    ) {
-      event.preventDefault();
-      selectTimezone(filteredOptions[activeIndex].zone);
-    } else if (event.key === "Escape") {
-      setOpen(false);
-      setActiveIndex(-1);
-    }
-  }
-
-  return (
-    <div className="timezone-picker">
-      <label htmlFor={id}>{C.fields.timezone}</label>
-      <div className="timezone-combobox">
-        <input
-          id={id}
-          type="text"
-          role="combobox"
-          aria-autocomplete="list"
-          aria-haspopup="listbox"
-          aria-expanded={open && filteredOptions.length > 0}
-          aria-controls={listId}
-          aria-activedescendant={
-            open && activeIndex >= 0
-              ? `${listId}-${activeIndex}`
-              : undefined
-          }
-          autoComplete="off"
-          maxLength={100}
-          value={open ? query : selectedLabel}
-          onFocus={() => {
-            setQuery("");
-            setOpen(true);
-          }}
-          onBlur={() =>
-            window.setTimeout(() => {
-              setOpen(false);
-              setActiveIndex(-1);
-            }, 120)
-          }
-          onKeyDown={keyDown}
-          onChange={(event) => {
-            setQuery(event.target.value);
-            setActiveIndex(-1);
-            setOpen(true);
-          }}
-        />
-        <ul
-          className="timezone-options"
-          id={listId}
-          role="listbox"
-          aria-label={C.fields.timezone}
-          hidden={!open || filteredOptions.length === 0}
-        >
-          {filteredOptions.map(({ zone, label }, index) => (
-            <li
-              className="timezone-option"
-              id={`${listId}-${index}`}
-              key={zone}
-              role="option"
-              aria-selected={zone === value}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectTimezone(zone)}
-            >
-              <span>{label}</span>{" "}
-              <small>{zone}</small>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <small>
-        {deviceTimezone
-          ? U.deviceTimezoneValue(timezoneLabel(deviceTimezone))
-          : U.deviceTimezoneUnavailable}
-      </small>
-      <button
-        className="text-button timezone-use-device"
-        type="button"
-        disabled={!value && !query}
-        onClick={() => selectTimezone("")}
-      >
-        {U.useDeviceTimezone}
-      </button>
-    </div>
-  );
-}
 
 export function ProfileForm({
   initial,
@@ -291,11 +139,25 @@ export function ProfileForm({
             onChange={(e) => setLocation(e.target.value)}
           />
         </label>
-        <TimezoneField
-          value={draft.timezone ?? ""}
-          savedTimezone={initial.timezone}
-          onChange={(value) => text("timezone", value)}
-        />
+        <label>
+          {C.fields.timezone}
+          <select
+            value={draft.timezone ?? ""}
+            onChange={(event) => text("timezone", event.target.value)}
+          >
+            <option value="">{U.useDeviceTimezone}</option>
+            {draft.timezone && !TIMEZONE_OFFSET_OPTIONS.some(
+              (option) => option.timezone === draft.timezone,
+            ) && (
+              <option value={draft.timezone}>
+                {timezoneLabel(draft.timezone)}
+              </option>
+            )}
+            {TIMEZONE_OFFSET_OPTIONS.map(({ timezone, label }) => (
+              <option key={timezone} value={timezone}>{label}</option>
+            ))}
+          </select>
+        </label>
         <datalist id="gender-options">
           {U.genderSuggestions.map((value) => (
             <option key={value} value={value} />

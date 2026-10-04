@@ -52,7 +52,6 @@ export function ProfileView({
     "age",
     "occupation",
     "location",
-    "timezone",
   ] as const;
   const value = (key: keyof ProfileBasics) =>
     key === "location" ? profile.location?.label : profile[key];
