@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cropGeometry } from "../lib/avatar-crop";
+import {
+  cropGeometry,
+  rectangularCropGeometry,
+} from "../lib/avatar-crop";
 
 test("square crop covers portrait/landscape images and clamps dragged edges", () => {
   for (const [width, height] of [
@@ -28,4 +31,25 @@ test("reposition and zoom change the exported composition", () => {
   assert.equal(left.source.x, 0);
   const zoomed = cropGeometry(800, 400, 240, 2, { x: 0, y: 0 });
   assert.equal(zoomed.source.size, centered.source.size / 2);
+});
+
+test("rectangular crops cover portrait and wide upload targets", () => {
+  for (const [viewportWidth, viewportHeight] of [
+    [180, 280],
+    [240, 96],
+  ]) {
+    const crop = rectangularCropGeometry(
+      1600,
+      900,
+      viewportWidth,
+      viewportHeight,
+      1.5,
+      { x: 10000, y: -10000 },
+    );
+    assert(crop.source.x >= -1e-8 && crop.source.y >= -1e-8);
+    assert(crop.source.x + crop.source.width <= 1600 + 1e-8);
+    assert(crop.source.y + crop.source.height <= 900 + 1e-8);
+    assert(crop.scale * 1600 >= viewportWidth);
+    assert(crop.scale * 900 >= viewportHeight);
+  }
 });
