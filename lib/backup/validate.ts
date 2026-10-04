@@ -8,6 +8,7 @@ import {
   type BackupSession,
   type BackupV1,
 } from "./types";
+import { stableJson } from "./equality";
 
 const roles = new Set(["user", "assistant", "system"]);
 const statuses = new Set(["sent", "streaming", "complete", "cancelled", "error"]);
@@ -18,18 +19,6 @@ const record = (value: unknown): Record<string, unknown> =>
 const text = (value: unknown) => typeof value === "string" && !!value;
 const integer = (value: unknown) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
-
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") {
-    const item = value as Record<string, unknown>;
-    return `{${Object.keys(item)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(item[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "undefined";
-}
 
 function validSession(session: BackupSession) {
   return (
@@ -143,8 +132,8 @@ export function validateBackupV1(value: unknown): BackupV1 {
   const foundation: FoundationDocument = normalizeFoundation(backup.foundation);
   const theme: ThemeDocument = normalizeDocument(backup.theme);
   if (
-    canonical(backup.foundation) !== canonical(foundation) ||
-    canonical(backup.theme) !== canonical(theme)
+    stableJson(backup.foundation) !== stableJson(foundation) ||
+    stableJson(backup.theme) !== stableJson(theme)
   )
     throw new Error("Backup contains invalid profile or appearance data.");
   return {

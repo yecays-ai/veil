@@ -9,6 +9,7 @@ import {
   type BackupV1,
 } from "./types";
 import { validateBackupV1 } from "./validate";
+import { stableJson } from "./equality";
 
 const browserSources: BackupSources = {
   foundation: browserFoundationStorage,
@@ -17,18 +18,6 @@ const browserSources: BackupSources = {
 };
 
 export type ExportedBackup = { backup: BackupV1; json: string };
-
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value);
-}
 
 export async function exportBackupV1(
   sources: BackupSources = browserSources,
@@ -45,8 +34,8 @@ export async function exportBackupV1(
       sources.theme.load(),
     ]);
     if (
-      canonical(foundationA) !== canonical(foundationB) ||
-      canonical(themeA) !== canonical(themeB)
+      stableJson(foundationA) !== stableJson(foundationB) ||
+      stableJson(themeA) !== stableJson(themeB)
     )
       continue;
     const backup = validateBackupV1({

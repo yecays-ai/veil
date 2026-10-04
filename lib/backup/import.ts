@@ -5,6 +5,7 @@ import { normalizeFoundation } from "../foundation-types";
 import { normalizeDocument } from "../theme-types";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupV1 } from "./types";
 import { validateBackupV1 } from "./validate";
+import { sameBackupChat, stableJson } from "./equality";
 
 export type BackupSummary = {
   exportedAt: string;
@@ -34,32 +35,6 @@ export function summarizeBackupV1(backup: BackupV1): BackupSummary {
     messages: backup.chat.messages.length,
     note: "Text API configurations and API keys are not included.",
   };
-}
-
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${canonical(record[key])}`)
-      .join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "undefined";
-}
-
-function sameChat(a: BackupChat, b: BackupChat) {
-  const sort = (chat: BackupChat) => ({
-    ...chat,
-    sessions: [...chat.sessions].sort((x, y) => x.id.localeCompare(y.id)),
-    messages: [...chat.messages].sort(
-      (x, y) =>
-        x.sessionId.localeCompare(y.sessionId) ||
-        x.order - y.order ||
-        x.id.localeCompare(y.id),
-    ),
-  });
-  return canonical(sort(a)) === canonical(sort(b));
 }
 
 export type RestoreSources = {
@@ -195,9 +170,9 @@ export async function restoreBackupV1(
     ]);
   const foundation = normalizeFoundation(safeBackup.foundation);
   const theme = normalizeDocument(safeBackup.theme);
-  const foundationMatches = canonical(normalizeFoundation(currentFoundation)) === canonical(foundation);
-  const themeMatches = canonical(normalizeDocument(currentTheme)) === canonical(theme);
-  const chatMatches = sameChat(currentChat, safeBackup.chat);
+  const foundationMatches = stableJson(normalizeFoundation(currentFoundation)) === stableJson(foundation);
+  const themeMatches = stableJson(normalizeDocument(currentTheme)) === stableJson(theme);
+  const chatMatches = sameBackupChat(currentChat, safeBackup.chat);
   if (
     (foundationStored && !foundationMatches) ||
     (themeStored && !themeMatches) ||

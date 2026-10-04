@@ -6,7 +6,6 @@ export interface ThemeStorage {
   hasStoredDocument(): Promise<boolean>;
   save(document: ThemeDocument): Promise<void>;
   saveIfEmpty(document: ThemeDocument): Promise<void>;
-  replace(document: ThemeDocument): Promise<void>;
   readRaw(): Promise<string | null>;
   replaceIfCurrent(expected: string | null, document: ThemeDocument): Promise<string>;
   rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
@@ -44,9 +43,6 @@ export const browserThemeStorage: ThemeStorage = {
     // Re-read immediately before writing so a concurrent settings save wins.
     if (window.localStorage.getItem(KEY) !== null)
       throw new Error("Appearance data is no longer empty. Restore was not applied.");
-    await this.save(normalizeDocument(document));
-  },
-  async replace(document) {
     await this.save(normalizeDocument(document));
   },
   async replaceIfCurrent(expected, document) {

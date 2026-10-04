@@ -8,10 +8,12 @@ import {
   type ReplyBatch,
 } from "./types";
 import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
+import { sameBackupChat } from "../backup/equality";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
 export const CHAT_DATABASE_VERSION = 1;
-const STORES = ["sessions", "messages", "apiConfigs"];
+const CONVERSATION_STORES = ["sessions", "messages"];
+const STORES = [...CONVERSATION_STORES, "apiConfigs"];
 
 function backupSession(session: ChatSession): BackupSession {
   return {
@@ -42,18 +44,23 @@ function backupMessage(message: ChatMessage): BackupMessage {
   };
 }
 
-function sameBackupChat(a: BackupChat, b: BackupChat) {
-  const sort = (chat: BackupChat) => ({
+async function conversationBackup(tx: IDBTransaction): Promise<BackupChat> {
+  const [sessions, messages] = await Promise.all([
+    request<ChatSession[]>(tx.objectStore("sessions").getAll()),
+    request<ChatMessage[]>(tx.objectStore("messages").getAll()),
+  ]);
+  return {
     version: 1,
-    sessions: [...chat.sessions].sort((x, y) => x.id.localeCompare(y.id)),
-    messages: [...chat.messages].sort(
-      (x, y) =>
-        x.sessionId.localeCompare(y.sessionId) ||
-        x.order - y.order ||
-        x.id.localeCompare(y.id),
-    ),
-  });
-  return JSON.stringify(sort(a)) === JSON.stringify(sort(b));
+    sessions: sessions.map(backupSession),
+    messages: messages.map(backupMessage),
+  };
+}
+
+async function addConversationBackup(tx: IDBTransaction, backup: BackupChat) {
+  const sessions = tx.objectStore("sessions"),
+    messages = tx.objectStore("messages");
+  for (const session of backup.sessions) await request(sessions.add(session));
+  for (const message of backup.messages) await request(messages.add(message));
 }
 
 function storeForUpgrade(
@@ -144,9 +151,10 @@ export class ChatStorage {
   private async transaction<T>(
     mode: IDBTransactionMode,
     run: (tx: IDBTransaction) => Promise<T>,
+    stores: string[] = STORES,
   ): Promise<T> {
     const db = await this.open();
-    const tx = db.transaction(STORES, mode);
+    const tx = db.transaction(stores, mode);
     const done = new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
       tx.onabort = tx.onerror = () =>
@@ -197,46 +205,13 @@ export class ChatStorage {
     );
   }
   async exportBackup(): Promise<BackupChat> {
-    const db = await this.open();
     // API configuration and keys are intentionally outside this transaction.
-    const tx = db.transaction(["sessions", "messages"], "readonly");
-    const done = new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onabort = tx.onerror = () =>
-        reject(new Error("Chat storage could not be read for backup."));
-    });
-    try {
-      const [sessions, messages] = await Promise.all([
-        request(tx.objectStore("sessions").getAll()),
-        request(tx.objectStore("messages").getAll()),
-      ]);
-      await done;
-      return {
-        version: 1,
-        sessions: sessions.map(backupSession),
-        messages: messages.map(backupMessage),
-      };
-    } catch (error) {
-      try {
-        tx.abort();
-      } catch {
-        /* Already completed/aborted. */
-      }
-      await done.catch(() => {});
-      throw error;
-    }
+    return this.transaction("readonly", conversationBackup, CONVERSATION_STORES);
   }
   async importBackup(backup: BackupChat): Promise<void> {
-    const db = await this.open();
     // This transaction deliberately excludes apiConfigs: provider credentials
     // are neither preflighted nor restored from a backup.
-    const tx = db.transaction(["sessions", "messages"], "readwrite");
-    const done = new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onabort = tx.onerror = () =>
-        reject(new Error("Chat backup could not be restored. Existing chats were retained."));
-    });
-    try {
+    return this.transaction("readwrite", async (tx) => {
       const sessions = tx.objectStore("sessions");
       const messages = tx.objectStore("messages");
       const [sessionCount, messageCount] = await Promise.all([
@@ -245,61 +220,19 @@ export class ChatStorage {
       ]);
       if (sessionCount || messageCount)
         throw new Error("Chat data is no longer empty. Restore was not applied.");
-      for (const session of backup.sessions) await request(sessions.add(session));
-      for (const message of backup.messages) await request(messages.add(message));
-      await done;
-      this.notify();
-    } catch (error) {
-      try {
-        tx.abort();
-      } catch {
-        /* Already completed/aborted. */
-      }
-      await done.catch(() => {});
-      throw error;
-    }
+      await addConversationBackup(tx, backup);
+    }, CONVERSATION_STORES);
   }
   async replaceBackup(expectedCurrent: BackupChat, backup: BackupChat): Promise<void> {
-    const db = await this.open();
     // Keep credentials out of both the replacement and its rollback snapshot.
-    const tx = db.transaction(["sessions", "messages"], "readwrite");
-    const done = new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => resolve();
-      tx.onabort = tx.onerror = () =>
-        reject(new Error("Chat backup could not replace existing conversations."));
-    });
-    try {
+    return this.transaction("readwrite", async (tx) => {
       const sessions = tx.objectStore("sessions");
       const messages = tx.objectStore("messages");
-      const [currentSessions, currentMessages] = await Promise.all([
-        request(sessions.getAll()),
-        request(messages.getAll()),
-      ]);
-      if (
-        !sameBackupChat(
-          {
-            version: 1,
-            sessions: currentSessions.map(backupSession),
-            messages: currentMessages.map(backupMessage),
-          },
-          expectedCurrent,
-        )
-      )
+      if (!sameBackupChat(await conversationBackup(tx), expectedCurrent))
         throw new Error("Chat data changed while restore was being prepared.");
       await Promise.all([request(sessions.clear()), request(messages.clear())]);
-      for (const session of backup.sessions) await request(sessions.add(session));
-      for (const message of backup.messages) await request(messages.add(message));
-      await done;
-      this.notify();
-    } catch (error) {
-      try {
-        tx.abort();
-      } catch {
-        /* Already completed/aborted. */
-      }
-      await done.catch(() => {});
-      throw error;
-    }
+      await addConversationBackup(tx, backup);
+    }, CONVERSATION_STORES);
   }
   openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)

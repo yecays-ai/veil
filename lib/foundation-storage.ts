@@ -8,7 +8,6 @@ export interface FoundationStorage {
   load(): Promise<FoundationDocument>;
   hasStoredDocument(): Promise<boolean>;
   replaceIfEmpty(document: FoundationDocument): Promise<FoundationDocument>;
-  replace(document: FoundationDocument): Promise<FoundationDocument>;
   readRaw(): Promise<string | null>;
   replaceIfCurrent(expected: string | null, document: FoundationDocument): Promise<string>;
   rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
@@ -56,22 +55,6 @@ export function createFoundationStorage(
           getStorage().setItem(KEY, JSON.stringify(next));
         } catch {
           throw new Error("Could not restore profile data. Browser storage may be unavailable.");
-        }
-        return next;
-      });
-      queue = operation.then(
-        () => {},
-        () => {},
-      );
-      return operation;
-    },
-    replace(document) {
-      const operation = queue.then(async () => {
-        const next = normalizeFoundation(document);
-        try {
-          getStorage().setItem(KEY, JSON.stringify(next));
-        } catch {
-          throw new Error("Could not replace profile data. Browser storage may be unavailable.");
         }
         return next;
       });
