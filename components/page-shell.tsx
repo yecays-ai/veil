@@ -3,8 +3,24 @@
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
 
-// Adapted from momo.float.phone's PageShell: safe header, centered title,
-// independent page body, and per-page actions. Next routes own navigation.
+export function Chevron({ forward = false }: { forward?: boolean }) {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      aria-hidden="true"
+    >
+      <path d={forward ? "m9 5 7 7-7 7" : "m15 5-7 7 7 7"} />
+    </svg>
+  );
+}
+
+// Adapted from momo.float.phone's PageShell. The phone shell owns whether the
+// top inset is a real safe area or simulated status UI; pages consume one value.
 export function PageShell({
   title,
   backHref,
@@ -12,13 +28,17 @@ export function PageShell({
   rightAction,
   children,
   overlay,
+  bodyClassName = "",
+  className = "",
 }: {
-  title: string;
+  title: ReactNode;
   backHref: string;
   backLabel: string;
   rightAction?: ReactNode;
   children: ReactNode;
   overlay?: ReactNode;
+  bodyClassName?: string;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -33,10 +53,7 @@ export function PageShell({
           viewport.offsetTop -
           viewport.height,
       );
-      ref.current.style.setProperty(
-        "--settings-keyboard-inset",
-        `${overlap}px`,
-      );
+      ref.current.style.setProperty("--app-keyboard-inset", `${overlap}px`);
     };
     update();
     viewport.addEventListener("resize", update);
@@ -47,40 +64,27 @@ export function PageShell({
     };
   }, []);
   return (
-    <div className="settings-app" ref={ref}>
-      <div className="settings-page-shell" inert={!!overlay}>
-        <header className="settings-page-header">
-          <div className="settings-header-safe-area" />
-          <div className="settings-header-content">
+    <div className={`app-page ${className}`} ref={ref}>
+      <div className="app-page-shell" inert={!!overlay}>
+        <header className="app-page-header" data-ui="header">
+          <div className="app-page-header-safe-area" />
+          <div className="app-page-header-content">
             <Link
-              className="settings-back"
+              className="app-page-back"
               href={backHref}
               aria-label={backLabel}
             >
               <Chevron />
             </Link>
-            <h1>{title}</h1>
-            <div className="settings-header-right">{rightAction}</div>
+            <h1 className="app-page-title">{title}</h1>
+            <div className="app-page-header-right">{rightAction}</div>
           </div>
         </header>
-        <div className="settings-page-body">{children}</div>
+        <div className={`app-page-body ${bodyClassName}`} data-ui="body">
+          {children}
+        </div>
       </div>
       {overlay}
     </div>
-  );
-}
-export function Chevron({ forward = false }: { forward?: boolean }) {
-  return (
-    <svg
-      width="22"
-      height="22"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      aria-hidden="true"
-    >
-      <path d={forward ? "m9 5 7 7-7 7" : "m15 5-7 7 7 7"} />
-    </svg>
   );
 }

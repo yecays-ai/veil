@@ -1,8 +1,13 @@
-import { PageShell } from "../../components/settings/ui/page-shell";
+import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 export default function Page() {
   return (
-    <PageShell title="Settings" backHref="/" backLabel="Back to Home">
+    <PageShell
+      className="settings-app"
+      title="Settings"
+      backHref="/"
+      backLabel="Back to Home"
+    >
       <CardGrid
         label="API configuration"
         items={[

@@ -7,7 +7,8 @@ import "./globals.css";
 import "./appearance.css";
 import "./desktop.css";
 import "./foundation.css";
-import "./standalone.css";
+import "./mobile-foundation.css";
+import "./page-shell.css";
 
 export const metadata: Metadata = {
   title: "VEIL",

@@ -193,7 +193,7 @@ export function AvatarEditor({
         className="visually-hidden"
         type="file"
         aria-label={C.common.uploadAvatar}
-        accept="image/png,image/jpeg,image/webp,image/gif"
+        accept="image/*,.heic,.heif"
         onChange={async (event) => {
           const file = event.target.files?.[0];
           event.target.value = "";

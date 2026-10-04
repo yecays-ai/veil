@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Chevron } from "./page-shell";
+import { Chevron } from "../../page-shell";
 
 // The reference CardGrid's label/body/icon/chevron structure, using VEIL routes.
 export function CardGrid({

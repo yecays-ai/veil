@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ChangeEvent } from "react";
 import { APP_REGISTRY } from "../lib/app-registry";
 import { reverseAppPositions } from "../lib/desktop-layout";
@@ -14,6 +13,7 @@ import {
   normalizeOverrides,
 } from "../lib/theme-types";
 import { useTheme } from "./theme-provider";
+import { PageShell } from "./page-shell";
 
 type ImageEditorProps = {
   label: string;
@@ -69,7 +69,7 @@ function ImageEditor({ label, source, onApply }: ImageEditorProps) {
         Upload {label}
         <input
           type="file"
-          accept="image/png,image/jpeg,image/webp,image/gif"
+          accept="image/*,.heic,.heif"
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
@@ -161,11 +161,12 @@ export function Appearance() {
   }
 
   return (
-    <div className="theme-page appearance-page">
-      <Link className="back-link" href="/">
-        ← Home
-      </Link>
-      <h1>Appearance</h1>
+    <PageShell
+      title="Appearance"
+      backHref="/"
+      backLabel="Back to Home"
+      bodyClassName="theme-page appearance-page"
+    >
       <p className="appearance-help">
         Changes are saved on this browser. Uploaded images are resized; GIF
         uploads use the first frame. Image URLs remain external links.
@@ -654,6 +655,6 @@ export function Appearance() {
           )}
         </section>
       </fieldset>
-    </div>
+    </PageShell>
   );
 }

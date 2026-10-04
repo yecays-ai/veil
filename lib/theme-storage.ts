@@ -31,27 +31,82 @@ export const browserThemeStorage: ThemeStorage = {
 };
 
 export async function readImage(file: File): Promise<string> {
-  if (
-    !["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)
-  )
-    throw new Error("Choose a PNG, JPEG, WebP or GIF image.");
-  if (file.size > 10 * 1024 * 1024)
-    throw new Error("Choose an image smaller than 10 MB.");
+  const extension = file.name.split(".").at(-1)?.toLowerCase();
+  const supportedType =
+    file.type.startsWith("image/") ||
+    ["png", "jpg", "jpeg", "webp", "gif", "heic", "heif"].includes(
+      extension ?? "",
+    );
+  if (!supportedType)
+    throw new Error("Choose an image file, such as JPEG, PNG, WebP or HEIC.");
+  if (file.size > 20 * 1024 * 1024)
+    throw new Error("Choose an image smaller than 20 MB.");
   const url = URL.createObjectURL(file);
   try {
     const image = new Image();
-    image.src = url;
-    await image.decode();
-    const ratio = Math.min(1, 1200 / Math.max(image.width, image.height));
+    image.decoding = "async";
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () =>
+        reject(
+          new Error(
+            "This photo could not be decoded. If it is HEIC, export it as JPEG and try again.",
+          ),
+        );
+      image.src = url;
+    });
+    // Some iOS versions reject decode() after successfully firing load. The
+    // loaded image is drawable, so decode is an optimization rather than the
+    // sole success path.
+    if (typeof image.decode === "function")
+      await image.decode().catch(() => {});
+    if (!image.naturalWidth || !image.naturalHeight)
+      throw new Error("This photo has no readable image dimensions.");
+    const ratio = Math.min(
+      1,
+      1200 / Math.max(image.naturalWidth, image.naturalHeight),
+    );
     const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(image.width * ratio));
-    canvas.height = Math.max(1, Math.round(image.height * ratio));
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
     const context = canvas.getContext("2d");
     if (!context) throw new Error("Image processing is unavailable.");
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const source = canvas.toDataURL("image/webp", 0.8);
+    try {
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    } catch {
+      throw new Error(
+        "This photo could not be processed. Try a smaller JPEG or PNG image.",
+      );
+    }
+    const encode = (type: string, quality?: number) =>
+      new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, type, quality),
+      );
+    let output = await encode("image/webp", 0.8);
+    if (!output || output.type !== "image/webp") {
+      output = await encode(
+        file.type === "image/png" ? "image/png" : "image/jpeg",
+        0.82,
+      );
+    }
+    if (!output?.size)
+      throw new Error("This browser could not encode the image.");
+    const source = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        typeof reader.result === "string"
+          ? resolve(reader.result)
+          : reject(
+              new Error("This browser could not read the processed image."),
+            );
+      reader.onerror = () =>
+        reject(new Error("This browser could not read the processed image."));
+      reader.readAsDataURL(output);
+    });
     if (source.length > 600_000)
-      throw new Error("Image is too large to store. Choose a smaller image.");
+      throw new Error(
+        "The processed image is too large to store. Choose a smaller photo.",
+      );
     return source;
   } finally {
     URL.revokeObjectURL(url);

@@ -19,15 +19,18 @@ import {
 import { useFoundation } from "./foundation-provider";
 import { ProfileForm } from "./profile-form";
 import { Avatar, ProfileView } from "./profile-view";
+import { PageShell } from "./page-shell";
 
 export function UserProfilePage() {
   const { document, ready, commit } = useFoundation();
   const [editing, setEditing] = useState(false);
   return (
-    <div className="foundation-page">
-      <Link className="back-link" href="/">
-        {C.common.home}
-      </Link>
+    <PageShell
+      title={C.profile.title}
+      backHref="/"
+      backLabel="Back to Home"
+      bodyClassName="foundation-page"
+    >
       {!ready ? (
         <p>{C.common.loading}</p>
       ) : editing ? (
@@ -48,25 +51,22 @@ export function UserProfilePage() {
           <button onClick={() => setEditing(true)}>{C.common.edit}</button>
         </ProfileView>
       )}
-    </div>
+    </PageShell>
   );
 }
 export function CharactersPage() {
   const { document, ready } = useFoundation();
   return (
-    <div className="foundation-page">
+    <PageShell
+      title={C.characters.title}
+      backHref="/"
+      backLabel="Back to Home"
+      bodyClassName="foundation-page"
+      rightAction={<Link href="/characters/new">{C.characters.new}</Link>}
+    >
       <nav>
-        <Link className="back-link" href="/">
-          {C.common.home}
-        </Link>
         <Link href="/universe">{C.characters.universe}</Link>
       </nav>
-      <header className="list-header">
-        <h1>{C.characters.title}</h1>
-        <Link className="foundation-link primary-button" href="/characters/new">
-          {C.characters.new}
-        </Link>
-      </header>
       {!ready ? (
         <p>{C.common.loading}</p>
       ) : !document.characters.length ? (
@@ -99,7 +99,7 @@ export function CharactersPage() {
           ))}
         </ul>
       )}
-    </div>
+    </PageShell>
   );
 }
 export function CharacterPage({ characterId }: { characterId?: string }) {
@@ -112,13 +112,27 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
-  if (!ready) return <div className="foundation-page">{C.common.loading}</div>;
+  if (!ready)
+    return (
+      <PageShell
+        title={C.characters.title}
+        backHref="/characters"
+        backLabel="Back to Characters"
+        bodyClassName="foundation-page"
+      >
+        {C.common.loading}
+      </PageShell>
+    );
   if (characterId && !character)
     return (
-      <div className="foundation-page">
-        <Link href="/characters">{C.common.back}</Link>
+      <PageShell
+        title={C.characters.title}
+        backHref="/characters"
+        backLabel="Back to Characters"
+        bodyClassName="foundation-page"
+      >
         <p>{C.characters.notFound}</p>
-      </div>
+      </PageShell>
     );
   const isNew = !characterId,
     active = document.selectedCharacterId === characterId;
@@ -134,10 +148,18 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
     }
   }
   return (
-    <div className="foundation-page">
-      <Link className="back-link" href="/characters">
-        {C.common.back}
-      </Link>
+    <PageShell
+      title={
+        isNew
+          ? C.characters.create
+          : editing
+            ? C.characters.edit
+            : character!.name
+      }
+      backHref="/characters"
+      backLabel="Back to Characters"
+      bodyClassName="foundation-page"
+    >
       {isNew || editing ? (
         <>
           <h1>{isNew ? C.characters.create : C.characters.edit}</h1>
@@ -218,6 +240,6 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
         </>
       )}
       {notice && <p role="alert">{notice}</p>}
-    </div>
+    </PageShell>
   );
 }

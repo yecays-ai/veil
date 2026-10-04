@@ -18,6 +18,7 @@ import type {
 import { RelationshipCanvas } from "./relationship-canvas";
 import { UI_COPY as U } from "../lib/ui-copy";
 import { Avatar } from "./profile-view";
+import { PageShell } from "./page-shell";
 
 function RelationForm({
   document,
@@ -176,7 +177,16 @@ export function UniversePage() {
   const [editingInfo, setEditingInfo] = useState(false);
   const page = useRef<HTMLElement>(null);
   if (!ready)
-    return <section className="foundation-page">{C.common.loading}</section>;
+    return (
+      <PageShell
+        title={C.universe.title}
+        backHref="/"
+        backLabel="Back to Home"
+        bodyClassName="foundation-page"
+      >
+        {C.common.loading}
+      </PageShell>
+    );
   async function updateUniverse(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -198,103 +208,109 @@ export function UniversePage() {
     }
   }
   return (
-    <section ref={page} className="foundation-page">
-      <nav>
-        <Link href="/">{C.common.home}</Link>
-        <Link href="/characters">{C.universe.characters}</Link>
-      </nav>
-      <header className="universe-header">
-        <span className="section-eyebrow">{C.universe.title}</span>
-        <h1>{document.universe.name}</h1>
-        {document.universe.worldSetting && (
-          <p>{document.universe.worldSetting}</p>
+    <PageShell
+      title={C.universe.title}
+      backHref="/"
+      backLabel="Back to Home"
+      bodyClassName="foundation-page"
+      rightAction={<Link href="/characters">{C.universe.characters}</Link>}
+    >
+      <section ref={page}>
+        <header className="universe-header">
+          <span className="section-eyebrow">{C.universe.title}</span>
+          <h1>{document.universe.name}</h1>
+          {document.universe.worldSetting && (
+            <p>{document.universe.worldSetting}</p>
+          )}
+          {!editingInfo && (
+            <button onClick={() => setEditingInfo(true)}>
+              {C.common.edit}
+            </button>
+          )}
+        </header>
+        {editingInfo && (
+          <form
+            autoComplete="off"
+            className="foundation-form"
+            onSubmit={updateUniverse}
+          >
+            <fieldset disabled={busy}>
+              <label>
+                {C.universe.name}
+                <input
+                  autoComplete="off"
+                  name="universe-name"
+                  required
+                  maxLength={100}
+                  defaultValue={document.universe.name}
+                />
+              </label>
+              <label>
+                {C.universe.setting}
+                <textarea
+                  autoComplete="off"
+                  maxLength={12000}
+                  name="world-setting"
+                  defaultValue={document.universe.worldSetting ?? ""}
+                />
+              </label>
+              <div className="foundation-actions">
+                <button>{C.common.save}</button>
+                <button type="button" onClick={() => setEditingInfo(false)}>
+                  {C.common.cancel}
+                </button>
+              </div>
+            </fieldset>
+          </form>
         )}
-        {!editingInfo && (
-          <button onClick={() => setEditingInfo(true)}>{C.common.edit}</button>
+        <h2>{C.universe.canvas}</h2>
+        {document.characters.length ? (
+          <RelationshipCanvas
+            document={document}
+            edit={setEditor}
+            move={async (id, point) => {
+              try {
+                await commit((d) => setNodePosition(d, id, point));
+              } catch (error) {
+                setNotice(String(error));
+              }
+            }}
+          />
+        ) : (
+          <p>{C.universe.empty}</p>
         )}
-      </header>
-      {editingInfo && (
-        <form
-          autoComplete="off"
-          className="foundation-form"
-          onSubmit={updateUniverse}
+        <button
+          disabled={document.characters.length < 2}
+          onClick={() => setEditor(null)}
         >
-          <fieldset disabled={busy}>
-            <label>
-              {C.universe.name}
-              <input
-                autoComplete="off"
-                name="universe-name"
-                required
-                maxLength={100}
-                defaultValue={document.universe.name}
-              />
-            </label>
-            <label>
-              {C.universe.setting}
-              <textarea
-                autoComplete="off"
-                maxLength={12000}
-                name="world-setting"
-                defaultValue={document.universe.worldSetting ?? ""}
-              />
-            </label>
-            <div className="foundation-actions">
-              <button>{C.common.save}</button>
-              <button type="button" onClick={() => setEditingInfo(false)}>
-                {C.common.cancel}
-              </button>
-            </div>
-          </fieldset>
-        </form>
-      )}
-      <h2>{C.universe.canvas}</h2>
-      {document.characters.length ? (
-        <RelationshipCanvas
-          document={document}
-          edit={setEditor}
-          move={async (id, point) => {
-            try {
-              await commit((d) => setNodePosition(d, id, point));
-            } catch (error) {
-              setNotice(String(error));
-            }
-          }}
-        />
-      ) : (
-        <p>{C.universe.empty}</p>
-      )}
-      <button
-        disabled={document.characters.length < 2}
-        onClick={() => setEditor(null)}
-      >
-        {C.universe.addRelation}
-      </button>
-      {document.characters.length < 2 && <p>{C.relations.empty}</p>}
-      {editor !== undefined && (
-        <RelationForm
-          key={editor ?? "new"}
-          document={document}
-          id={editor}
-          cancel={() => setEditor(undefined)}
-          save={async (input) => {
-            await commit((d) => saveRelation(d, input, editor ?? undefined));
-            setEditor(undefined);
-            setNotice(C.relations.saved);
-            requestAnimationFrame(() =>
-              page.current
-                ?.querySelector(".relationship-viewport")
-                ?.scrollIntoView({ block: "center" }),
-            );
-          }}
-          remove={async () => {
-            if (editor) await commit((d) => deleteRelation(d, editor));
-            setEditor(undefined);
-            setNotice(C.universe.deletedRelation);
-          }}
-        />
-      )}
-      {notice && <p role="status">{notice}</p>}
-    </section>
+          {C.universe.addRelation}
+        </button>
+        {document.characters.length < 2 && <p>{C.relations.empty}</p>}
+        {editor !== undefined && (
+          <RelationForm
+            key={editor ?? "new"}
+            document={document}
+            id={editor}
+            cancel={() => setEditor(undefined)}
+            save={async (input) => {
+              await commit((d) => saveRelation(d, input, editor ?? undefined));
+              setEditor(undefined);
+              setNotice(C.relations.saved);
+              requestAnimationFrame(() =>
+                page.current
+                  ?.querySelector(".relationship-viewport")
+                  ?.scrollIntoView({ block: "center" }),
+              );
+            }}
+            remove={async () => {
+              if (editor) await commit((d) => deleteRelation(d, editor));
+              setEditor(undefined);
+              setNotice(C.universe.deletedRelation);
+            }}
+          />
+        )}
+        {notice && <p role="status">{notice}</p>}
+      </section>
+    </PageShell>
   );
 }

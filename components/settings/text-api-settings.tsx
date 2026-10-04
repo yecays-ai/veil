@@ -1,5 +1,5 @@
 "use client";
-import { PageShell } from "./ui/page-shell";
+import { PageShell } from "../page-shell";
 import { BottomSheet, ConfirmDialog } from "./ui/modal";
 import { Input, Select } from "./ui/form";
 import { Alert } from "./ui/feedback";
@@ -136,6 +136,7 @@ export function TextApiSettings() {
   );
   return (
     <PageShell
+      className="settings-app"
       title="Text API"
       backHref="/settings"
       backLabel="Back to Settings"

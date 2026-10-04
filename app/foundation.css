@@ -1,7 +1,6 @@
 .foundation-page {
-  padding: max(18px, env(safe-area-inset-top))
-    max(20px, env(safe-area-inset-right)) max(40px, env(safe-area-inset-bottom))
-    max(20px, env(safe-area-inset-left));
+  padding: 20px max(20px, var(--app-safe-right)) 24px
+    max(20px, var(--app-safe-left));
   color: var(--theme-text);
   overflow-wrap: anywhere;
 }

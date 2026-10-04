@@ -1,68 +1,11 @@
 /* Settings-only adaptations of the reference PageShell, CardGrid, form, feedback,
    and modal styles. Shared phone/Home geometry remains owned by its existing CSS. */
-.theme-surface:has(.settings-app) {
-  height: 100%;
-  min-height: 0;
-}
 .settings-app {
-  --settings-safe-top: env(safe-area-inset-top, 0px);
-  --settings-safe-bottom: env(safe-area-inset-bottom, 0px);
   --settings-border: color-mix(in srgb, var(--theme-text) 12%, transparent);
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  color: var(--theme-text);
-  background: var(--theme-background);
-  overflow: hidden;
-  isolation: isolate;
 }
-.settings-page-shell {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  padding-bottom: var(--settings-keyboard-inset, 0px);
-}
-.settings-page-header {
-  flex: none;
-  background: var(--theme-background);
-  border-bottom: 1px solid var(--settings-border);
-}
-.settings-header-safe-area {
-  height: max(12px, var(--settings-safe-top));
-}
-.settings-header-content {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 64px;
-  align-items: center;
-  min-height: 52px;
-  padding: 0 max(12px, env(safe-area-inset-right)) 0
-    max(12px, env(safe-area-inset-left));
-}
-.settings-app .settings-header-content h1 {
-  margin: 0;
-  font-size: 17px;
-  letter-spacing: 0;
-  text-align: center;
-  font-weight: 600;
-}
-.settings-back {
-  width: 44px;
-  height: 44px;
-  display: grid;
-  place-items: center;
-}
-.settings-header-right {
-  display: flex;
-  justify-content: flex-end;
-}
-.settings-page-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 24px max(18px, env(safe-area-inset-right))
-    max(24px, var(--settings-safe-bottom)) max(18px, env(safe-area-inset-left));
+.settings-app .app-page-body {
+  padding: 24px max(18px, var(--app-safe-right))
+    max(24px, var(--app-safe-bottom)) max(18px, var(--app-safe-left));
 }
 .settings-app button,
 .settings-app input,
@@ -179,7 +122,7 @@
   opacity: 0.65;
   margin: 0 0 18px;
 }
-.settings-page-body > .settings-hint {
+.settings-app .app-page-body > .settings-hint {
   margin-top: 24px;
 }
 .settings-empty {
@@ -215,12 +158,12 @@
 }
 .settings-modal-overlay {
   position: absolute;
-  inset: 0 0 var(--settings-keyboard-inset, 0px);
+  inset: 0 0 var(--app-keyboard-inset, 0px);
   z-index: 5;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding-top: max(12px, var(--settings-safe-top));
+  padding-top: max(12px, var(--app-safe-top));
   background: rgb(0 0 0 / 28%);
 }
 .settings-modal-bottom {
@@ -255,8 +198,8 @@
   letter-spacing: 0;
 }
 .settings-modal-body {
-  padding: 20px max(18px, env(safe-area-inset-right))
-    max(24px, var(--settings-safe-bottom)) max(18px, env(safe-area-inset-left));
+  padding: 20px max(18px, var(--app-safe-right))
+    max(24px, var(--app-safe-bottom)) max(18px, var(--app-safe-left));
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;

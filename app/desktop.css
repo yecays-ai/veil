@@ -12,9 +12,7 @@
   width: 100%;
   min-width: 0;
   min-height: 0;
-  padding: max(18px, env(safe-area-inset-top))
-    max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom))
-    max(20px, env(safe-area-inset-left));
+  padding: var(--home-grid-top-offset) var(--home-slot-inset-x) 0;
 }
 .desktop-toolbar {
   flex: none;
@@ -81,8 +79,8 @@
   min-height: 510px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-template-rows: repeat(6, minmax(70px, 1fr));
-  column-gap: 12px;
-  row-gap: 18px;
+  column-gap: var(--home-slot-gap-x);
+  row-gap: var(--home-row-gap-y);
   position: relative;
 }
 .desktop-app {
@@ -212,11 +210,12 @@
 .desktop-dock {
   flex: none;
   margin-top: 0;
+  margin-bottom: var(--home-dock-lift);
   min-height: 100px;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 14px 10px;
+  column-gap: var(--home-slot-gap-x);
+  padding: 14px var(--home-slot-inset-x);
 }
 .desktop-empty {
   grid-column: 1 / -1;
@@ -302,10 +301,8 @@
 }
 @media (max-width: 360px) {
   .desktop-foreground {
-    padding-inline: max(14px, env(safe-area-inset-left));
-  }
-  .desktop-grid {
-    column-gap: 10px;
+    --home-slot-inset-x: 14px;
+    --home-slot-gap-x: 10px;
   }
   .desktop-widget {
     padding: 10px;
@@ -315,9 +312,6 @@
 /* Normal desktop stays quiet; layout guides belong only to edit mode. */
 .desktop-home.is-editing .desktop-widget {
   outline: 1px dashed color-mix(in srgb, var(--theme-text) 35%, transparent);
-}
-.desktop-home:not(.is-editing) .desktop-pages {
-  padding-top: 18px;
 }
 .desktop-pages {
   user-select: none;
@@ -330,12 +324,6 @@
 @media (max-width: 500px) and (hover: none) and (pointer: coarse),
   (display-mode: standalone) and (hover: none) and (pointer: coarse) {
   .desktop-foreground {
-    --home-grid-top-offset: 18px;
-    --home-row-gap-y: 3px;
-    --home-grid-bottom-trim: 50px;
-    --home-slot-gap-x: 12px;
-    --home-slot-inset-x: 10px;
-    --home-dock-lift: calc(max(20px, env(safe-area-inset-bottom)) + 16px);
     flex: 1 1 auto;
     padding-bottom: 0;
   }
@@ -343,9 +331,6 @@
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-  }
-  .desktop-home:not(.is-editing) .desktop-pages {
-    padding-top: var(--home-grid-top-offset);
   }
   .desktop-track {
     flex: 1 1 auto;
@@ -366,20 +351,6 @@
     grid-template-rows: repeat(6, minmax(0, 1fr));
     row-gap: var(--home-row-gap-y);
     padding-bottom: var(--home-grid-bottom-trim);
-  }
-  .desktop-dock {
-    margin-bottom: var(--home-dock-lift);
-  }
-  /* Both grids use the same content width, four columns and column spacing. */
-  .desktop-grid,
-  .desktop-dock {
-    padding-inline: var(--home-slot-inset-x);
-    column-gap: var(--home-slot-gap-x);
-  }
-  @media (max-width: 360px) {
-    .desktop-foreground {
-      --home-slot-gap-x: 10px;
-    }
   }
 }
 .here-there-title {

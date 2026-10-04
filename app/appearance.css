@@ -1,5 +1,6 @@
 .theme-surface {
-  min-height: 100%;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--theme-background);
@@ -9,11 +10,9 @@
   font-weight: var(--theme-font-weight);
 }
 
-.theme-page,
-.home-foreground {
-  padding: max(24px, env(safe-area-inset-top))
-    max(24px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom))
-    max(24px, env(safe-area-inset-left));
+.theme-page {
+  padding: 20px max(20px, var(--app-safe-right)) 24px
+    max(20px, var(--app-safe-left));
 }
 
 .theme-surface h1 {
