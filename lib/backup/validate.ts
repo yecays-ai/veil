@@ -19,12 +19,19 @@ const record = (value: unknown): Record<string, unknown> =>
 const text = (value: unknown) => typeof value === "string" && !!value;
 const integer = (value: unknown) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+const timestamp = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && Number.isFinite(new Date(value).getTime());
+const onlyKeys = (value: unknown, keys: string[]) =>
+  !!value && typeof value === "object" && !Array.isArray(value) &&
+  Object.keys(value).every((key) => keys.includes(key));
 
 function validSession(session: BackupSession) {
   return (
+    onlyKeys(session, ["id", "characterId", "updatedAt", "nextOrder", "remark",
+      "autoReplyOnKeyboardDismiss", "lastMessageId", "lastMessagePreview"]) &&
     text(session.id) &&
     text(session.characterId) &&
-    Number.isFinite(session.updatedAt) &&
+    timestamp(session.updatedAt) &&
     integer(session.nextOrder) &&
     session.nextOrder >= 1 &&
     (session.remark === null || typeof session.remark === "string") &&
@@ -37,12 +44,14 @@ function validSession(session: BackupSession) {
 
 function validMessage(message: BackupMessage) {
   return (
+    onlyKeys(message, ["id", "sessionId", "role", "status", "content", "createdAt",
+      "order", "requestedBy", "error"]) &&
     text(message.id) &&
     text(message.sessionId) &&
     roles.has(message.role) &&
     statuses.has(message.status) &&
     typeof message.content === "string" &&
-    Number.isFinite(message.createdAt) &&
+    timestamp(message.createdAt) &&
     integer(message.order) &&
     message.order >= 1 &&
     (message.requestedBy === undefined || text(message.requestedBy)) &&
@@ -71,7 +80,8 @@ function stableChat(chat: BackupChat): BackupChat {
       throw new Error("Chat backup contains an invalid session message order.");
     if (message.requestedBy !== undefined) {
       const reply = messageById.get(message.requestedBy);
-      if (!reply || reply.sessionId !== message.sessionId || reply.role !== "assistant")
+      if (message.role !== "user" || !reply || reply.sessionId !== message.sessionId ||
+          reply.role !== "assistant" || reply.order <= message.order)
         throw new Error("Chat backup contains an invalid reply batch reference.");
     }
   }
@@ -88,6 +98,9 @@ export function validateBackupV1(value: unknown): BackupV1 {
   const chat = record(backup.chat);
   if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION)
     throw new Error("Unsupported backup format.");
+  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "chat"]) ||
+      !onlyKeys(backup.chat, ["version", "sessions", "messages"]))
+    throw new Error("Backup contains unsupported fields.");
   if (
     typeof backup.exportedAt !== "string" ||
     !Number.isFinite(Date.parse(backup.exportedAt))

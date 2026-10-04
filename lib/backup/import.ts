@@ -4,6 +4,7 @@ import { browserThemeStorage } from "../theme-storage";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupV1 } from "./types";
 import { validateBackupV1 } from "./validate";
 import { sameBackupChat, stableJson } from "./equality";
+import { restorableChat } from "./restorable-chat";
 
 type RestoreDocument<T> = {
   readRaw(): Promise<string | null>;
@@ -52,7 +53,8 @@ export async function requiresOverwriteRestore(sources = browserSources) {
 export async function restoreBackupV1(
   backup: BackupV1, sources = browserSources, overwrite = false,
 ): Promise<void> {
-  const safe = validateBackupV1(backup);
+  const validated = validateBackupV1(backup);
+  const safe = { ...validated, chat: restorableChat(validated.chat) };
   const [foundation, theme, chat] = await snapshot(sources);
   const documents = [
     replacement(sources.foundation, foundation, safe.foundation),
@@ -67,6 +69,17 @@ export async function restoreBackupV1(
   try {
     for (const document of documents) undo.push(await document.apply());
     await sources.chat.replaceBackup(chat, safe.chat);
+    undo.push(async () => {
+      await sources.chat.replaceBackup(safe.chat, chat);
+      return true;
+    });
+    // Per-store CAS alone cannot detect an earlier store changing during a later write.
+    const [finalFoundation, finalTheme, finalChat] = await snapshot(sources);
+    if (finalFoundation === null || finalTheme === null ||
+        stableJson(JSON.parse(finalFoundation)) !== stableJson(safe.foundation) ||
+        stableJson(JSON.parse(finalTheme)) !== stableJson(safe.theme) ||
+        !sameBackupChat(finalChat, safe.chat))
+      throw new Error("Your data changed during restore.");
   } catch (error) {
     let complete = true;
     for (const rollback of undo.reverse()) {

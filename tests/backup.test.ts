@@ -11,6 +11,7 @@ import {
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupSources } from "../lib/backup/types";
 import { validateBackupV1 } from "../lib/backup/validate";
 import { ChatStorage } from "../lib/chat/storage";
+import { createChatEngine } from "../lib/chat/engine";
 import { defaultFoundation } from "../lib/foundation-types";
 import { normalizeDocument } from "../lib/theme-types";
 
@@ -311,4 +312,191 @@ test("failed chat replacement is atomic and preserves the previous conversations
   invalid.messages.push({ ...invalid.messages[0] });
   await assert.rejects(() => storage.replaceBackup(before, invalid));
   assert.deepEqual(await storage.exportBackup(), before);
+});
+
+function streamingChat(content = ""): BackupChat {
+  const snapshot = chat();
+  snapshot.sessions[0].nextOrder = 3;
+  snapshot.sessions[0].lastMessageId = "reply";
+  snapshot.sessions[0].lastMessagePreview = "Replying…";
+  snapshot.messages[0].requestedBy = "reply";
+  snapshot.messages.push({ id: "reply", sessionId: "character:a", role: "assistant",
+    content, status: "streaming", createdAt: 2, order: 2 });
+  return snapshot;
+}
+
+test("export stops snapshot streaming without changing live messages or batch claims", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  await storage.importBackup(streamingChat("partial reply"));
+  const live = await storage.exportBackup();
+  const exported = await exportBackupV1({ ...sources(), chat: storage });
+  assert.equal(exported.backup.chat.messages[1].status, "cancelled");
+  assert.equal(exported.backup.chat.messages[0].requestedBy, "reply");
+  assert.equal(exported.backup.chat.sessions[0].lastMessagePreview, "partial reply");
+  assert.deepEqual(await storage.exportBackup(), live);
+});
+
+test("legacy streaming backups restore as stopped, retry safely, and cannot be revived", async () => {
+  for (const content of ["", "partial reply"]) {
+    const { backup } = await exportBackupV1(sources());
+    backup.chat = streamingChat(content);
+    const original = structuredClone(backup);
+    const target = restoreSources();
+    await restoreBackupV1(backup, target);
+    const restored = await target.chat.exportBackup();
+    assert.equal(restored.messages[1].status, "cancelled");
+    assert.equal(restored.messages[0].requestedBy, "reply");
+    assert.equal(restored.sessions[0].lastMessagePreview, content || "Reply stopped");
+    assert.deepEqual(backup, original);
+    await restoreBackupV1(backup, target);
+    const storage = target.chat as ChatStorage;
+    await storage.updateReply("reply", { content: "late chunk", status: "streaming" });
+    assert.deepEqual(await storage.exportBackup(), restored);
+    const engine = createChatEngine(storage, async () => defaultFoundation());
+    assert.equal(await engine.requestReply("character:a"), null);
+  }
+});
+
+test("validator rejects unknown fields at every backup/chat boundary before writing", async () => {
+  const { backup } = await exportBackupV1(sources());
+  for (const field of ["apiKey", "apiConfigs", "unknown"]) {
+    for (const section of ["envelope", "chat", "session", "message"]) {
+      const invalid = structuredClone(backup);
+      const object = section === "envelope" ? invalid : section === "chat" ? invalid.chat
+        : section === "session" ? invalid.chat.sessions[0] : invalid.chat.messages[0];
+      Object.assign(object, { [field]: "not allowed" });
+      const target = restoreSources();
+      await assert.rejects(() => restoreBackupV1(invalid, target));
+      assert.equal(await target.foundation.readRaw(), null);
+      assert.equal(await target.theme.readRaw(), null);
+      assert.equal((await target.chat.exportBackup()).messages.length, 0);
+    }
+  }
+});
+
+test("validator rejects unusable timestamps and malformed chat records", async () => {
+  const { backup } = await exportBackupV1(sources());
+  for (const value of [1e100, -1e100, Infinity, NaN, "123", null]) {
+    const invalid = structuredClone(backup);
+    Object.assign(invalid.chat.sessions[0], { updatedAt: value });
+    assert.throws(() => validateBackupV1(invalid));
+    Object.assign(invalid.chat.sessions[0], { updatedAt: 0 });
+    Object.assign(invalid.chat.messages[0], { createdAt: value });
+    assert.throws(() => validateBackupV1(invalid));
+  }
+  for (const value of [null, [], "message", 42]) {
+    assert.throws(() => validateBackupV1({ ...backup,
+      chat: { ...backup.chat, sessions: [value] } }));
+    assert.throws(() => validateBackupV1({ ...backup,
+      chat: { ...backup.chat, messages: [value] } }));
+  }
+});
+
+test("reply batch references must link a user to a later assistant in the same session", async () => {
+  const { backup } = await exportBackupV1(sources());
+  backup.chat = streamingChat();
+  assert.doesNotThrow(() => validateBackupV1(backup));
+  for (const role of ["assistant", "system"] as const) {
+    const invalid = structuredClone(backup);
+    invalid.chat.messages[0].role = role;
+    assert.throws(() => validateBackupV1(invalid), /reply batch/);
+  }
+  const self = structuredClone(backup);
+  self.chat.messages[1].requestedBy = "reply";
+  assert.throws(() => validateBackupV1(self), /reply batch/);
+  const reversed = structuredClone(backup);
+  reversed.chat.messages[0].order = 2;
+  reversed.chat.messages[1].order = 1;
+  assert.throws(() => validateBackupV1(reversed), /reply batch/);
+});
+
+test("successful chat write cannot hide concurrent foundation/theme edits", async () => {
+  const { backup } = await exportBackupV1(sources());
+  for (const section of ["foundation", "theme"] as const) {
+    const target = restoreSources();
+    const replace = target.chat.replaceBackup.bind(target.chat);
+    let first = true;
+    let concurrent: string | null = null;
+    target.chat.replaceBackup = async (expected, next) => {
+      await replace(expected, next);
+      if (first) {
+        first = false;
+        if (section === "foundation") {
+          const document = structuredClone(backup.foundation);
+          document.user.name = "Concurrent edit";
+          concurrent = await target.foundation.replaceIfCurrent(await target.foundation.readRaw(), document);
+        } else {
+          const document = structuredClone(backup.theme);
+          document.current.profile.colors.accent = "#123456";
+          concurrent = await target.theme.replaceIfCurrent(await target.theme.readRaw(), document);
+        }
+      }
+    };
+    await assert.rejects(() => restoreBackupV1(backup, target), /changed during restore.*Rollback was incomplete/);
+    assert.equal(await target[section].readRaw(), concurrent);
+    assert.equal(await target[section === "foundation" ? "theme" : "foundation"].readRaw(), null);
+    assert.deepEqual(await target.chat.exportBackup(), { version: 1, sessions: [], messages: [] });
+  }
+});
+
+test("chat rollback preserves concurrent conversation edits and reports incomplete rollback", async () => {
+  const { backup } = await exportBackupV1(sources());
+  const target = restoreSources();
+  const storage = target.chat as ChatStorage;
+  const replace = storage.replaceBackup.bind(storage);
+  let first = true;
+  target.chat.replaceBackup = async (expected, next) => {
+    await replace(expected, next);
+    if (first) {
+      first = false;
+      await storage.send("character:a", "concurrent message");
+    }
+  };
+  await assert.rejects(() => restoreBackupV1(backup, target), /changed during restore.*Rollback was incomplete/);
+  assert.equal((await storage.readSession("character:a")).messages.at(-1)?.content, "concurrent message");
+  assert.equal(await target.foundation.readRaw(), null);
+  assert.equal(await target.theme.readRaw(), null);
+});
+
+test("observer failures do not turn committed restore writes into failures", async () => {
+  const { backup } = await exportBackupV1(sources());
+  const target = restoreSources();
+  (target.chat as ChatStorage).subscribe(() => { throw new Error("observer failed"); });
+  await restoreBackupV1(backup, target);
+  assert.deepEqual(await target.chat.exportBackup(), backup.chat);
+});
+
+test("valid empty optional chat strings round-trip and do not cause false CAS failures", async () => {
+  const { backup } = await exportBackupV1(sources());
+  backup.chat.sessions[0].lastMessagePreview = "";
+  backup.chat.messages[0].error = "";
+  const target = restoreSources();
+  await restoreBackupV1(backup, target);
+  assert.deepEqual(await target.chat.exportBackup(), backup.chat);
+  await restoreBackupV1(backup, target);
+});
+
+test("failed final verification of an overwrite restore restores old chats and keeps API keys", async () => {
+  const { backup } = await exportBackupV1(sources());
+  const target = restoreSources();
+  const storage = target.chat as ChatStorage;
+  const oldSession = await storage.openSession("old");
+  await storage.send(oldSession.id, "original conversation");
+  await storage.saveApiConfig({ id: "api", baseUrl: "https://provider.example/v1",
+    apiKey: "keep-this-key", model: "model" });
+  const before = await storage.exportBackup();
+  const replace = storage.replaceBackup.bind(storage);
+  let first = true;
+  target.chat.replaceBackup = async (expected, next) => {
+    await replace(expected, next);
+    if (first) {
+      first = false;
+      const edited = structuredClone(backup.foundation);
+      edited.user.name = "Concurrent edit";
+      await target.foundation.replaceIfCurrent(await target.foundation.readRaw(), edited);
+    }
+  };
+  await assert.rejects(() => restoreBackupV1(backup, target, true), /changed during restore/);
+  assert.deepEqual(await storage.exportBackup(), before);
+  assert.equal((await storage.getApiConfig("api"))?.apiKey, "keep-this-key");
 });

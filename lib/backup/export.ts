@@ -10,6 +10,7 @@ import {
 } from "./types";
 import { validateBackupV1 } from "./validate";
 import { stableJson } from "./equality";
+import { restorableChat } from "./restorable-chat";
 
 const browserSources: BackupSources = {
   foundation: browserFoundationStorage,
@@ -44,7 +45,7 @@ export async function exportBackupV1(
       exportedAt: now().toISOString(),
       foundation: foundationA,
       theme: themeA,
-      chat,
+      chat: restorableChat(chat),
     });
     const json = JSON.stringify(backup);
     if (new TextEncoder().encode(json).byteLength > BACKUP_MAX_BYTES)

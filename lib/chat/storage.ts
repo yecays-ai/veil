@@ -21,7 +21,7 @@ function backupSession(session: ChatSession): BackupSession {
     characterId: session.characterId,
     updatedAt: session.updatedAt,
     ...(session.lastMessageId ? { lastMessageId: session.lastMessageId } : {}),
-    ...(session.lastMessagePreview
+    ...(session.lastMessagePreview !== undefined
       ? { lastMessagePreview: session.lastMessagePreview }
       : {}),
     remark: session.remark,
@@ -40,7 +40,7 @@ function backupMessage(message: ChatMessage): BackupMessage {
     createdAt: message.createdAt,
     order: message.order,
     ...(message.requestedBy ? { requestedBy: message.requestedBy } : {}),
-    ...(message.error ? { error: message.error } : {}),
+    ...(message.error !== undefined ? { error: message.error } : {}),
   };
 }
 
@@ -181,8 +181,11 @@ export class ChatStorage {
   }
 
   private notify() {
-    this.listeners.forEach((listener) => listener());
-    this.channel?.postMessage("changed");
+    // Observer failures must not turn an already committed write into a failed restore.
+    this.listeners.forEach((listener) => {
+      try { listener(); } catch { /* Persistence has already succeeded. */ }
+    });
+    try { this.channel?.postMessage("changed"); } catch { /* A closed observer channel. */ }
   }
   subscribe(listener: () => void) {
     if (
@@ -356,6 +359,8 @@ export class ChatStorage {
       const existing: ChatMessage | undefined = await request(table.get(id));
       if (!existing || existing.role !== "assistant")
         throw new Error("Reply not found.");
+      // A late provider chunk must not revive a stopped/restored reply.
+      if (existing.status !== "streaming") return existing;
       const next = { ...existing, ...patch };
       await request(table.put(next));
       const sessions = tx.objectStore("sessions");
