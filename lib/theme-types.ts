@@ -20,7 +20,7 @@ export type ThemeProfile = {
   };
   icons: Partial<Record<AppId, string>>;
   dock: { background: string; image: string | null; radius: number };
-  statusBar: { visible: boolean; color: string; island: boolean };
+  statusBar: { visible: boolean; color: string };
   text: {
     font: "system" | "serif" | "monospace";
     size: number;
@@ -63,7 +63,7 @@ export function defaultSnapshot(): ThemeSnapshot {
       },
       icons: {},
       dock: { background: "#e9e9ec", image: null, radius: 24 },
-      statusBar: { visible: false, color: "#171717", island: true },
+      statusBar: { visible: false, color: "#171717" },
       text: { font: "system", size: 16, weight: 400 },
       cssOverrides: {},
     },
@@ -180,7 +180,6 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
       statusBar: {
         visible: status.visible === true,
         color: color(status.color, d.profile.statusBar.color),
-        island: status.island !== false,
       },
       text: {
         font:

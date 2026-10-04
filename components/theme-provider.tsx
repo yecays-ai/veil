@@ -144,9 +144,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         {profile.statusBar.visible && (
           <div className="theme-status-bar" aria-label="Simulated status bar">
             <span>9:41</span>
-            {profile.statusBar.island && (
-              <span className="theme-status-island" aria-hidden="true" />
-            )}
             <span aria-label="Battery full">▰</span>
           </div>
         )}

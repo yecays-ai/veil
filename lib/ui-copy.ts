@@ -10,11 +10,10 @@ export const UI_COPY = {
   gifHint: "GIF avatars use a still frame.",
   cropError: "Could not crop this image.",
   deviceTimezone: "Device timezone",
-  genderSuggestions: ["Woman", "Man", "Non-binary", "Prefer not to say"],
+  genderSuggestions: ["Female", "Male", "Non-binary", "Prefer not to say"],
   editUniverse: "Edit Universe",
   fit: "Fit view",
   pan: "Pan relationship canvas",
-  canvasHint: "Drag to explore",
   deleteCharacter: "Delete Character",
   contextTitle: (from: string, to: string) => `${from} → ${to}`,
   contextHelp: (from: string, to: string) =>

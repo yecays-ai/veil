@@ -96,6 +96,39 @@ test("default Messages is Dock-only while saved shortcuts and removals survive n
   assert(APP_IDS.includes("messages"));
 });
 
+test("legacy theme Island data is ignored while status-bar settings survive", () => {
+  const defaults = defaultSnapshot();
+  const legacy = {
+    ...defaults,
+    profile: {
+      ...defaults.profile,
+      statusBar: {
+        visible: true,
+        color: "#123456",
+        island: true,
+      },
+    },
+  };
+  const normalized = normalizeSnapshot(legacy);
+  assert.deepEqual(normalized.profile.statusBar, {
+    visible: true,
+    color: "#123456",
+  });
+  assert.equal("island" in normalized.profile.statusBar, false);
+
+  const saved = normalizeDocument({ current: legacy });
+  assert.deepEqual(saved.current.profile.statusBar, normalized.profile.statusBar);
+
+  const imported = importTheme(
+    JSON.stringify({
+      schema: "companion-phone.theme",
+      version: 1,
+      snapshot: legacy,
+    }),
+  );
+  assert.deepEqual(imported.profile.statusBar, normalized.profile.statusBar);
+});
+
 test("Settings is a registered Home app without rewriting saved layouts", () => {
   assert.deepEqual(APP_REGISTRY.find(app => app.id === "settings"), {
     id: "settings", label: "Settings", href: "/settings", glyph: "S",

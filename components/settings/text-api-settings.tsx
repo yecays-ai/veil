@@ -393,9 +393,6 @@ export function TextApiSettings() {
         ) : undefined
       }
     >
-      <p className="settings-intro">
-        Your saved providers and models. Choose a config to edit it.
-      </p>
       {!ready && !error && <Alert>Loading Text APIs…</Alert>}
       <div className="settings-config-grid" aria-label="Text API configs">
         {configs.map((config) => (

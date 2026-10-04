@@ -56,12 +56,6 @@
   z-index: 2;
   height: var(--theme-status-bar-height);
 }
-.theme-status-island {
-  width: 126px;
-  height: 32px;
-  border-radius: 20px;
-  background: #0a0a0a;
-}
 .home-screen {
   position: relative;
   isolation: isolate;
@@ -221,7 +215,6 @@
   flex: 1;
   overflow-wrap: anywhere;
 }
-.appearance-help,
 .appearance-controls p {
   font-size: 0.85em;
   line-height: 1.5;

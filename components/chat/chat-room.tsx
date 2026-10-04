@@ -127,13 +127,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </Link>
         <ChatAvatar profile={character} />
         <strong>{session?.remark || character.name}</strong>
-        <Link
-          className="chat-settings-link"
-          href="/settings/text-api"
-          aria-label="API settings"
-        >
-          API
-        </Link>
       </header>
       <div
         className="chat-history"
@@ -149,11 +142,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {!session && (
           <p className="chat-notice">
             {loadError ? "Conversation unavailable." : "Loading conversation…"}
-          </p>
-        )}
-        {session && !messages.length && (
-          <p className="chat-notice">
-            Send a message, then request a reply when you’re ready.
           </p>
         )}
         {messages.map((message) => (

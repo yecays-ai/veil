@@ -167,10 +167,6 @@ export function Appearance() {
       backLabel="Back to Home"
       bodyClassName="theme-page appearance-page"
     >
-      <p className="appearance-help">
-        Changes are saved on this browser. Uploaded images are resized; GIF
-        uploads use the first frame. Image URLs remain external links.
-      </p>
       <p className="theme-notice" role="status" aria-live="polite">
         {notice || (!ready ? "Loading appearance…" : "")}
       </p>
@@ -399,22 +395,6 @@ export function Appearance() {
                 )}
               />
               Show status bar
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={profile.statusBar.island}
-                onChange={checkedChange(
-                  (checked) =>
-                    void run(() =>
-                      updateProfile((p) => ({
-                        ...p,
-                        statusBar: { ...p.statusBar, island: checked },
-                      })),
-                    ),
-                )}
-              />
-              Show island
             </label>
             <label>
               Status bar color

@@ -256,7 +256,6 @@ export function RelationshipCanvas({
         </div>
       </div>
       <div className="canvas-footer">
-        <small className="subtle">{U.canvasHint}</small>
         <button className="text-button" onClick={fit}>
           {U.fit}
         </button>
