@@ -17,7 +17,7 @@
 }
 .home-edit-shell {
   position: absolute;
-  top: calc(var(--app-safe-top) + 8px);
+  top: var(--app-safe-top);
   left: var(--home-slot-inset-x);
   right: var(--home-slot-inset-x);
   z-index: 10;
