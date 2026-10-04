@@ -22,6 +22,8 @@ import {
 } from "../../lib/chat/message-actions";
 import { ChatAvatar } from "./avatar";
 import { useChatSession } from "./use-chat-session";
+import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
+import { createTransientFeedback, hasPendingUserContent, sendThenRequestReply, visibleReplyText } from "../../lib/chat/usability";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -38,6 +40,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
+  const sendingLock = useRef(false);
+  const replyLock = useRef(false);
+  const currentSessionId = useRef(session?.id);
+  currentSessionId.current = session?.characterId === characterId ? session.id : undefined;
+  function showFeedback(text: string) {
+    feedbackController.show(text);
+  }
+  useEffect(() => () => feedbackController.cancel(), [feedbackController]);
   const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [multiSelect, setMultiSelect] = useState(false);
@@ -130,13 +141,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }
   async function copyMessage() {
     if (!activeMessage) return;
-    try { await navigator.clipboard.writeText(activeMessage.content); setFeedback("Copied"); }
+    try { await navigator.clipboard.writeText(activeMessage.content); showFeedback("Copied"); }
     catch { setError("Message could not be copied."); }
     closeActions();
   }
   async function deleteConfirmed() {
     if (!session || !confirmDelete) return;
-    try { await chatStorage.deleteMessages(session.id, confirmDelete); setFeedback("Deleted");
+    try { await chatStorage.deleteMessages(session.id, confirmDelete); showFeedback("Deleted");
       setConfirmDelete(null); setMultiSelect(false); setSelectedIds(new Set()); }
     catch (e) { setError(e instanceof Error ? e.message : "Messages could not be deleted."); }
   }
@@ -175,42 +186,69 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     };
   }, []);
 
-  async function send() {
-    if (!session || sending || !draft.trim() || loadError) return;
-    const content = draft;
+  async function persistDraft(content: string, sessionId: string, focus: boolean) {
+    sendingLock.current = true;
     setSending(true);
-    setError("");
     try {
       nearBottom.current = true;
-      await chatEngine.send(session.id, content);
-      if (mounted.current) {
+      await chatEngine.send(sessionId, content);
+      if (mounted.current && currentSessionId.current === sessionId) {
         setDraft((current) => (current === content ? "" : current));
-        composer.current?.focus();
+        if (focus) composer.current?.focus();
       }
+    } finally {
+      sendingLock.current = false;
+      if (mounted.current) setSending(false);
+    }
+  }
+  async function send() {
+    if (!session || session.characterId !== characterId || sendingLock.current || !draft.trim() || loadError) return;
+    setError("");
+    try {
+      await persistDraft(draft, session.id, true);
     } catch (e) {
       if (mounted.current)
         setError(
           e instanceof Error ? e.message : "Message could not be saved.",
         );
-    } finally {
-      if (mounted.current) setSending(false);
     }
   }
   async function reply() {
-    if (!session || generating || sending || loadError) return;
+    if (!session || session.characterId !== characterId || replyLock.current || sendingLock.current ||
+      chatEngine.isGenerating(session.id) || loadError) return;
+    const sessionId = session.id;
+    replyLock.current = true;
     setGenerating(true);
     setError("");
     nearBottom.current = true;
     try {
-      await chatEngine.requestReply(session.id);
+      await sendThenRequestReply(draft,
+        (content) => persistDraft(content, sessionId, false),
+        async () => {
+          if (mounted.current && currentSessionId.current === sessionId)
+            return chatEngine.requestReply(sessionId);
+        });
     } catch (e) {
       if (mounted.current)
         setError(
           e instanceof Error ? e.message : "Reply could not be requested.",
         );
     } finally {
+      replyLock.current = false;
       if (mounted.current) setGenerating(false);
     }
+  }
+  useKeyboardDismissAutoReply(shell, {
+    sessionId: session?.characterId === characterId ? session.id : undefined,
+    enabled: session?.autoReplyOnKeyboardDismiss === true,
+    blocked: generating || sending || multiSelect || !!activeMessage || !!editingMessage ||
+      settingsOpen || confirmClear || !!confirmDelete,
+    onReply: reply,
+  });
+  async function updateSetting(patch: { streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean }) {
+    if (!session) return;
+    try { await chatStorage.updateSessionSettings(session.id, patch); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Setting could not be saved."); }
   }
   if (!ready)
     return (
@@ -225,8 +263,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <p className="chat-notice">This Character is no longer available.</p>
       </div>
     );
-  const pending = messages.some((m) =>
-    m.role === "user" && m.status === "sent" && !m.requestedBy);
+  const pending = hasPendingUserContent(messages);
   const selectable = messages.filter((message) => message.status !== "streaming");
   return (
     <div className="chat-app chat-room" ref={shell}
@@ -244,6 +281,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <button type="button" className="chat-settings-button" aria-label="Conversation settings"
           aria-expanded={settingsOpen} onClick={() => setSettingsOpen((open) => !open)}>•••</button>
         {settingsOpen && <div className="chat-settings-menu">
+          <label className="chat-session-setting"><span>Streaming Replies
+            <small>Show replies as they are generated.</small></span>
+            <input type="checkbox" checked={session?.streamOnline === true}
+              onChange={(e) => void updateSetting({ streamOnline: e.target.checked })} /></label>
+          <label className="chat-session-setting"><span>Reply When Keyboard Closes</span>
+            <input type="checkbox" checked={session?.autoReplyOnKeyboardDismiss === true}
+              onChange={(e) => void updateSetting({ autoReplyOnKeyboardDismiss: e.target.checked })} /></label>
           <button type="button" className="chat-danger" disabled={!messages.length || generating}
             onClick={() => { setSettingsOpen(false); setConfirmClear(true); }}>Clear Chat</button>
         </div>}
@@ -287,7 +331,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
                 onContextMenu={() => { nativeSelectionActive.current = true; }}
                 onClick={(e) => openActions(e, message)}>
-                {message.content ||
+                {visibleReplyText(message, session?.streamOnline === true) ||
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <span className="chat-message-meta">
@@ -309,11 +353,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </div>
         ))}
       </div>
-      {(feedback || error || loadError) && (
+      {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
-          {error || loadError || feedback}
+          {error || loadError}
         </p>
       )}
+      {feedback && <div className="chat-feedback-toast" role="status">{feedback}</div>}
       {multiSelect && <div className="chat-multi-select-bar">
         <span>{selectedIds.size} selected</span>
         <button type="button" onClick={() => setSelectedIds(new Set(selectable.map((m) => m.id)))}>Select all</button>
@@ -363,7 +408,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           ) : (
             <button
               type="button"
-              disabled={!session || !pending || sending || !!loadError}
+              onPointerDown={(e) => e.preventDefault()}
+              disabled={!session || (!pending && !draft.trim()) || sending || !!loadError}
               onClick={() => void reply()}
             >
               Request Reply
@@ -391,7 +437,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       </>}
       {editingMessage && <div className="chat-dialog-backdrop">
         <form className="chat-dialog" onSubmit={async (e) => { e.preventDefault();
-          try { await chatStorage.editMessage(editingMessage.id, editText); setEditingMessage(null); setFeedback("Saved"); }
+          try { await chatStorage.editMessage(editingMessage.id, editText); setEditingMessage(null); showFeedback("Saved"); }
           catch (reason) { setError(reason instanceof Error ? reason.message : "Message could not be saved."); } }}>
           <h2>Edit Message</h2><textarea autoFocus maxLength={12000} value={editText}
             onChange={(e) => setEditText(e.target.value)} />
@@ -406,7 +452,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         text={`Delete all ${messages.length} messages from this conversation?`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
           if (!session) return;
-          try { await chatStorage.clearSession(session.id); setConfirmClear(false); setFeedback("Conversation cleared"); }
+          try { await chatStorage.clearSession(session.id); setConfirmClear(false); showFeedback("Conversation cleared"); }
           catch (reason) { setError(reason instanceof Error ? reason.message : "Conversation could not be cleared."); }
         }} />}
     </div>

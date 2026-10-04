@@ -6,6 +6,7 @@ export type ChatSession = {
   lastMessagePreview?: string;
   remark: string | null;
   autoReplyOnKeyboardDismiss: boolean;
+  streamOnline?: boolean;
   nextOrder: number;
 };
 

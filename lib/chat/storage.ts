@@ -27,6 +27,7 @@ function backupSession(session: ChatSession): BackupSession {
       : {}),
     remark: session.remark,
     autoReplyOnKeyboardDismiss: session.autoReplyOnKeyboardDismiss,
+    ...(session.streamOnline !== undefined ? { streamOnline: session.streamOnline } : {}),
     nextOrder: session.nextOrder,
   };
 }
@@ -253,6 +254,7 @@ export class ChatStorage {
         updatedAt: 0,
         remark: null,
         autoReplyOnKeyboardDismiss: false,
+        streamOnline: false,
         nextOrder: 1,
       };
       await request(table.add(session));
@@ -271,6 +273,23 @@ export class ChatStorage {
         tx.objectStore("messages").index("sessionId").getAll(sessionId),
       );
       return { session, messages: messages.sort((a, b) => a.order - b.order) };
+    });
+  }
+
+  updateSessionSettings(sessionId: string, patch: {
+    streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean;
+  }): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(table.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const next = { ...session };
+      for (const key of ["streamOnline", "autoReplyOnKeyboardDismiss"] as const)
+        if (patch[key] !== undefined) {
+          if (typeof patch[key] !== "boolean") throw new Error("Invalid conversation setting.");
+          next[key] = patch[key];
+        }
+      await request(table.put(next));
     });
   }
 
