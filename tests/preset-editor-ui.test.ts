@@ -1,9 +1,18 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const detail = readFileSync("components/settings/presets/preset-detail.tsx", "utf8");
+const creator = readFileSync("components/settings/presets/prompt-editor.tsx", "utf8");
 const css = readFileSync("app/settings/presets/presets.css", "utf8");
+
+test("existing Prompts edit inline while the separate editor only creates new Prompts", () => {
+  assert.equal(existsSync("app/settings/presets/[presetId]/prompts/[identifier]/page.tsx"), false);
+  assert.equal(existsSync("app/settings/presets/[presetId]/new-prompt/page.tsx"), true);
+  assert.match(creator, /export function NewPromptEditor/);
+  assert.match(creator, /savePrompt\(baseline, undefined, draft\)/);
+  assert.doesNotMatch(creator, /deletePrompt|identifier\?: string|Delete Prompt/);
+});
 
 test("Preset Detail renders one ordered inline Prompt pipeline", () => {
   assert.match(detail, /buildDisplayedPrompts\(draft\)/);
