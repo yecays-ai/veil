@@ -33,6 +33,11 @@ export default function Page() {
             href: "/settings/presets",
             icon: <SlidersHorizontal size={20} />,
           },
+        ]}
+      />
+      <CardGrid
+        label="Data"
+        items={[
           {
             id: "backup",
             label: "Data & Backup",
