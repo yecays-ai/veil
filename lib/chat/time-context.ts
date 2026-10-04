@@ -32,6 +32,11 @@ export function buildTimeContext(
     `Timezone: ${character.timezone}`,
     "", `Local dates differ: ${differentDate ? "yes" : "no"}. Local times differ: ${differentLocalTime ? "yes" : "no"}.`,
     "Use each person's own local time when interpreting greetings, sleep/wake state, day/night, work hours, dates, and relative time.",
+    "", "Recent History timestamp boundary:",
+    "The bracketed timestamp lines [YYYY-MM-DD HH:mm Timezone] attached to Recent History are VEIL runtime metadata, not message content or Character speech.",
+    "Use them only to understand when messages occurred.",
+    "Never reproduce, quote, imitate, paraphrase, or include these timestamp lines in your reply.",
+    "Your reply must contain only the Character's actual message text.",
   ].join("\n");
   return { user, character, differentDate, differentLocalTime, content };
 }

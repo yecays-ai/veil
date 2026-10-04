@@ -94,3 +94,47 @@ test("every generation re-reads runtime setting and clock, OFF removes current c
   assert(!JSON.stringify(prompts[2]).includes("Current time context:"));
   assert(prompts[2].some((turn) => turn.content === "first"));
 });
+
+test("runtime owns the timestamp boundary even without output format and with custom prompt order", () => {
+  const document = foundation();
+  const preset = createBuiltinPreset();
+  preset.prompts = preset.prompts.filter((entry) => entry.identifier !== "chat_output_format");
+  const directive = preset.prompts.find((entry) => entry.identifier === "response-directive");
+  if (directive?.source === "prompt") directive.content = "Custom response directive";
+  preset.promptOrder = [
+    { identifier: "history", enabled: true },
+    { identifier: "response-directive", enabled: true },
+    { identifier: "character", enabled: true },
+  ];
+  const history: ChatMessage[] = [
+    { id: "user", sessionId: "character:a", role: "user", status: "sent",
+      content: "earlier question", createdAt: instant.getTime() - 60000, order: 0 },
+    { id: "assistant", sessionId: "character:a", role: "assistant", status: "complete",
+      content: "earlier reply", createdAt: instant.getTime(), order: 1 },
+  ];
+  const original = structuredClone(history);
+  const on = assembleChatPrompt(document, document.characters[0], history, [], undefined, preset, instant);
+  const runtime = on.messages[0];
+  assert.equal(runtime.role, "system");
+  assert.match(runtime.content, /\[YYYY-MM-DD HH:mm Timezone\].*VEIL runtime metadata, not message content or Character speech/);
+  assert.match(runtime.content, /Use them only to understand when messages occurred\./);
+  assert.match(runtime.content, /Never reproduce, quote, imitate, paraphrase, or include these timestamp lines in your reply\./);
+  assert.match(runtime.content, /Your reply must contain only the Character's actual message text\./);
+  assert.equal(on.messages.filter((turn) => turn.content.includes("Recent History timestamp boundary:")).length, 1);
+  assert.equal(on.messages[1].content, "[2026-10-05 00:49 Australia/Sydney]\nearlier question");
+  assert.equal(on.messages[2].content, "[2026-10-05 00:50 Australia/Sydney]\nearlier reply");
+  assert.deepEqual(on.sections.map((section) => section.identifier), ["response-directive", "character"]);
+  document.runtime.timeAware = false;
+  const off = assembleChatPrompt(document, document.characters[0], history, [], undefined, preset, instant);
+  assert(!JSON.stringify(off).includes("Recent History timestamp boundary:"));
+  assert(!JSON.stringify(off).includes("Current time context:"));
+  assert.deepEqual(off.messages.slice(0, 2), history.map(({ role, content }) => ({ role, content })));
+  assert.deepEqual(off.sections, on.sections);
+  assert.deepEqual(history, original);
+  preset.promptOrder = [];
+  document.runtime.timeAware = true;
+  const bare = assembleChatPrompt(document, document.characters[0], [], [], undefined, preset, instant);
+  assert.match(bare.messages[0].content, /VEIL runtime metadata, not message content/);
+  document.runtime.timeAware = false;
+  assert.deepEqual(assembleChatPrompt(document, document.characters[0], [], [], undefined, preset, instant).messages, []);
+});
