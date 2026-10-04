@@ -283,7 +283,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
   const typingIndicator = typing && <div className="chat-turn chat-turn-assistant" role="status" aria-label="Typing">
     <div className="chat-avatar-column"><ChatAvatar profile={character} /></div><div className="chat-message">
-      <p className="chat-bubble">…</p><span className="chat-message-meta">Typing…</span>
+      <p className="chat-bubble"><span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span></p>
     </div>
   </div>;
   return (
@@ -359,8 +359,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <span className="chat-message-meta">
-                {message.status === "streaming" && (
-                  <span>{generating ? "Typing…" : "Interrupted reply"}</span>
+                {message.status === "streaming" && !generating && (
+                  <span>Interrupted reply</span>
                 )}
                 {message.status === "cancelled" && <span>Reply stopped</span>}
                 {message.status === "error" && (
@@ -371,6 +371,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 </span>}
               </span>
             </div>
+            {message.role === "user" && <div className="chat-user-gutter" aria-hidden="true" />}
           </div>
           </Fragment>
         );})}

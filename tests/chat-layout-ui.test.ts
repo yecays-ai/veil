@@ -21,9 +21,11 @@ test("chat header is a glass overlay with the requested lightweight controls", (
 test("assistant groups retain one avatar and a shared gutter while delivery uses group end", () => {
   assert.match(room, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
   assert.match(room, /message\.role === "assistant" && <div className="chat-avatar-column">\s*\{isGroupStart && <ChatAvatar/);
-  assert.match(css, /\.chat-avatar-column\s*\{[^}]*width:\s*40px;[^}]*flex:\s*0 0 40px;/);
-  assert.match(css, /\.chat-turn-assistant \.chat-avatar\s*\{[^}]*width:\s*40px;[^}]*height:\s*40px;[^}]*border-radius:\s*20px;/);
-  assert.match(css, /\.chat-turn-assistant \.chat-message\s*\{[^}]*max-width:\s*calc\(100% - 48px\);/);
+  assert.match(css, /--chat-avatar-size:\s*40px;/);
+  assert.match(css, /\.chat-avatar-column,\s*\.chat-user-gutter\s*\{[^}]*flex:\s*0 0 var\(--chat-avatar-size\)/);
+  assert.match(css, /\.chat-turn-assistant \.chat-avatar\s*\{[^}]*width:\s*var\(--chat-avatar-size\);[^}]*height:\s*var\(--chat-avatar-size\);[^}]*border-radius:\s*20px;/);
+  assert.match(css, /\.chat-turn-assistant \.chat-message,\s*\.chat-turn-user \.chat-message\s*\{[^}]*max-width:\s*calc\(100% - var\(--chat-avatar-size\) - 8px\)/);
+  assert.match(room, /message\.role === "user" && <div className="chat-user-gutter" aria-hidden="true" \/>/);
   assert.doesNotMatch(css, /\.chat-turn-assistant:not\(\.chat-group-start\)/);
   assert.doesNotMatch(room, /message\.role === "user" &&[^\n]*<(?:ChatAvatar|div className="chat-avatar-column")/);
   assert.match(room, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);
@@ -33,7 +35,13 @@ test("assistant groups retain one avatar and a shared gutter while delivery uses
 });
 
 test("typing copy and enabled Send retain lightweight presentation", () => {
-  assert.match(room, /Typing…/);
+  assert.doesNotMatch(room, /Typing…/);
+  assert.match(room, /const typingIndicator = typing &&/);
+  assert.match(room, /className="chat-typing-dots" aria-hidden="true"><i \/><i \/><i \/>/);
+  assert.match(css, /\.chat-typing-dots i\s*\{[^}]*width:\s*8px;[^}]*height:\s*8px;[^}]*animation:\s*chat-typing-pulse/);
+  assert.match(css, /nth-child\(2\).*animation-delay:\s*\.16s/);
+  assert.match(css, /nth-child\(3\).*animation-delay:\s*\.32s/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.chat-typing-dots i \{ animation: none;/);
   assert.doesNotMatch(room, /Replying/);
   const enabledSend = css.match(/\.chat-app button\.chat-send:not\(:disabled\)\s*\{([^}]*)\}/)?.[1];
   assert.ok(enabledSend);
