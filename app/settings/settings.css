@@ -1,56 +1,74 @@
+/* Settings-only adaptations of the reference PageShell, CardGrid, form, feedback,
+   and modal styles. Shared phone/Home geometry remains owned by its existing CSS. */
+.theme-surface:has(.settings-app) {
+  height: 100%;
+  min-height: 0;
+}
 .settings-app {
-  padding: max(24px, env(safe-area-inset-top)) 20px
-    max(28px, env(safe-area-inset-bottom));
+  --settings-safe-top: env(safe-area-inset-top, 0px);
+  --settings-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --settings-border: color-mix(in srgb, var(--theme-text) 12%, transparent);
+  position: relative;
+  flex: 1;
+  min-height: 0;
   min-width: 0;
+  color: var(--theme-text);
+  background: var(--theme-background);
+  overflow: hidden;
+  isolation: isolate;
 }
-.settings-app h1 {
-  font-size: 26px;
-  margin: 22px 0 12px;
-}
-.settings-app p,
-.settings-app small {
-  color: var(--muted, #777);
-  line-height: 1.5;
-}
-.settings-app nav,
-.settings-app form,
-.settings-app label {
-  display: grid;
-  gap: 14px;
-}
-.settings-row {
-  display: grid;
-  gap: 6px;
-  padding: 16px 0;
-  border-bottom: 1px solid #8883;
-  text-decoration: none;
-  color: inherit;
-}
-.settings-row span {
-  font-size: 13px;
-  color: var(--muted, #777);
-}
-.settings-actions {
+.settings-page-shell {
+  height: 100%;
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 16px 0;
+  flex-direction: column;
+  padding-bottom: var(--settings-keyboard-inset, 0px);
+}
+.settings-page-header {
+  flex: none;
+  background: var(--theme-background);
+  border-bottom: 1px solid var(--settings-border);
+}
+.settings-header-safe-area {
+  height: max(12px, var(--settings-safe-top));
+}
+.settings-header-content {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 64px;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 max(12px, env(safe-area-inset-right)) 0
+    max(12px, env(safe-area-inset-left));
+}
+.settings-app .settings-header-content h1 {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 0;
+  text-align: center;
+  font-weight: 600;
+}
+.settings-back {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+}
+.settings-header-right {
+  display: flex;
+  justify-content: flex-end;
+}
+.settings-page-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 24px max(18px, env(safe-area-inset-right))
+    max(24px, var(--settings-safe-bottom)) max(18px, env(safe-area-inset-left));
 }
 .settings-app button,
 .settings-app input,
 .settings-app select {
   font: inherit;
-  border: 1px solid #8885;
-  border-radius: 12px;
-  padding: 11px 12px;
-  background: transparent;
   color: inherit;
-  min-width: 0;
-}
-.settings-app input,
-.settings-app select {
-  width: 100%;
-  box-sizing: border-box;
 }
 .settings-app button {
   cursor: pointer;
@@ -59,10 +77,281 @@
   opacity: 0.45;
   cursor: default;
 }
-.settings-app [role="alert"] {
-  color: #af3d3d;
+.settings-app :is(button, input, select, a):focus-visible {
+  outline: 2px solid var(--theme-accent);
+  outline-offset: 3px;
 }
-.settings-app label {
-  gap: 7px;
+.settings-app .settings-section-label {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.65;
+  letter-spacing: 0.02em;
+}
+.settings-card-grid,
+.settings-config-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.settings-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 20px 10px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--settings-border);
+  border-radius: 20px;
+  background: var(--theme-surface);
+  align-items: center;
+}
+.settings-card-copy {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+}
+.settings-card-copy strong {
+  font-size: 16px;
+}
+.settings-card-copy > span {
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.6;
+}
+.settings-card-icon {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--theme-text) 7%, transparent);
+  font-weight: 600;
+}
+.settings-config-card {
+  border: 1px solid var(--settings-border);
+  border-radius: 18px;
+  background: var(--theme-surface);
+  padding: 14px;
+  min-width: 0;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-config-card > strong,
+.settings-config-model {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.settings-config-card > strong {
+  font-size: 15px;
+}
+.settings-config-model {
+  font-size: 13px;
+  opacity: 0.65;
+}
+.settings-config-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+.settings-badge {
+  padding: 3px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+.settings-config-edit {
+  align-self: flex-end;
+  margin-top: auto;
+  padding-top: 8px;
+  font-size: 12px;
+}
+.settings-intro,
+.settings-hint {
+  font-size: 13px;
+  line-height: 1.5;
+  opacity: 0.65;
+  margin: 0 0 18px;
+}
+.settings-page-body > .settings-hint {
+  margin-top: 24px;
+}
+.settings-empty {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  text-align: center;
+  padding: 40px 12px;
+}
+.settings-empty h2 {
+  font-size: 17px;
+  margin: 16px 0 8px;
+}
+.settings-empty p {
   font-size: 14px;
+  line-height: 1.5;
+  opacity: 0.65;
+  margin: 0;
+}
+.settings-header-action,
+.settings-icon-button {
+  border: 0;
+  background: transparent;
+  min-height: 44px;
+  padding: 0 4px;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+.settings-icon-button {
+  width: 44px;
+  font-size: 26px !important;
+  font-weight: 400 !important;
+}
+.settings-modal-overlay {
+  position: absolute;
+  inset: 0 0 var(--settings-keyboard-inset, 0px);
+  z-index: 5;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-top: max(12px, var(--settings-safe-top));
+  background: rgb(0 0 0 / 28%);
+}
+.settings-modal-bottom {
+  align-items: flex-end;
+}
+.settings-modal-sheet {
+  width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 22px 22px 0 0;
+  background: var(--theme-background);
+  box-shadow: 0 -4px 24px rgb(0 0 0 / 10%);
+}
+.settings-modal-header {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 64px;
+  align-items: center;
+  flex: none;
+  min-height: 56px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--settings-border);
+}
+.settings-modal-header > div {
+  text-align: right;
+}
+.settings-app .settings-modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+  text-align: center;
+  letter-spacing: 0;
+}
+.settings-modal-body {
+  padding: 20px max(18px, env(safe-area-inset-right))
+    max(24px, var(--settings-safe-bottom)) max(18px, env(safe-area-inset-left));
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.settings-editor {
+  display: grid;
+  gap: 16px;
+}
+.settings-editor label {
+  display: grid;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.settings-input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: var(--theme-surface);
+  padding: 11px 12px;
+  font-size: 16px !important;
+}
+.settings-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-action-row > button {
+  flex: 1;
+}
+.settings-button {
+  min-height: 44px;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  background: var(--theme-surface);
+  padding: 10px 12px;
+  font-size: 13px !important;
+  line-height: 1.4;
+}
+.settings-editor .settings-hint {
+  margin: 0;
+}
+.settings-default-row {
+  border-top: 1px solid var(--settings-border);
+  padding-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+.settings-default-row strong {
+  font-size: 14px;
+}
+.settings-default-row p {
+  margin-top: 6px !important;
+}
+.settings-danger {
+  color: #ae3636 !important;
+}
+.settings-alert {
+  padding: 12px;
+  margin: 12px 0 0;
+  border: 1px solid var(--settings-border);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.settings-editor .settings-alert {
+  margin: 0;
+}
+.settings-alert[data-variant="danger"] {
+  color: #ae3636;
+  background: #ae363609;
+}
+.settings-alert[data-variant="success"] {
+  color: #287448;
+  background: #28744809;
+}
+.settings-modal-dialog {
+  width: calc(100% - 32px);
+  max-width: 340px;
+  max-height: 90%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  overflow: hidden;
+  background: var(--theme-background);
+  box-shadow: 0 12px 36px rgb(0 0 0 / 20%);
+}
+.settings-modal-dialog .settings-modal-header {
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+}
+.settings-modal-dialog p {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.5;
 }
