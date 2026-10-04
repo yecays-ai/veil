@@ -4,10 +4,13 @@ import {
   type PresetDocument,
 } from "./preset";
 import type { StringStorage } from "./foundation-storage";
+import { assertPresetUpdate } from "./preset-library";
+import { presetFingerprint } from "./preset";
 
 export interface PresetStorage {
   load(): Promise<PresetDocument>;
   save(document: PresetDocument): Promise<void>;
+  transact(update: (document: PresetDocument) => PresetDocument): Promise<PresetDocument>;
   readRaw(): Promise<string | null>;
   replaceIfCurrent(expected: string | null, document: PresetDocument): Promise<string>;
   rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
@@ -26,6 +29,15 @@ export function createPresetStorage(getStorage: () => StringStorage): PresetStor
     }
     catch { throw new Error("Saved Preset data could not be read. Restore a valid backup to repair it."); }
   };
+  const write = (document: PresetDocument, previous: PresetDocument | null) => {
+    const next = validatePresetDocument(document);
+    for (const preset of previous?.presets ?? []) {
+      const updated = next.presets.find((item) => item.id === preset.id);
+      if (updated && presetFingerprint(preset) !== presetFingerprint(updated)) assertPresetUpdate(preset, updated);
+    }
+    getStorage().setItem(KEY, JSON.stringify(next));
+    return next;
+  };
   return {
     async load() {
       const saved = read();
@@ -35,7 +47,11 @@ export function createPresetStorage(getStorage: () => StringStorage): PresetStor
       return document;
     },
     async save(document) {
-      getStorage().setItem(KEY, JSON.stringify(validatePresetDocument(document)));
+      write(document, read());
+    },
+    async transact(update) {
+      const previous = read() ?? createPresetDocument();
+      return write(update(structuredClone(previous)), previous);
     },
     async readRaw() { return getStorage().getItem(KEY); },
     async replaceIfCurrent(expected, document) {

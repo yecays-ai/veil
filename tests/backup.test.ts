@@ -15,7 +15,8 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createChatEngine } from "../lib/chat/engine";
 import { defaultFoundation } from "../lib/foundation-types";
 import { normalizeDocument } from "../lib/theme-types";
-import { createPresetDocument } from "../lib/preset";
+import { activePreset, createBuiltinPreset, createPresetDocument } from "../lib/preset";
+import { copyPreset } from "../lib/preset-library";
 
 function chat(): BackupChat {
   return {
@@ -61,28 +62,25 @@ test("V1 backup is stable, sorted, and contains no Text API configuration", asyn
   assert.equal(backup.version, 1);
   assert.equal(backup.chat.sessions[0].id, "character:a");
   assert.equal(backup.chat.messages[0].id, "m1");
-  assert.equal(backup.preset.activePreset.id, "veil-default-v1");
+  assert.equal(activePreset(backup.preset).id, "veil-default-v1");
   assert(!json.includes("apiKey"));
   assert(!json.includes("Text API"));
 });
 
 test("Preset edits are exported and restored while generated defaults remain an empty install", async () => {
   const source = sources();
-  const preset = createPresetDocument();
-  const directive = preset.activePreset.prompts.find((entry) =>
+  const preset = copyPreset(createPresetDocument());
+  preset.activePresetId = preset.presets.at(-1)!.id;
+  const directive = activePreset(preset).prompts.find((entry) =>
     entry.identifier === "response-directive")!;
   assert(directive.source === "prompt");
   directive.content = "Restored response rule";
   source.preset = { load: async () => preset };
   const { backup } = await exportBackupV1(source);
-  assert.deepEqual(backup.preset.activePreset.prompts.find((entry) =>
+  assert.deepEqual(activePreset(backup.preset).prompts.find((entry) =>
     entry.identifier === "response-directive"), directive);
   const target = restoreSources();
-  const legacyDefault = structuredClone(createPresetDocument()) as unknown as {
-    version: number;
-    activePreset: ReturnType<typeof createPresetDocument>["activePreset"];
-  };
-  legacyDefault.version = 1;
+  const legacyDefault = { version: 1, activePreset: createBuiltinPreset() };
   legacyDefault.activePreset.prompts = legacyDefault.activePreset.prompts.filter((entry) =>
     entry.identifier !== "chat_output_format");
   legacyDefault.activePreset.promptOrder = legacyDefault.activePreset.promptOrder.filter((entry) =>
@@ -100,6 +98,34 @@ test("legacy V1 backups without Preset data migrate to the built-in default", as
   const legacy = structuredClone(backup) as unknown as Record<string, unknown>;
   delete legacy.preset;
   assert.deepEqual(validateBackupV1(legacy).preset, createPresetDocument());
+});
+
+test("backup restores the entire v3 library and active selection, not just the active Preset", async () => {
+  const source = sources();
+  let library = copyPreset(createPresetDocument(), undefined, "First", "first");
+  library = copyPreset(library, "first", "Second", "second");
+  library.activePresetId = "second";
+  library.presets[1].description = "Inactive custom must also survive";
+  library.presets[2].generation = { temperature: 0.9, maxTokens: 2048 };
+  source.preset = { load: async () => library };
+  const { backup, json } = await exportBackupV1(source);
+  assert.deepEqual(parseBackupV1(json).preset, library);
+  const target = restoreSources();
+  await restoreBackupV1(backup, target);
+  assert.deepEqual(JSON.parse((await target.preset.readRaw())!), library);
+  assert.equal(await requiresOverwriteRestore(target), true);
+});
+
+test("legacy v2 backup Preset migrates during restore without losing active custom content", async () => {
+  const { backup } = await exportBackupV1(sources());
+  const custom = { ...createBuiltinPreset(), id: "legacy-custom", builtIn: false, name: "Legacy Custom" };
+  custom.generation = { temperature: 0.8 };
+  const legacy = { ...backup, preset: { version: 2, activePreset: custom } };
+  const migrated = validateBackupV1(legacy);
+  assert.deepEqual(activePreset(migrated.preset), custom);
+  const target = restoreSources();
+  await restoreBackupV1(migrated, target);
+  assert.deepEqual(JSON.parse((await target.preset.readRaw())!), migrated.preset);
 });
 
 test("backup retries once when foundation or theme changes around chat", async () => {

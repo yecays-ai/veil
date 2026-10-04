@@ -1,0 +1,98 @@
+import {
+  BUILTIN_PRESET_ID, createBuiltinPreset, presetFingerprint, validatePreset, validatePresetDocument,
+  type Preset, type PresetDocument, type PresetPrompt,
+} from "./preset";
+
+function custom(document: PresetDocument, id: string) {
+  const preset = document.presets.find((item) => item.id === id);
+  if (!preset) throw new Error("This Preset no longer exists.");
+  if (preset.builtIn) throw new Error("VEIL Default is read-only. Copy it to make changes.");
+  return preset;
+}
+
+export function assertPresetUpdate(previous: Preset, next: Preset) {
+  if (previous.builtIn || next.id !== previous.id || next.builtIn)
+    throw new Error("Preset identity and built-in status cannot be changed.");
+  for (const marker of previous.prompts.filter((entry) => entry.source === "marker")) {
+    const updated = next.prompts.find((entry) => entry.identifier === marker.identifier);
+    if (!updated || updated.source !== "marker" || updated.marker !== marker.marker)
+      throw new Error("Existing marker identities must remain in the pipeline.");
+  }
+}
+
+export function updatePreset(document: PresetDocument, next: Preset, expected?: Preset): PresetDocument {
+  const previous = custom(document, next.id);
+  if (expected && presetFingerprint(previous) !== presetFingerprint(expected))
+    throw new Error("This Preset changed elsewhere. Reload it before saving.");
+  assertPresetUpdate(previous, next);
+  return validatePresetDocument({ ...document, presets: document.presets.map((item) => item.id === next.id ? next : item) });
+}
+
+export function copyPreset(document: PresetDocument, sourceId = BUILTIN_PRESET_ID, name?: string, id: string = crypto.randomUUID()): PresetDocument {
+  const source = document.presets.find((item) => item.id === sourceId);
+  if (!source) throw new Error("This Preset no longer exists.");
+  const copy = { ...structuredClone(source), id, builtIn: false, name: name ?? `${source.name} Copy` };
+  return validatePresetDocument({ ...document, presets: [...document.presets, copy] });
+}
+
+export function deletePreset(document: PresetDocument, id: string): PresetDocument {
+  custom(document, id);
+  return validatePresetDocument({ ...document, presets: document.presets.filter((item) => item.id !== id),
+    activePresetId: document.activePresetId === id ? BUILTIN_PRESET_ID : document.activePresetId });
+}
+
+export function setActivePreset(document: PresetDocument, id: string): PresetDocument {
+  return validatePresetDocument({ ...document, activePresetId: id });
+}
+
+export function savePrompt(preset: Preset, previousIdentifier: string | undefined, next: PresetPrompt): Preset {
+  if (preset.builtIn) throw new Error("VEIL Default is read-only.");
+  const previous = preset.prompts.find((entry) => entry.identifier === previousIdentifier);
+  if (previousIdentifier && !previous) throw new Error("This Prompt no longer exists.");
+  if (preset.prompts.some((entry) => entry.identifier === next.identifier && entry !== previous))
+    throw new Error("Prompt Identifier must be unique.");
+  if (!previous && (next.source !== "prompt" || !next.content.trim()))
+    throw new Error("Enter content for the new Prompt.");
+  const updated = validatePreset({ ...preset,
+    prompts: previous ? preset.prompts.map((entry) => entry === previous ? next : entry) : [...preset.prompts, next],
+    promptOrder: previous ? preset.promptOrder.map((entry) => entry.identifier === previousIdentifier
+      ? { ...entry, identifier: next.identifier } : entry) : [...preset.promptOrder, { identifier: next.identifier, enabled: true }],
+  });
+  assertPresetUpdate(preset, updated);
+  return updated;
+}
+
+export function deletePrompt(preset: Preset, identifier: string): Preset {
+  if (preset.builtIn) throw new Error("VEIL Default is read-only.");
+  const entry = preset.prompts.find((item) => item.identifier === identifier);
+  if (!entry || entry.source !== "prompt") throw new Error("Only ordinary Prompts can be deleted.");
+  return validatePreset({ ...preset, prompts: preset.prompts.filter((item) => item.identifier !== identifier),
+    promptOrder: preset.promptOrder.filter((item) => item.identifier !== identifier) });
+}
+
+export function movePrompt(preset: Preset, identifier: string, direction: -1 | 1): Preset {
+  if (preset.builtIn) throw new Error("VEIL Default is read-only.");
+  const promptOrder = structuredClone(preset.promptOrder);
+  const index = promptOrder.findIndex((entry) => entry.identifier === identifier), target = index + direction;
+  if (index < 0 || target < 0 || target >= promptOrder.length) return structuredClone(preset);
+  [promptOrder[index], promptOrder[target]] = [promptOrder[target], promptOrder[index]];
+  return validatePreset({ ...preset, promptOrder });
+}
+
+export function importPreset(document: PresetDocument, json: string, id: string = crypto.randomUUID()): PresetDocument {
+  let value: unknown;
+  try { value = JSON.parse(json); } catch { throw new Error("This file is not valid Preset JSON."); }
+  const imported = validatePreset(value);
+  // Imports always create a custom copy, including exports of the official default.
+  imported.builtIn = false;
+  if (imported.id === BUILTIN_PRESET_ID || document.presets.some((item) => item.id === imported.id)) imported.id = id;
+  return validatePresetDocument({ ...document, presets: [...document.presets, imported] });
+}
+
+export function exportPreset(preset: Preset): string {
+  return JSON.stringify(validatePreset(preset), null, 2);
+}
+
+export function newPreset(document: PresetDocument): PresetDocument {
+  return copyPreset(document, createBuiltinPreset().id, "New Preset");
+}

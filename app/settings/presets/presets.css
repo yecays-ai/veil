@@ -1,0 +1,27 @@
+.preset-route { height: 100%; min-height: 0; }
+.preset-manager .preset-actions { margin-bottom: 20px; }
+.preset-manager .preset-actions button,
+.preset-manager .preset-entry-link { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.preset-manager .preset-list { display: grid; gap: 12px; margin-top: 20px; }
+.preset-manager .preset-list-item { display: flex; align-items: center; gap: 12px; padding: 18px; border: 1px solid var(--settings-border); border-radius: 18px; background: var(--theme-surface); }
+.preset-manager .preset-copy { display: grid; gap: 8px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.preset-manager .preset-copy > span:not(.settings-config-meta),
+.preset-manager small { font-size: 13px; line-height: 1.5; opacity: .65; }
+.preset-manager .preset-copy strong { font-size: 15px; }
+.preset-manager .preset-status { display: flex; align-items: center; gap: 10px; margin: 20px 0; font-size: 13px; }
+.preset-manager .preset-section { margin: 26px 0; }
+.preset-manager h2 { margin: 0 0 14px; font-size: 17px; }
+.preset-manager fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.preset-manager textarea { font: inherit; color: inherit; line-height: 1.6; resize: vertical; }
+.preset-manager .preset-parameter { display: flex; align-items: end; gap: 8px; }
+.preset-manager .preset-parameter label { flex: 1; min-width: 0; }
+.preset-manager .preset-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.preset-manager .preset-entry-link { min-height: 44px; font-size: 14px; color: var(--theme-accent); }
+.preset-manager .preset-rows { list-style: none; padding: 0; margin: 0; border: 1px solid var(--settings-border); border-radius: 16px; background: var(--theme-surface); }
+.preset-manager .preset-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-height: 64px; }
+.preset-manager .preset-row + .preset-row { border-top: 1px solid var(--settings-border); }
+.preset-manager input[type="checkbox"] { flex: none; width: 22px; height: 22px; accent-color: var(--theme-accent); }
+.preset-manager .preset-order-button { display: grid; place-items: center; min-width: 40px; min-height: 44px; padding: 0; border: 0; background: transparent; }
+.preset-manager .preset-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
+.preset-manager .preset-prompt-content { min-height: 260px; }
+.preset-manager .preset-delete { margin-top: 24px; }

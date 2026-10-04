@@ -1,6 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
+import { SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -23,8 +24,15 @@ export default function Page() {
         ]}
       />
       <CardGrid
-        label="Data"
+        label="Data & Rules"
         items={[
+          {
+            id: "presets",
+            label: "Presets",
+            description: "Prompt pipelines and reply settings",
+            href: "/settings/presets",
+            icon: <SlidersHorizontal size={20} />,
+          },
           {
             id: "backup",
             label: "Data & Backup",

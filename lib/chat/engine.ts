@@ -1,7 +1,7 @@
 import { resolveBindings } from "../bindings";
 import { browserFoundationStorage } from "../foundation-storage";
 import type { FoundationDocument } from "../foundation-types";
-import { createPresetDocument, type PresetDocument } from "../preset";
+import { activePreset, createPresetDocument, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
 import { assembleChatPrompt } from "./prompt";
 import {
@@ -59,7 +59,7 @@ export function createChatEngine(
             "The selected Text API is missing. Choose a saved config in Settings → Text API.",
           );
         validateApiConfig(config);
-        const preset = (await presets()).activePreset;
+        const preset = activePreset(await presets());
         controller.signal.throwIfAborted();
         const batch = await storage.beginReply(sessionId);
         if (!batch) return null;
