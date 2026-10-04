@@ -114,6 +114,13 @@
   padding-top: max(0px, calc(20px - var(--chat-keyboard-inset, 0px)));
   padding-bottom: max(0px, calc(16px - var(--chat-keyboard-inset, 0px)));
 }
+.chat-history-empty {
+  display: grid;
+  place-items: center;
+}
+.chat-empty-state {
+  margin: 0;
+}
 .chat-turn {
   display: flex;
   align-items: flex-start;

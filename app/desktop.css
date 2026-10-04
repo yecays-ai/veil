@@ -14,13 +14,6 @@
   min-height: 0;
   padding: var(--home-grid-top-offset) var(--home-slot-inset-x) 0;
 }
-@media (pointer: fine) and (hover: hover) {
-  .theme-surface:has(.home-screen):has(.theme-status-bar) .desktop-foreground {
-    padding-top: calc(
-      var(--theme-status-bar-height) + var(--home-grid-top-offset)
-    );
-  }
-}
 .desktop-toolbar {
   flex: none;
   display: flex;

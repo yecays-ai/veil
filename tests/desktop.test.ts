@@ -96,7 +96,7 @@ test("default Messages is Dock-only while saved shortcuts and removals survive n
   assert(APP_IDS.includes("messages"));
 });
 
-test("legacy theme Island data is ignored while status-bar settings survive", () => {
+test("legacy simulated status-bar data is ignored while typography survives", () => {
   const defaults = defaultSnapshot();
   const legacy = {
     ...defaults,
@@ -107,17 +107,21 @@ test("legacy theme Island data is ignored while status-bar settings survive", ()
         color: "#123456",
         island: true,
       },
+      text: {
+        ...defaults.profile.text,
+        font: "serif" as const,
+        size: 18,
+        weight: 700,
+      },
     },
   };
   const normalized = normalizeSnapshot(legacy);
-  assert.deepEqual(normalized.profile.statusBar, {
-    visible: true,
-    color: "#123456",
-  });
-  assert.equal("island" in normalized.profile.statusBar, false);
+  assert.equal("statusBar" in normalized.profile, false);
+  assert.deepEqual(normalized.profile.text, legacy.profile.text);
 
   const saved = normalizeDocument({ current: legacy });
-  assert.deepEqual(saved.current.profile.statusBar, normalized.profile.statusBar);
+  assert.equal("statusBar" in saved.current.profile, false);
+  assert.deepEqual(saved.current.profile.text, normalized.profile.text);
 
   const imported = importTheme(
     JSON.stringify({
@@ -126,7 +130,8 @@ test("legacy theme Island data is ignored while status-bar settings survive", ()
       snapshot: legacy,
     }),
   );
-  assert.deepEqual(imported.profile.statusBar, normalized.profile.statusBar);
+  assert.equal("statusBar" in imported.profile, false);
+  assert.deepEqual(imported.profile.text, normalized.profile.text);
 });
 
 test("Settings is a registered Home app without rewriting saved layouts", () => {

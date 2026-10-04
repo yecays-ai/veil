@@ -15,6 +15,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     characterId,
     ready && !!character,
   );
+  const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -129,7 +130,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <strong>{session?.remark || character.name}</strong>
       </header>
       <div
-        className="chat-history"
+        className={`chat-history${empty ? " chat-history-empty" : ""}`}
         ref={history}
         aria-label="Conversation history"
         onScroll={() => {
@@ -144,6 +145,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             {loadError ? "Conversation unavailable." : "Loading conversation…"}
           </p>
         )}
+        {empty && <p className="chat-empty-state">No messages yet</p>}
         {messages.map((message) => (
           <div
             key={message.id}

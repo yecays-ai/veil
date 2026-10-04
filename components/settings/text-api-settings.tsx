@@ -65,6 +65,16 @@ export function TextApiSettings() {
     setDeleting(false);
     setDiscarding(false);
   }
+  function addConfig() {
+    edit({
+      id: crypto.randomUUID(),
+      name: "",
+      provider: "Custom",
+      baseUrl: "",
+      apiKey: "",
+      model: "",
+    });
+  }
   function update(patch: Partial<NamedApiConfig>) {
     if (!draft) return;
     setDraft({ ...draft, ...patch });
@@ -140,25 +150,6 @@ export function TextApiSettings() {
       title="Text API"
       backHref="/settings"
       backLabel="Back to Settings"
-      rightAction={
-        <button
-          className="settings-header-action"
-          aria-label="Create Text API"
-          disabled={!ready || !!busy}
-          onClick={() =>
-            edit({
-              id: crypto.randomUUID(),
-              name: "",
-              provider: "Custom",
-              baseUrl: "",
-              apiKey: "",
-              model: "",
-            })
-          }
-        >
-          <span aria-hidden="true">＋</span> Add
-        </button>
-      }
       overlay={
         draft ? (
           <>
@@ -394,28 +385,6 @@ export function TextApiSettings() {
       }
     >
       {!ready && !error && <Alert>Loading Text APIs…</Alert>}
-      <div className="settings-config-grid" aria-label="Text API configs">
-        {configs.map((config) => (
-          <button
-            className="settings-config-card"
-            key={config.id}
-            onClick={() => edit({ ...config })}
-            aria-label={`Edit ${config.name}`}
-          >
-            <strong>{config.name}</strong>
-            <span className="settings-config-model">{config.model}</span>
-            <span className="settings-config-meta">
-              <span>{config.provider}</span>
-              {globalId === config.id && (
-                <span className="settings-badge">Default</span>
-              )}
-            </span>
-            <span className="settings-config-edit" aria-hidden="true">
-              Edit ↗
-            </span>
-          </button>
-        ))}
-      </div>
       {ready && !configs.length && (
         <div className="settings-empty">
           <span className="settings-card-icon" aria-hidden="true">
@@ -423,7 +392,51 @@ export function TextApiSettings() {
           </span>
           <h2>No Text APIs yet</h2>
           <p>Add a provider and model to start a conversation.</p>
+          <button
+            className="settings-button settings-page-add"
+            type="button"
+            aria-label="Create Text API"
+            disabled={!ready || !!busy}
+            onClick={addConfig}
+          >
+            Add provider
+          </button>
         </div>
+      )}
+      {ready && !!configs.length && (
+        <>
+          <button
+            className="settings-button settings-page-add"
+            type="button"
+            aria-label="Create Text API"
+            disabled={!ready || !!busy}
+            onClick={addConfig}
+          >
+            Add provider
+          </button>
+          <div className="settings-config-grid" aria-label="Text API configs">
+            {configs.map((config) => (
+              <button
+                className="settings-config-card"
+                key={config.id}
+                onClick={() => edit({ ...config })}
+                aria-label={`Edit ${config.name}`}
+              >
+                <strong>{config.name}</strong>
+                <span className="settings-config-model">{config.model}</span>
+                <span className="settings-config-meta">
+                  <span>{config.provider}</span>
+                  {globalId === config.id && (
+                    <span className="settings-badge">Default</span>
+                  )}
+                </span>
+                <span className="settings-config-edit" aria-hidden="true">
+                  Edit ↗
+                </span>
+              </button>
+            ))}
+          </div>
+        </>
       )}
       {ready &&
         !configs.some((config) => config.id === globalId) &&
@@ -434,10 +447,6 @@ export function TextApiSettings() {
           </Alert>
         )}
       {!draft && feedback}
-      <p className="settings-hint">
-        Credentials stay in this browser. Your provider must allow direct
-        browser access (CORS).
-      </p>
     </PageShell>
   );
 }

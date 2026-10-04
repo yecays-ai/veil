@@ -379,41 +379,6 @@ export function Appearance() {
         <section aria-labelledby="system-settings-heading">
           <h2 id="system-settings-heading">System Settings</h2>
           <details>
-            <summary>状态栏</summary>
-            <label>
-              <input
-                type="checkbox"
-                checked={profile.statusBar.visible}
-                onChange={checkedChange(
-                  (checked) =>
-                    void run(() =>
-                      updateProfile((p) => ({
-                        ...p,
-                        statusBar: { ...p.statusBar, visible: checked },
-                      })),
-                    ),
-                )}
-              />
-              Show status bar
-            </label>
-            <label>
-              Status bar color
-              <input
-                type="color"
-                value={profile.statusBar.color}
-                onChange={valueChange(
-                  (value) =>
-                    void run(() =>
-                      updateProfile((p) => ({
-                        ...p,
-                        statusBar: { ...p.statusBar, color: value },
-                      })),
-                    ),
-                )}
-              />
-            </label>
-          </details>
-          <details>
             <summary>文字</summary>
             <label>
               Font
