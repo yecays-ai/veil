@@ -22,10 +22,13 @@ test("assistant groups retain one avatar and a shared gutter while delivery uses
   assert.match(room, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
   assert.match(room, /message\.role === "assistant" && <div className="chat-avatar-column">\s*\{isGroupStart && <ChatAvatar/);
   assert.match(css, /--chat-avatar-size:\s*40px;/);
-  assert.match(css, /\.chat-avatar-column,\s*\.chat-user-gutter\s*\{[^}]*flex:\s*0 0 var\(--chat-avatar-size\)/);
+  assert.match(css, /--chat-avatar-gap:\s*8px;/);
+  assert.match(css, /\.chat-avatar-column\s*\{[^}]*flex:\s*0 0 var\(--chat-avatar-size\)/);
+  assert.match(css, /\.chat-turn-assistant::after\s*\{[^}]*content:\s*"";[^}]*flex:\s*0 0 var\(--chat-avatar-size\)/);
   assert.match(css, /\.chat-turn-assistant \.chat-avatar\s*\{[^}]*width:\s*var\(--chat-avatar-size\);[^}]*height:\s*var\(--chat-avatar-size\);[^}]*border-radius:\s*20px;/);
-  assert.match(css, /\.chat-turn-assistant \.chat-message,\s*\.chat-turn-user \.chat-message\s*\{[^}]*max-width:\s*calc\(100% - var\(--chat-avatar-size\) - 8px\)/);
-  assert.match(room, /message\.role === "user" && <div className="chat-user-gutter" aria-hidden="true" \/>/);
+  assert.match(css, /\.chat-turn-assistant \.chat-message\s*\{[^}]*max-width:\s*calc\(100% - var\(--chat-avatar-size\) - var\(--chat-avatar-size\) - var\(--chat-avatar-gap\) - var\(--chat-avatar-gap\)\)/);
+  assert.doesNotMatch(room, /chat-user-gutter/);
+  assert.doesNotMatch(css, /chat-user-gutter/);
   assert.doesNotMatch(css, /\.chat-turn-assistant:not\(\.chat-group-start\)/);
   assert.doesNotMatch(room, /message\.role === "user" &&[^\n]*<(?:ChatAvatar|div className="chat-avatar-column")/);
   assert.match(room, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);

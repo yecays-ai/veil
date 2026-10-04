@@ -380,7 +380,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 </span>}
               </span>
             </div>
-            {message.role === "user" && <div className="chat-user-gutter" aria-hidden="true" />}
           </div>
           </Fragment>
         );})}
