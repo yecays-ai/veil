@@ -185,36 +185,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (nearBottom.current)
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [messages, revealState]);
-  // Keep the chat composer above the visual viewport's keyboard, without
-  // changing Phone Shell or Home sizing. Blur is deliberately not generation.
-  useEffect(() => {
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const update = () => {
-      const mobile = window.matchMedia(
-        "(hover: none) and (pointer: coarse)",
-      ).matches;
-      const bottom =
-        shell.current?.getBoundingClientRect().bottom ?? window.innerHeight;
-      const obscured = mobile
-        ? Math.max(0, bottom - viewport.height - viewport.offsetTop)
-        : 0;
-      shell.current?.style.setProperty(
-        "--chat-keyboard-inset",
-        `${obscured}px`,
-      );
-      if (nearBottom.current)
-        history.current?.scrollTo({ top: history.current.scrollHeight });
-    };
-    update();
-    viewport.addEventListener("resize", update);
-    viewport.addEventListener("scroll", update);
-    return () => {
-      viewport.removeEventListener("resize", update);
-      viewport.removeEventListener("scroll", update);
-    };
-  }, []);
-
   async function persistDraft(content: string, sessionId: string, focus: boolean) {
     sendingLock.current = true;
     setSending(true);
