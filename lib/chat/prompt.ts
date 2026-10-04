@@ -1,6 +1,7 @@
 import type { Character, FoundationDocument, ProfileBasics } from "../foundation-types";
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
 import type { ChatMessage, PromptTurn } from "./types";
+import { buildTimeContext, historyTimestamp } from "./time-context";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -11,6 +12,7 @@ export type PromptRuntimeContext = {
   currentMessages: readonly ChatMessage[];
   pending: readonly ChatMessage[];
   memory: MemorySlot;
+  time?: ReturnType<typeof buildTimeContext>;
 };
 
 const RECENT_MESSAGES = 40;
@@ -58,7 +60,8 @@ export function resolvePresetMarker(
       const pendingIds = new Set(context.pending.map((message) => message.id));
       return eligibleMessages(context).filter((message) => !pendingIds.has(message.id))
         .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES)
-        .map(({ role, content }) => ({ role, content }));
+        .map(({ role, content, createdAt }) => ({ role, content: context.time
+          ? `${historyTimestamp(createdAt, context.time.user.timezone)}\n${content}` : content }));
     }
   }
 }
@@ -76,13 +79,24 @@ export function assembleChatPrompt(
   pending: readonly ChatMessage[],
   memory: MemorySlot = emptyMemorySlot(),
   preset: Preset = createBuiltinPreset(),
+  now: Date = new Date(),
 ): { sections: PromptSection[]; messages: PromptTurn[] } {
-  const context = { foundation, character, currentMessages, pending, memory };
+  const time = foundation.runtime?.timeAware !== false
+    ? buildTimeContext(now, foundation.user.timezone, character.timezone) : undefined;
+  const context = { foundation, character, currentMessages, pending, memory, time };
   const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
   const sections: PromptSection[] = [], messages: PromptTurn[] = [];
+  let timeInjected = false;
+  const injectTime = () => {
+    if (!time || timeInjected) return;
+    timeInjected = true;
+    append(messages, { role: "system", content: time.content });
+  };
   for (const ordered of preset.promptOrder) {
     const entry = prompts.get(ordered.identifier);
     if (!ordered.enabled || !entry?.enabled) continue;
+    if ((entry.source === "marker" && entry.marker === "history") || entry.role !== "system")
+      injectTime();
     const resolved = entry.source === "prompt" ? entry.content
       : resolvePresetMarker(entry.marker, context);
     if (Array.isArray(resolved)) {
@@ -93,6 +107,8 @@ export function assembleChatPrompt(
         content: entry.role === "system" ? `[${entry.identifier}]\n${resolved}` : resolved });
     }
   }
+  // Runtime facts remain present even when a custom Preset omits History.
+  injectTime();
   // Pending input is request ownership, not configurable Preset content.
   const current = new Map(eligibleMessages(context).map((message) => [message.id, message]));
   const pendingTurns = [...new Set(pending.map((message) => message.id))]

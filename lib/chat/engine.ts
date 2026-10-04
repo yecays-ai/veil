@@ -17,6 +17,7 @@ export function createChatEngine(
   foundation: () => Promise<FoundationDocument>,
   provider: TextProvider = openAITextProvider,
   presets: () => Promise<PresetDocument> = async () => createPresetDocument(),
+  now: () => Date = () => new Date(),
 ) {
   const active = new Map<string, AbortController>();
   return {
@@ -70,6 +71,7 @@ export function createChatEngine(
           batch.pending,
           undefined,
           preset,
+          now(),
         );
         for await (const text of provider(
           config,

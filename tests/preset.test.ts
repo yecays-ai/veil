@@ -138,7 +138,7 @@ test("Memory emits no empty turn, Response Directive obeys order, and pending is
     [pending, pending], undefined, preset);
   assert.equal(prompt.messages.at(-1)?.content, "NEW MESSAGE");
   assert.equal(prompt.messages.filter((turn) => turn.content === "NEW MESSAGE").length, 1);
-  assert(prompt.messages.findIndex((turn) => turn.content === "OLD REPLY") <
+  assert(prompt.messages.findIndex((turn) => turn.content.endsWith("\nOLD REPLY")) <
     prompt.messages.findIndex((turn) => turn.content.includes("AFTER HISTORY")));
   assert(!prompt.sections.some((section) => section.identifier === "memory"));
   const directiveOrder = preset.promptOrder.find((entry) =>
@@ -148,7 +148,7 @@ test("Memory emits no empty turn, Response Directive obeys order, and pending is
   const moved = assembleChatPrompt(document, document.characters[0], [history, pending],
     [pending], undefined, preset);
   assert(moved.messages.findIndex((turn) => turn.content.includes("AFTER HISTORY")) <
-    moved.messages.findIndex((turn) => turn.content === "OLD REPLY"));
+    moved.messages.findIndex((turn) => turn.content.endsWith("\nOLD REPLY")));
   assert.equal(moved.messages.at(-1)?.content, "NEW MESSAGE");
 });
 

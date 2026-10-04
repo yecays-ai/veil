@@ -3,6 +3,20 @@
 .settings-app {
   --settings-border: color-mix(in srgb, var(--theme-text) 12%, transparent);
 }
+.settings-runtime-toggle {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 16px;
+  margin-bottom: 24px;
+  border: 1px solid var(--settings-border);
+  border-radius: 20px;
+  background: var(--theme-surface);
+}
+.settings-runtime-toggle > span { flex: 1; min-width: 0; }
+.settings-runtime-toggle strong { font-size: 16px; }
+.settings-runtime-toggle small { display: block; margin-top: 8px; font-size: 13px; line-height: 1.5; opacity: .6; }
+.settings-runtime-toggle input { flex: none; width: 22px; height: 22px; }
 .settings-app .app-page-body {
   padding: 24px max(18px, var(--app-safe-right))
     max(24px, var(--app-safe-bottom)) max(18px, var(--app-safe-left));

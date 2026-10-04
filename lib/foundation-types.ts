@@ -47,6 +47,7 @@ export type FoundationDocument = {
   selectedCharacterId: string | null;
   universe: Universe;
   bindings: BindingDocument;
+  runtime: { timeAware: boolean };
 };
 
 export function record(value: unknown): Record<string, unknown> {
@@ -173,6 +174,7 @@ export function defaultFoundation(): FoundationDocument {
       nodePositions: {},
     },
     bindings: { global: {}, characters: {} },
+    runtime: { timeAware: true },
   };
 }
 export function normalizeFoundation(value: unknown): FoundationDocument {
@@ -255,5 +257,6 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
       raw.bindings,
       characters.map((c) => c.characterId),
     ),
+    runtime: { timeAware: record(raw.runtime).timeAware !== false },
   };
 }

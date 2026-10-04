@@ -1,5 +1,6 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
+import { RuntimeSettings } from "../../components/settings/runtime-settings";
 export default function Page() {
   return (
     <PageShell
@@ -8,6 +9,7 @@ export default function Page() {
       backHref="/"
       backLabel="Back to Home"
     >
+      <RuntimeSettings />
       <CardGrid
         label="API configuration"
         items={[

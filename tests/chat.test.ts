@@ -229,7 +229,7 @@ test("one streamed generation finalizes atomically as ordered assistant bubbles 
   await engine.requestReply(session.id);
   assert.equal(calls, 2);
   for (const part of replies)
-    assert.equal(secondPrompt.filter((turn) => turn.content === part.content).length, 1);
+    assert.equal(secondPrompt.filter((turn) => turn.content.endsWith(`\n${part.content}`)).length, 1);
   assert(!secondPrompt.some((turn) => turn.content.includes("Bugs. BUGS.\n\nLan")));
   assert.equal(secondPrompt.filter((turn) => turn.content === "sent while streaming").length, 1);
 });
@@ -268,8 +268,8 @@ test("message maintenance edits storage and deletion repairs order, preview and 
   assert.equal(saved.session.lastMessagePreview, "two");
   assert.equal(await storage.beginReply(session.id), null);
   const prompt = assembleChatPrompt(foundation(), foundation().characters[0], saved.messages, []);
-  assert(prompt.messages.some((message) => message.content === "edited"));
-  assert(!prompt.messages.some((message) => message.content === "one"));
+  assert(prompt.messages.some((message) => message.content.endsWith("\nedited")));
+  assert(!prompt.messages.some((message) => message.content.endsWith("\none")));
 });
 
 test("batch delete uses the full stored timeline and clear only resets the target conversation", async () => {
