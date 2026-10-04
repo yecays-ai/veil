@@ -1,6 +1,8 @@
 import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
+import { browserPresetStorage } from "../preset-storage";
+import { createPresetDocument } from "../preset";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupV1 } from "./types";
 import { validateBackupV1 } from "./validate";
 import { sameBackupChat, stableJson } from "./equality";
@@ -14,6 +16,7 @@ type RestoreDocument<T> = {
 export type RestoreSources = {
   foundation: RestoreDocument<BackupV1["foundation"]>;
   theme: RestoreDocument<BackupV1["theme"]>;
+  preset: RestoreDocument<BackupV1["preset"]>;
   chat: {
     exportBackup(): Promise<BackupChat>;
     replaceBackup(expected: BackupChat, backup: BackupChat): Promise<void>;
@@ -22,14 +25,17 @@ export type RestoreSources = {
 const browserSources: RestoreSources = {
   foundation: browserFoundationStorage,
   theme: browserThemeStorage,
+  preset: browserPresetStorage,
   chat: chatStorage,
 };
 const snapshot = (sources: RestoreSources) => Promise.all([
-  sources.foundation.readRaw(), sources.theme.readRaw(), sources.chat.exportBackup(),
+  sources.foundation.readRaw(), sources.theme.readRaw(), sources.preset.readRaw(),
+  sources.chat.exportBackup(),
 ]);
-function replacement<T>(store: RestoreDocument<T>, before: string | null, next: T) {
+function replacement<T>(store: RestoreDocument<T>, before: string | null, next: T, empty?: T) {
   return {
-    matches: () => before === null || stableJson(JSON.parse(before)) === stableJson(next),
+    matches: () => before === null || stableJson(JSON.parse(before)) === stableJson(next) ||
+      (empty !== undefined && stableJson(JSON.parse(before)) === stableJson(empty)),
     async apply() {
       const target = await store.replaceIfCurrent(before, next);
       return () => store.rollbackIfCurrent(target, before);
@@ -45,8 +51,14 @@ export function parseBackupV1(text: string): BackupV1 {
 }
 
 export async function requiresOverwriteRestore(sources = browserSources) {
-  const [foundation, theme, chat] = await snapshot(sources);
-  return foundation !== null || theme !== null || !!chat.sessions.length || !!chat.messages.length;
+  const [foundation, theme, preset, chat] = await snapshot(sources);
+  let customPreset = false;
+  try {
+    customPreset = preset !== null &&
+      stableJson(JSON.parse(preset)) !== stableJson(createPresetDocument());
+  } catch { customPreset = true; }
+  return foundation !== null || theme !== null || customPreset ||
+    !!chat.sessions.length || !!chat.messages.length;
 }
 
 /** Both empty and confirmed overwrite restores use the same guarded writes and rollback. */
@@ -55,10 +67,11 @@ export async function restoreBackupV1(
 ): Promise<void> {
   const validated = validateBackupV1(backup);
   const safe = { ...validated, chat: restorableChat(validated.chat) };
-  const [foundation, theme, chat] = await snapshot(sources);
+  const [foundation, theme, preset, chat] = await snapshot(sources);
   const documents = [
     replacement(sources.foundation, foundation, safe.foundation),
     replacement(sources.theme, theme, safe.theme),
+    replacement(sources.preset, preset, safe.preset, createPresetDocument()),
   ];
   if (!overwrite && (
     documents.some(({ matches }) => !matches()) ||
@@ -74,10 +87,11 @@ export async function restoreBackupV1(
       return true;
     });
     // Per-store CAS alone cannot detect an earlier store changing during a later write.
-    const [finalFoundation, finalTheme, finalChat] = await snapshot(sources);
-    if (finalFoundation === null || finalTheme === null ||
+    const [finalFoundation, finalTheme, finalPreset, finalChat] = await snapshot(sources);
+    if (finalFoundation === null || finalTheme === null || finalPreset === null ||
         stableJson(JSON.parse(finalFoundation)) !== stableJson(safe.foundation) ||
         stableJson(JSON.parse(finalTheme)) !== stableJson(safe.theme) ||
+        stableJson(JSON.parse(finalPreset)) !== stableJson(safe.preset) ||
         !sameBackupChat(finalChat, safe.chat))
       throw new Error("Your data changed during restore.");
   } catch (error) {

@@ -1,5 +1,6 @@
 import { normalizeFoundation, type FoundationDocument } from "../foundation-types";
 import { normalizeDocument, type ThemeDocument } from "../theme-types";
+import { createPresetDocument, validatePresetDocument } from "../preset";
 import {
   BACKUP_FORMAT,
   BACKUP_VERSION,
@@ -98,7 +99,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
   const chat = record(backup.chat);
   if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION)
     throw new Error("Unsupported backup format.");
-  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "chat"]) ||
+  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "preset", "chat"]) ||
       !onlyKeys(backup.chat, ["version", "sessions", "messages"]))
     throw new Error("Backup contains unsupported fields.");
   if (
@@ -114,6 +115,9 @@ export function validateBackupV1(value: unknown): BackupV1 {
     throw new Error("Backup has invalid chat data.");
   const foundation: FoundationDocument = normalizeFoundation(backup.foundation);
   const theme: ThemeDocument = normalizeDocument(backup.theme);
+  const preset = backup.preset === undefined
+    ? createPresetDocument()
+    : validatePresetDocument(backup.preset);
   if (
     stableJson(backup.foundation) !== stableJson(foundation) ||
     stableJson(backup.theme) !== stableJson(theme)
@@ -125,6 +129,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
     exportedAt: backup.exportedAt,
     foundation,
     theme,
+    preset,
     chat: stableChat(chat as BackupChat),
   };
 }

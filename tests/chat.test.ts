@@ -184,12 +184,12 @@ test("atomic reservation across clients cannot claim the same pending batch twic
   assert.equal((await storage.readSession(session.id)).messages.length, 2);
 });
 
-test("prompt order includes profiles, only direct relations, and an empty Memory insertion slot", () => {
+test("default prompt includes profiles and only direct relations while empty Memory is skipped", () => {
   const document = foundation();
   const prompt = assembleChatPrompt(document, document.characters[0], [], []);
   assert.deepEqual(
-    prompt.sections.map((s) => s.name),
-    ["base", "user", "universe", "character", "relations", "memory"],
+    prompt.sections.map((s) => s.identifier),
+    ["base", "user", "universe", "character", "relations"],
   );
   const text = prompt.messages[0].content;
   for (const value of [
@@ -212,7 +212,7 @@ test("prompt order includes profiles, only direct relations, and an empty Memory
   ])
     assert(!text.includes(value));
   assert.deepEqual(emptyMemorySlot(), { entries: [] });
-  assert(prompt.sections[5].content.includes("empty"));
+  assert(!prompt.sections.some((section) => section.identifier === "memory"));
   document.characters = document.characters.filter(
     (c) => c.characterId !== "b",
   );
@@ -458,6 +458,8 @@ test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and
     const body = JSON.parse(options!.body as string);
     assert.equal(body.stream, true);
     assert.equal(body.model, config.model);
+    assert.equal("temperature" in body, false);
+    assert.equal("max_tokens" in body, false);
     const bytes = new TextEncoder().encode(payload);
     return new Response(
       new ReadableStream({
@@ -479,6 +481,15 @@ test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and
     ))
       reply += text;
     assert.equal(reply, "Héllo world");
+    let configuredBody: Record<string, unknown> = {};
+    globalThis.fetch = async (_url, options) => {
+      configuredBody = JSON.parse(String(options?.body));
+      return Response.json({ choices: [{ message: { content: "configured" } }] });
+    };
+    for await (const text of openAITextProvider(config, [], new AbortController().signal,
+      { temperature: 0.4, maxTokens: 321 })) void text;
+    assert.equal(configuredBody.temperature, 0.4);
+    assert.equal(configuredBody.max_tokens, 321);
     globalThis.fetch = async () =>
       new Response(
         JSON.stringify({ choices: [{ message: { content: "JSON reply" } }] }),

@@ -1,6 +1,8 @@
 import { resolveBindings } from "../bindings";
 import { browserFoundationStorage } from "../foundation-storage";
 import type { FoundationDocument } from "../foundation-types";
+import { createPresetDocument, type PresetDocument } from "../preset";
+import { browserPresetStorage } from "../preset-storage";
 import { assembleChatPrompt } from "./prompt";
 import {
   openAITextProvider,
@@ -14,6 +16,7 @@ export function createChatEngine(
   storage: ChatStorage,
   foundation: () => Promise<FoundationDocument>,
   provider: TextProvider = openAITextProvider,
+  presets: () => Promise<PresetDocument> = async () => createPresetDocument(),
 ) {
   const active = new Map<string, AbortController>();
   return {
@@ -54,6 +57,7 @@ export function createChatEngine(
             "The selected Text API is missing. Choose a saved config in Settings → Text API.",
           );
         validateApiConfig(config);
+        const preset = (await presets()).activePreset;
         controller.signal.throwIfAborted();
         const batch = await storage.beginReply(sessionId);
         if (!batch) return null;
@@ -63,11 +67,14 @@ export function createChatEngine(
           character,
           batch.messages,
           batch.pending,
+          undefined,
+          preset,
         );
         for await (const text of provider(
           config,
           prompt.messages,
           controller.signal,
+          preset.generation,
         )) {
           controller.signal.throwIfAborted();
           content += text;
@@ -104,4 +111,6 @@ export function createChatEngine(
 }
 export const chatEngine = createChatEngine(chatStorage, () =>
   browserFoundationStorage.load(),
+  openAITextProvider,
+  () => browserPresetStorage.load(),
 );

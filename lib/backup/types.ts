@@ -1,6 +1,7 @@
 import type { ChatSession, ChatMessage } from "../chat/types";
 import type { FoundationDocument } from "../foundation-types";
 import type { ThemeDocument } from "../theme-types";
+import type { PresetDocument } from "../preset";
 
 export const BACKUP_FORMAT = "veil-backup";
 export const BACKUP_VERSION = 1;
@@ -25,11 +26,13 @@ export type BackupV1 = {
   exportedAt: string;
   foundation: FoundationDocument;
   theme: ThemeDocument;
+  preset: PresetDocument;
   chat: BackupChat;
 };
 
 export type BackupSources = {
   foundation: { load(): Promise<unknown> };
   theme: { load(): Promise<unknown> };
+  preset: { load(): Promise<unknown> };
   chat: { exportBackup(): Promise<BackupChat> };
 };

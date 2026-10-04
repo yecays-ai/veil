@@ -1,4 +1,5 @@
 import type { ApiConfig, PromptTurn } from "./types";
+import type { GenerationParameters } from "../preset";
 
 export function completionUrl(baseUrl: string): string {
   let url: URL;
@@ -32,6 +33,7 @@ export type TextProvider = (
   config: ApiConfig,
   messages: PromptTurn[],
   signal: AbortSignal,
+  generation?: GenerationParameters,
 ) => AsyncIterable<string>;
 
 function choice(value: unknown): { text: string; finished: boolean } {
@@ -56,6 +58,7 @@ export const openAITextProvider: TextProvider = async function* (
   config,
   messages,
   signal,
+  generation,
 ) {
   validateApiConfig(config);
   let response: Response;
@@ -73,6 +76,10 @@ export const openAITextProvider: TextProvider = async function* (
         model: config.model.trim(),
         messages,
         stream: true,
+        ...(generation?.temperature !== undefined
+          ? { temperature: generation.temperature } : {}),
+        ...(generation?.maxTokens !== undefined
+          ? { max_tokens: generation.maxTokens } : {}),
       }),
     });
   } catch {

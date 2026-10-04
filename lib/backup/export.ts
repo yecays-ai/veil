@@ -1,6 +1,7 @@
 import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
+import { browserPresetStorage } from "../preset-storage";
 import {
   BACKUP_FORMAT,
   BACKUP_MAX_BYTES,
@@ -15,6 +16,7 @@ import { restorableChat } from "./restorable-chat";
 const browserSources: BackupSources = {
   foundation: browserFoundationStorage,
   theme: browserThemeStorage,
+  preset: browserPresetStorage,
   chat: chatStorage,
 };
 
@@ -25,18 +27,21 @@ export async function exportBackupV1(
   now: () => Date = () => new Date(),
 ): Promise<ExportedBackup> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const [foundationA, themeA] = await Promise.all([
+    const [foundationA, themeA, presetA] = await Promise.all([
       sources.foundation.load(),
       sources.theme.load(),
+      sources.preset.load(),
     ]);
     const chat = await sources.chat.exportBackup();
-    const [foundationB, themeB] = await Promise.all([
+    const [foundationB, themeB, presetB] = await Promise.all([
       sources.foundation.load(),
       sources.theme.load(),
+      sources.preset.load(),
     ]);
     if (
       stableJson(foundationA) !== stableJson(foundationB) ||
-      stableJson(themeA) !== stableJson(themeB)
+      stableJson(themeA) !== stableJson(themeB) ||
+      stableJson(presetA) !== stableJson(presetB)
     )
       continue;
     const backup = validateBackupV1({
@@ -45,6 +50,7 @@ export async function exportBackupV1(
       exportedAt: now().toISOString(),
       foundation: foundationA,
       theme: themeA,
+      preset: presetA,
       chat: restorableChat(chat),
     });
     const json = JSON.stringify(backup);

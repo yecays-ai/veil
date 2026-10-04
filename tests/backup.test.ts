@@ -6,6 +6,7 @@ import {
   parseBackupV1,
   isOverwriteConfirmationValid,
   restoreBackupV1,
+  requiresOverwriteRestore,
   type RestoreSources,
 } from "../lib/backup/import";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupSources } from "../lib/backup/types";
@@ -14,6 +15,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createChatEngine } from "../lib/chat/engine";
 import { defaultFoundation } from "../lib/foundation-types";
 import { normalizeDocument } from "../lib/theme-types";
+import { createPresetDocument } from "../lib/preset";
 
 function chat(): BackupChat {
   return {
@@ -46,6 +48,7 @@ function sources(): BackupSources {
   return {
     foundation: { load: async () => defaultFoundation() },
     theme: { load: async () => normalizeDocument(null) },
+    preset: { load: async () => createPresetDocument() },
     chat: { exportBackup: async () => chat() },
   };
 }
@@ -58,8 +61,36 @@ test("V1 backup is stable, sorted, and contains no Text API configuration", asyn
   assert.equal(backup.version, 1);
   assert.equal(backup.chat.sessions[0].id, "character:a");
   assert.equal(backup.chat.messages[0].id, "m1");
+  assert.equal(backup.preset.activePreset.id, "veil-default-v1");
   assert(!json.includes("apiKey"));
   assert(!json.includes("Text API"));
+});
+
+test("Preset edits are exported and restored while generated defaults remain an empty install", async () => {
+  const source = sources();
+  const preset = createPresetDocument();
+  const directive = preset.activePreset.prompts.find((entry) =>
+    entry.identifier === "response-directive")!;
+  assert(directive.source === "prompt");
+  directive.content = "Restored response rule";
+  source.preset = { load: async () => preset };
+  const { backup } = await exportBackupV1(source);
+  assert.deepEqual(backup.preset.activePreset.prompts.find((entry) =>
+    entry.identifier === "response-directive"), directive);
+  const target = restoreSources();
+  await target.preset.replaceIfCurrent(null, createPresetDocument());
+  assert.equal(await requiresOverwriteRestore(target), false);
+  await restoreBackupV1(backup, target);
+  assert.deepEqual(JSON.parse((await target.preset.readRaw())!), preset);
+  assert.equal(await requiresOverwriteRestore(target), true);
+  assert(!JSON.stringify(backup).includes("apiKey"));
+});
+
+test("legacy V1 backups without Preset data migrate to the built-in default", async () => {
+  const { backup } = await exportBackupV1(sources());
+  const legacy = structuredClone(backup) as unknown as Record<string, unknown>;
+  delete legacy.preset;
+  assert.deepEqual(validateBackupV1(legacy).preset, createPresetDocument());
 });
 
 test("backup retries once when foundation or theme changes around chat", async () => {
@@ -178,6 +209,7 @@ function restoreSources(): RestoreSources {
   return {
     foundation: documentStore(),
     theme: documentStore(),
+    preset: documentStore(),
     chat: new ChatStorage(() => new IDBFactory()),
   };
 }
@@ -261,6 +293,11 @@ test("overwrite restore rolls back earlier stores when a later replacement fails
       },
       rollbackIfCurrent: async () => true,
     },
+    preset: {
+      readRaw: async () => null,
+      replaceIfCurrent: async () => assert.fail("preset replacement must not run"),
+      rollbackIfCurrent: async () => true,
+    },
     chat: {
       exportBackup: async () => ({ version: 1, sessions: [], messages: [] }),
       replaceBackup: async () => assert.fail("chat replacement must not run"),
@@ -284,10 +321,14 @@ test("chat failure rolls back both documents for empty and overwrite restores", 
       await target.foundation.replaceIfCurrent(null, defaultFoundation());
       await target.theme.replaceIfCurrent(null, normalizeDocument(null));
     }
-    const before = await Promise.all([target.foundation.readRaw(), target.theme.readRaw()]);
+    const before = await Promise.all([
+      target.foundation.readRaw(), target.theme.readRaw(), target.preset.readRaw(),
+    ]);
     target.chat.replaceBackup = async () => { throw new Error("chat failed"); };
     await assert.rejects(() => restoreBackupV1(backup, target, overwrite), /Previous data was restored/);
-    assert.deepEqual(await Promise.all([target.foundation.readRaw(), target.theme.readRaw()]), before);
+    assert.deepEqual(await Promise.all([
+      target.foundation.readRaw(), target.theme.readRaw(), target.preset.readRaw(),
+    ]), before);
   }
 });
 
@@ -360,9 +401,10 @@ test("legacy streaming backups restore as stopped, retry safely, and cannot be r
 test("validator rejects unknown fields at every backup/chat boundary before writing", async () => {
   const { backup } = await exportBackupV1(sources());
   for (const field of ["apiKey", "apiConfigs", "unknown"]) {
-    for (const section of ["envelope", "chat", "session", "message"]) {
+    for (const section of ["envelope", "preset", "chat", "session", "message"]) {
       const invalid = structuredClone(backup);
-      const object = section === "envelope" ? invalid : section === "chat" ? invalid.chat
+      const object = section === "envelope" ? invalid : section === "preset" ? invalid.preset
+        : section === "chat" ? invalid.chat
         : section === "session" ? invalid.chat.sessions[0] : invalid.chat.messages[0];
       Object.assign(object, { [field]: "not allowed" });
       const target = restoreSources();
