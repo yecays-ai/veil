@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "tsc --project tsconfig.tests.json && NODE_PATH=./node_modules node --test /tmp/veil-desktop-tests/tests/*.test.js"
+    "test": "tsc --project tsconfig.tests.json && node --test \"node_modules/.cache/veil-desktop-tests/tests/*.test.js\""
   },
   "engines": {
     "node": "24.x"
