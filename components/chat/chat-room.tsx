@@ -36,6 +36,8 @@ import { resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../lib/
 import { useBubbleReveal } from "./use-bubble-reveal";
 import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
+import { CustomCSSSettings } from "./custom-css-settings";
+import { SessionCustomCSS } from "./session-custom-css";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -288,35 +290,36 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
-  const typingIndicator = typing && <div className="chat-turn chat-turn-assistant" role="status" aria-label="Typing">
-    <div className="chat-avatar-column"><ChatAvatar profile={character} /></div><div className="chat-message">
-      <p className="chat-bubble"><span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span></p>
+  const typingIndicator = typing && <div className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing">
+    <div className="chat-avatar-column chat-msg-avatar"><ChatAvatar profile={character} /></div><div className="chat-message">
+      <p className="chat-bubble chat-bubble-role-assistant"><span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span></p>
     </div>
   </div>;
   return (
-    <div className="chat-app chat-room" ref={shell}
+    <div className="chat-app chat-room chat-room-wrapper" ref={shell}
       style={chatBackgroundUrl ? { backgroundImage: `url(${JSON.stringify(chatBackgroundUrl)})` } : undefined}
       data-chat-background={chatBackgroundUrl ? "custom" : "default"}
       data-context-menu-open={activeMessage ? "" : undefined}>
-      <header className="chat-header">
+      {session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
+      <header className="chat-header page-header">
         <Link
           href="/messages"
-          className="chat-back"
+          className="chat-back page-back-btn"
           aria-label="Back to Messages"
         >
           <ChevronLeft aria-hidden="true" />
         </Link>
-        <div className="chat-contact-summary" aria-label={`${session?.remark || character.name} contact details`}>
+        <div className="chat-contact-summary page-title" aria-label={`${session?.remark || character.name} contact details`}>
           <ChatAvatar profile={character} />
           <strong>{session?.remark || character.name}</strong>
           <ChevronRight aria-hidden="true" />
         </div>
-        <button type="button" className="chat-settings-button" aria-label="Conversation settings"
+        <button type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
           title="Conversation settings"
           onClick={() => setChatInfoOpen(true)}><Ellipsis aria-hidden="true" /></button>
       </header>
       <div
-        className={`chat-history${empty ? " chat-history-empty" : ""}`}
+        className={`chat-history chat-scroll-anchored${empty ? " chat-history-empty" : ""}`}
         ref={history}
         aria-label="Conversation history"
         onScroll={() => {
@@ -338,14 +341,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           return (
           <Fragment key={message.id}>
             {typingBeforeId === message.id && typingIndicator}
-            {showTimestamp && <div className="chat-time-separator">
+            {showTimestamp && <div className="chat-time-separator chat-sys-msg">
               <time dateTime={new Date(message.createdAt).toISOString()}>
                 {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </time>
             </div>}
           <div
-            className={`chat-turn chat-turn-${message.role}${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
+            className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
             data-message-id={message.id}
+            data-consecutive={!isGroupStart ? "" : undefined}
             data-active={activeMessage?.id === message.id ? "" : undefined}
             onClick={() => {
               if (!multiSelect || message.status === "streaming") return;
@@ -356,11 +360,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             {multiSelect && <span className="chat-selection-control" aria-hidden="true">
               {selectedIds.has(message.id) ? "✓" : ""}
             </span>}
-            {message.role === "assistant" && <div className="chat-avatar-column">
+            {message.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">
               {isGroupStart && <ChatAvatar profile={character} />}
             </div>}
             <div className="chat-message">
-              <p className="chat-bubble"
+              <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown`}
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
                 onContextMenu={() => { nativeSelectionActive.current = true; }}
                 onClick={(e) => openActions(e, message)}>
@@ -403,7 +407,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <button type="button" onClick={() => { setMultiSelect(false); setSelectedIds(new Set()); }}>Cancel</button>
       </div>}
       <form
-        className="chat-composer"
+        className="chat-composer chat-input-bar"
         ref={composerBar}
         onSubmit={(e) => {
           e.preventDefault();
@@ -417,6 +421,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <div className="chat-input-shell">
           <label className="chat-input-label" htmlFor="chat-input">Message</label>
           <textarea
+            className="chat-input-textarea"
             id="chat-input"
             ref={composer}
             rows={1}
@@ -428,7 +433,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           />
           <span className="chat-voice-slot" aria-hidden="true" />
         </div>
-        <div className="chat-composer-actions">
+        <div className="chat-composer-actions chat-input-actions">
           {generating || revealState?.pending ? (
             <button type="button" className="chat-composer-icon" aria-label="Stop reply" title="Stop reply"
               onClick={() => {
@@ -473,7 +478,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       />}
       {activeMessage && <>
         <button className="chat-context-backdrop" aria-label="Close message actions" onClick={closeActions} />
-        <div ref={actionMenu} className="chat-message-actions" role="menu" aria-label="Message actions"
+        <div ref={actionMenu} className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
             <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
@@ -526,8 +531,11 @@ function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, can
   onClear: () => void;
 }) {
   const [backgroundOpen, setBackgroundOpen] = useState(false);
+  const [customCSSOpen, setCustomCSSOpen] = useState(false);
   if (backgroundOpen && session)
     return <ChatBackgroundSettings session={session} onBack={() => setBackgroundOpen(false)} />;
+  if (customCSSOpen && session)
+    return <CustomCSSSettings session={session} onBack={() => setCustomCSSOpen(false)} />;
   return <section className="chat-info-screen" aria-label="Chat Info">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
@@ -541,6 +549,11 @@ function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, can
         <button type="button" className="chat-session-setting chat-info-row"
           disabled={!session} onClick={() => setBackgroundOpen(true)}>
           <span>Chat Background<small>{session?.backgroundImage ? "Custom background" : "Following global"}</small></span>
+          <ChevronRight aria-hidden="true" />
+        </button>
+        <button type="button" className="chat-session-setting chat-info-row"
+          disabled={!session} onClick={() => setCustomCSSOpen(true)}>
+          <span>Custom CSS<small>{session?.customCSS ? "Only this conversation · Set" : "Only this conversation"}</small></span>
           <ChevronRight aria-hidden="true" />
         </button>
         <label className="chat-session-setting"><span>Streaming Replies
@@ -563,7 +576,7 @@ function Action({ label, icon, disabled, danger, onClick }: {
 }) {
   const Icon = icon;
   return <button type="button" role="menuitem" disabled={disabled} onClick={onClick}
-    className={danger ? "chat-danger" : undefined}><Icon size={25} strokeWidth={1.75}
+    className={`ctx-menu-btn${danger ? " ctx-menu-btn-danger chat-danger" : ""}`}><Icon size={25} strokeWidth={1.75}
       aria-hidden="true" /><small>{label}</small></button>;
 }
 

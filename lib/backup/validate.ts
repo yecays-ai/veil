@@ -29,7 +29,7 @@ const onlyKeys = (value: unknown, keys: string[]) =>
 function validSession(session: BackupSession) {
   return (
     onlyKeys(session, ["id", "characterId", "updatedAt", "nextOrder", "remark",
-      "autoReplyOnKeyboardDismiss", "streamOnline", "lastMessageId", "lastMessagePreview"]) &&
+      "autoReplyOnKeyboardDismiss", "streamOnline", "customCSS", "lastMessageId", "lastMessagePreview"]) &&
     text(session.id) &&
     text(session.characterId) &&
     timestamp(session.updatedAt) &&
@@ -38,6 +38,7 @@ function validSession(session: BackupSession) {
     (session.remark === null || typeof session.remark === "string") &&
     typeof session.autoReplyOnKeyboardDismiss === "boolean" &&
     (session.streamOnline === undefined || typeof session.streamOnline === "boolean") &&
+    (session.customCSS === undefined || typeof session.customCSS === "string") &&
     (session.lastMessageId === undefined || text(session.lastMessageId)) &&
     (session.lastMessagePreview === undefined ||
       typeof session.lastMessagePreview === "string")

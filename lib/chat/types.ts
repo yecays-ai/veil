@@ -8,6 +8,7 @@ export type ChatSession = {
   autoReplyOnKeyboardDismiss: boolean;
   streamOnline?: boolean;
   backgroundImage?: string;
+  customCSS?: string;
   nextOrder: number;
 };
 

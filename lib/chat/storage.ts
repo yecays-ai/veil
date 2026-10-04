@@ -32,6 +32,7 @@ function backupSession(session: ChatSession): BackupSession {
     remark: session.remark,
     autoReplyOnKeyboardDismiss: session.autoReplyOnKeyboardDismiss,
     ...(session.streamOnline !== undefined ? { streamOnline: session.streamOnline } : {}),
+    ...(session.customCSS !== undefined ? { customCSS: session.customCSS } : {}),
     nextOrder: session.nextOrder,
   };
 }
@@ -293,6 +294,7 @@ export class ChatStorage {
   updateSessionSettings(sessionId: string, patch: {
     streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean;
     backgroundImage?: string | null;
+    customCSS?: string | null;
   }): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
@@ -314,6 +316,13 @@ export class ChatStorage {
         } else {
           delete next.backgroundImage;
         }
+      }
+      if (patch.customCSS !== undefined) {
+        if (patch.customCSS !== null && typeof patch.customCSS !== "string")
+          throw new Error("Invalid conversation CSS.");
+        const css = patch.customCSS?.trim();
+        if (css) next.customCSS = patch.customCSS!;
+        else delete next.customCSS;
       }
       await request(table.put(next));
     });

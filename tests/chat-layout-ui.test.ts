@@ -20,7 +20,7 @@ test("chat header is a glass overlay with the requested lightweight controls", (
 
 test("assistant groups retain one avatar and a shared gutter while delivery uses group end", () => {
   assert.match(room, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
-  assert.match(room, /message\.role === "assistant" && <div className="chat-avatar-column">\s*\{isGroupStart && <ChatAvatar/);
+  assert.match(room, /message\.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">\s*\{isGroupStart && <ChatAvatar/);
   assert.match(css, /--chat-avatar-size:\s*40px;/);
   assert.match(css, /--chat-avatar-gap:\s*8px;/);
   assert.match(css, /\.chat-avatar-column\s*\{[^}]*flex:\s*0 0 var\(--chat-avatar-size\)/);
@@ -66,6 +66,14 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(room, /<span>Chat Background/);
   assert.match(room, /<ChatBackgroundSettings session=\{session\}/);
   assert.match(room, /data-chat-background=\{chatBackgroundUrl \? "custom" : "default"\}/);
+  assert.match(room, /<span>Custom CSS<small>/);
+  assert.match(room, /<CustomCSSSettings session=\{session\}/);
+  assert.match(room, /session\?\.customCSS && <SessionCustomCSS css=\{session\.customCSS\}/);
+  assert.match(room, /className="chat-app chat-room chat-room-wrapper"/);
+  assert.match(room, /chat-bubble-role-\$\{message\.role\}/);
+  for (const hook of ["chat-bubble-role-assistant", "chat-msg-wrapper", "chat-msg-avatar",
+    "chat-scroll-anchored", "chat-input-bar", "chat-input-textarea", "chat-input-actions"])
+    assert.match(room, new RegExp(hook));
 });
 
 test("message input focus has no accent outline, ring, or shadow", () => {

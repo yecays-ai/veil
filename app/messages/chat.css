@@ -555,6 +555,40 @@
 }
 .chat-background-section > div { display: flex; justify-content: space-between; gap: 12px; }
 .chat-background-section small { opacity: .55; }
+.chat-custom-css-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-custom-css-body > p {
+  margin: 0;
+  font-size: 0.82em;
+  line-height: 1.5;
+  opacity: 0.65;
+}
+.chat-custom-css-body textarea {
+  width: 100%;
+  min-height: min(54vh, 520px);
+  padding: 14px;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 13%, transparent);
+  border-radius: 14px;
+  outline: none;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  font: 0.78em/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+.chat-custom-css-body textarea:focus {
+  border-color: color-mix(in srgb, var(--theme-accent) 45%, transparent);
+  box-shadow: none;
+}
+.chat-custom-css-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.chat-custom-css-actions button { min-width: 0; }
+.chat-custom-css-error { color: #c62828; opacity: 1 !important; }
 .chat-app button.chat-info-clear {
   width: 100%;
   margin-top: 18px;
