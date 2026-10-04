@@ -274,6 +274,76 @@ export class ChatStorage {
     });
   }
 
+  editMessage(id: string, content: string): Promise<ChatMessage> {
+    const trimmed = content.trim();
+    if (!trimmed) return Promise.reject(new Error("Message cannot be empty."));
+    if (trimmed.length > 12000)
+      return Promise.reject(new Error("Message is too long (maximum 12,000 characters)."));
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const existing: ChatMessage | undefined = await request(table.get(id));
+      if (!existing) throw new Error("Message not found.");
+      if (existing.status === "streaming")
+        throw new Error("A reply in progress cannot be edited.");
+      const next = { ...existing, content: trimmed };
+      await request(table.put(next));
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession = await request(sessions.get(existing.sessionId));
+      if (session.lastMessageId === id)
+        await request(sessions.put({ ...session, updatedAt: Date.now(),
+          lastMessagePreview: trimmed.slice(0, 120) }));
+      return next;
+    });
+  }
+
+  deleteMessages(sessionId: string, ids: readonly string[]): Promise<number> {
+    const targets = new Set(ids);
+    if (!targets.size) return Promise.resolve(0);
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const table = tx.objectStore("messages");
+      const all: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
+      const deleting = all.filter((message) => targets.has(message.id));
+      if (deleting.some((message) => message.status === "streaming"))
+        throw new Error("A reply in progress cannot be deleted.");
+      if (!deleting.length) return 0;
+      const deletedIds = new Set(deleting.map((message) => message.id));
+      for (const message of deleting) await request(table.delete(message.id));
+      const remaining = all.filter((message) => !deletedIds.has(message.id))
+        .sort((a, b) => a.order - b.order);
+      for (let index = 0; index < remaining.length; index++) {
+        const message = remaining[index];
+        const requestedByDeleted = !!message.requestedBy && deletedIds.has(message.requestedBy);
+        const next: ChatMessage = { ...message, order: index + 1,
+          ...(requestedByDeleted ? { status: "complete", requestedBy: undefined } : {}) };
+        if (next.order !== message.order || requestedByDeleted)
+          await request(table.put(next));
+        remaining[index] = next;
+      }
+      const last = remaining.at(-1);
+      await request(sessions.put({ ...session, updatedAt: Date.now(),
+        nextOrder: remaining.length + 1, lastMessageId: last?.id,
+        lastMessagePreview: last?.content.slice(0, 120) || "" }));
+      return deleting.length;
+    });
+  }
+
+  clearSession(sessionId: string): Promise<number> {
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const table = tx.objectStore("messages");
+      const messages: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
+      for (const message of messages) await request(table.delete(message.id));
+      await request(sessions.put({ ...session, updatedAt: Date.now(), nextOrder: 1,
+        lastMessageId: undefined, lastMessagePreview: "" }));
+      return messages.length;
+    });
+  }
+
   private async append(
     tx: IDBTransaction,
     session: ChatSession,
@@ -328,7 +398,7 @@ export class ChatStorage {
       );
       messages.sort((a, b) => a.order - b.order);
       const pending = messages.filter(
-        (m) => m.role === "user" && !m.requestedBy,
+        (m) => m.role === "user" && m.status === "sent" && !m.requestedBy,
       );
       if (!pending.length) return null;
       const id = crypto.randomUUID();

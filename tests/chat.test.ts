@@ -250,6 +250,54 @@ test("multi-bubble finalization updates session order and preview to the last pa
   assert.deepEqual(saved.messages.map((message) => message.content), ["question", "one", "two"]);
 });
 
+test("message maintenance edits storage and deletion repairs order, preview and reply claims", async () => {
+  const { storage } = create();
+  const session = await storage.openSession("a");
+  const user = await storage.send(session.id, "original");
+  const batch = await storage.beginReply(session.id);
+  assert(batch);
+  const replies = await storage.finalizeReply(batch.assistant.id, "one\n\ntwo");
+  await storage.editMessage(user.id, "edited");
+  await storage.deleteMessages(session.id, [replies[0].id]);
+  const saved = await storage.readSession(session.id);
+  assert.deepEqual(saved.messages.map((message) => message.content), ["edited", "two"]);
+  assert.deepEqual(saved.messages.map((message) => message.order), [1, 2]);
+  assert.equal(saved.messages[0].requestedBy, undefined);
+  assert.equal(saved.messages[0].status, "complete");
+  assert.equal(saved.session.lastMessageId, replies[1].id);
+  assert.equal(saved.session.lastMessagePreview, "two");
+  assert.equal(await storage.beginReply(session.id), null);
+  const prompt = assembleChatPrompt(foundation(), foundation().characters[0], saved.messages, []);
+  assert(prompt.messages.some((message) => message.content === "edited"));
+  assert(!prompt.messages.some((message) => message.content === "one"));
+});
+
+test("batch delete uses the full stored timeline and clear only resets the target conversation", async () => {
+  const { storage } = create();
+  const first = await storage.openSession("a");
+  const second = await storage.openSession("b");
+  const messages = await Promise.all(["a", "b", "c"].map((text) => storage.send(first.id, text)));
+  await storage.send(second.id, "keep");
+  assert.equal(await storage.deleteMessages(first.id, [messages[0].id, messages[2].id]), 2);
+  assert.deepEqual((await storage.readSession(first.id)).messages.map((message) => message.content), ["b"]);
+  assert.equal(await storage.clearSession(first.id), 1);
+  const cleared = await storage.readSession(first.id);
+  assert.equal(cleared.messages.length, 0);
+  assert.equal(cleared.session.nextOrder, 1);
+  assert.deepEqual((await storage.readSession(second.id)).messages.map((message) => message.content), ["keep"]);
+});
+
+test("ordinary maintenance rejects streaming messages atomically", async () => {
+  const { storage } = create();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "question");
+  const batch = await storage.beginReply(session.id);
+  assert(batch);
+  await assert.rejects(() => storage.editMessage(batch.assistant.id, "changed"), /in progress/);
+  await assert.rejects(() => storage.deleteMessages(session.id, [batch.assistant.id]), /in progress/);
+  assert.equal((await storage.readSession(session.id)).messages.length, 2);
+});
+
 test("default prompt includes profiles and only direct relations while empty Memory is skipped", () => {
   const document = foundation();
   const prompt = assembleChatPrompt(document, document.characters[0], [], []);

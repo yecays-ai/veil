@@ -32,7 +32,8 @@ export function createChatEngine(
       let content = "";
       try {
         const current = await storage.readSession(sessionId);
-        if (!current.messages.some((m) => m.role === "user" && !m.requestedBy))
+        if (!current.messages.some((m) =>
+          m.role === "user" && m.status === "sent" && !m.requestedBy))
           return null;
         const document = await foundation();
         const character = document.characters.find(
