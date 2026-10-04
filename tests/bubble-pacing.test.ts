@@ -101,6 +101,20 @@ test("timestamp grouping uses adjacent visible messages, inclusive fifteen-minut
   assert.equal(groupVisibleMessages(continuous).filter((row) => row.showTimestamp).length, 1);
 });
 
+test("visual grouping exposes one shared start and end boundary per sender sequence", () => {
+  const rows = [
+    message("a", "one", 0), message("b", "two", 1), message("c", "three", 2),
+    { ...message("d", "user", 3), role: "user" as const },
+    { ...message("e", "user", 4), role: "user" as const },
+    message("f", "single", 900004),
+  ];
+  assert.deepEqual(groupVisibleMessages(rows).map(({ isGroupStart, isGroupEnd }) =>
+    [isGroupStart, isGroupEnd]), [
+    [true, false], [false, false], [false, true],
+    [true, false], [false, true], [true, true],
+  ]);
+});
+
 test("finalization notification reveals real persisted IDs once, preserving requestedBy and history", async () => {
   const storage = new ChatStorage(() => factory);
   const factory = new IDBFactory();

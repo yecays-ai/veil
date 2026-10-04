@@ -10,6 +10,11 @@ export function shouldShowTimestamp(current: ChatMessage, previous?: ChatMessage
   return !previous || current.createdAt - previous.createdAt >= CHAT_TIMESTAMP_GAP_MS;
 }
 
+export function sameVisualMessageGroup(current: ChatMessage, adjacent?: ChatMessage) {
+  return !!adjacent && current.role === adjacent.role &&
+    Math.abs(current.createdAt - adjacent.createdAt) < CHAT_TIMESTAMP_GAP_MS;
+}
+
 export type RevealState = {
   sessionId?: string;
   awaiting: boolean;
@@ -92,6 +97,13 @@ export function hiddenForReveal(message: ChatMessage, state: RevealState) {
 }
 
 export function groupVisibleMessages(messages: readonly ChatMessage[]) {
-  return messages.map((message, index) => ({ message,
-    showTimestamp: shouldShowTimestamp(message, messages[index - 1]) }));
+  return messages.map((message, index) => {
+    const previous = messages[index - 1], next = messages[index + 1];
+    return {
+      message,
+      showTimestamp: shouldShowTimestamp(message, previous),
+      isGroupStart: !sameVisualMessageGroup(message, previous),
+      isGroupEnd: !sameVisualMessageGroup(message, next),
+    };
+  });
 }

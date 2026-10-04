@@ -32,6 +32,7 @@ import { useChatSession } from "./use-chat-session";
 import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
 import { createTransientFeedback, hasPendingUserContent, sendThenRequestReply, visibleReplyText } from "../../lib/chat/usability";
 import { groupVisibleMessages, hiddenForReveal } from "../../lib/chat/bubble-pacing";
+import { resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../lib/chat/delivery";
 import { useBubbleReveal } from "./use-bubble-reveal";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
@@ -202,14 +203,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         "--chat-keyboard-inset",
         `${obscured}px`,
       );
-      shell.current?.style.setProperty(
-        "--chat-viewport-offset-top",
-        `${mobile ? viewport.offsetTop : 0}px`,
-      );
-      shell.current?.style.setProperty(
-        "--chat-visual-height",
-        `${mobile ? viewport.height : shell.current?.clientHeight ?? viewport.height}px`,
-      );
       if (nearBottom.current)
         history.current?.scrollTo({ top: history.current.scrollHeight });
     };
@@ -361,7 +354,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </p>
         )}
         {empty && <p className="chat-empty-state">No messages yet</p>}
-        {groupedMessages.map(({ message, showTimestamp }) => (
+        {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
+          const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
+          return (
           <Fragment key={message.id}>
             {typingBeforeId === message.id && typingIndicator}
             {showTimestamp && <div className="chat-time-separator">
@@ -370,7 +365,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               </time>
             </div>}
           <div
-            className={`chat-turn chat-turn-${message.role}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
+            className={`chat-turn chat-turn-${message.role}${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
             data-message-id={message.id}
             data-active={activeMessage?.id === message.id ? "" : undefined}
             onClick={() => {
@@ -382,7 +377,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             {multiSelect && <span className="chat-selection-control" aria-hidden="true">
               {selectedIds.has(message.id) ? "✓" : ""}
             </span>}
-            {message.role === "assistant" && <ChatAvatar profile={character} />}
+            {message.role === "assistant" && isGroupStart && <ChatAvatar profile={character} />}
             <div className="chat-message">
               <p className="chat-bubble"
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
@@ -399,11 +394,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {message.status === "error" && (
                   <span role="alert">{message.error || "Reply failed."}</span>
                 )}
+                {delivery && <span className="chat-delivery-status">
+                  {userMessageDeliveryLabel(delivery)}
+                </span>}
               </span>
             </div>
           </div>
           </Fragment>
-        ))}
+        );})}
         {!typingBeforeId && typingIndicator}
       </div>
       {(error || loadError) && (

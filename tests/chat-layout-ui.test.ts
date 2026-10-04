@@ -12,10 +12,19 @@ test("chat header is a glass overlay with the requested lightweight controls", (
   assert.doesNotMatch(room, /Video|>Back</);
   assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*backdrop-filter:\s*blur/);
   assert.doesNotMatch(css, /\.chat-header\s*\{[^}]*(?:border-bottom|linear-gradient)/);
-  assert.match(css, /top:\s*var\(--chat-viewport-offset-top/);
-  assert.match(room, /--chat-viewport-offset-top/);
+  assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;/);
+  assert.doesNotMatch(room, /--chat-viewport-offset-top|--chat-visual-height/);
   assert.match(css, /\.chat-history\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(appearance, /:not\(:has\(\.chat-room\)\)/);
+});
+
+test("avatar, tail and delivery UI consume the shared visual group boundaries", () => {
+  assert.match(room, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
+  assert.match(room, /message\.role === "assistant" && isGroupStart && <ChatAvatar/);
+  assert.match(room, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);
+  assert.match(room, /isGroupEnd \? " chat-group-end"/);
+  assert.match(css, /\.chat-group-end\.chat-turn-assistant \.chat-bubble::after/);
+  assert.match(css, /\.chat-group-end\.chat-turn-user \.chat-bubble::after/);
 });
 
 test("More opens a full-screen scrollable Chat Info view instead of a popover", () => {
