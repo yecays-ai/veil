@@ -22,7 +22,13 @@ import {
 } from "../lib/theme-types";
 import { exportTheme, importTheme } from "../lib/theme-package";
 import { applyPreset, deletePreset, savePreset } from "../lib/theme-presets";
-import { localTime, resolveTimezone } from "../lib/participant-config";
+import {
+  getDeviceTimezone,
+  getSupportedTimezones,
+  getTimezoneOptions,
+  localTime,
+  resolveTimezone,
+} from "../lib/participant-config";
 
 function desktopWithClock() {
   const layout = defaultDesktop();
@@ -380,7 +386,39 @@ test("theme packages and presets round-trip positions, sizes and config without 
   assert.deepEqual(normalizeSnapshot(current), current);
 });
 
-test("IANA local times account for DST and invalid/unset zones have explicit device fallback", () => {
+test("timezone options include supported, saved, device and UTC values", () => {
+  assert.deepEqual(
+    getTimezoneOptions("US/Pacific", "Pacific/Honolulu", [
+      "America/New_York",
+      "Europe/London",
+      "UTC",
+    ]),
+    [
+      "America/New_York",
+      "Europe/London",
+      "Pacific/Honolulu",
+      "US/Pacific",
+      "UTC",
+    ],
+  );
+  assert.deepEqual(getTimezoneOptions("US/Pacific", null, []), [
+    "US/Pacific",
+    "UTC",
+  ]);
+});
+
+test("supported browser timezone data includes a comprehensive IANA list", () => {
+  const intl = Intl as typeof Intl & {
+    supportedValuesOf?: (key: "timeZone") => string[];
+  };
+  if (typeof intl.supportedValuesOf === "function") {
+    const zones = getSupportedTimezones();
+    assert(zones.length > 100);
+    assert(zones.includes("Pacific/Auckland"));
+  }
+});
+
+test("IANA local times account for DST and device/fallback zones stay distinct", () => {
   assert.equal(
     localTime(new Date("2026-07-01T12:00:00Z"), "America/New_York"),
     "08:00",
@@ -393,7 +431,28 @@ test("IANA local times account for DST and invalid/unset zones have explicit dev
     localTime(new Date("2026-07-01T12:00:00Z"), "Asia/Tokyo"),
     "21:00",
   );
-  assert.equal(resolveTimezone(null).state, "device");
-  assert.equal(resolveTimezone("invalid-zone").state, "invalid");
-  assert.equal(resolveTimezone("UTC").state, "configured");
+  const actualDeviceTimezone = getDeviceTimezone();
+  assert.deepEqual(
+    resolveTimezone(null),
+    actualDeviceTimezone
+      ? { timezone: actualDeviceTimezone, state: "device" }
+      : { timezone: "UTC", state: "fallback" },
+  );
+  for (const empty of [null, ""] as const)
+    assert.deepEqual(resolveTimezone(empty, "America/Anchorage"), {
+      timezone: "America/Anchorage",
+      state: "device",
+    });
+  assert.deepEqual(resolveTimezone(null, null), {
+    timezone: "UTC",
+    state: "fallback",
+  });
+  assert.deepEqual(resolveTimezone("invalid-zone", null), {
+    timezone: "UTC",
+    state: "invalid",
+  });
+  assert.deepEqual(resolveTimezone("UTC", null), {
+    timezone: "UTC",
+    state: "configured",
+  });
 });

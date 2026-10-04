@@ -105,6 +105,7 @@ export const FOUNDATION_COPY = {
     loadingZone: "Timezone loading",
     device: "Device",
     invalidZone: "Invalid timezone",
+    fallbackZone: "Timezone unavailable",
     weatherNone: "Weather not connected",
     weatherLoading: "Weather loading",
     weatherError: "Weather unavailable",

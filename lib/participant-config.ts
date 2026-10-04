@@ -25,18 +25,76 @@ export interface WeatherProvider {
   getWeather(request: WeatherRequest): Promise<WeatherState>;
 }
 
-export function resolveTimezone(configured: string | null): {
-  timezone: string;
-  state: "configured" | "device" | "invalid";
-} {
-  const device = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-  if (!configured) return { timezone: device, state: "device" };
+type IntlWithTimezoneValues = typeof Intl & {
+  supportedValuesOf?: (key: "timeZone") => string[];
+};
+
+let cachedTimezoneValues: string[] | null = null;
+
+export function getSupportedTimezones(): string[] {
+  if (cachedTimezoneValues !== null) return cachedTimezoneValues;
+  const intl = Intl as IntlWithTimezoneValues;
   try {
-    new Intl.DateTimeFormat("en", { timeZone: configured }).format();
-    return { timezone: configured, state: "configured" };
+    cachedTimezoneValues =
+      typeof intl.supportedValuesOf === "function"
+        ? intl.supportedValuesOf.call(Intl, "timeZone")
+        : [];
   } catch {
-    return { timezone: device, state: "invalid" };
+    cachedTimezoneValues = [];
   }
+  return cachedTimezoneValues;
+}
+
+function validTimezone(value: string | null | undefined): value is string {
+  if (!value) return false;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function getDeviceTimezone(): string | null {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return validTimezone(zone) ? zone : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getTimezoneOptions(
+  savedTimezone: string | null,
+  deviceTimezone: string | null,
+  supported: readonly string[] = getSupportedTimezones(),
+): string[] {
+  return [...new Set([
+    ...supported,
+    ...(savedTimezone ? [savedTimezone] : []),
+    ...(deviceTimezone ? [deviceTimezone] : []),
+    "UTC",
+  ])].sort((a, b) => a.localeCompare(b));
+}
+
+export function resolveTimezone(
+  configured: string | null,
+  detectedDeviceTimezone: string | null = getDeviceTimezone(),
+): {
+  timezone: string;
+  state: "configured" | "device" | "fallback" | "invalid";
+} {
+  const device = validTimezone(detectedDeviceTimezone)
+    ? detectedDeviceTimezone
+    : null;
+  if (!configured) {
+    return device
+      ? { timezone: device, state: "device" }
+      : { timezone: "UTC", state: "fallback" };
+  }
+  if (validTimezone(configured))
+    return { timezone: configured, state: "configured" };
+  return { timezone: device ?? "UTC", state: "invalid" };
 }
 
 export function localTime(

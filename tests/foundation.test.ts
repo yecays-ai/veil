@@ -39,11 +39,13 @@ test("single User, independent birthday/age, separate narrative fields and requi
     gender: "Free text",
     birthday: "2020-02-29",
     age: 42,
+    timezone: "Pacific/Auckland",
     appearance: "Physical description",
     aboutMe: "Background",
   });
   assert.equal(d.user.age, 42);
   assert.equal(d.user.birthday, "2020-02-29");
+  assert.equal(d.user.timezone, "Pacific/Auckland");
   assert.equal(d.user.appearance, "Physical description");
   assert.equal(d.user.aboutMe, "Background");
   assert.throws(() => saveUser(d, { ...d.user, name: " " }), /required/);
@@ -196,7 +198,13 @@ test("storage round-trips, serializes edits and persists binding updates in the 
   };
   const storage = createFoundationStorage(() => backend);
   await Promise.all([
-    storage.transact((d) => saveUser(d, { ...d.user, name: "Persisted User" })),
+    storage.transact((d) =>
+      saveUser(d, {
+        ...d.user,
+        name: "Persisted User",
+        timezone: "Europe/Paris",
+      }),
+    ),
     storage.transact((d) =>
       createCharacter(d, {
         ...normalizeCharacterInput(null),
@@ -208,7 +216,9 @@ test("storage round-trips, serializes edits and persists binding updates in the 
   const fresh = createFoundationStorage(() => backend);
   const d = await fresh.load();
   assert.equal(d.user.name, "Persisted User");
+  assert.equal(d.user.timezone, "Europe/Paris");
   assert.equal(d.characters.length, 1);
+  assert.equal(d.characters[0].timezone, "Asia/Tokyo");
   const bindingStorage = createBindingStorage(storage);
   await bindingStorage.save({ ...d.bindings, global: { presetId: "preset" } });
   assert.equal((await fresh.load()).bindings.global.presetId, "preset");

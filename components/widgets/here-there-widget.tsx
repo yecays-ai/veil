@@ -65,7 +65,9 @@ function Side({
             ? zone.timezone
             : zone.state === "invalid"
               ? `${C.hereThere.invalidZone} · ${zone.timezone}`
-              : `${C.hereThere.device} · ${zone.timezone}`}
+              : zone.state === "fallback"
+                ? `${C.hereThere.fallbackZone} · ${zone.timezone}`
+                : `${C.hereThere.device} · ${zone.timezone}`}
       </span>
       <span className="participant-weather">
         <Weather state={weather} />

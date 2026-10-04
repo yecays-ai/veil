@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import {
   avatarSource,
@@ -9,8 +15,150 @@ import {
 } from "../lib/foundation-types";
 import { AvatarEditor } from "./avatar-editor";
 import { UI_COPY as U } from "../lib/ui-copy";
+import {
+  getDeviceTimezone,
+  getTimezoneOptions,
+} from "../lib/participant-config";
 
 type Input = UserProfile | CharacterInput;
+
+function TimezoneField({
+  value,
+  savedTimezone,
+  onChange,
+}: {
+  value: string;
+  savedTimezone: string | null;
+  onChange: (value: string) => void;
+}) {
+  const id = useId();
+  const listId = `${id}-options`;
+  const [query, setQuery] = useState(value);
+  const [deviceTimezone, setDeviceTimezone] = useState<string | null>(null);
+  const [options, setOptions] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+
+  useEffect(() => {
+    const device = getDeviceTimezone();
+    setDeviceTimezone(device);
+    setOptions(getTimezoneOptions(savedTimezone, device));
+  }, [savedTimezone]);
+  useEffect(() => setQuery(value), [value]);
+
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const filteredOptions = options
+    .filter((zone) => zone.toLocaleLowerCase().includes(normalizedQuery));
+
+  function selectTimezone(zone: string) {
+    setQuery(zone);
+    onChange(zone);
+    setOpen(false);
+    setActiveIndex(-1);
+  }
+
+  function keyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown" && filteredOptions.length) {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((index) =>
+        index < 0 ? 0 : Math.min(index + 1, filteredOptions.length - 1),
+      );
+    } else if (event.key === "ArrowUp" && filteredOptions.length) {
+      event.preventDefault();
+      setOpen(true);
+      setActiveIndex((index) =>
+        index < 0 ? 0 : Math.max(index - 1, 0),
+      );
+    } else if (
+      event.key === "Enter" &&
+      open &&
+      activeIndex >= 0 &&
+      filteredOptions[activeIndex]
+    ) {
+      event.preventDefault();
+      selectTimezone(filteredOptions[activeIndex]);
+    } else if (event.key === "Escape") {
+      setOpen(false);
+      setActiveIndex(-1);
+    }
+  }
+
+  return (
+    <div className="timezone-picker">
+      <label htmlFor={id}>{C.fields.timezone}</label>
+      <div className="timezone-combobox">
+        <input
+          id={id}
+          type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-haspopup="listbox"
+          aria-expanded={open && filteredOptions.length > 0}
+          aria-controls={listId}
+          aria-activedescendant={
+            open && activeIndex >= 0
+              ? `${listId}-${activeIndex}`
+              : undefined
+          }
+          autoComplete="off"
+          maxLength={100}
+          value={query}
+          placeholder={U.deviceTimezone}
+          onFocus={() => setOpen(true)}
+          onBlur={() =>
+            window.setTimeout(() => {
+              setOpen(false);
+              setActiveIndex(-1);
+            }, 120)
+          }
+          onKeyDown={keyDown}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            onChange(event.target.value);
+            setActiveIndex(-1);
+            setOpen(true);
+          }}
+        />
+        <ul
+          className="timezone-options"
+          id={listId}
+          role="listbox"
+          aria-label={C.fields.timezone}
+          hidden={!open || filteredOptions.length === 0}
+        >
+          {filteredOptions.map((zone, index) => (
+            <li
+              className="timezone-option"
+              id={`${listId}-${index}`}
+              key={zone}
+              role="option"
+              aria-selected={index === activeIndex}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => selectTimezone(zone)}
+            >
+              {zone}
+            </li>
+          ))}
+        </ul>
+      </div>
+      <small>
+        {deviceTimezone
+          ? U.deviceTimezoneValue(deviceTimezone)
+          : U.deviceTimezoneUnavailable}
+      </small>
+      <button
+        className="text-button timezone-use-device"
+        type="button"
+        disabled={!value && !query}
+        onClick={() => selectTimezone("")}
+      >
+        {U.useDeviceTimezone}
+      </button>
+    </div>
+  );
+}
+
 export function ProfileForm({
   initial,
   kind,
@@ -134,32 +282,11 @@ export function ProfileForm({
             onChange={(e) => setLocation(e.target.value)}
           />
         </label>
-        <label>
-          {C.fields.timezone}
-          <input
-            autoComplete="off"
-            value={draft.timezone ?? ""}
-            maxLength={100}
-            onChange={(e) => text("timezone", e.target.value)}
-            placeholder={U.deviceTimezone}
-            list="timezone-options"
-          />
-        </label>
-
-        <datalist id="timezone-options">
-          {[
-            "UTC",
-            "America/New_York",
-            "America/Los_Angeles",
-            "Europe/London",
-            "Europe/Paris",
-            "Asia/Tokyo",
-            "Asia/Shanghai",
-            "Australia/Sydney",
-          ].map((zone) => (
-            <option key={zone} value={zone} />
-          ))}
-        </datalist>
+        <TimezoneField
+          value={draft.timezone ?? ""}
+          savedTimezone={initial.timezone}
+          onChange={(value) => text("timezone", value)}
+        />
         <datalist id="gender-options">
           {U.genderSuggestions.map((value) => (
             <option key={value} value={value} />
