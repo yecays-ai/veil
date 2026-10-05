@@ -41,6 +41,8 @@ import { SessionCustomCSS } from "./session-custom-css";
 import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
 import { getMessageActions, messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
 import { MessageFooter } from "./message-footer";
+import { parseQuotedReply, quoteMessage } from "../../lib/chat/quote";
+import { QuoteBubble } from "./quote-bubble";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -55,6 +57,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const chatBackgroundUrl = useChatBackground(session);
   const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
+  const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
+  useEffect(() => { setQuotingMessage(null); }, [characterId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
@@ -274,8 +278,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setSending(true);
     try {
       nearBottom.current = true;
-      await chatEngine.send(sessionId, content);
+      const quote = quotingMessage;
+      await chatEngine.send(sessionId, content, quote?.id);
       if (mounted.current && currentSessionId.current === sessionId) {
+        setQuotingMessage((current) => current?.id === quote?.id ? null : current);
         setDraft((current) => (current === content ? "" : current));
         if (focus) composer.current?.focus();
       }
@@ -417,6 +423,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {empty && <p className="chat-empty-state">No messages yet</p>}
         {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
           const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
+          const visibleText = visibleReplyText(message, session?.streamOnline === true);
+          const parsed = message.role === "assistant" ? parseQuotedReply(visibleText)
+            : { content: visibleText, preview: null };
+          const quotePreview = message.quote?.preview ?? parsed.preview;
           return (
           <Fragment key={message.id}>
             {typingBeforeId === message.id && typingIndicator}
@@ -447,7 +457,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
                 onContextMenu={() => { nativeSelectionActive.current = true; }}
                 onClick={(e) => openActions(e, message)}>
-                {visibleReplyText(message, session?.streamOnline === true) ||
+                {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
+                  author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
+                {parsed.content ||
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <MessageFooter messageId={message.id} />
@@ -494,6 +506,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           void send();
         }}
       >
+        {quotingMessage && <div className="chat-quote-bar">
+          <QuoteBubble preview={quoteMessage(quotingMessage).preview}
+            author={quotingMessage.role === "user" ? "You" : character.name} />
+          <button type="button" aria-label="Cancel Quote" onClick={() => setQuotingMessage(null)}>×</button>
+        </div>}
         <button type="button" className="chat-composer-icon chat-composer-plus"
           aria-label="More message options" title="More message options">
           <Plus aria-hidden="true" />
@@ -564,7 +581,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
             <Action label="Edit" icon={Pencil} onClick={() => { setEditingMessage(activeMessage);
               setEditText(activeMessage.content); closeActions(); }} />
-            <Action label="Quote" icon={Quote} disabled />
+            <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system"} onClick={() => {
+              setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
+            }} />
             <Action label="React" icon={Heart} disabled />
             <Action label="Select" icon={CircleCheck} onClick={() => { const id = activeMessage.id;
               setMultiSelect(true); setSelectionStartId(id); setSelectedIds(new Set([id])); closeActions(); }} />

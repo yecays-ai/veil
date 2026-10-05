@@ -13,7 +13,7 @@ export type BackupSession = Pick<ChatSession,
   "remark" | "autoReplyOnKeyboardDismiss" | "streamOnline" | "customCSS" | "nextOrder">;
 export type BackupMessage = Pick<ChatMessage,
   "id" | "sessionId" | "role" | "content" | "status" |
-  "createdAt" | "order" | "requestedBy" | "error">;
+  "createdAt" | "order" | "requestedBy" | "error" | "quote">;
 export type BackupChat = {
   version: 1;
   sessions: BackupSession[];

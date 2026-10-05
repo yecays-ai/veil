@@ -23,6 +23,7 @@ export type ChatImageAsset = {
   createdAt: number;
 };
 
+export type MessageQuote = { messageId: string; preview: string; role: "user" | "assistant" };
 export type ChatMessage = {
   id: string;
   sessionId: string;
@@ -33,6 +34,7 @@ export type ChatMessage = {
   order: number;
   requestedBy?: string;
   error?: string;
+  quote?: MessageQuote;
 };
 
 export type ApiConfig = {

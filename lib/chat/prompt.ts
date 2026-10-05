@@ -2,6 +2,7 @@ import type { Character, FoundationDocument, ProfileBasics } from "../foundation
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
 import type { ChatMessage, PromptTurn } from "./types";
 import { buildTimeContext, historyTimestamp } from "./time-context";
+import { messageHistoryContent } from "./quote";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -60,8 +61,8 @@ export function resolvePresetMarker(
       const pendingIds = new Set(context.pending.map((message) => message.id));
       return eligibleMessages(context).filter((message) => !pendingIds.has(message.id))
         .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES)
-        .map(({ role, content, createdAt }) => ({ role, content: context.time
-          ? `${historyTimestamp(createdAt, context.time.user.timezone)}\n${content}` : content }));
+        .map((message) => ({ role: message.role, content: context.time
+          ? `${historyTimestamp(message.createdAt, context.time.user.timezone)}\n${messageHistoryContent(message)}` : messageHistoryContent(message) }));
     }
   }
 }
@@ -114,7 +115,7 @@ export function assembleChatPrompt(
   const pendingTurns = [...new Set(pending.map((message) => message.id))]
     .flatMap((id) => current.has(id) ? [current.get(id)!] : [])
     .sort((a, b) => a.order - b.order)
-    .map(({ role, content }) => ({ role, content }));
+    .map((message) => ({ role: message.role, content: messageHistoryContent(message) }));
   messages.push(...pendingTurns);
   return { sections, messages };
 }

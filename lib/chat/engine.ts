@@ -21,8 +21,8 @@ export function createChatEngine(
 ) {
   const active = new Map<string, AbortController>();
   return {
-    send: (sessionId: string, content: string) =>
-      storage.send(sessionId, content),
+    send: (sessionId: string, content: string, quoteMessageId?: string) =>
+      storage.send(sessionId, content, quoteMessageId),
     isGenerating: (sessionId: string) => active.has(sessionId),
     stop: (sessionId: string) => active.get(sessionId)?.abort(),
     async requestReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void): Promise<ChatMessage | null> {

@@ -12,6 +12,7 @@ import {
 import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
 import { sameBackupChat } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
+import { quoteMessage } from "./quote";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
 export const CHAT_DATABASE_VERSION = 2;
@@ -48,6 +49,7 @@ function backupMessage(message: ChatMessage): BackupMessage {
     order: message.order,
     ...(message.requestedBy ? { requestedBy: message.requestedBy } : {}),
     ...(message.error !== undefined ? { error: message.error } : {}),
+    ...(message.quote ? { quote: { ...message.quote } } : {}),
   };
 }
 
@@ -465,7 +467,7 @@ export class ChatStorage {
     await request(tx.objectStore("sessions").put(next));
     return next;
   }
-  send(sessionId: string, content: string): Promise<ChatMessage> {
+  send(sessionId: string, content: string, quoteMessageId?: string): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
     if (content.length > 12000)
@@ -477,6 +479,12 @@ export class ChatStorage {
         tx.objectStore("sessions").get(sessionId),
       );
       if (!session) throw new Error("Conversation not found.");
+      let quote;
+      if (quoteMessageId !== undefined) {
+        const target: ChatMessage | undefined = await request(tx.objectStore("messages").get(quoteMessageId));
+        if (!target || target.sessionId !== sessionId) throw new Error("Quoted message was not found in this conversation.");
+        quote = quoteMessage(target);
+      }
       const message: ChatMessage = {
         id: crypto.randomUUID(),
         sessionId,
@@ -485,6 +493,7 @@ export class ChatStorage {
         status: "sent",
         createdAt: Date.now(),
         order: session.nextOrder,
+        ...(quote ? { quote } : {}),
       };
       await this.append(tx, session, message);
       return message;

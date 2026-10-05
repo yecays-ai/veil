@@ -48,7 +48,7 @@ function validSession(session: BackupSession) {
 function validMessage(message: BackupMessage) {
   return (
     onlyKeys(message, ["id", "sessionId", "role", "status", "content", "createdAt",
-      "order", "requestedBy", "error"]) &&
+      "order", "requestedBy", "error", "quote"]) &&
     text(message.id) &&
     text(message.sessionId) &&
     roles.has(message.role) &&
@@ -58,7 +58,10 @@ function validMessage(message: BackupMessage) {
     integer(message.order) &&
     message.order >= 1 &&
     (message.requestedBy === undefined || text(message.requestedBy)) &&
-    (message.error === undefined || typeof message.error === "string")
+    (message.error === undefined || typeof message.error === "string") &&
+    (message.quote === undefined || (onlyKeys(message.quote, ["messageId", "preview", "role"]) &&
+      text(message.quote.messageId) && typeof message.quote.preview === "string" &&
+      (message.quote.role === "user" || message.quote.role === "assistant")))
   );
 }
 
