@@ -15,6 +15,7 @@ import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
+import type { WorldBookActivationState } from "../worldbook-activation";
 
 export function createChatEngine(
   storage: ChatStorage,
@@ -47,6 +48,8 @@ export function createChatEngine(
     let assistant: ChatMessage | undefined;
     let rawContent = "";
     let content = "";
+    let activationState: WorldBookActivationState | undefined;
+    let providerStarted = false;
     try {
       const current = await storage.readSession(sessionId);
       if (regenerateId === undefined && !current.messages.some((m) =>
@@ -62,6 +65,7 @@ export function createChatEngine(
         selectedIds === undefined || selectedIds.includes(book.id));
       const activation = evaluateWorldBooks(books, batch.messages,
         await storage.readWorldBookState(sessionId));
+      activationState = activation.nextState;
       const prompt = assembleChatPrompt(
         document,
         character,
@@ -72,6 +76,7 @@ export function createChatEngine(
         now(),
         activation,
       );
+      providerStarted = true;
       for await (const text of provider(
         config,
         prompt.messages,
@@ -89,7 +94,7 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       content = sanitizeHistoryTimestamps(rawContent);
       if (!content.trim()) throw new Error("The API returned no reply text.");
-      const completed = await storage.finalizeReply(assistant.id, content, activation.nextState);
+      const completed = await storage.finalizeReply(assistant.id, content, activationState);
       // Optional presentation notification; it cannot turn a committed reply into an error.
       try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
       return completed[0];
@@ -106,7 +111,7 @@ export function createChatEngine(
           : error instanceof Error
             ? error.message
             : "Reply failed.",
-      });
+      }, providerStarted ? activationState : undefined);
     } finally {
       active.delete(sessionId);
     }

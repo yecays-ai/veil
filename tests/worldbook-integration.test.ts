@@ -63,7 +63,7 @@ test("empty World Info markers produce no prompt content, and disabled bindings 
   assert.doesNotMatch(prompts[1], /Hidden Lore/);
 });
 
-test("Regenerate discards future lore; failure and Stop never commit timed state", async () => {
+test("Regenerate discards future lore; failure and Stop each consume one started generation cycle", async () => {
   const { storage, document, session, books } = await setup([{ content: "LORE_X", key: ["trigger"], sticky: 4 }]);
   await storage.send(session.id, "hello");
   let output = "A\n\nB\n\ntrigger";
@@ -87,13 +87,23 @@ test("Regenerate discards future lore; failure and Stop never commit timed state
   const failing = createChatEngine(storage, async () => document, async function* () { throw new Error("offline"); },
     undefined, undefined, async () => books);
   assert.equal((await failing.requestReply(session.id))?.status, "error");
-  assert.deepEqual(await storage.readWorldBookState(session.id), stateBeforeFailure);
+  assert.equal((await storage.readWorldBookState(session.id))?.cycle, (stateBeforeFailure?.cycle ?? 0) + 1);
   await storage.send(session.id, "again");
   const stopped = createChatEngine(storage, async () => document, async function* () {
     stopped.stop(session.id); yield "partial";
   }, undefined, undefined, async () => books);
   assert.equal((await stopped.requestReply(session.id))?.status, "cancelled");
-  assert.deepEqual(await storage.readWorldBookState(session.id), stateBeforeFailure);
+  assert.equal((await storage.readWorldBookState(session.id))?.cycle, (stateBeforeFailure?.cycle ?? 0) + 2);
+});
+
+test("failure before provider start does not advance WorldBook cycles", async () => {
+  const { storage, document, session, books } = await setup([{ content: "Lore", constant: true }]);
+  await storage.send(session.id, "hello");
+  document.bindings.global.apiConfigId = "missing-config";
+  const engine = createChatEngine(storage, async () => document, async function* () { assert.fail("provider must not start"); },
+    undefined, undefined, async () => books);
+  await assert.rejects(engine.requestReply(session.id), /missing/);
+  assert.equal(await storage.readWorldBookState(session.id), null);
 });
 
 test("existing official and custom Presets gain World Info markers while retaining prior prompt order", () => {

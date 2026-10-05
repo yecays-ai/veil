@@ -110,6 +110,14 @@ const request = <T>(req: IDBRequest<T>): Promise<T> =>
       reject(new Error("Chat storage could not be read or written."));
   });
 
+async function commitWorldBookState(tx: IDBTransaction, sessionId: string, state: WorldBookActivationState) {
+  const current: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(sessionId));
+  const prefix = historyFingerprint(current);
+  if (state.prefix.every((item, index) => item === prefix[index]))
+    await request(tx.objectStore("worldBookStates").put({ id: sessionId,
+      state: { ...state, prefix } }));
+}
+
 // No snapshot replacement/clear operation exists. Hydration is read-only;
 // every mutation re-reads authoritative records inside an atomic transaction.
 export class ChatStorage {
@@ -594,6 +602,7 @@ export class ChatStorage {
   updateReply(
     id: string,
     patch: Pick<ChatMessage, "content" | "status"> & { error?: string },
+    worldBookState?: WorldBookActivationState,
   ): Promise<ChatMessage> {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("messages");
@@ -621,6 +630,8 @@ export class ChatStorage {
           }),
         );
       }
+      if (worldBookState && (next.status === "error" || next.status === "cancelled"))
+        await commitWorldBookState(tx, next.sessionId, worldBookState);
       return next;
     });
   }
@@ -667,13 +678,7 @@ export class ChatStorage {
           lastMessagePreview: final.content.slice(0, 120),
         } : {}),
       }));
-      if (worldBookState) {
-        const current: ChatMessage[] = await request(table.index("sessionId").getAll(existing.sessionId));
-        const prefix = historyFingerprint(current);
-        if (worldBookState.prefix.every((item, index) => item === prefix[index]))
-          await request(tx.objectStore("worldBookStates").put({ id: existing.sessionId,
-            state: { ...worldBookState, prefix } }));
-      }
+      if (worldBookState) await commitWorldBookState(tx, existing.sessionId, worldBookState);
       return completed;
     });
   }
