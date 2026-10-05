@@ -9,7 +9,7 @@ test("chat room follows a keyboard-shrunken visual viewport", () => {
   );
   assert.deepEqual(
     fitVisualViewport(844, { offsetTop: 96, height: 414 }),
-    { height: 510, offsetTop: 96 },
+    { height: 414, offsetTop: 96 },
   );
 });
 
@@ -20,6 +20,6 @@ test("chat viewport stays clipped to the Phone Shell", () => {
   );
   assert.deepEqual(
     fitVisualViewport(844, { offsetTop: 96, height: 800 }),
-    { height: 844, offsetTop: 96 },
+    { height: 748, offsetTop: 96 },
   );
 });

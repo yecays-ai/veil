@@ -9,10 +9,7 @@ export function fitVisualViewport(
 ): VisualViewportFrame {
   const offsetTop = Math.max(0, viewport.offsetTop);
   return {
-    height: Math.max(
-      0,
-      Math.min(screenHeight, viewport.height + offsetTop),
-    ),
+    height: Math.max(0, Math.min(viewport.height, screenHeight - offsetTop)),
     offsetTop,
   };
 }
