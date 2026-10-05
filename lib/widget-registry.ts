@@ -15,6 +15,13 @@ function timeConfig(value: unknown): WidgetConfig {
   return { hour12: raw.hour12 === true, showSeconds: raw.showSeconds === true };
 }
 
+function hereThereConfig(value: unknown): WidgetConfig {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const characterId = typeof raw.characterId === "string" ? raw.characterId.trim() : "";
+  return { ...timeConfig(value), ...(characterId.length <= 100 && /^[a-zA-Z0-9_-]+$/.test(characterId)
+    && !["__proto__", "constructor", "prototype"].includes(characterId) ? { characterId } : {}) };
+}
+
 // Register metadata/config here and a view in WidgetRenderer when adding a type.
 export const WIDGET_REGISTRY: Record<WidgetType, WidgetDefinition> = {
   clock: {
@@ -27,7 +34,7 @@ export const WIDGET_REGISTRY: Record<WidgetType, WidgetDefinition> = {
     label: "Here & There",
     sizes: ["2x2", "4x2"],
     defaultSize: "4x2",
-    normalizeConfig: timeConfig,
+    normalizeConfig: hereThereConfig,
   },
 };
 

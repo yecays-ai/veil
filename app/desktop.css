@@ -441,10 +441,30 @@
 .participant-weather {
   opacity: 0.55;
 }
-.here-there-side:has(> a) {
+.here-there-side:has(> a), .here-there-side:has(> .here-there-character-name) {
   justify-content: center;
   font-size: 0.75em;
 }
 .here-there-side + .here-there-side {
   border-color: color-mix(in srgb, var(--theme-text) 12%, transparent);
 }
+.here-there-character-name {
+  min-height: 44px; margin-block: -8px; padding: 0; border: 0; background: none;
+  color: inherit; font: inherit; font-weight: inherit; letter-spacing: inherit;
+  text-align: left; cursor: pointer;
+}
+.here-there-character-picker {
+  width: min(320px, calc(100% - 40px)); max-height: calc(100% - 80px); padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent);
+  border-radius: 20px; background: var(--theme-surface); color: var(--theme-text); font: inherit;
+}
+.here-there-character-picker::backdrop { background: rgb(0 0 0 / 25%); }
+.here-there-picker-header { display: flex; align-items: center; justify-content: space-between; }
+.here-there-picker-header button { width: 44px; height: 44px; border: 0; background: none;
+  color: inherit; font: inherit; font-size: 24px; }
+.here-there-picker-options { display: grid; }
+.here-there-picker-options button { min-height: 48px; padding: 10px 8px; border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
+  background: none; color: inherit; font: inherit; text-align: left; }
+.here-there-picker-options button span { float: right; color: var(--theme-accent); }
+.here-there-picker-options button:disabled { opacity: .5; }

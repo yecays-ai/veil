@@ -1,7 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { useFoundation } from "../foundation-provider";
+import { useTheme } from "../theme-provider";
+import { bindHereThereCharacter, resolveHereThereCharacter } from "../../lib/here-there-binding";
 import { FOUNDATION_COPY as C } from "../../lib/foundation-copy";
 import {
   localTime,
@@ -36,17 +38,22 @@ function Side({
   now,
   widget,
   weather,
+  onChooseCharacter,
 }: {
   config: ParticipantConfig;
   now: Date | null;
   widget: WidgetInstance;
   weather: WeatherState;
+  onChooseCharacter?: () => void;
 }) {
   // Resolve the device zone after hydration; server and browser zones can differ.
   const zone = now ? resolveTimezone(config.timezone) : null;
   return (
     <div className="here-there-side">
-      <strong>{config.name}</strong>
+      <strong>{onChooseCharacter ? <button type="button" className="here-there-character-name"
+        aria-label={`Choose THERE Character, currently ${config.name}`}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => { event.stopPropagation(); onChooseCharacter(); }}>{config.name}</button> : config.name}</strong>
       <span className="participant-location">
         {config.location?.label || C.hereThere.noLocation}
       </span>
@@ -67,15 +74,37 @@ function Side({
   );
 }
 
-// Here & There reads the places that already exist on the profiles: the User
-// Profile for Here and the selected Character for There. The widget never keeps
-// its own copy, so weather can never drift from the saved location.
 export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const now = useDeviceClock();
-  const { document } = useFoundation();
-  const character = document.characters.find(
-    (c) => c.characterId === document.selectedCharacterId,
-  );
+  const { document, ready: foundationReady } = useFoundation();
+  const { ready: themeReady, commit } = useTheme();
+  const character = resolveHereThereCharacter(widget.config, document);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const dialog = useRef<HTMLDialogElement>(null);
+  const migrationAttempt = useRef<string | null>(null);
+  useEffect(() => {
+    if (!foundationReady || !themeReady || widget.config.characterId || !character
+      || migrationAttempt.current === widget.id) return;
+    migrationAttempt.current = widget.id;
+    void commit((theme) => bindHereThereCharacter(theme, widget.id, character.characterId, true))
+      .catch(() => setError("Character binding could not be saved."));
+  }, [foundationReady, themeReady, widget.id, widget.config.characterId, character, commit]);
+  useEffect(() => {
+    if (pickerOpen) dialog.current?.showModal();
+    else dialog.current?.close();
+  }, [pickerOpen]);
+  async function chooseCharacter(characterId: string) {
+    if (saving || !document.characters.some((item) => item.characterId === characterId)) return;
+    setSaving(true); setError("");
+    try {
+      await commit((theme) => bindHereThereCharacter(theme, widget.id, characterId));
+      setPickerOpen(false);
+    } catch {
+      setError("Character binding could not be saved.");
+    } finally { setSaving(false); }
+  }
   const hereWeather = useWeatherState(
     document.user.location?.label ?? null,
     document.user.location?.coordinates?.latitude ?? null,
@@ -104,13 +133,34 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
             now={now}
             widget={widget}
             weather={thereWeather}
+            onChooseCharacter={() => setPickerOpen(true)}
           />
         ) : (
           <div className="here-there-side">
-            <Link href="/characters">{C.hereThere.chooseCharacter}</Link>
+            <button type="button" className="here-there-character-name"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => { event.stopPropagation(); setPickerOpen(true); }}>
+              {C.hereThere.chooseCharacter}
+            </button>
           </div>
         )}
       </div>
+      {error && !pickerOpen && <span role="alert" className="participant-weather">{error}</span>}
+      <dialog ref={dialog} className="here-there-character-picker" aria-label="Choose THERE Character"
+        onClose={() => setPickerOpen(false)} onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) setPickerOpen(false); }}>
+        <div className="here-there-picker-header"><strong>Character</strong>
+          <button type="button" onClick={() => setPickerOpen(false)} aria-label="Close Character picker">×</button></div>
+        <div className="here-there-picker-options">
+          {document.characters.map((item) => <button type="button" key={item.characterId} disabled={saving}
+            aria-pressed={character?.characterId === item.characterId}
+            onClick={() => void chooseCharacter(item.characterId)}>
+            {item.name}{character?.characterId === item.characterId && <span aria-hidden="true">✓</span>}
+          </button>)}
+          {document.characters.length === 0 && <p>No Characters yet.</p>}
+        </div>
+        {error && <p role="alert">{error}</p>}
+      </dialog>
     </div>
   );
 }
