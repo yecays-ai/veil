@@ -38,7 +38,7 @@ import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
 import { SessionCustomCSS } from "./session-custom-css";
-import { fitVisualViewport } from "../../lib/chat/viewport";
+import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -191,13 +191,22 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (nearBottom.current)
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [messages, revealState]);
-  // iOS keeps the layout viewport at its full height while the keyboard
-  // shrinks and may pan the visual viewport. Fit the entire room to that
-  // visible rectangle so Safari never has to push the header off-screen.
+  // Preserve the original header safe area across keyboard transitions and
+  // compensate visual viewport panning independently of the composer.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
     let frame = 0;
+    let safeTop = 0;
+    // Measure env() independently: reading the header after setting its cached
+    // padding would keep reading our own override (including an initial zero).
+    const safeAreaProbe = globalThis.document.createElement("div");
+    safeAreaProbe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;width:0;height:0;padding-top:env(safe-area-inset-top, 0px)";
+    globalThis.document.body.appendChild(safeAreaProbe);
+    const measureSafeTop = () => {
+      safeTop = Math.max(safeTop, parseFloat(getComputedStyle(safeAreaProbe).paddingTop) || 0);
+    };
+    measureSafeTop();
     const update = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
@@ -207,17 +216,34 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         const mobile = window.matchMedia(
           "(hover: none) and (pointer: coarse)",
         ).matches;
+        const inputFocused = composer.current === globalThis.document.activeElement;
         if (!mobile) {
-          room.style.removeProperty("height");
-          room.style.removeProperty("transform");
+          room.style.removeProperty("--chat-viewport-top");
+          room.style.removeProperty("--chat-safe-top");
+          room.style.removeProperty("--chat-keyboard-inset");
           return;
         }
-        // offsetTop is in layout-viewport coordinates. getBoundingClientRect()
-        // already moves with the visual viewport on iOS, so mixing the two
-        // coordinate spaces would apply the keyboard pan twice.
-        const visible = fitVisualViewport(screen.clientHeight, viewport);
-        room.style.height = `${visible.height}px`;
-        room.style.transform = `translateY(${visible.offsetTop}px)`;
+        measureSafeTop();
+        if (safeTop > 0) {
+          room.style.setProperty("--chat-safe-top", `${safeTop}px`);
+        } else {
+          room.style.removeProperty("--chat-safe-top");
+        }
+        room.style.setProperty(
+          "--chat-viewport-top",
+          `${chatHeaderOffset(viewport.offsetTop, window.scrollY)}px`,
+        );
+        if (!inputFocused) {
+          room.style.removeProperty("--chat-keyboard-inset");
+          return;
+        }
+        const inset = chatKeyboardInset(
+          screen.clientHeight,
+          viewport,
+          window.scrollY,
+          window.innerHeight,
+        );
+        room.style.setProperty("--chat-keyboard-inset", `${inset}px`);
         if (nearBottom.current)
           history.current?.scrollTo({ top: history.current.scrollHeight });
       });
@@ -225,14 +251,21 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     update();
     viewport.addEventListener("resize", update);
     viewport.addEventListener("scroll", update);
+    window.addEventListener("scroll", update, true);
+    globalThis.document.addEventListener("focusin", update);
+    globalThis.document.addEventListener("focusout", update);
     window.addEventListener("orientationchange", update);
     return () => {
       cancelAnimationFrame(frame);
+      safeAreaProbe.remove();
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
+      window.removeEventListener("scroll", update, true);
+      globalThis.document.removeEventListener("focusin", update);
+      globalThis.document.removeEventListener("focusout", update);
       window.removeEventListener("orientationchange", update);
     };
-  }, []);
+  }, [ready]);
   async function persistDraft(content: string, sessionId: string, focus: boolean) {
     sendingLock.current = true;
     setSending(true);

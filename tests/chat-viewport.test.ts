@@ -1,25 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { fitVisualViewport } from "../lib/chat/viewport";
+import { chatHeaderOffset, chatKeyboardInset } from "../lib/chat/viewport";
 
-test("chat room follows a keyboard-shrunken visual viewport", () => {
-  assert.deepEqual(
-    fitVisualViewport(844, { offsetTop: 0, height: 510 }),
-    { height: 510, offsetTop: 0 },
-  );
-  assert.deepEqual(
-    fitVisualViewport(844, { offsetTop: 96, height: 414 }),
-    { height: 414, offsetTop: 96 },
-  );
+test("header follows whichever iOS viewport signal reports keyboard panning", () => {
+  assert.equal(chatHeaderOffset(82, 0), 82);
+  assert.equal(chatHeaderOffset(0, 82), 82);
+  assert.equal(chatHeaderOffset(82, 82), 82);
+  assert.equal(chatHeaderOffset(0, 0), 0);
 });
 
-test("chat viewport stays clipped to the Phone Shell", () => {
-  assert.deepEqual(
-    fitVisualViewport(844, { offsetTop: 0, height: 900 }),
-    { height: 844, offsetTop: 0 },
-  );
-  assert.deepEqual(
-    fitVisualViewport(844, { offsetTop: 96, height: 800 }),
-    { height: 748, offsetTop: 96 },
-  );
+test("composer follows the lowest reliable iOS keyboard edge", () => {
+  assert.equal(chatKeyboardInset(844, { offsetTop: 0, height: 635 }, 82, 844), 127);
+  assert.equal(chatKeyboardInset(844, { offsetTop: 82, height: 635 }, 0, 844), 127);
+  assert.equal(chatKeyboardInset(844, { offsetTop: 0, height: 635 }, 0, 717), 127);
+});
+
+test("keyboard inset remains inside the Phone Shell", () => {
+  assert.equal(chatKeyboardInset(844, { offsetTop: 0, height: 900 }, 0, 844), 0);
+  assert.equal(chatKeyboardInset(844, { offsetTop: 0, height: 510 }, 0, 844), 334);
 });

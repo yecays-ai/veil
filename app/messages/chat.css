@@ -121,7 +121,7 @@
 .chat-feedback-toast {
   position: absolute;
   z-index: 110;
-  bottom: 180px;
+  bottom: calc(180px + var(--chat-keyboard-inset, 0px));
   left: 50%;
   transform: translateX(-50%);
   max-width: calc(100% - 32px);
@@ -136,11 +136,11 @@
 .chat-header {
   position: absolute;
   z-index: 20;
-  top: 0;
+  top: var(--chat-viewport-top, 0px);
   right: 0;
   left: 0;
-  min-height: calc(var(--app-safe-top) + 62px);
-  padding: var(--app-safe-top) max(8px, var(--app-safe-right)) 0
+  min-height: calc(var(--chat-safe-top, var(--app-safe-top)) + 62px);
+  padding: var(--chat-safe-top, var(--app-safe-top)) max(8px, var(--app-safe-right)) 0
     max(8px, var(--app-safe-left));
   justify-content: space-between;
   gap: 4px;
@@ -195,8 +195,8 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: calc(var(--app-safe-top) + 74px) max(12px, var(--app-safe-right))
-    calc(var(--chat-composer-height, 70px) + 14px)
+  padding: calc(var(--chat-safe-top, var(--app-safe-top)) + var(--chat-viewport-top, 0px) + 74px) max(12px, var(--app-safe-right))
+    calc(var(--chat-composer-height, 70px) + var(--chat-keyboard-inset, 0px) + 14px)
     max(12px, var(--app-safe-left));
   scrollbar-width: none;
 }
@@ -339,7 +339,7 @@
   position: absolute;
   z-index: 20;
   right: 0;
-  bottom: 0;
+  bottom: var(--chat-keyboard-inset, 0px);
   left: 0;
   display: flex;
   align-items: flex-end;
@@ -468,7 +468,7 @@
   top: 0;
   right: 0;
   left: 0;
-  height: 100%;
+  height: calc(100% - var(--chat-keyboard-inset, 0px));
   min-height: 0;
   display: flex;
   flex-direction: column;
@@ -606,7 +606,7 @@
   position: absolute;
   z-index: 24;
   right: 12px;
-  bottom: calc(var(--chat-composer-height, 70px) + 8px);
+  bottom: calc(var(--chat-composer-height, 70px) + var(--chat-keyboard-inset, 0px) + 8px);
   left: 12px;
   margin: 0;
   opacity: 1;
@@ -669,7 +669,7 @@
   position: absolute;
   z-index: 22;
   right: 0;
-  bottom: var(--chat-composer-height, 70px);
+  bottom: calc(var(--chat-composer-height, 70px) + var(--chat-keyboard-inset, 0px));
   left: 0;
   display: flex;
   flex-wrap: wrap;

@@ -12,7 +12,7 @@ test("chat header is a glass overlay with the requested lightweight controls", (
   assert.doesNotMatch(room, /Video|>Back</);
   assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*backdrop-filter:\s*blur/);
   assert.doesNotMatch(css, /\.chat-header\s*\{[^}]*(?:border-bottom|linear-gradient)/);
-  assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0;/);
+  assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*top:\s*var\(--chat-viewport-top/);
   assert.doesNotMatch(room, /--chat-viewport-offset-top|--chat-visual-height/);
   assert.match(css, /\.chat-history\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(appearance, /\.theme-surface:not\(:has\(\.home-screen\)\) \.theme-home-wallpaper/);
@@ -99,10 +99,9 @@ test("composer overlays the wallpaper and tracks its measured height", () => {
 
 test("iOS keyboard handling keeps header and history on the stable chat canvas", () => {
   assert.match(css, /\.chat-history\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*overflow-y:\s*auto/);
-  assert.match(css, /\.chat-composer\s*\{[^}]*bottom:\s*0;/);
-  assert.match(room, /fitVisualViewport\(screen\.clientHeight, viewport\)/);
-  assert.match(room, /room\.style\.height = `\$\{visible\.height\}px`/);
-  assert.match(room, /room\.style\.transform = `translateY\(\$\{visible\.offsetTop\}px\)`/);
-  assert.doesNotMatch(room, /--chat-keyboard-inset/);
-  assert.doesNotMatch(css, /--chat-keyboard-inset/);
+  assert.match(room, /chatKeyboardInset\(/);
+  assert.match(room, /composer\.current === globalThis\.document\.activeElement/);
+  assert.match(room, /--chat-keyboard-inset/);
+  assert.match(css, /\.chat-header\s*\{[^}]*min-height:\s*calc\(var\(--chat-safe-top, var\(--app-safe-top\)\) \+ 62px\)/);
+  assert.match(css, /\.chat-composer\s*\{[^}]*bottom:\s*var\(--chat-keyboard-inset/);
 });

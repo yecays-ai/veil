@@ -1,15 +1,21 @@
-export type VisualViewportFrame = {
-  height: number;
-  offsetTop: number;
-};
+/** iOS may report keyboard panning through either viewport offset or page scroll. */
+export function chatHeaderOffset(viewportTop: number, scrollTop: number): number {
+  return Math.max(0, viewportTop, scrollTop);
+}
 
-export function fitVisualViewport(
+export function chatKeyboardInset(
   screenHeight: number,
   viewport: { offsetTop: number; height: number },
-): VisualViewportFrame {
-  const offsetTop = Math.max(0, viewport.offsetTop);
-  return {
-    height: Math.max(0, Math.min(viewport.height, screenHeight - offsetTop)),
-    offsetTop,
-  };
+  scrollTop: number,
+  innerHeight: number,
+): number {
+  const visibleBottom = Math.min(
+    screenHeight,
+    Math.max(
+      viewport.offsetTop + viewport.height,
+      scrollTop + viewport.height,
+      innerHeight < screenHeight ? innerHeight : 0,
+    ),
+  );
+  return Math.max(0, screenHeight - visibleBottom);
 }
