@@ -68,10 +68,10 @@ function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string
     <section className="regex-section"><h2>Test Rule</h2><div className="settings-editor">
       <label>Test Input<textarea className="settings-input" rows={4} value={testInput}
         onChange={(event) => setTestInput(event.target.value)} /></label>
-      <div className="regex-test-flow"><strong>Before</strong><pre>{testInput}</pre>
+      {testInput.trim() && <div className="regex-test-flow"><strong>Before</strong><pre>{testInput}</pre>
         <span>↓</span><strong>After · {test.step.status}</strong><pre>{test.output}</pre>
         {test.step.error && <small role="alert">Pattern error: {test.step.error}</small>}
-      </div>
+      </div>}
     </div></section>
     <div className="settings-action-row regex-actions">
       <button className="settings-button" onClick={() => downloadRegex(exportRegexRule(saved), saved.name)}><Download size={17} />Export Rule</button>

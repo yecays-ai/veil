@@ -25,6 +25,7 @@ export function PageShell({
   title,
   backHref,
   backLabel,
+  onBack,
   rightAction,
   children,
   overlay,
@@ -34,6 +35,7 @@ export function PageShell({
   title: ReactNode;
   backHref: string;
   backLabel: string;
+  onBack?: () => void;
   rightAction?: ReactNode;
   children: ReactNode;
   overlay?: ReactNode;
@@ -69,13 +71,10 @@ export function PageShell({
         <header className="app-page-header" data-ui="header">
           <div className="app-page-header-safe-area" />
           <div className="app-page-header-content">
-            <Link
-              className="app-page-back"
-              href={backHref}
-              aria-label={backLabel}
-            >
-              <Chevron />
-            </Link>
+            {onBack ? <button type="button" className="app-page-back" aria-label={backLabel}
+              style={{ border: 0, background: "none", color: "inherit", padding: 0, cursor: "pointer" }}
+              onClick={onBack}><Chevron /></button> :
+              <Link className="app-page-back" href={backHref} aria-label={backLabel}><Chevron /></Link>}
             <h1 className="app-page-title">{title}</h1>
             <div className="app-page-header-right">{rightAction}</div>
           </div>

@@ -1,26 +1,20 @@
 "use client";
 import Link from "next/link";
 import { useRef } from "react";
-import { useRouter } from "next/navigation";
 import { ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
 import { PageShell } from "../../page-shell";
 import { Alert } from "../ui/feedback";
-import { importRegexGroup, newRegexGroup, exportRegexGroup } from "../../../lib/regex";
+import { importRegexGroup, exportRegexGroup } from "../../../lib/regex";
 import { useRegex } from "./use-regex";
 import { downloadRegex } from "./files";
 
 export function RegexList() {
   const { document, error, notice, busy, run, change, removeGroup, setNotice } = useRegex();
   const file = useRef<HTMLInputElement>(null);
-  const router = useRouter();
-  return <PageShell className="settings-app regex-manager" title="Regex Groups" backHref="/settings" backLabel="Back to Settings">
+  return <PageShell className="settings-app regex-manager" title="Advanced Regex" backHref="/settings" backLabel="Back to Settings">
     <div className="settings-action-row regex-actions">
       <button className="settings-button" disabled={!document || busy} onClick={() => file.current?.click()}><Upload size={17} />Import</button>
-      <button className="settings-button" disabled={!document || busy} onClick={() => void run(async () => {
-        const group = newRegexGroup();
-        await change((current) => ({ ...current, groups: [...current.groups, group] }));
-        router.push(`/settings/regex/${group.id}`);
-      })}><Plus size={17} />New Regex</button>
+      <Link className="settings-button" href="/settings/regex/new"><Plus size={17} />New Regex</Link>
     </div>
     <input hidden ref={file} type="file" accept=".json,application/json" onChange={(event) => {
       const selected = event.target.files?.[0]; event.target.value = "";

@@ -6,7 +6,7 @@ import { ArrowDown, ArrowUp, ChevronRight, Download, Plus, Trash2, Upload } from
 import { PageShell } from "../../page-shell";
 import { Alert } from "../ui/feedback";
 import { Input } from "../ui/form";
-import { exportRegexGroup, importRegexRule, newRegexRule, type RegexGroup, type RegexMode, type RegexRole } from "../../../lib/regex";
+import { canSaveRegexGroup, exportRegexGroup, importRegexRule, newRegexRule, type RegexGroup, type RegexMode, type RegexRole } from "../../../lib/regex";
 import { testRegexGroups } from "../../../lib/regex-engine";
 import { downloadRegex } from "./files";
 import { useRegex } from "./use-regex";
@@ -42,7 +42,7 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
     }) })); });
   }
   return <PageShell className="settings-app regex-manager" title={saved.name} backHref="/settings/regex" backLabel="Back to Regex Groups"
-    rightAction={<button className="settings-header-action" disabled={!dirty || busy || !draft.name.trim()} onClick={() => void run(async () => {
+    rightAction={<button className="settings-header-action" disabled={!dirty || busy || !canSaveRegexGroup(draft)} onClick={() => void run(async () => {
       await change((current) => ({ ...current, groups: current.groups.map((group) => group.id === saved.id
         ? { ...group, name: draft.name.trim(), description: draft.description, enabled: draft.enabled, updatedAt: Date.now() } : group) }));
       setDraft((current) => ({ ...current, name: current.name.trim() }));
@@ -50,22 +50,12 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
     })}>Save</button>}>
     {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
     <section className="regex-section"><h2>Regex Group</h2><div className="settings-editor">
-      <label>Name<Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
+      <label>Name *<Input required maxLength={200} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
       <label>Description<textarea className="settings-input" rows={3} value={draft.description}
         onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
       <label className="regex-check"><input type="checkbox" checked={draft.enabled}
         onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />Enabled</label>
     </div></section>
-    <div className="settings-action-row regex-actions">
-      <button className="settings-button" disabled={busy || dirty} onClick={() => file.current?.click()}><Upload size={17} />Import Rule</button>
-      <button className="settings-button" onClick={() => downloadRegex(exportRegexGroup(saved), saved.name)}><Download size={17} />Export Group</button>
-      <button className="settings-button" disabled={busy || dirty} onClick={() => void run(async () => {
-        const rule = newRegexRule();
-        await change((current) => ({ ...current, groups: current.groups.map((group) => group.id === saved.id
-          ? { ...group, rules: [...group.rules, rule], updatedAt: Date.now() } : group) }));
-        router.push(`${base}/rules/${rule.id}`);
-      })}><Plus size={17} />Add Rule</button>
-    </div>
     <input hidden ref={file} type="file" accept=".json,application/json" onChange={(event) => {
       const selected = event.target.files?.[0]; event.target.value = "";
       if (selected) void run(async () => {
@@ -78,7 +68,13 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
         setNotice(warnings.length ? `Imported. ${warnings.join(" ")}` : "Rule imported.");
       });
     }} />
-    <section className="regex-section"><h2>Rules</h2>
+    <section className="regex-section"><div className="regex-section-heading"><h2>Rules</h2>
+      <button className="settings-button" disabled={busy || dirty} onClick={() => void run(async () => {
+        const rule = newRegexRule();
+        await change((current) => ({ ...current, groups: current.groups.map((group) => group.id === saved.id
+          ? { ...group, rules: [...group.rules, rule], updatedAt: Date.now() } : group) }));
+        router.push(`${base}/rules/${rule.id}`);
+      })}><Plus size={17} />Add Rule</button></div>
       {saved.rules.length === 0 && <p>No Rules yet.</p>}
       <div className="regex-list">{saved.rules.map((rule, index) => <article className="regex-card" key={rule.id}
         draggable={!busy && !dirty} onDragStart={() => setDragged(rule.id)}
@@ -107,12 +103,14 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
           }}><Trash2 size={17} /></button>
         </div>
       </article>)}</div>
+      <button className="settings-button" disabled={busy || dirty} onClick={() => file.current?.click()}><Upload size={17} />Import Rule</button>
     </section>
     <section className="regex-section"><h2>Test Group</h2><div className="settings-editor">
       <label>Test Input<textarea className="settings-input" rows={4} value={testInput} onChange={(event) => setTestInput(event.target.value)} /></label>
-      <label>Role<select className="settings-input" value={role} onChange={(event) => setRole(event.target.value as RegexRole)}>
+      <strong>Test as</strong><p className="regex-test-hint">Only matching rules in this group will run.</p>
+      <label>Message<select className="settings-input" value={role} onChange={(event) => setRole(event.target.value as RegexRole)}>
         <option value="user">User</option><option value="assistant">Assistant</option></select></label>
-      <label>Mode<select className="settings-input" value={mode} onChange={(event) => setMode(event.target.value as RegexMode)}>
+      <label>Stage<select className="settings-input" value={mode} onChange={(event) => setMode(event.target.value as RegexMode)}>
         <option value="stored">Stored</option><option value="prompt">Prompt Only</option><option value="display">Display Only</option></select></label>
       <div className="regex-test-flow"><strong>Original</strong><pre>{testInput}</pre>
         {test.steps.map((step, index) => <div key={`${step.ruleId}-${index}`}><span>↓</span><strong>{step.ruleName || "Rule"} · {step.status}</strong>
@@ -121,9 +119,11 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
         <span>↓</span><strong>Final</strong><pre>{test.output}</pre>
       </div>
     </div></section>
+    <section className="regex-section"><h2>Group Actions</h2><div className="settings-action-row regex-actions">
+      <button className="settings-button" onClick={() => downloadRegex(exportRegexGroup(saved), saved.name)}><Download size={17} />Export Group</button>
     <button className="settings-button settings-danger" disabled={busy} onClick={() => {
       if (!window.confirm(`Delete ${saved.name} and all its Rules?`)) return;
       void run(async () => { await removeGroup(saved.id); router.push("/settings/regex"); });
-    }}><Trash2 size={17} />Delete Regex Group</button>
+    }}><Trash2 size={17} />Delete Regex Group</button></div></section>
   </PageShell>;
 }

@@ -14,12 +14,14 @@ import { sameBackupChat } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
+import { normalizeChatFormatting, type ChatFormattingSettings } from "./formatting";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
 export const CHAT_DATABASE_VERSION = 3;
 const CONVERSATION_STORES = ["sessions", "messages"];
 const STORES = [...CONVERSATION_STORES, "apiConfigs", "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
+const CHAT_FORMATTING_SETTINGS_ID = "chat-formatting";
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
 function backupSession(session: ChatSession): BackupSession {
@@ -388,6 +390,21 @@ export class ChatStorage {
         tx.objectStore("chatSettings").get(CHAT_BACKGROUND_SETTINGS_ID),
       );
       return settings ?? { id: CHAT_BACKGROUND_SETTINGS_ID };
+    });
+  }
+
+  readChatFormatting(): Promise<ChatFormattingSettings> {
+    return this.transaction("readonly", async (tx) => normalizeChatFormatting(
+      await request(tx.objectStore("chatSettings").get(CHAT_FORMATTING_SETTINGS_ID))));
+  }
+
+  updateChatFormatting(patch: Partial<Omit<ChatFormattingSettings, "id">>): Promise<ChatFormattingSettings> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("chatSettings");
+      const current = normalizeChatFormatting(await request(table.get(CHAT_FORMATTING_SETTINGS_ID)));
+      const next = normalizeChatFormatting({ ...current, ...patch });
+      await request(table.put(next));
+      return next;
     });
   }
 

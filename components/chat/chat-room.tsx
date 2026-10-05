@@ -47,6 +47,7 @@ import { resolveBindings } from "../../lib/bindings";
 import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
+import { defaultChatFormatting, formatAssistantMessage } from "../../lib/chat/formatting";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -55,6 +56,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     (c) => c.characterId === characterId,
   );
   const [regexGroups, setRegexGroups] = useState<RegexGroup[]>([]);
+  const [chatFormatting, setChatFormatting] = useState(defaultChatFormatting);
+  useEffect(() => {
+    let active = true;
+    void chatStorage.readChatFormatting().then((settings) => {
+      if (active) setChatFormatting(settings);
+    }).catch(() => { /* Chat remains usable with default formatting. */ });
+    return () => { active = false; };
+  }, [characterId]);
   const regexIds = resolveBindings(document.bindings, characterId, "messages").regexIds;
   const regexKey = regexIds?.join("\u0000") ?? "*";
   useEffect(() => {
@@ -504,7 +513,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
                 {(parsed.content && (message.role === "user" || message.role === "assistant")
-                  ? applyRegex(parsed.content, regexGroups, message.role, "display") : parsed.content) ||
+                  ? applyRegex(message.role === "assistant"
+                    ? formatAssistantMessage(parsed.content, character.name, chatFormatting)
+                    : parsed.content, regexGroups, message.role, "display") : parsed.content) ||
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <MessageFooter messageId={message.id} />

@@ -8,9 +8,14 @@
 .regex-manager .regex-card-main small { font-size: 13px; line-height: 1.4; opacity: .65; }
 .regex-manager .regex-row-actions { display: flex; align-items: center; gap: 2px; border-top: 1px solid var(--settings-border); padding: 4px 8px; }
 .regex-manager .regex-row-actions label { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; font-size: 13px; }
+.regex-manager .regex-row-spacer { flex: 1; }
+.regex-manager .regex-card-button { width: 100%; text-align: left; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
 .regex-manager .regex-row-actions button { display: grid; place-items: center; min-width: 40px; min-height: 44px; border: 0; background: transparent; }
 .regex-manager .regex-section { margin: 24px 0; }
 .regex-manager .regex-section h2 { margin: 0 0 14px; font-size: 17px; }
+.regex-manager .regex-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.regex-manager .regex-section-heading h2 { margin: 0; }
+.regex-manager .regex-test-hint { margin: -10px 0 0; font-size: 13px; opacity: .7; }
 .regex-manager .settings-editor { display: grid; gap: 14px; }
 .regex-manager .settings-editor > label { display: grid; gap: 7px; font-size: 14px; }
 .regex-manager .regex-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }

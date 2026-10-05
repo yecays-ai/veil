@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { BookOpen, Regex, SlidersHorizontal } from "lucide-react";
+import { BookOpen, MessageCircle, Regex, SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -11,6 +11,16 @@ export default function Page() {
       backLabel="Back to Home"
     >
       <RuntimeSettings />
+      <CardGrid
+        label="Messages"
+        items={[{
+          id: "chat-formatting",
+          label: "Chat Formatting",
+          description: "Keep replies looking like natural chat",
+          href: "/settings/chat-formatting",
+          icon: <MessageCircle size={20} />,
+        }]}
+      />
       <CardGrid
         label="API configuration"
         items={[
@@ -42,7 +52,7 @@ export default function Page() {
           },
           {
             id: "regex",
-            label: "Regex Groups",
+            label: "Advanced Regex",
             description: "Text replacement rules for conversations",
             href: "/settings/regex",
             icon: <Regex size={20} />,

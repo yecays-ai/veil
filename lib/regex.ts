@@ -35,6 +35,11 @@ export function newRegexGroup(): RegexGroup {
   return { id: crypto.randomUUID(), name: "New Regex", description: "", enabled: true,
     rules: [], createdAt: now, updatedAt: now };
 }
+export function newRegexDraft(): RegexGroup { return { ...newRegexGroup(), name: "" }; }
+export function canSaveRegexGroup(group: RegexGroup): boolean {
+  const name = group.name.trim();
+  return !!name && name.length <= 200;
+}
 
 export function validateRegexDocument(value: unknown): RegexDocument {
   if (!record(value) || value.version !== 1 || !Array.isArray(value.groups) || value.groups.length > 100)
