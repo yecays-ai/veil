@@ -7,6 +7,7 @@ import {
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import {
   avatarSource,
+  PRESENCE_VALUES,
   type CharacterInput,
   type UserProfile,
 } from "../lib/foundation-types";
@@ -90,6 +91,20 @@ export function ProfileForm({
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           />
         </label>
+        {kind === "user" && <>
+          <label>Presence
+            <select value={draft.presence} onChange={(event) => setDraft((d) =>
+              ({ ...d, presence: event.target.value as UserProfile["presence"] }))}>
+              {PRESENCE_VALUES.map((value) => <option key={value} value={value}>
+                {value === "dnd" ? "Do Not Disturb" : value[0].toUpperCase() + value.slice(1)}
+              </option>)}
+            </select>
+          </label>
+          <label>Status Message
+            <input maxLength={200} value={draft.statusMessage ?? ""}
+              onChange={(event) => text("statusMessage", event.target.value)} />
+          </label>
+        </>}
         <label>
           {C.fields.gender}
           <input

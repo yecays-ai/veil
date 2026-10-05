@@ -3,6 +3,11 @@ import { normalizeBindings, type BindingDocument } from "./bindings";
 import type { ManualLocation } from "./participant-config";
 
 export const UNIVERSE_ID = "veil-universe" as const;
+export const PRESENCE_VALUES = ["online", "away", "busy", "dnd", "offline"] as const;
+export type Presence = (typeof PRESENCE_VALUES)[number];
+export function normalizePresence(value: unknown): Presence {
+  return PRESENCE_VALUES.find((presence) => presence === value) ?? "offline";
+}
 export type ProfileBasics = {
   avatar: string | null;
   name: string;
@@ -13,6 +18,8 @@ export type ProfileBasics = {
   location: ManualLocation | null;
   timezone: string | null;
   appearance: string | null;
+  presence: Presence;
+  statusMessage: string | null;
 };
 export type UserProfile = ProfileBasics & { aboutMe: string | null };
 export type Character = ProfileBasics & {
@@ -125,6 +132,8 @@ function basics(value: unknown): ProfileBasics {
     location: normalizeLocation(raw.location),
     timezone: validTimezone(raw.timezone),
     appearance: optionalText(raw.appearance),
+    presence: normalizePresence(raw.presence),
+    statusMessage: optionalText(raw.statusMessage, 200),
   };
 }
 export function normalizeUser(value: unknown): UserProfile {

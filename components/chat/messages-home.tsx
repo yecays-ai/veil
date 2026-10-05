@@ -11,6 +11,8 @@ export function MessagesHome() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "private" | "groups">("all");
   useEffect(() => {
     let active = true;
     const load = async () => {
@@ -43,14 +45,23 @@ export function MessagesHome() {
       (byCharacter.get(b.characterId)?.updatedAt ?? 0) -
       (byCharacter.get(a.characterId)?.updatedAt ?? 0),
   );
+  const visible = filter === "groups" ? [] : characters.filter((character) => {
+    const name = byCharacter.get(character.characterId)?.remark || character.name;
+    return name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+  });
   return (
     <div className="chat-app messages-home">
       <header className="messages-header">
-        <Link href="/" aria-label="Back to Home">
-          ‹
-        </Link>
-        <h1>Messages</h1>
+        <h1>Chats</h1>
+        <button type="button" aria-label="New chat" title="New chat" disabled>+</button>
       </header>
+      <input className="messages-search" type="search" aria-label="Search chats"
+        placeholder="Search chats..." value={query} onChange={(event) => setQuery(event.target.value)} />
+      <div className="messages-filters" role="group" aria-label="Conversation type">
+        {(["all", "private", "groups"] as const).map((item) =>
+          <button key={item} type="button" aria-pressed={filter === item}
+            onClick={() => setFilter(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}
+      </div>
       {error && (
         <p role="alert" className="chat-notice">
           {error}
@@ -65,9 +76,9 @@ export function MessagesHome() {
           Create a <Link href="/characters">Character</Link> to start a
           conversation.
         </p>
-      ) : (
+      ) : visible.length === 0 ? <p className="chat-notice">{filter === "groups" ? "No group chats yet." : "No matching chats."}</p> : (
         <div className="conversation-list">
-          {characters.map((character) => {
+          {visible.map((character) => {
             const session = byCharacter.get(character.characterId);
             return (
               <Link

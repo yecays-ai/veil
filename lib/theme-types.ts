@@ -60,7 +60,7 @@ export function defaultSnapshot(): ThemeSnapshot {
       cssOverrides: {},
     },
     ...defaultDesktop(),
-    dockLayout: ["messages"],
+    dockLayout: ["messages", "contacts", "moments", "profile"],
   };
 }
 
@@ -186,7 +186,9 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
     },
     ...normalizeDesktop(raw),
     dockLayout: Array.isArray(raw.dockLayout)
-      ? [...new Set(raw.dockLayout.filter(isAppId))].slice(0, DOCK_MAX)
+      ? raw.dockLayout.length === 1 && raw.dockLayout[0] === "messages"
+        ? d.dockLayout
+        : [...new Set(raw.dockLayout.filter(isAppId))].slice(0, DOCK_MAX)
       : d.dockLayout,
   };
 }

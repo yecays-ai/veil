@@ -2,6 +2,8 @@ import { FOUNDATION_COPY as C } from "./foundation-copy";
 export const APP_REGISTRY = [
   { id: "messages", label: "Messages", href: "/messages", glyph: "M",
     bindingCapabilities: ["apiConfigId", "presetId", "worldBookIds", "regexIds"] },
+  { id: "contacts", label: "Contacts", href: "/contacts", glyph: "C" },
+  { id: "moments", label: "Moments", href: "/moments", glyph: "◌" },
   { id: "appearance", label: "Appearance", href: "/appearance", glyph: "A" },
   { id: "profile", label: C.profile.title, href: "/profile", glyph: "U" },
   {

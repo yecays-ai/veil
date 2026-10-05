@@ -20,6 +20,27 @@ import { useFoundation } from "./foundation-provider";
 import { ProfileForm } from "./profile-form";
 import { Avatar, ProfileView } from "./profile-view";
 import { PageShell } from "./page-shell";
+import { PresenceBadge } from "./presence";
+
+export function ProfileHub() {
+  const { document, ready } = useFoundation();
+  return <div className="social-root profile-hub">
+    <h1>Profile</h1>
+    {!ready ? <p>{C.common.loading}</p> : <>
+      <Link className="profile-hub-identity" href="/profile/details">
+        <Avatar avatar={document.user.avatar} name={document.user.name} large />
+        <strong>{document.user.name}</strong>
+        <span className="profile-presence"><PresenceBadge presence={document.user.presence} />
+          {document.user.presence === "dnd" ? "Do Not Disturb" : document.user.presence}</span>
+        {document.user.statusMessage && <small>{document.user.statusMessage}</small>}
+      </Link>
+      <nav className="social-list" aria-label="Profile">
+        <Link className="social-row" href="/profile/details">Profile / Personal Details <span aria-hidden="true">›</span></Link>
+        <Link className="social-row" href="/settings">Settings <span aria-hidden="true">›</span></Link>
+      </nav>
+    </>}
+  </div>;
+}
 
 export function UserProfilePage() {
   const { document, ready, commit } = useFoundation();
@@ -27,8 +48,8 @@ export function UserProfilePage() {
   return (
     <PageShell
       title={C.profile.title}
-      backHref="/"
-      backLabel="Back to Home"
+      backHref="/profile"
+      backLabel="Back to Profile"
       bodyClassName="foundation-page"
     >
       {!ready ? (

@@ -1,4 +1,4 @@
-import { UserProfilePage } from "../../components/profile-pages";
+import { ProfileHub } from "../../components/profile-pages";
 export default function Page() {
-  return <UserProfilePage />;
+  return <ProfileHub />;
 }

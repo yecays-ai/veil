@@ -4,6 +4,34 @@
   color: var(--theme-text);
   overflow-wrap: anywhere;
 }
+.social-root { flex: 1; min-height: 0; overflow-y: auto; padding: max(24px, var(--app-safe-top))
+  max(20px, var(--app-safe-right)) max(24px, var(--app-safe-bottom)) max(20px, var(--app-safe-left));
+  color: var(--theme-text); }
+.social-root h1 { margin: 0 0 22px; font-size: 1.8em; }
+.social-search { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 0;
+  border-radius: 12px; background: color-mix(in srgb, var(--theme-text) 8%, var(--theme-surface));
+  color: var(--theme-text); font: inherit; font-size: 16px; }
+.social-list { margin-top: 20px; }
+.social-row { display: flex; align-items: center; gap: 14px; min-height: 64px;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent); }
+.social-row > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
+.social-row small { opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.social-avatar { position: relative; flex: none; display: inline-flex; }
+.social-avatar .person-avatar { border-radius: 50%; }
+.presence-badge { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  background: #9ca3af; border: 2px solid var(--theme-surface); }
+.social-avatar > .presence-badge { position: absolute; bottom: 0; right: 0; }
+.presence-online { background: #39a86a; }
+.presence-away { background: #dfaa39; }
+.presence-busy, .presence-dnd { background: #d66b68; }
+.profile-hub-identity { display: flex; flex-direction: column; align-items: center; gap: 9px;
+  padding: 16px; border-radius: 18px; background: var(--theme-surface); text-align: center; }
+.profile-hub-identity .person-avatar { border-radius: 50%; }
+.profile-hub-identity > strong { font-size: 1.2em; }
+.profile-hub-identity > small { opacity: .65; }
+.profile-presence { display: inline-flex; align-items: center; gap: 6px; font-size: .85em; text-transform: capitalize; }
+.profile-hub .social-row { justify-content: space-between; }
+.social-empty { opacity: .6; margin-top: 50px; text-align: center; }
 .foundation-page nav,
 .foundation-actions {
   display: flex;

@@ -108,7 +108,7 @@ export function defaultDesktop(): DesktopLayout {
       page: 1,
       row: 3 + Math.floor(index / 4),
       col: 1 + (index % 4),
-    })).filter((app) => app.id !== "messages"),
+    })).filter((app) => !["messages", "contacts", "moments", "profile"].includes(app.id)),
     widgets: [
       {
         id: "here-there-default",
