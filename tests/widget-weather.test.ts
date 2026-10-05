@@ -244,17 +244,29 @@ test("failures fall back to an error state without throwing", async () => {
     ).status,
     "error",
   );
-  // Missing fetcher (for example a non-browser render) is still graceful.
-  assert.equal(
-    (
-      await fetchCurrentWeather(
-        { coordinates: { latitude: 7.5, longitude: 8.5 }, timezone: "UTC" },
-        undefined,
-        0,
-      )
-    ).status,
-    "error",
-  );
+  // Missing fetcher (for example a non-browser render) is still graceful and
+  // must not leak onto Node's real global network implementation.
+  const originalFetch = globalThis.fetch;
+  let globalFetchCalls = 0;
+  globalThis.fetch = async () => {
+    globalFetchCalls += 1;
+    return new Response(JSON.stringify({ current: { temperature_2m: 22, weather_code: 0 } }));
+  };
+  try {
+    assert.equal(
+      (
+        await fetchCurrentWeather(
+          { coordinates: { latitude: 7.5, longitude: 8.5 }, timezone: "UTC" },
+          undefined,
+          0,
+        )
+      ).status,
+      "error",
+    );
+    assert.equal(globalFetchCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
   assert.equal(parseOpenMeteoCurrent({}, 0).status, "error");
   assert.equal(parseOpenMeteoCurrent({ current: { temperature_2m: "x" } }, 0).status, "error");
 });

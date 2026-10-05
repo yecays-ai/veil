@@ -115,20 +115,23 @@ export function cachedWeather(
 // an "error" state so Home keeps rendering the widget.
 export async function fetchCurrentWeather(
   request: WeatherRequest,
-  fetcher: typeof fetch | undefined = globalThis.fetch,
+  fetcher?: typeof fetch,
   now: number = Date.now(),
 ): Promise<WeatherState> {
+  // An omitted provider uses the browser fetch. Explicit undefined represents
+  // a non-browser runtime and must not accidentally make a real network call.
+  const provider = arguments.length < 2 ? globalThis.fetch : fetcher;
   const key = weatherCacheKey(request.coordinates);
   const fresh = cachedWeather(request.coordinates, now);
   if (fresh) return fresh;
   const pending = inflight.get(key);
   if (pending) return pending;
   const operation = (async (): Promise<WeatherState> => {
-    if (typeof fetcher !== "function")
+    if (typeof provider !== "function")
       return { status: "error", message: "Weather unavailable" };
     let state: WeatherState;
     try {
-      const response = await fetcher(openMeteoUrl(request.coordinates), {
+      const response = await provider(openMeteoUrl(request.coordinates), {
         headers: { accept: "application/json" },
       });
       state = response.ok
