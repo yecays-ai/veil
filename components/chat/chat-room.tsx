@@ -524,7 +524,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {message.status === "error" && (
                   <span role="alert">{message.error || "Reply failed."}</span>
                 )}
-                {delivery && message.id === lastVisibleMessageId && <span className="chat-delivery-status">
+                {delivery && !typing && message.id === lastVisibleMessageId && <span className="chat-delivery-status">
                   {userMessageDeliveryLabel(delivery)}
                 </span>}
               </span>
