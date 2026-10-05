@@ -68,10 +68,11 @@ test("a new chat database installs the complete current schema", async () => {
   }
 });
 
-test("v3 identity upgrade preserves legacy conversation and all session-linked data", async () => {
+for (const [version, hasIndex] of [[3, true], [4, true], [4, false]] as const)
+test(`v${version} with characterId index=${hasIndex} upgrades to v5 without changing linked data`, async () => {
   const factory = new IDBFactory();
-  const old = await createV1Database(factory, true, 3);
-  assert.equal(old.transaction("sessions").objectStore("sessions").index("characterId").unique, true);
+  const old = await createV1Database(factory, hasIndex, version);
+  assert.equal(old.transaction("sessions").objectStore("sessions").indexNames.contains("characterId"), hasIndex);
   const session = { id: "character:peter", characterId: "peter", updatedAt: 123, remark: "Pete",
     nextOrder: 2, lastMessageId: "old-message", lastMessagePreview: "Hello", autoReplyOnKeyboardDismiss: true,
     streamOnline: true, customCSS: ".bubble { color: red; }", backgroundImage: "image", backgroundBlur: 4 };
@@ -92,10 +93,32 @@ test("v3 identity upgrade preserves legacy conversation and all session-linked d
   assert.equal((await storage.openSession("peter")).id, session.id);
   assert.deepEqual(await storage.readSession(session.id), { session, messages: [message] });
   const db = await openDatabase(factory);
+  assert.equal(db.version, 5);
   assert.equal(db.transaction("sessions").objectStore("sessions").indexNames.contains("characterId"), false);
   const asset = db.transaction("assets").objectStore("assets").get("image");
   await new Promise<void>((resolve) => { asset.onsuccess = () => { assert.equal(asset.result.blob.size, 5); resolve(); }; });
   db.close();
+});
+
+test("open and upgrade failures log only safe stage/error names and keep the user-facing error", async () => {
+  for (const mode of ["open", "upgrade"] as const) {
+    const factory = new IDBFactory();
+    const seeded = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = factory.open(CHAT_DATABASE_NAME, mode === "open" ? 6 : 4);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+    seeded.close();
+    const logs: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => { assert.equal(args.length, 1); logs.push(String(args[0])); };
+    try {
+      await assert.rejects(() => new ChatStorage(() => factory).listSessions(),
+        /Chat storage is unavailable\. Existing conversations have not been changed\./);
+    } finally { console.warn = warn; }
+    assert(logs.length > 0);
+    assert(logs.every((line) => /^\[Chat storage\] (open|upgrade-v5): (VersionError|NotFoundError|AbortError)$/.test(line)));
+  }
 });
 
 test("independent conversations share a Character and concurrent direct opens do not duplicate", async () => {

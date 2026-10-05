@@ -18,12 +18,20 @@ import { normalizeChatFormatting, type ChatFormattingSettings } from "./formatti
 import { normalizeBackgroundBlur } from "./types";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
-export const CHAT_DATABASE_VERSION = 4;
+export const CHAT_DATABASE_VERSION = 5;
 const CONVERSATION_STORES = ["sessions", "messages"];
 const STORES = [...CONVERSATION_STORES, "apiConfigs", "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
 const CHAT_FORMATTING_SETTINGS_ID = "chat-formatting";
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
+
+function logOpenFailure(stage: string, error: unknown) {
+  const names = ["AbortError", "ConstraintError", "DataError", "InvalidAccessError", "InvalidStateError",
+    "NotFoundError", "QuotaExceededError", "SecurityError", "TransactionInactiveError", "UnknownError", "VersionError"];
+  const name = error instanceof Error && names.includes(error.name) ? error.name : "Error";
+  // Never log the exception object/message: only a fixed stage and error name.
+  console.warn(`[Chat storage] ${stage}: ${name}`);
+}
 
 function backupSession(session: ChatSession): BackupSession {
   return {
@@ -142,32 +150,46 @@ export class ChatStorage {
   private open(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
-        const req = this.factory().open(
-          CHAT_DATABASE_NAME,
-          CHAT_DATABASE_VERSION,
-        );
+        const unavailable = () => reject(new Error(
+          "Chat storage is unavailable. Existing conversations have not been changed."));
+        let req: IDBOpenDBRequest;
+        try { req = this.factory().open(CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION); }
+        catch (error) { logOpenFailure("open", error); unavailable(); return; }
+        let stage = "open";
         let blocked = false;
         req.onupgradeneeded = (event) => {
-          // Each numbered migration must remain safe when a later version opens
-          // a database that already has this version's stores and indexes.
-          if (event.oldVersion < 1) {
-            const transaction = req.transaction;
-            if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
-            ensureV1Schema(req.result, transaction);
-          }
-          if (event.oldVersion < 2) {
-            const transaction = req.transaction;
-            if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
-            ensureV2Schema(req.result, transaction);
-          }
-          if (event.oldVersion < 3) {
-            const transaction = req.transaction;
-            if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
-            ensureV3Schema(req.result, transaction);
-          }
-          if (event.oldVersion < 4) {
-            const sessions = req.transaction!.objectStore("sessions");
-            if (sessions.indexNames.contains("characterId")) sessions.deleteIndex("characterId");
+          stage = "upgrade";
+          try {
+            // Each numbered migration must remain safe when a later version opens
+            // a database that already has this version's stores and indexes.
+            if (event.oldVersion < 1) {
+              const transaction = req.transaction;
+              if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
+              ensureV1Schema(req.result, transaction);
+            }
+            if (event.oldVersion < 2) {
+              const transaction = req.transaction;
+              if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
+              ensureV2Schema(req.result, transaction);
+            }
+            if (event.oldVersion < 3) {
+              const transaction = req.transaction;
+              if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
+              ensureV3Schema(req.result, transaction);
+            }
+            if (event.oldVersion < 4) {
+              stage = "upgrade-v4";
+              const sessions = req.transaction!.objectStore("sessions");
+              if (sessions.indexNames.contains("characterId")) sessions.deleteIndex("characterId");
+            }
+            if (event.oldVersion < 5) {
+              stage = "upgrade-v5";
+              const sessions = req.transaction!.objectStore("sessions");
+              if (sessions.indexNames.contains("characterId")) sessions.deleteIndex("characterId");
+            }
+          } catch (error) {
+            logOpenFailure(stage, error);
+            req.transaction?.abort();
           }
         };
         req.onsuccess = () => {
@@ -182,13 +204,11 @@ export class ChatStorage {
           resolve(req.result);
         };
         req.onerror = () => {
-          reject(
-            new Error(
-              "Chat storage is unavailable. Existing conversations have not been changed.",
-            ),
-          );
+          logOpenFailure(stage, req.error);
+          unavailable();
         };
         req.onblocked = () => {
+          console.warn("[Chat storage] open-blocked");
           blocked = true;
           reject(new Error("Close other VEIL tabs to open chat storage."));
         };
