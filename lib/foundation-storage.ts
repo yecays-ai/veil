@@ -3,6 +3,10 @@ import {
   normalizeFoundation,
   type FoundationDocument,
 } from "./foundation-types";
+import {
+  browserDocumentStorage,
+  type DocumentStorage,
+} from "./core-document-storage";
 
 export interface FoundationStorage {
   load(): Promise<FoundationDocument>;
@@ -18,7 +22,8 @@ export interface StringStorage {
   setItem(key: string, value: string): void;
   removeItem?(key: string): void;
 }
-const KEY = "veil.foundation.v1";
+export const FOUNDATION_STORAGE_KEY = "veil.foundation.v1";
+const KEY = FOUNDATION_STORAGE_KEY;
 export function createFoundationStorage(
   getStorage: () => StringStorage,
 ): FoundationStorage {
@@ -84,6 +89,58 @@ export function createFoundationStorage(
     },
   };
 }
-export const browserFoundationStorage = createFoundationStorage(
+export function createIndexedDBFoundationStorage(
+  documents: DocumentStorage,
+  legacy: () => StringStorage,
+): FoundationStorage {
+  const normalizeRaw = (raw: string): string => {
+    try {
+      return JSON.stringify(normalizeFoundation(JSON.parse(raw)));
+    } catch {
+      throw new Error(
+        "Saved profile data could not be read. Keep a backup before repairing browser storage.",
+      );
+    }
+  };
+  const readRaw = async () => {
+    const current = await documents.read(KEY);
+    if (current !== null) return current;
+    const previous = legacy().getItem(KEY);
+    if (previous === null) return null;
+    // Validate before copying and retain the original for rollback to older builds.
+    return documents.putIfAbsent(KEY, normalizeRaw(previous));
+  };
+  return {
+    async load() {
+      const raw = await readRaw();
+      return raw === null ? defaultFoundation() : normalizeFoundation(JSON.parse(raw));
+    },
+    readRaw,
+    async replaceIfCurrent(expected, document) {
+      const raw = JSON.stringify(normalizeFoundation(document));
+      if (!(await documents.replaceIfCurrent(KEY, expected, raw)))
+        throw new Error("Profile data changed while restore was being prepared.");
+      return raw;
+    },
+    rollbackIfCurrent(expected, previous) {
+      return documents.rollbackIfCurrent(KEY, expected, previous);
+    },
+    async transact(update) {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const before = await readRaw();
+        const current = before === null
+          ? defaultFoundation()
+          : normalizeFoundation(JSON.parse(before));
+        const next = normalizeFoundation(update(structuredClone(current)));
+        const raw = JSON.stringify(next);
+        if (await documents.replaceIfCurrent(KEY, before, raw)) return next;
+      }
+      throw new Error("Profile data changed repeatedly while saving. Try again.");
+    },
+  };
+}
+
+export const browserFoundationStorage = createIndexedDBFoundationStorage(
+  browserDocumentStorage,
   () => window.localStorage,
 );

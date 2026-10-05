@@ -1,6 +1,6 @@
 import { normalizeDocument, type ThemeDocument } from "./theme-types";
 import { encodeStoredImage } from "./image-processing";
-import { browserFoundationStorage } from "./foundation-storage";
+import { FOUNDATION_STORAGE_KEY } from "./foundation-storage";
 import { migrateLegacyWidgetCharacters } from "./legacy-widget-character";
 
 // Replace this adapter when user-isolated cloud storage becomes available.
@@ -28,7 +28,9 @@ export const browserThemeStorage: ThemeStorage = {
       return theme;
     let foundation: unknown;
     try {
-      const stored = await browserFoundationStorage.readRaw();
+      // This migration pairs two legacy localStorage documents. Reading the
+      // Core authority here could mix generations during the first upgrade.
+      const stored = window.localStorage.getItem(FOUNDATION_STORAGE_KEY);
       foundation = stored ? JSON.parse(stored) : undefined;
     } catch {
       return theme;
