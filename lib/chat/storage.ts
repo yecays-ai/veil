@@ -317,27 +317,9 @@ export class ChatStorage {
       const table = tx.objectStore("sessions");
       const sessions: ChatSession[] = await request(table.getAll());
       const existing = sessions.filter((session) => session.characterId === characterId);
+      // Preserve legacy direct chats in place; otherwise reuse the existing private session.
       const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
       if (direct) return direct;
-      const session: ChatSession = {
-        id: `character:${characterId}`,
-        characterId,
-        updatedAt: 0,
-        remark: null,
-        autoReplyOnKeyboardDismiss: false,
-        streamOnline: false,
-        nextOrder: 1,
-      };
-      await request(table.add(session));
-      return session;
-    });
-  }
-  // Explicitly create an additional conversation; the Character entry point
-  // continues to use openSession and preserves its existing direct-chat ID.
-  createSession(characterId: string): Promise<ChatSession> {
-    if (!characterId)
-      return Promise.reject(new Error("Character is required."));
-    return this.transaction("readwrite", async (tx) => {
       const session: ChatSession = {
         id: crypto.randomUUID(),
         characterId,
@@ -347,7 +329,7 @@ export class ChatStorage {
         streamOnline: false,
         nextOrder: 1,
       };
-      await request(tx.objectStore("sessions").add(session));
+      await request(table.add(session));
       return session;
     });
   }

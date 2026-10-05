@@ -125,10 +125,14 @@ test("open and upgrade failures log only safe stage/error names and keep the use
   }
 });
 
-test("concurrent direct opens reuse the same legacy-style chat without requiring an index", async () => {
+test("concurrent direct opens reuse one independently identified private conversation", async () => {
   const factory = new IDBFactory(); const storage = new ChatStorage(() => factory);
   const [direct, same] = await Promise.all([storage.openSession("peter"), new ChatStorage(() => factory).openSession("peter")]);
-  assert.equal(direct.id, same.id); assert.equal(direct.id, "character:peter");
+  assert.equal(direct.id, same.id);
+  assert.equal(direct.characterId, "peter");
+  assert.notEqual(direct.id, "peter");
+  assert.notEqual(direct.id, "character:peter");
+  assert.match(direct.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
   await storage.send(direct.id, "Existing chat");
   assert.equal((await storage.readSession(same.id)).messages[0].content, "Existing chat");
   assert.equal((await storage.listSessions()).length, 1);
@@ -149,77 +153,52 @@ test("an existing UUID session remains reachable through the Character direct-ch
   assert.equal((await storage.listSessions()).length, 1);
 });
 
-test("explicit conversations preserve the complete legacy Peter record and linked data", async () => {
+test("legacy direct chat ids remain untouched while new chats use independent ids", async () => {
   const factory = new IDBFactory();
   const db = await createV1Database(factory, false, CHAT_DATABASE_VERSION);
-  const session = { id: "character:peter", characterId: "peter", updatedAt: 123,
+  const peter = { id: "character:peter", characterId: "peter", updatedAt: 123,
     remark: "Pete", nextOrder: 2, lastMessageId: "old-message", lastMessagePreview: "Hello",
     autoReplyOnKeyboardDismiss: true, streamOnline: true, customCSS: ".bubble { color: red; }",
     backgroundImage: "image", backgroundBlur: 4 };
-  const message = { id: "old-message", sessionId: session.id, role: "user", content: "Hello",
+  const message = { id: "old-message", sessionId: peter.id, role: "user", content: "Hello",
     status: "sent", order: 1, createdAt: 123 };
   const state = { prefix: [], entries: {}, cycle: 4 };
-  const blob = new Blob(["image"], { type: "image/png" });
   const tx = db.transaction(["sessions", "messages", "worldBookStates", "assets", "chatSettings"], "readwrite");
   const done = finish(tx);
-  tx.objectStore("sessions").add(session);
+  tx.objectStore("sessions").add(peter);
   tx.objectStore("messages").add(message);
-  tx.objectStore("worldBookStates").add({ id: session.id, state });
-  tx.objectStore("assets").add({ id: "image", blob });
+  tx.objectStore("worldBookStates").add({ id: peter.id, state });
+  tx.objectStore("assets").add({ id: "image", blob: new Blob(["image"], { type: "image/png" }) });
   tx.objectStore("chatSettings").add({ id: "chat-background", globalChatBackgroundImage: "image", blur: 3 });
   await done;
   db.close();
 
   const storage = new ChatStorage(() => factory);
-  assert.deepEqual(await storage.openSession("peter"), session);
-  const extra = await storage.createSession("peter");
-  assert.match(extra.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-  assert.equal(extra.characterId, "peter");
-  assert.equal(extra.nextOrder, 1);
-  assert.equal(extra.backgroundImage, undefined);
-  await storage.send(extra.id, "Second conversation");
+  assert.deepEqual(await storage.openSession("peter"), peter);
+  const miles = await storage.openSession("miles");
+  assert.equal(miles.characterId, "miles");
+  assert.notEqual(miles.id, "miles");
+  assert.notEqual(miles.id, "character:miles");
+  assert.match(miles.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+  await storage.send(miles.id, "Miles chat");
+
   const reopened = new ChatStorage(() => factory);
-  assert.deepEqual(await reopened.openSession("peter"), session);
-  assert.deepEqual(await reopened.readSession(session.id), { session, messages: [message] });
-  assert.deepEqual((await reopened.readSession(extra.id)).messages.map((item) => item.content), ["Second conversation"]);
-  assert.deepEqual(await reopened.readWorldBookState(session.id), state);
-  assert.equal(await reopened.readWorldBookState(extra.id), null);
+  assert.equal((await reopened.openSession("miles")).id, miles.id);
+  assert.deepEqual(await reopened.openSession("peter"), peter);
+  assert.deepEqual(await reopened.readSession(peter.id), { session: peter, messages: [message] });
+  assert.deepEqual((await reopened.readSession(miles.id)).messages.map((item) => item.content), ["Miles chat"]);
+  assert.deepEqual(await reopened.readWorldBookState(peter.id), state);
+  assert.equal(await reopened.readWorldBookState(miles.id), null);
   assert.equal(await (await reopened.readChatImage("image"))!.text(), "image");
   assert.deepEqual(await reopened.readChatBackgroundSettings(),
     { id: "chat-background", globalChatBackgroundImage: "image", blur: 3 });
-  assert.deepEqual((await reopened.listSessions()).map((item) => item.id).sort(),
-    [session.id, extra.id].sort());
-
-  await reopened.send(session.id, "Direct conversation");
-  assert.deepEqual((await reopened.readSession(session.id)).messages.map((item) => item.content), ["Hello", "Direct conversation"]);
-  assert.deepEqual((await reopened.readSession(extra.id)).messages.map((item) => item.content), ["Second conversation"]);
-  assert.equal((await reopened.openSession("peter")).id, session.id);
+  assert.deepEqual((await reopened.listSessions()).map((item) => item.id).sort(), [peter.id, miles.id].sort());
+  await assert.rejects(reopened.openSession(""), /Character is required/);
+  assert.equal((await reopened.listSessions()).length, 2);
   const current = await openDatabase(factory);
   assert.equal(current.version, 5);
   assert.deepEqual(Array.from(current.transaction("sessions").objectStore("sessions").indexNames), []);
   current.close();
-});
-
-test("explicit creation always creates fresh conversations and rejects missing characters", async () => {
-  const factory = new IDBFactory();
-  const storage = new ChatStorage(() => factory);
-  await assert.rejects(storage.createSession(""), /Character is required/);
-  const direct = await storage.openSession("peter");
-  assert.equal(direct.id, "character:peter");
-  const sequentialFirst = await storage.createSession("peter");
-  const sequentialSecond = await storage.createSession("peter");
-  for (const extra of [sequentialFirst, sequentialSecond]) {
-    assert.match(extra.id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
-    assert.deepEqual(extra, { ...direct, id: extra.id });
-  }
-  assert.notEqual(sequentialFirst.id, sequentialSecond.id);
-  const [first, second] = await Promise.all([
-    storage.createSession("peter"), new ChatStorage(() => factory).createSession("peter"),
-  ]);
-  assert.equal(new Set([direct.id, sequentialFirst.id, sequentialSecond.id, first.id, second.id]).size, 5);
-  assert.equal((await storage.openSession("peter")).id, "character:peter");
-  assert.equal((await storage.listSessions()).length, 5);
-  assert.equal((await storage.openSession("other")).id, "character:other");
 });
 
 test("an existing v1 database preserves records while adding chat background stores", async () => {
