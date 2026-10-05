@@ -9,5 +9,6 @@ export function resolveHereThereCharacter(config: WidgetConfig, foundation: Foun
 export function bindHereThereCharacter(theme: ThemeDocument, widgetId: string, characterId: string): ThemeDocument {
   return { ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((widget) =>
     widget.id === widgetId && widget.type === "here-there"
-      ? { ...widget, config: { ...widget.config, characterId } } : widget) } };
+      ? { ...widget, config: { ...widget.config, characterId,
+        comment: widget.config.characterId === characterId ? widget.config.comment : undefined } } : widget) } };
 }

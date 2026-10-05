@@ -468,3 +468,5 @@
   background: none; color: inherit; font: inherit; text-align: left; }
 .here-there-picker-options button span { float: right; color: var(--theme-accent); }
 .here-there-picker-options button:disabled { opacity: .5; }
+.here-there-comment { margin: auto 0 0; font-size: .7em; line-height: 1.4; opacity: .65;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; flex-shrink: 0; }

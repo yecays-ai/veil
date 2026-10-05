@@ -5,7 +5,9 @@ export const WIDGET_SIZES = {
 
 export type WidgetSize = keyof typeof WIDGET_SIZES;
 export type WidgetType = "clock" | "here-there";
-export type WidgetConfig = { hour12: boolean; showSeconds: boolean; characterId?: string };
+export type WidgetComment = { characterId: string; requestId: string;
+  status: "pending" | "complete" | "failed"; text?: string };
+export type WidgetConfig = { hour12: boolean; showSeconds: boolean; characterId?: string; comment?: WidgetComment };
 export type WidgetInstance = {
   id: string;
   type: WidgetType;

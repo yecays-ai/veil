@@ -18,8 +18,17 @@ function timeConfig(value: unknown): WidgetConfig {
 function hereThereConfig(value: unknown): WidgetConfig {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const characterId = typeof raw.characterId === "string" ? raw.characterId.trim() : "";
-  return { ...timeConfig(value), ...(characterId.length <= 100 && /^[a-zA-Z0-9_-]+$/.test(characterId)
+  const config: WidgetConfig = { ...timeConfig(value), ...(characterId.length <= 100 && /^[a-zA-Z0-9_-]+$/.test(characterId)
     && !["__proto__", "constructor", "prototype"].includes(characterId) ? { characterId } : {}) };
+  const comment = raw.comment as Record<string, unknown> | undefined;
+  if (comment && config.characterId && comment.characterId === config.characterId
+    && typeof comment.requestId === "string" && comment.requestId.length > 0 && comment.requestId.length <= 100
+    && ["pending", "complete", "failed"].includes(String(comment.status))
+    && (comment.status !== "complete" || (typeof comment.text === "string" && !!comment.text.trim())))
+    config.comment = { characterId: config.characterId, requestId: comment.requestId,
+      status: comment.status as "pending" | "complete" | "failed",
+      ...(comment.status === "complete" ? { text: (comment.text as string).trim().slice(0, 500) } : {}) };
+  return config;
 }
 
 // Register metadata/config here and a view in WidgetRenderer when adding a type.

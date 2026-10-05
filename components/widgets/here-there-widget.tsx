@@ -14,6 +14,7 @@ import {
 import type { WidgetInstance } from "../../lib/widget-types";
 import { useDeviceClock } from "./use-device-clock";
 import { useWeatherState } from "./use-weather";
+import { ensureHereThereComment } from "../../lib/here-there-comment";
 
 function Weather({ state }: { state: WeatherState }) {
   switch (state.status) {
@@ -76,13 +77,14 @@ function Side({
 
 export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const now = useDeviceClock();
-  const { document } = useFoundation();
-  const { commit } = useTheme();
+  const { document, ready: foundationReady } = useFoundation();
+  const { commit, ready: themeReady } = useTheme();
   const character = resolveHereThereCharacter(widget.config, document);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
+  const commentAttempt = useRef<string | null>(null);
   useEffect(() => {
     if (pickerOpen) dialog.current?.showModal();
     else dialog.current?.close();
@@ -107,6 +109,15 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
     character?.location?.coordinates?.latitude ?? null,
     character?.location?.coordinates?.longitude ?? null,
   );
+  useEffect(() => {
+    const key = `${widget.id}:${widget.config.characterId}`;
+    if (!foundationReady || !themeReady || !now || !character || widget.config.comment
+      || hereWeather.status === "loading" || thereWeather.status === "loading" || commentAttempt.current === key) return;
+    commentAttempt.current = key;
+    void ensureHereThereComment(widget.id, { foundation: document, characterId: character.characterId,
+      now, hereWeather, thereWeather }, commit);
+  }, [foundationReady, themeReady, now, character, widget.id, widget.config.characterId,
+    widget.config.comment, document, hereWeather, thereWeather, commit]);
   return (
     <div className={`here-there-widget size-${widget.size}`}>
       <span className="widget-eyebrow here-there-title">
@@ -137,6 +148,9 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
           </div>
         )}
       </div>
+      {character && widget.config.comment?.status === "complete"
+        && widget.config.comment.characterId === character.characterId &&
+        <p className="here-there-comment">{widget.config.comment.text}</p>}
       {error && !pickerOpen && <span role="alert" className="participant-weather">{error}</span>}
       <dialog ref={dialog} className="here-there-character-picker" aria-label="Choose THERE Character"
         onClose={() => setPickerOpen(false)} onPointerDown={(event) => event.stopPropagation()}
