@@ -391,7 +391,8 @@
 .chat-delivery-status {
   font-size: 1.05em;
   letter-spacing: .01em;
-  opacity: .72;
+  font-weight: 600;
+  opacity: .8;
 }
 .chat-composer {
   position: absolute;
