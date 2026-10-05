@@ -11,6 +11,7 @@ import {
 } from "./provider";
 import { ChatStorage, chatStorage } from "./storage";
 import { DEFAULT_API_CONFIG_ID, type ChatMessage } from "./types";
+import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 
 export function createChatEngine(
   storage: ChatStorage,
@@ -30,6 +31,7 @@ export function createChatEngine(
       const controller = new AbortController();
       active.set(sessionId, controller);
       let assistant: ChatMessage | undefined;
+      let rawContent = "";
       let content = "";
       try {
         const current = await storage.readSession(sessionId);
@@ -80,13 +82,15 @@ export function createChatEngine(
           preset.generation,
         )) {
           controller.signal.throwIfAborted();
-          content += text;
+          rawContent += text;
+          content = sanitizeHistoryTimestamps(rawContent, true);
           await storage.updateReply(assistant.id, {
             content,
             status: "streaming",
           });
         }
         controller.signal.throwIfAborted();
+        content = sanitizeHistoryTimestamps(rawContent);
         if (!content.trim()) throw new Error("The API returned no reply text.");
         const completed = await storage.finalizeReply(assistant.id, content);
         // Optional presentation notification; it cannot turn a committed reply into an error.
