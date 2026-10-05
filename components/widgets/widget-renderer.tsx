@@ -13,7 +13,7 @@ import { UI_COPY as U } from "../../lib/ui-copy";
 
 const WIDGET_VIEWS: Record<
   WidgetType,
-  ComponentType<{ widget: WidgetInstance }>
+  ComponentType<{ widget: WidgetInstance; editing: boolean }>
 > = {
   clock: ClockWidget,
   "here-there": HereThereWidget,
@@ -47,7 +47,7 @@ export function WidgetRenderer({
         gridColumn: `${widget.col} / span ${dimensions.cols}`,
       }}
     >
-      <View widget={widget} />
+      <View widget={widget} editing={editing} />
       {editing && (
         <>
           <button

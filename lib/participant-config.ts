@@ -1,3 +1,5 @@
+import type { WidgetPlace } from "./widget-types";
+
 export type Coordinates = { latitude: number; longitude: number };
 export type ManualLocation = {
   label: string;
@@ -9,6 +11,13 @@ export type ParticipantConfig = {
   location: ManualLocation | null;
   timezone: string | null;
 };
+// Display state for one Here & There side: label and timezone drive local time,
+// coordinates drive weather. They are resolved independently on purpose.
+export type ResolvedPlace = {
+  label: string | null;
+  timezone: string | null;
+  coordinates: Coordinates | null;
+};
 export type WeatherState =
   | { status: "not-configured" }
   | { status: "loading" }
@@ -16,6 +25,7 @@ export type WeatherState =
       status: "ready";
       temperatureC: number;
       summary: string;
+      icon: string;
       updatedAt: string;
     }
   | { status: "error"; message: string };
@@ -23,6 +33,41 @@ export type WeatherRequest = { coordinates: Coordinates; timezone: string };
 // Future adapter: manually selected city → coordinates → weather provider.
 export interface WeatherProvider {
   getWeather(request: WeatherRequest): Promise<WeatherState>;
+}
+
+function validCoordinates(value: unknown): Coordinates | null {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  return typeof raw.latitude === "number" &&
+    Number.isFinite(raw.latitude) &&
+    Math.abs(raw.latitude) <= 90 &&
+    typeof raw.longitude === "number" &&
+    Number.isFinite(raw.longitude) &&
+    Math.abs(raw.longitude) <= 180
+    ? { latitude: raw.latitude, longitude: raw.longitude }
+    : null;
+}
+
+// The widget's own place wins per field; the profile remains the fallback so
+// existing Here & There widgets keep working without any new configuration.
+export function resolveParticipantPlace(
+  configured: WidgetPlace | null | undefined,
+  profile: ParticipantConfig,
+): ResolvedPlace {
+  const widgetCoordinates = configured
+    ? validCoordinates({
+        latitude: configured.latitude,
+        longitude: configured.longitude,
+      })
+    : null;
+  return {
+    label: configured?.label?.trim() || profile.location?.label || null,
+    timezone: configured?.timezone || profile.timezone || null,
+    coordinates:
+      widgetCoordinates ?? validCoordinates(profile.location?.coordinates) ?? null,
+  };
 }
 
 type IntlWithTimezoneValues = typeof Intl & {

@@ -448,3 +448,80 @@
 .here-there-side + .here-there-side {
   border-color: color-mix(in srgb, var(--theme-text) 12%, transparent);
 }
+
+/* Here & There places: edit-mode only, sized to the existing widget box. */
+.here-there-places-toggle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.6em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.here-there-places {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  overflow: auto;
+  background: var(--theme-surface);
+  font-size: 0.62em;
+}
+.here-there-places-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.here-there-places-head strong {
+  font-size: 1.1em;
+  letter-spacing: 0.02em;
+}
+.here-there-places-group {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 15%, transparent);
+  border-radius: 12px;
+}
+.here-there-places-group legend {
+  padding: 0 4px;
+  font-size: 0.95em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.here-there-places-group label {
+  display: grid;
+  gap: 3px;
+}
+.here-there-places-coordinates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.here-there-places-help {
+  margin: 0;
+  opacity: 0.6;
+}
+.here-there-places-error {
+  margin: 0;
+  color: #b00020;
+}
+.here-there-places-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
