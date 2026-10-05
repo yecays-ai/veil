@@ -10,7 +10,7 @@ import {
   type ReplyBatch,
 } from "./types";
 import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
-import { sameBackupChat, stableJson } from "../backup/equality";
+import { sameBackupChat } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
 
@@ -403,7 +403,7 @@ export class ChatStorage {
     });
   }
 
-  readRegenerationTarget(id: string): Promise<{ session: ChatSession; message: ChatMessage; history: ChatMessage[] }> {
+  regenerationSessionId(id: string): Promise<string> {
     return this.transaction("readonly", async (tx) => {
       const message: ChatMessage | undefined = await request(tx.objectStore("messages").get(id));
       if (!message || message.role !== "assistant" || message.status !== "complete")
@@ -413,34 +413,7 @@ export class ChatStorage {
       const all: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(message.sessionId));
       if (all.some((item) => item.status === "streaming"))
         throw new Error("A reply is already in progress.");
-      return { session, message, history: all.filter((item) => item.order < message.order).sort((a, b) => a.order - b.order) };
-    });
-  }
-
-  replaceRegeneratedMessage(original: ChatMessage, content: string, signal?: AbortSignal): Promise<ChatMessage> {
-    if (!content.trim()) return Promise.reject(new Error("The API returned no reply text."));
-    return this.transaction("readwrite", async (tx) => {
-      signal?.throwIfAborted();
-      const abort = () => { try { tx.abort(); } catch { /* Transaction already finished. */ } };
-      const cleanup = () => signal?.removeEventListener("abort", abort);
-      signal?.addEventListener("abort", abort, { once: true });
-      tx.addEventListener("complete", cleanup, { once: true });
-      tx.addEventListener("abort", cleanup, { once: true });
-      const table = tx.objectStore("messages");
-      const current: ChatMessage | undefined = await request(table.get(original.id));
-      if (!current || current.role !== "assistant" || current.status !== "complete" ||
-          stableJson(current) !== stableJson(original))
-        throw new Error("The message changed while regeneration was in progress.");
-      const all: ChatMessage[] = await request(table.index("sessionId").getAll(current.sessionId));
-      if (all.some((item) => item.status === "streaming")) throw new Error("A reply is already in progress.");
-      const next: ChatMessage = { ...current, content: content.trim(), status: "complete" };
-      delete next.error;
-      await request(table.put(next));
-      const sessions = tx.objectStore("sessions");
-      const session: ChatSession = await request(sessions.get(current.sessionId));
-      if (session.lastMessageId === next.id)
-        await request(sessions.put({ ...session, lastMessagePreview: next.content.slice(0, 120) }));
-      return next;
+      return session.id;
     });
   }
 
@@ -541,21 +514,44 @@ export class ChatStorage {
     });
   }
 
-  beginReply(sessionId: string): Promise<ReplyBatch | null> {
+  beginReply(sessionId: string, regenerateId?: string): Promise<ReplyBatch | null> {
     return this.transaction("readwrite", async (tx) => {
-      const session: ChatSession | undefined = await request(
+      let session: ChatSession | undefined = await request(
         tx.objectStore("sessions").get(sessionId),
       );
       if (!session) throw new Error("Conversation not found.");
       const table = tx.objectStore("messages");
-      const messages: ChatMessage[] = await request(
+      let messages: ChatMessage[] = await request(
         table.index("sessionId").getAll(sessionId),
       );
       messages.sort((a, b) => a.order - b.order);
+      if (regenerateId !== undefined) {
+        const target = messages.find((message) => message.id === regenerateId);
+        if (!target || target.role !== "assistant" || target.status !== "complete")
+          throw new Error("Only completed Assistant messages can be regenerated.");
+        if (messages.some((message) => message.status === "streaming"))
+          throw new Error("A reply is already in progress.");
+        const deleting = messages.filter((message) => message.order >= target.order);
+        const deletedIds = new Set(deleting.map((message) => message.id));
+        for (const message of deleting) await request(table.delete(message.id));
+        messages = messages.filter((message) => message.order < target.order);
+        // Retained users must not reference a reply removed by truncation.
+        for (const message of messages) {
+          if (message.requestedBy && deletedIds.has(message.requestedBy)) {
+            delete message.requestedBy;
+            await request(table.put(message));
+          }
+        }
+        const last = messages.at(-1);
+        session = { ...session, nextOrder: (last?.order ?? 0) + 1,
+          lastMessageId: last?.id, lastMessagePreview: last?.content.slice(0, 120) ?? "",
+          updatedAt: Date.now() };
+        await request(tx.objectStore("sessions").put(session));
+      }
       const pending = messages.filter(
         (m) => m.role === "user" && m.status === "sent" && !m.requestedBy,
       );
-      if (!pending.length) return null;
+      if (!pending.length && regenerateId === undefined) return null;
       const id = crypto.randomUUID();
       // Claim all pending bubbles before any API call. Concurrent tabs/requests
       // cannot reserve this same batch again, including after failure/cancel.
@@ -573,7 +569,7 @@ export class ChatStorage {
         order: session.nextOrder,
       };
       const nextSession = await this.append(tx, session, assistant);
-      return { session: nextSession, messages, pending, assistant };
+      return { session: nextSession, messages, pending: regenerateId === undefined ? pending : [], assistant };
     });
   }
   updateReply(

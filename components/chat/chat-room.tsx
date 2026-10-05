@@ -61,7 +61,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useEffect(() => { setQuotingMessage(null); }, [characterId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [regeneration, setRegeneration] = useState<{ messageId: string; content: string } | null>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
@@ -342,12 +341,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     replyLock.current = true;
     closeActions();
     setGenerating(true);
-    setRegeneration({ messageId: message.id, content: "" });
+    nearBottom.current = true;
+    const retained = messages.filter((item) => item.order < message.order);
+    const revealToken = revealQueue.begin(sessionId, retained, session.streamOnline === true, performance.now());
     setError("");
     try {
-      await chatEngine.regenerateMessage(message.id, (content) => {
+      await chatEngine.regenerateMessage(message.id, (completed) => {
         if (mounted.current && currentSessionId.current === sessionId)
-          setRegeneration({ messageId: message.id, content });
+          revealQueue.complete(sessionId, completed, performance.now(), revealToken);
       }, sessionId);
     } catch (reason) {
       if (mounted.current && currentSessionId.current === sessionId)
@@ -355,7 +356,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     } finally {
       replyLock.current = false;
       if (mounted.current && currentSessionId.current === sessionId) {
-        setRegeneration(null);
+        revealQueue.settle(sessionId, revealToken);
         setGenerating(false);
       }
     }
@@ -396,7 +397,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     (generating && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
   const visibleMessages = messages.filter((message) => !hidden(message));
   const groupedMessages = groupVisibleMessages(visibleMessages);
-  const typing = !!revealState?.pending || (generating && !regeneration && session?.streamOnline !== true);
+  const typing = !!revealState?.pending || (generating && session?.streamOnline !== true);
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
@@ -448,9 +449,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {empty && <p className="chat-empty-state">No messages yet</p>}
         {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
           const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
-          const regenerating = regeneration?.messageId === message.id;
-          const visibleText = regenerating ? (session?.streamOnline ? regeneration.content : "")
-            : visibleReplyText(message, session?.streamOnline === true);
+          const visibleText = visibleReplyText(message, session?.streamOnline === true);
           const parsed = message.role === "assistant" ? parseQuotedReply(visibleText)
             : { content: visibleText, preview: null };
           const quotePreview = message.quote?.preview ?? parsed.preview;
@@ -487,7 +486,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
                 {parsed.content ||
-                  (regenerating || (message.status === "streaming" && generating) ? "…" : "")}
+                  (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <MessageFooter messageId={message.id} />
               <span className="chat-message-meta">

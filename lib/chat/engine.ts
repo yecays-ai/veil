@@ -13,8 +13,6 @@ import { ChatStorage, chatStorage } from "./storage";
 import { DEFAULT_API_CONFIG_ID, type ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 
-const SINGLE_BUBBLE_DIRECTIVE = "You are regenerating one existing message bubble in place. Return exactly one replacement message for this bubble. Do not generate multiple chat messages. Do not use blank lines to create additional messages. Return only the replacement message text.";
-
 export function createChatEngine(
   storage: ChatStorage,
   foundation: () => Promise<FoundationDocument>,
@@ -37,110 +35,82 @@ export function createChatEngine(
     const preset = activePreset(await presets());
     return { document, character, config, preset };
   }
+  async function generateReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, regenerateId?: string): Promise<ChatMessage | null> {
+    if (active.has(sessionId)) return null;
+    const controller = new AbortController();
+    active.set(sessionId, controller);
+    let assistant: ChatMessage | undefined;
+    let rawContent = "";
+    let content = "";
+    try {
+      const current = await storage.readSession(sessionId);
+      if (regenerateId === undefined && !current.messages.some((m) =>
+        m.role === "user" && m.status === "sent" && !m.requestedBy))
+        return null;
+      const { document, character, config, preset } = await prepareGeneration(current.session.characterId);
+      controller.signal.throwIfAborted();
+      const batch = await storage.beginReply(sessionId, regenerateId);
+      if (!batch) return null;
+      assistant = batch.assistant;
+      const prompt = assembleChatPrompt(
+        document,
+        character,
+        batch.messages,
+        batch.pending,
+        undefined,
+        preset,
+        now(),
+      );
+      for await (const text of provider(
+        config,
+        prompt.messages,
+        controller.signal,
+        preset.generation,
+      )) {
+        controller.signal.throwIfAborted();
+        rawContent += text;
+        content = sanitizeHistoryTimestamps(rawContent, true);
+        await storage.updateReply(assistant.id, {
+          content,
+          status: "streaming",
+        });
+      }
+      controller.signal.throwIfAborted();
+      content = sanitizeHistoryTimestamps(rawContent);
+      if (!content.trim()) throw new Error("The API returned no reply text.");
+      const completed = await storage.finalizeReply(assistant.id, content);
+      // Optional presentation notification; it cannot turn a committed reply into an error.
+      try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
+      return completed[0];
+    } catch (error) {
+      if (!assistant) {
+        if (controller.signal.aborted) return null;
+        throw error;
+      }
+      return await storage.updateReply(assistant.id, {
+        content,
+        status: controller.signal.aborted ? "cancelled" : "error",
+        error: controller.signal.aborted
+          ? undefined
+          : error instanceof Error
+            ? error.message
+            : "Reply failed.",
+      });
+    } finally {
+      active.delete(sessionId);
+    }
+  }
   return {
     send: (sessionId: string, content: string, quoteMessageId?: string) =>
       storage.send(sessionId, content, quoteMessageId),
     isGenerating: (sessionId: string) => active.has(sessionId),
     stop: (sessionId: string) => active.get(sessionId)?.abort(),
-    async regenerateMessage(messageId: string, onPreview?: (content: string) => void, expectedSessionId?: string): Promise<ChatMessage> {
-      const controller = new AbortController();
-      let sessionId = expectedSessionId;
-      // The UI supplies its session so Stop also works during initial storage hydration.
-      if (sessionId) {
-        if (active.has(sessionId)) throw new Error("A reply is already in progress.");
-        active.set(sessionId, controller);
-      }
-      let rawContent = "";
-      try {
-        const target = await storage.readRegenerationTarget(messageId);
-        if (sessionId && target.session.id !== sessionId) throw new Error("Message belongs to another conversation.");
-        if (!sessionId) {
-          sessionId = target.session.id;
-          if (active.has(sessionId)) { sessionId = undefined; throw new Error("A reply is already in progress."); }
-          active.set(sessionId, controller);
-        }
-        controller.signal.throwIfAborted();
-        const { document, character, config, preset } = await prepareGeneration(target.session.characterId);
-        controller.signal.throwIfAborted();
-        const prompt = assembleChatPrompt(document, character, target.history, [], undefined, preset, now());
-        prompt.messages.push({ role: "system", content: SINGLE_BUBBLE_DIRECTIVE });
-        for await (const text of provider(config, prompt.messages, controller.signal, preset.generation)) {
-          controller.signal.throwIfAborted();
-          rawContent += text;
-          onPreview?.(sanitizeHistoryTimestamps(rawContent, true));
-        }
-        controller.signal.throwIfAborted();
-        const content = sanitizeHistoryTimestamps(rawContent);
-        if (!content.trim()) throw new Error("The API returned no reply text.");
-        return await storage.replaceRegeneratedMessage(target.message, content, controller.signal);
-      } finally {
-        if (sessionId) active.delete(sessionId);
-      }
-    },
-    async requestReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void): Promise<ChatMessage | null> {
-      if (active.has(sessionId)) return null;
-      const controller = new AbortController();
-      active.set(sessionId, controller);
-      let assistant: ChatMessage | undefined;
-      let rawContent = "";
-      let content = "";
-      try {
-        const current = await storage.readSession(sessionId);
-        if (!current.messages.some((m) =>
-          m.role === "user" && m.status === "sent" && !m.requestedBy))
-          return null;
-        const { document, character, config, preset } = await prepareGeneration(current.session.characterId);
-        controller.signal.throwIfAborted();
-        const batch = await storage.beginReply(sessionId);
-        if (!batch) return null;
-        assistant = batch.assistant;
-        const prompt = assembleChatPrompt(
-          document,
-          character,
-          batch.messages,
-          batch.pending,
-          undefined,
-          preset,
-          now(),
-        );
-        for await (const text of provider(
-          config,
-          prompt.messages,
-          controller.signal,
-          preset.generation,
-        )) {
-          controller.signal.throwIfAborted();
-          rawContent += text;
-          content = sanitizeHistoryTimestamps(rawContent, true);
-          await storage.updateReply(assistant.id, {
-            content,
-            status: "streaming",
-          });
-        }
-        controller.signal.throwIfAborted();
-        content = sanitizeHistoryTimestamps(rawContent);
-        if (!content.trim()) throw new Error("The API returned no reply text.");
-        const completed = await storage.finalizeReply(assistant.id, content);
-        // Optional presentation notification; it cannot turn a committed reply into an error.
-        try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
-        return completed[0];
-      } catch (error) {
-        if (!assistant) {
-          if (controller.signal.aborted) return null;
-          throw error;
-        }
-        return await storage.updateReply(assistant.id, {
-          content,
-          status: controller.signal.aborted ? "cancelled" : "error",
-          error: controller.signal.aborted
-            ? undefined
-            : error instanceof Error
-              ? error.message
-              : "Reply failed.",
-        });
-      } finally {
-        active.delete(sessionId);
-      }
+    requestReply: (sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void) =>
+      generateReply(sessionId, onFinalized),
+    async regenerateMessage(messageId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, expectedSessionId?: string): Promise<ChatMessage | null> {
+      const sessionId = expectedSessionId ?? await storage.regenerationSessionId(messageId);
+      if (active.has(sessionId)) throw new Error("A reply is already in progress.");
+      return generateReply(sessionId, onFinalized, messageId);
     },
   };
 }
