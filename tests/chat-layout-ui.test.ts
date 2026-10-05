@@ -100,6 +100,9 @@ test("composer overlays the wallpaper and tracks its measured height", () => {
 test("iOS keyboard handling keeps header and history on the stable chat canvas", () => {
   assert.match(css, /\.chat-history\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*overflow-y:\s*auto/);
   assert.match(css, /\.chat-composer\s*\{[^}]*bottom:\s*0;/);
+  assert.match(room, /fitVisualViewport\(screen\.getBoundingClientRect\(\), viewport\)/);
+  assert.match(room, /room\.style\.height = `\$\{visible\.height\}px`/);
+  assert.match(room, /room\.style\.transform = `translateY\(\$\{visible\.offsetTop\}px\)`/);
   assert.doesNotMatch(room, /--chat-keyboard-inset/);
   assert.doesNotMatch(css, /--chat-keyboard-inset/);
 });

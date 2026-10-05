@@ -38,6 +38,7 @@ import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
 import { SessionCustomCSS } from "./session-custom-css";
+import { fitVisualViewport } from "../../lib/chat/viewport";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -190,6 +191,45 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (nearBottom.current)
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [messages, revealState]);
+  // iOS keeps the layout viewport at its full height while the keyboard
+  // shrinks and may pan the visual viewport. Fit the entire room to that
+  // visible rectangle so Safari never has to push the header off-screen.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    let frame = 0;
+    const update = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const room = shell.current;
+        const screen = room?.closest<HTMLElement>(".phone-shell");
+        if (!room || !screen) return;
+        const mobile = window.matchMedia(
+          "(hover: none) and (pointer: coarse)",
+        ).matches;
+        if (!mobile) {
+          room.style.removeProperty("height");
+          room.style.removeProperty("transform");
+          return;
+        }
+        const visible = fitVisualViewport(screen.getBoundingClientRect(), viewport);
+        room.style.height = `${visible.height}px`;
+        room.style.transform = `translateY(${visible.offsetTop}px)`;
+        if (nearBottom.current)
+          history.current?.scrollTo({ top: history.current.scrollHeight });
+      });
+    };
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      cancelAnimationFrame(frame);
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      window.removeEventListener("orientationchange", update);
+    };
+  }, []);
   async function persistDraft(content: string, sessionId: string, focus: boolean) {
     sendingLock.current = true;
     setSending(true);
