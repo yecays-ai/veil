@@ -38,7 +38,7 @@ import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
 import { SessionCustomCSS } from "./session-custom-css";
-import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
+import { chatHeaderOffset, chatKeyboardInset, createStableHeaderOffset } from "../../lib/chat/viewport";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -198,6 +198,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (!viewport) return;
     let frame = 0;
     let safeTop = 0;
+    const headerOffset = createStableHeaderOffset((offset) => {
+      shell.current?.style.setProperty("--chat-viewport-top", `${offset}px`);
+    });
     // Measure env() independently: reading the header after setting its cached
     // padding would keep reading our own override (including an initial zero).
     const safeAreaProbe = globalThis.document.createElement("div");
@@ -218,6 +221,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         ).matches;
         const inputFocused = composer.current === globalThis.document.activeElement;
         if (!mobile) {
+          headerOffset.cancel();
           room.style.removeProperty("--chat-viewport-top");
           room.style.removeProperty("--chat-safe-top");
           room.style.removeProperty("--chat-keyboard-inset");
@@ -229,10 +233,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         } else {
           room.style.removeProperty("--chat-safe-top");
         }
-        room.style.setProperty(
-          "--chat-viewport-top",
-          `${chatHeaderOffset(viewport.offsetTop, window.scrollY)}px`,
-        );
+        headerOffset.update(chatHeaderOffset(viewport.offsetTop, window.scrollY));
         if (!inputFocused) {
           room.style.removeProperty("--chat-keyboard-inset");
           return;
@@ -257,6 +258,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     window.addEventListener("orientationchange", update);
     return () => {
       cancelAnimationFrame(frame);
+      headerOffset.cancel();
       safeAreaProbe.remove();
       viewport.removeEventListener("resize", update);
       viewport.removeEventListener("scroll", update);
