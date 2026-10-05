@@ -1,0 +1,21 @@
+.worldbook-manager .worldbook-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.worldbook-manager .worldbook-actions :is(button, a) { display: inline-flex; align-items: center; gap: 8px; }
+.worldbook-manager .worldbook-list { display: grid; gap: 12px; margin: 18px 0 24px; }
+.worldbook-manager .worldbook-card { border: 1px solid var(--settings-border); border-radius: 18px; background: var(--theme-surface); overflow: hidden; }
+.worldbook-manager .worldbook-card-main { display: flex; align-items: center; gap: 12px; padding: 16px; min-height: 66px; }
+.worldbook-manager .worldbook-card-main > span { flex: 1; display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.worldbook-manager .worldbook-card-main strong { font-size: 15px; }
+.worldbook-manager .worldbook-card-main small { font-size: 13px; line-height: 1.4; opacity: .65; }
+.worldbook-manager .worldbook-row-actions { display: flex; align-items: center; gap: 2px; border-top: 1px solid var(--settings-border); padding: 4px 8px; }
+.worldbook-manager .worldbook-row-actions label { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; font-size: 13px; }
+.worldbook-manager .worldbook-row-actions button { display: grid; place-items: center; min-width: 40px; min-height: 44px; border: 0; background: transparent; }
+.worldbook-manager .worldbook-section { margin: 24px 0; }
+.worldbook-manager .worldbook-section h2 { margin: 0 0 14px; font-size: 17px; }
+.worldbook-manager .worldbook-section summary { min-height: 44px; font-size: 17px; font-weight: 600; cursor: pointer; }
+.worldbook-manager .settings-editor { display: grid; gap: 14px; }
+.worldbook-manager .settings-editor > label { display: grid; gap: 7px; font-size: 14px; }
+.worldbook-manager .settings-editor > .worldbook-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.worldbook-manager textarea { font: inherit; line-height: 1.5; resize: vertical; }
+.worldbook-manager .worldbook-content { min-height: 220px; }
+.worldbook-manager input[type="checkbox"] { width: 21px; height: 21px; accent-color: var(--theme-accent); }
+.worldbook-manager .worldbook-count { display: block; margin: 18px 0; font-size: 13px; opacity: .65; }

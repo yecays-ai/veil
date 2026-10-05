@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { SlidersHorizontal } from "lucide-react";
+import { BookOpen, SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -32,6 +32,13 @@ export default function Page() {
             description: "Prompt pipelines and reply settings",
             href: "/settings/presets",
             icon: <SlidersHorizontal size={20} />,
+          },
+          {
+            id: "worldbooks",
+            label: "WorldBooks",
+            description: "Conversation lore and keyword activation",
+            href: "/settings/worldbooks",
+            icon: <BookOpen size={20} />,
           },
         ]}
       />
