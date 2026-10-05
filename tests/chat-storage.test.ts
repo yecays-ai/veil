@@ -88,8 +88,12 @@ test(`v${version} with characterId index=${hasIndex} upgrades to v5 without chan
   const storage = new ChatStorage(() => factory);
   assert.deepEqual(await storage.readSession(session.id), { session, messages: [message] });
   assert.deepEqual(await storage.readWorldBookState(session.id), state);
+  const upgraded = await openDatabase(factory);
+  const extra = upgraded.transaction("sessions", "readwrite"); const extraDone = finish(extra);
+  extra.objectStore("sessions").put({ id: "a-existing-uuid", characterId: "peter", updatedAt: 0,
+    nextOrder: 1, remark: null, autoReplyOnKeyboardDismiss: false });
+  await extraDone; upgraded.close();
   assert.equal((await storage.openSession("peter")).id, session.id);
-  await storage.createSession("peter");
   assert.equal((await storage.openSession("peter")).id, session.id);
   assert.deepEqual(await storage.readSession(session.id), { session, messages: [message] });
   const db = await openDatabase(factory);
@@ -121,16 +125,28 @@ test("open and upgrade failures log only safe stage/error names and keep the use
   }
 });
 
-test("independent conversations share a Character and concurrent direct opens do not duplicate", async () => {
+test("concurrent direct opens reuse the same legacy-style chat without requiring an index", async () => {
   const factory = new IDBFactory(); const storage = new ChatStorage(() => factory);
   const [direct, same] = await Promise.all([storage.openSession("peter"), new ChatStorage(() => factory).openSession("peter")]);
-  assert.equal(direct.id, same.id); assert.notEqual(direct.id, "character:peter");
-  const second = await storage.createSession("peter");
-  assert.notEqual(second.id, direct.id);
-  await storage.send(second.id, "Second conversation");
-  assert.equal((await storage.readSession(direct.id)).messages.length, 0);
-  assert.equal((await storage.readSession(second.id)).messages[0].content, "Second conversation");
-  assert.equal((await storage.listSessions()).length, 2);
+  assert.equal(direct.id, same.id); assert.equal(direct.id, "character:peter");
+  await storage.send(direct.id, "Existing chat");
+  assert.equal((await storage.readSession(same.id)).messages[0].content, "Existing chat");
+  assert.equal((await storage.listSessions()).length, 1);
+});
+
+test("an existing UUID session remains reachable through the Character direct-chat flow", async () => {
+  const factory = new IDBFactory();
+  const db = await createV1Database(factory, false, CHAT_DATABASE_VERSION);
+  const session = { id: "existing-uuid", characterId: "peter", updatedAt: 0,
+    nextOrder: 1, remark: null, autoReplyOnKeyboardDismiss: false };
+  const tx = db.transaction("sessions", "readwrite"); const done = finish(tx);
+  tx.objectStore("sessions").put(session); await done; db.close();
+  const storage = new ChatStorage(() => factory);
+  assert.deepEqual(await storage.openSession("peter"), session);
+  await storage.send(session.id, "Still here");
+  assert.equal((await storage.openSession("peter")).id, session.id);
+  assert.equal((await storage.readSession(session.id)).messages[0].content, "Still here");
+  assert.equal((await storage.listSessions()).length, 1);
 });
 
 test("an existing v1 database preserves records while adding chat background stores", async () => {

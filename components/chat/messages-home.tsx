@@ -40,9 +40,14 @@ export function MessagesHome() {
       unsubscribe();
     };
   }, []);
-  const visible = filter === "groups" ? [] : sessions.filter((session) => {
-    const character = document.characters.find((item) => item.characterId === session.characterId);
-    const name = session.remark || character?.name || "Unknown contact";
+  const byCharacter = new Map(sessions.map((s) => [s.characterId, s]));
+  const characters = [...document.characters].sort(
+    (a, b) =>
+      (byCharacter.get(b.characterId)?.updatedAt ?? 0) -
+      (byCharacter.get(a.characterId)?.updatedAt ?? 0),
+  );
+  const visible = filter === "groups" ? [] : characters.filter((character) => {
+    const name = byCharacter.get(character.characterId)?.remark || character.name;
     return name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   });
   return (
@@ -65,23 +70,24 @@ export function MessagesHome() {
         <p className="chat-notice">
           {error ? "Conversations unavailable." : "Loading conversations…"}
         </p>
-      ) : !sessions.length ? (
+      ) : !characters.length ? (
         <p className="chat-notice">
-          Open <Link href="/contacts">Contacts</Link> to start a conversation.
+          Create a <Link href="/characters">Character</Link> to start a
+          conversation.
         </p>
       ) : visible.length === 0 ? <p className="chat-notice">{filter === "groups" ? "No group chats yet." : "No matching chats."}</p> : (
         <div className="conversation-list">
-          {visible.map((session) => {
-            const character = document.characters.find((item) => item.characterId === session.characterId);
+          {visible.map((character) => {
+            const session = byCharacter.get(character.characterId);
             return (
               <Link
                 className="conversation-row"
-                key={session.id}
-                href={`/messages/${encodeURIComponent(session.id)}`}
+                key={character.characterId}
+                href={`/messages/${encodeURIComponent(character.characterId)}`}
               >
-                {character && <ChatAvatar profile={character} />}
+                <ChatAvatar profile={character} />
                 <span className="conversation-summary">
-                  <strong>{session.remark || character?.name || "Unknown contact"}</strong>
+                  <strong>{session?.remark || character.name}</strong>
                   <span>
                     {session?.lastMessagePreview || "Start a conversation"}
                   </span>

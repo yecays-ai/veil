@@ -310,23 +310,17 @@ export class ChatStorage {
       await addConversationBackup(tx, backup);
     }, CONVERSATION_STORES);
   }
-  // Compatibility entry for the current direct-chat UI, not Conversation identity.
   openSession(characterId: string): Promise<ChatSession> {
-    return this.createSession(characterId, true);
-  }
-  createSession(characterId: string, reuseDirect = false): Promise<ChatSession> {
     if (!characterId)
       return Promise.reject(new Error("Character is required."));
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
-      if (reuseDirect) {
-        const sessions: ChatSession[] = await request(table.getAll());
-        const existing = sessions.filter((session) => session.characterId === characterId);
-        const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
-        if (direct) return direct;
-      }
+      const sessions: ChatSession[] = await request(table.getAll());
+      const existing = sessions.filter((session) => session.characterId === characterId);
+      const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
+      if (direct) return direct;
       const session: ChatSession = {
-        id: crypto.randomUUID(),
+        id: `character:${characterId}`,
         characterId,
         updatedAt: 0,
         remark: null,
