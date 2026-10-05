@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { APP_IDS, APP_REGISTRY, isAppId } from "../lib/app-registry";
 import {
+  addAppToDesktop,
   buildOccupancy,
   canPlace,
   defaultDesktop,
@@ -13,6 +14,7 @@ import {
   moveDesktopItemToCell,
   normalizeDesktop,
 } from "../lib/desktop-layout";
+import { browserThemeStorage } from "../lib/theme-storage";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
 import { WIDGET_SIZES } from "../lib/widget-types";
 import {
@@ -110,6 +112,86 @@ test("default Messages is Dock-only while saved shortcuts and removals survive n
   assert.deepEqual(normalizeSnapshot(empty), empty);
   assert(APP_IDS.includes("appearance"));
   assert(APP_IDS.includes("messages"));
+});
+
+test("Add App restores a removed registered shortcut without counting Dock shortcuts", () => {
+  const original = defaultDesktop();
+  const removed = {
+    ...original,
+    iconLayout: original.iconLayout.filter((app) => app.id !== "appearance"),
+  };
+  const restored = addAppToDesktop(removed, "appearance", 1);
+  assert.deepEqual(restored.iconLayout.at(-1), {
+    id: "appearance", page: 1, row: 3, col: 1,
+  });
+  assert.deepEqual(restored.widgets, original.widgets);
+  assert.deepEqual(restored.iconLayout.slice(0, -1), removed.iconLayout);
+  assert.throws(() => addAppToDesktop(restored, "appearance", 1), /already on Home/);
+  assert.deepEqual(addAppToDesktop(original, "messages", 1).iconLayout.at(-1), {
+    id: "messages", page: 1, row: 3, col: 1,
+  });
+});
+
+test("Add App searches current page, other existing pages, then creates a page", () => {
+  const original = defaultDesktop();
+  const current = addAppToDesktop(original, "messages", 2);
+  assert.deepEqual(current.iconLayout.at(-1), {
+    id: "messages", page: 2, row: 1, col: 1,
+  });
+
+  const fillPage = (page: number) => [1, 3, 5].map((row) => ({
+    ...original.widgets[0], id: `fill-${page}-${row}`, page, row,
+  }));
+  const pageOneFull = { ...original, iconLayout: [], widgets: fillPage(1) };
+  const otherPage = addAppToDesktop(pageOneFull, "messages", 1);
+  assert.deepEqual(otherPage.iconLayout[0], {
+    id: "messages", page: 2, row: 1, col: 1,
+  });
+  const bothFull = {
+    ...pageOneFull,
+    widgets: [...fillPage(1), ...fillPage(2)],
+  };
+  const newPage = addAppToDesktop(bothFull, "messages", 2);
+  assert.equal(newPage.pageCount, 3);
+  assert.deepEqual(newPage.iconLayout[0], {
+    id: "messages", page: 3, row: 1, col: 1,
+  });
+  assert.deepEqual(newPage.widgets, bothFull.widgets);
+  assert.equal(buildOccupancy(newPage).size, buildOccupancy(bothFull).size + 1);
+
+  const atCapacity = {
+    ...bothFull,
+    pageCount: MAX_PAGES,
+    widgets: Array.from({ length: MAX_PAGES }, (_, index) => fillPage(index + 1)).flat(),
+  };
+  assert.throws(() => addAppToDesktop(atCapacity, "messages", 1), /No space/);
+  assert.equal(atCapacity.iconLayout.length, 0);
+});
+
+test("added App survives Theme normalization and browser storage reload", async () => {
+  const originalWindow = globalThis.window;
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => { values.set(key, value); },
+    } },
+  });
+  try {
+    const current = defaultSnapshot();
+    const added = addAppToDesktop(current, "messages", 1);
+    const document = normalizeDocument({ current: { ...current, ...added } });
+    await browserThemeStorage.save(document);
+    const reloaded = await browserThemeStorage.load();
+    assert.deepEqual(reloaded.current.iconLayout, added.iconLayout);
+    assert.deepEqual(reloaded.current.widgets, current.widgets);
+    assert.deepEqual(reloaded.current.dockLayout, current.dockLayout);
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true, value: originalWindow,
+    });
+  }
 });
 
 test("legacy simulated status-bar data is ignored while typography survives", () => {

@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { AppIcon } from "./app-icon";
 import { HomeEditShell } from "./home-edit-shell";
-import { APP_REGISTRY } from "../lib/app-registry";
+import { APP_REGISTRY, type AppId } from "../lib/app-registry";
 import { WidgetRenderer } from "./widgets/widget-renderer";
 import { useTheme } from "./theme-provider";
 import {
   GRID_COLS,
   GRID_ROWS,
+  addAppToDesktop,
   moveDesktopItemToCell,
   type DesktopItem,
 } from "../lib/desktop-layout";
@@ -91,6 +92,26 @@ export function HomeScreen() {
     }
   }
 
+  async function addApp(appId: AppId): Promise<string | null> {
+    if (!editing || !ready || saving) return "Home is busy. Try again.";
+    setSaving(true);
+    let destination = currentPage;
+    try {
+      await commit((d) => {
+        const next = addAppToDesktop(d.current, appId, currentPage);
+        destination = next.iconLayout.find((app) => app.id === appId)!.page;
+        return { ...d, current: { ...d.current, ...next } };
+      });
+      setPage(destination);
+      setNotice("");
+      return null;
+    } catch (error) {
+      return error instanceof Error ? error.message : U.home.saveError;
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function swipeStart(event: PointerEvent<HTMLDivElement>) {
     if (!event.isPrimary || event.button !== 0) return;
     cancelHold();
@@ -149,6 +170,9 @@ export function HomeScreen() {
       {editing && (
         <HomeEditShell
           disabled={!ready || saving}
+          availableApps={APP_REGISTRY.filter((app) =>
+            !iconLayout.some((icon) => icon.id === app.id)).map((app) => app.id)}
+          onAddApp={addApp}
           onDone={() => {
             setEditing(false);
             setSelected(null);

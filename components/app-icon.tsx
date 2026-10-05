@@ -9,11 +9,15 @@ export function AppIcon({
   editing = false,
   selected = false,
   onSelect,
+  actionLabel,
+  disabled = false,
 }: {
   id: AppId;
   editing?: boolean;
   selected?: boolean;
   onSelect?: () => void;
+  actionLabel?: string;
+  disabled?: boolean;
 }) {
   const { document } = useTheme();
   const app = APP_REGISTRY.find((app) => app.id === id);
@@ -44,8 +48,9 @@ export function AppIcon({
   return editing ? (
     <button
       className={`home-app${selected ? " is-selected" : ""}`}
-      aria-label={`Move ${app.label}`}
+      aria-label={actionLabel ?? `Move ${app.label}`}
       aria-pressed={selected}
+      disabled={disabled}
       onClick={onSelect}
     >
       {content}

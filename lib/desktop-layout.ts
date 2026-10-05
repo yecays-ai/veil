@@ -233,6 +233,40 @@ export function buildOccupancy(
   return occupied;
 }
 
+export function addAppToDesktop(
+  layout: DesktopLayout,
+  appId: AppId,
+  preferredPage: number,
+): DesktopLayout {
+  if (!isAppId(appId)) throw new Error("App not found.");
+  if (layout.iconLayout.some((app) => app.id === appId))
+    throw new Error("App is already on Home.");
+
+  const occupied = buildOccupancy(layout);
+  const pages = Array.from({ length: layout.pageCount }, (_, index) => index + 1);
+  const searchOrder = pages.includes(preferredPage)
+    ? [preferredPage, ...pages.filter((page) => page !== preferredPage)]
+    : pages;
+  for (const page of searchOrder)
+    for (let row = 1; row <= GRID_ROWS; row++)
+      for (let col = 1; col <= GRID_COLS; col++) {
+        if (canPlace(occupied, { page, row, col }, "1x1"))
+          return {
+            ...layout,
+            iconLayout: [...layout.iconLayout, { id: appId, page, row, col }],
+          };
+      }
+
+  if (layout.pageCount >= MAX_PAGES)
+    throw new Error("No space available on Home.");
+  const page = layout.pageCount + 1;
+  return {
+    ...layout,
+    pageCount: page,
+    iconLayout: [...layout.iconLayout, { id: appId, page, row: 1, col: 1 }],
+  };
+}
+
 // A destination cell is a pointer target, not necessarily a multi-cell item's
 // top-left corner. Anchor at the nearest in-bounds rectangle, then use the same
 // footprint/collision validation as resizing. Never search for another free area.
