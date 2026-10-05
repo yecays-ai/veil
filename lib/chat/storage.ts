@@ -635,8 +635,9 @@ export class ChatStorage {
       return next;
     });
   }
-  finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState): Promise<ChatMessage[]> {
-    const parts = splitAssistantReply(content);
+  finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
+    transformPart: (part: string) => string = (part) => part): Promise<ChatMessage[]> {
+    const parts = splitAssistantReply(content).map(transformPart);
     if (!parts.length)
       return Promise.reject(new Error("The API returned no reply text."));
     return this.transaction("readwrite", async (tx) => {

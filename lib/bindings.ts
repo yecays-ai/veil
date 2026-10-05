@@ -85,3 +85,15 @@ export function withoutWorldBookBinding(document: BindingDocument, bookId: strin
     }])),
   };
 }
+
+export function withoutRegexBinding(document: BindingDocument, regexId: string): BindingDocument {
+  const omit = (slot: BindingSlot): BindingSlot => slot.regexIds
+    ? { ...slot, regexIds: slot.regexIds.filter((id) => id !== regexId) } : slot;
+  return {
+    global: omit(document.global),
+    characters: Object.fromEntries(Object.entries(document.characters).map(([id, binding]) => [id, {
+      defaults: omit(binding.defaults),
+      apps: Object.fromEntries(Object.entries(binding.apps).map(([app, slot]) => [app, omit(slot ?? {})])),
+    }])),
+  };
+}

@@ -2,8 +2,10 @@ import type { Character, FoundationDocument, ProfileBasics } from "../foundation
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
 import type { ChatMessage, PromptTurn } from "./types";
 import { buildTimeContext, historyTimestamp } from "./time-context";
-import { messageHistoryContent } from "./quote";
+import { messageHistoryContentWithBody } from "./quote";
 import type { WorldBookActivation } from "../worldbook-activation";
+import { applyRegex } from "../regex-engine";
+import type { RegexGroup } from "../regex";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -16,6 +18,7 @@ export type PromptRuntimeContext = {
   memory: MemorySlot;
   worldInfo?: WorldBookActivation;
   time?: ReturnType<typeof buildTimeContext>;
+  regexGroups?: readonly RegexGroup[];
 };
 
 const RECENT_MESSAGES = 40;
@@ -40,6 +43,12 @@ function directRelations({ foundation, character }: PromptRuntimeContext) {
 function eligibleMessages(context: PromptRuntimeContext) {
   return context.currentMessages.filter((message) =>
     message.content && (message.role !== "assistant" || message.status === "complete"));
+}
+function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
+  const body = message.role === "user" || message.role === "assistant"
+    ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt")
+    : message.content;
+  return messageHistoryContentWithBody(message, body);
 }
 
 export function resolvePresetMarker(
@@ -68,7 +77,7 @@ export function resolvePresetMarker(
       return eligibleMessages(context).filter((message) => !pendingIds.has(message.id))
         .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES)
         .map((message) => ({ role: message.role, content: context.time
-          ? `${historyTimestamp(message.createdAt, context.time.user.timezone)}\n${messageHistoryContent(message)}` : messageHistoryContent(message) }));
+          ? `${historyTimestamp(message.createdAt, context.time.user.timezone)}\n${promptContent(message, context)}` : promptContent(message, context) }));
     }
   }
 }
@@ -88,10 +97,11 @@ export function assembleChatPrompt(
   preset: Preset = createBuiltinPreset(),
   now: Date = new Date(),
   worldInfo?: WorldBookActivation,
+  regexGroups: readonly RegexGroup[] = [],
 ): { sections: PromptSection[]; messages: PromptTurn[] } {
   const time = foundation.runtime?.timeAware !== false
     ? buildTimeContext(now, foundation.user.timezone, character.timezone) : undefined;
-  const context = { foundation, character, currentMessages, pending, memory, time, worldInfo };
+  const context = { foundation, character, currentMessages, pending, memory, time, worldInfo, regexGroups };
   const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
   const sections: PromptSection[] = [], messages: PromptTurn[] = [];
   let timeInjected = false;
@@ -122,7 +132,7 @@ export function assembleChatPrompt(
   const pendingTurns = [...new Set(pending.map((message) => message.id))]
     .flatMap((id) => current.has(id) ? [current.get(id)!] : [])
     .sort((a, b) => a.order - b.order)
-    .map((message) => ({ role: message.role, content: messageHistoryContent(message) }));
+    .map((message) => ({ role: message.role, content: promptContent(message, context) }));
   messages.push(...pendingTurns);
   return { sections, messages };
 }

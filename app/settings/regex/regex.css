@@ -1,0 +1,28 @@
+.regex-manager .regex-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 20px; }
+.regex-manager .regex-actions :is(button, a) { display: inline-flex; align-items: center; gap: 8px; }
+.regex-manager .regex-list { display: grid; gap: 12px; margin: 18px 0 24px; }
+.regex-manager .regex-card { border: 1px solid var(--settings-border); border-radius: 18px; background: var(--theme-surface); overflow: hidden; }
+.regex-manager .regex-card-main { display: flex; align-items: center; gap: 12px; padding: 16px; min-height: 66px; }
+.regex-manager .regex-card-main > span { flex: 1; display: grid; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.regex-manager .regex-card-main strong { font-size: 15px; }
+.regex-manager .regex-card-main small { font-size: 13px; line-height: 1.4; opacity: .65; }
+.regex-manager .regex-row-actions { display: flex; align-items: center; gap: 2px; border-top: 1px solid var(--settings-border); padding: 4px 8px; }
+.regex-manager .regex-row-actions label { display: inline-flex; align-items: center; gap: 7px; margin-right: auto; font-size: 13px; }
+.regex-manager .regex-row-actions button { display: grid; place-items: center; min-width: 40px; min-height: 44px; border: 0; background: transparent; }
+.regex-manager .regex-section { margin: 24px 0; }
+.regex-manager .regex-section h2 { margin: 0 0 14px; font-size: 17px; }
+.regex-manager .settings-editor { display: grid; gap: 14px; }
+.regex-manager .settings-editor > label { display: grid; gap: 7px; font-size: 14px; }
+.regex-manager .regex-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.regex-manager .regex-mode { display: flex; align-items: center; gap: 10px; min-height: 52px; }
+.regex-manager .regex-mode span { display: grid; gap: 2px; }
+.regex-manager .regex-mode small { opacity: .65; }
+.regex-manager textarea { font: inherit; line-height: 1.5; resize: vertical; }
+.regex-manager input[type="checkbox"], .regex-manager input[type="radio"] { width: 21px; height: 21px; accent-color: var(--theme-accent); }
+.regex-manager fieldset { border: 1px solid var(--settings-border); border-radius: 12px; padding: 10px 14px; }
+.regex-manager legend { padding: 0 4px; }
+.regex-manager .regex-invalid { margin: 0; color: #a52828; font-size: 13px; }
+.regex-manager .regex-test-flow { display: grid; gap: 6px; padding: 14px; border: 1px solid var(--settings-border); border-radius: 12px; overflow-wrap: anywhere; }
+.regex-manager .regex-test-flow > div { display: grid; gap: 6px; }
+.regex-manager .regex-test-flow pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 8px; font: inherit; }
+.regex-manager .regex-test-flow small { opacity: .7; }

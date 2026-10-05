@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { BookOpen, SlidersHorizontal } from "lucide-react";
+import { BookOpen, Regex, SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -39,6 +39,13 @@ export default function Page() {
             description: "Conversation lore and keyword activation",
             href: "/settings/worldbooks",
             icon: <BookOpen size={20} />,
+          },
+          {
+            id: "regex",
+            label: "Regex Groups",
+            description: "Text replacement rules for conversations",
+            href: "/settings/regex",
+            icon: <Regex size={20} />,
           },
         ]}
       />

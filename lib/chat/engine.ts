@@ -16,6 +16,9 @@ import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
 import type { WorldBookActivationState } from "../worldbook-activation";
+import { browserRegexStorage } from "../regex-storage";
+import { emptyRegexDocument, resolveRegexGroups, type RegexDocument } from "../regex";
+import { applyRegex } from "../regex-engine";
 
 export function createChatEngine(
   storage: ChatStorage,
@@ -25,6 +28,8 @@ export function createChatEngine(
   now: () => Date = () => new Date(),
   worldBooks: () => Promise<WorldBookDocument> = () =>
     typeof window === "undefined" ? Promise.resolve(emptyWorldBookDocument()) : browserWorldBookStorage.load(),
+  regex: () => Promise<RegexDocument> = () =>
+    typeof window === "undefined" ? Promise.resolve(emptyRegexDocument()) : browserRegexStorage.load(),
 ) {
   const active = new Map<string, AbortController>();
   async function prepareGeneration(characterId: string) {
@@ -61,6 +66,8 @@ export function createChatEngine(
       if (!batch) return null;
       assistant = batch.assistant;
       const selectedIds = resolveBindings(document.bindings, character.characterId, "messages").worldBookIds;
+      const regexIds = resolveBindings(document.bindings, character.characterId, "messages").regexIds;
+      const regexGroups = resolveRegexGroups(await regex(), regexIds);
       const books = (await worldBooks()).books.filter((book) =>
         selectedIds === undefined || selectedIds.includes(book.id));
       const activation = evaluateWorldBooks(books, batch.messages,
@@ -75,6 +82,7 @@ export function createChatEngine(
         preset,
         now(),
         activation,
+        regexGroups,
       );
       providerStarted = true;
       for await (const text of provider(
@@ -94,7 +102,8 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       content = sanitizeHistoryTimestamps(rawContent);
       if (!content.trim()) throw new Error("The API returned no reply text.");
-      const completed = await storage.finalizeReply(assistant.id, content, activationState);
+      const completed = await storage.finalizeReply(assistant.id, content, activationState,
+        (part) => applyRegex(part, regexGroups, "assistant", "stored"));
       // Optional presentation notification; it cannot turn a committed reply into an error.
       try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
       return completed[0];
@@ -117,8 +126,13 @@ export function createChatEngine(
     }
   }
   return {
-    send: (sessionId: string, content: string, quoteMessageId?: string) =>
-      storage.send(sessionId, content, quoteMessageId),
+    async send(sessionId: string, content: string, quoteMessageId?: string) {
+      const { session } = await storage.readSession(sessionId);
+      const document = await foundation();
+      const ids = resolveBindings(document.bindings, session.characterId, "messages").regexIds;
+      const groups = resolveRegexGroups(await regex(), ids);
+      return storage.send(sessionId, applyRegex(content, groups, "user", "stored"), quoteMessageId);
+    },
     isGenerating: (sessionId: string) => active.has(sessionId),
     stop: (sessionId: string) => active.get(sessionId)?.abort(),
     requestReply: (sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void) =>

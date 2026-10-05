@@ -16,7 +16,10 @@ export function quoteMessage(message: ChatMessage): MessageQuote {
 }
 
 export function messageHistoryContent(message: ChatMessage): string {
+  return messageHistoryContentWithBody(message, message.content);
+}
+export function messageHistoryContentWithBody(message: ChatMessage, content: string): string {
   return message.quote
-    ? `[Reply to ${message.quote.role} message ${JSON.stringify(message.quote.messageId)}: ${JSON.stringify(message.quote.preview)}]\n${message.content}`
-    : message.content;
+    ? `[Reply to ${message.quote.role} message ${JSON.stringify(message.quote.messageId)}: ${JSON.stringify(message.quote.preview)}]\n${content}`
+    : content;
 }

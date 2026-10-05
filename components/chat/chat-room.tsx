@@ -43,6 +43,10 @@ import { getMessageActions, messageActionsRevision, runMessageAction, subscribeM
 import { MessageFooter } from "./message-footer";
 import { parseQuotedReply, quoteMessage } from "../../lib/chat/quote";
 import { QuoteBubble } from "./quote-bubble";
+import { resolveBindings } from "../../lib/bindings";
+import { browserRegexStorage } from "../../lib/regex-storage";
+import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
+import { applyRegex } from "../../lib/regex-engine";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -50,6 +54,20 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
+  const [regexGroups, setRegexGroups] = useState<RegexGroup[]>([]);
+  const regexIds = resolveBindings(document.bindings, characterId, "messages").regexIds;
+  const regexKey = regexIds?.join("\u0000") ?? "*";
+  useEffect(() => {
+    let active = true;
+    const load = () => void browserRegexStorage.load().then((saved) => {
+      if (active) setRegexGroups(resolveRegexGroups(saved, regexIds));
+    }).catch(() => { if (active) setRegexGroups([]); });
+    load();
+    window.addEventListener("storage", load);
+    return () => { active = false; window.removeEventListener("storage", load); };
+  // The key tracks the resolved ordered IDs without reloading on unrelated renders.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [characterId, regexKey]);
   const { session, messages, loadError } = useChatSession(
     characterId,
     ready && !!character,
@@ -485,7 +503,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 onClick={(e) => openActions(e, message)}>
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
-                {parsed.content ||
+                {(parsed.content && (message.role === "user" || message.role === "assistant")
+                  ? applyRegex(parsed.content, regexGroups, message.role, "display") : parsed.content) ||
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <MessageFooter messageId={message.id} />
