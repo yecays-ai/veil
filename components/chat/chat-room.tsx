@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   Bookmark,
   ChevronLeft,
@@ -39,8 +39,11 @@ import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
 import { SessionCustomCSS } from "./session-custom-css";
 import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
+import { getMessageActions, messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
+import { MessageFooter } from "./message-footer";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
+  useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   const { document, ready } = useFoundation();
   const character = document.characters.find(
     (c) => c.characterId === characterId,
@@ -447,6 +450,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {visibleReplyText(message, session?.streamOnline === true) ||
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
+              <MessageFooter messageId={message.id} />
               <span className="chat-message-meta">
                 {message.status === "streaming" && !generating && (
                   <span>Interrupted reply</span>
@@ -567,6 +571,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <Action label="Favorite" icon={Bookmark} disabled />
             <Action label="Delete" icon={Trash2} danger onClick={() => { setConfirmDelete([activeMessage.id]); closeActions(); }} />
             <Action label="Regenerate" icon={RotateCcw} disabled />
+            {getMessageActions(activeMessage).map((action) => <Action key={action.id}
+              label={action.label} icon={Plus} onClick={() => {
+                const message = activeMessage;
+                closeActions();
+                void runMessageAction(action.id, message, {
+                  updateMessage: (patch) => chatStorage.editMessage(message.id, patch.content),
+                  toast: showFeedback,
+                }).catch((reason) => setError(reason instanceof Error ? reason.message : "Message action failed."));
+              }} />)}
           </div>
         </div>
       </>}
