@@ -4,16 +4,12 @@ export type VisualViewportFrame = {
 };
 
 export function fitVisualViewport(
-  screen: { top: number; bottom: number },
+  screenHeight: number,
   viewport: { offsetTop: number; height: number },
 ): VisualViewportFrame {
-  const top = Math.max(screen.top, viewport.offsetTop);
-  const bottom = Math.min(
-    screen.bottom,
-    viewport.offsetTop + viewport.height,
-  );
+  const offsetTop = Math.max(0, viewport.offsetTop);
   return {
-    height: Math.max(0, bottom - top),
-    offsetTop: Math.max(0, top - screen.top),
+    height: Math.max(0, Math.min(viewport.height, screenHeight - offsetTop)),
+    offsetTop,
   };
 }

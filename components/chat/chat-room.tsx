@@ -212,7 +212,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           room.style.removeProperty("transform");
           return;
         }
-        const visible = fitVisualViewport(screen.getBoundingClientRect(), viewport);
+        // offsetTop is in layout-viewport coordinates. getBoundingClientRect()
+        // already moves with the visual viewport on iOS, so mixing the two
+        // coordinate spaces would apply the keyboard pan twice.
+        const visible = fitVisualViewport(screen.clientHeight, viewport);
         room.style.height = `${visible.height}px`;
         room.style.transform = `translateY(${visible.offsetTop}px)`;
         if (nearBottom.current)
