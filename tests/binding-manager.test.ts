@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { APP_REGISTRY } from "../lib/app-registry";
+import { APP_REGISTRY, bindingCapableApps } from "../lib/app-registry";
 import { cleanStaleBindings, resolveBindings, setBindingField,
   withoutApiConfigBinding, withoutPresetBinding, type BindingDocument } from "../lib/bindings";
 import { ChatStorage } from "../lib/chat/storage";
@@ -13,6 +13,15 @@ import { createPresetStorage, deletePresetAndBindings } from "../lib/preset-stor
 import { deleteApiConfigAndBindings } from "../lib/settings/text-api";
 import { DEFAULT_REGEX_GROUP_ID } from "../lib/regex-defaults";
 import { resolveRegexGroups, type RegexDocument } from "../lib/regex";
+
+test("App Registry exposes only binding-capable Apps and supports future capability declarations", () => {
+  assert.deepEqual(bindingCapableApps(APP_REGISTRY).map((app) => app.id), ["messages"]);
+  assert.deepEqual(bindingCapableApps(APP_REGISTRY)[0].bindingCapabilities,
+    ["apiConfigId", "presetId", "worldBookIds", "regexIds"]);
+  const extended = [...APP_REGISTRY, { id: "future-chat", label: "Future Chat",
+    bindingCapabilities: ["presetId"] as const }];
+  assert.deepEqual(bindingCapableApps(extended).map((app) => app.id), ["messages", "future-chat"]);
+});
 
 test("Binding edits preserve scalar/list inheritance, ordered replacement and prune empty overrides", () => {
   let bindings: BindingDocument = { global: { apiConfigId: "api-a", presetId: "preset-a",

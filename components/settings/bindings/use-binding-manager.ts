@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { useFoundation } from "../../foundation-provider";
-import { APP_REGISTRY } from "../../../lib/app-registry";
 import { cleanStaleBindings, setBindingField,
   type BindingScope, type BindingSlot, type ManagedBindingField } from "../../../lib/bindings";
 import { chatStorage } from "../../../lib/chat/storage";
@@ -68,5 +67,5 @@ export function useBindingManager() {
     } finally { setBusy(false); }
   }
 
-  return { document, resources, error, busy, update, apps: APP_REGISTRY };
+  return { document, resources, error, busy, update };
 }
