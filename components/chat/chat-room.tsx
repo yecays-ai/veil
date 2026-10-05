@@ -417,6 +417,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     (generating && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
   const visibleMessages = messages.filter((message) => !hidden(message));
   const groupedMessages = groupVisibleMessages(visibleMessages);
+  const lastVisibleMessageId = groupedMessages.at(-1)?.message.id;
   const typing = !!revealState?.pending || (generating && session?.streamOnline !== true);
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
@@ -523,7 +524,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {message.status === "error" && (
                   <span role="alert">{message.error || "Reply failed."}</span>
                 )}
-                {delivery && <span className="chat-delivery-status">
+                {delivery && message.id === lastVisibleMessageId && <span className="chat-delivery-status">
                   {userMessageDeliveryLabel(delivery)}
                 </span>}
               </span>

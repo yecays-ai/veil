@@ -18,7 +18,7 @@ test("chat header is a glass overlay with the requested lightweight controls", (
   assert.match(appearance, /\.theme-surface:not\(:has\(\.home-screen\)\) \.theme-home-wallpaper/);
 });
 
-test("assistant groups retain one avatar and a shared gutter while delivery uses group end", () => {
+test("assistant groups retain one avatar and a shared gutter while delivery stays on the last visible message", () => {
   assert.match(room, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
   assert.match(room, /message\.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">\s*\{isGroupStart && <ChatAvatar/);
   assert.match(css, /--chat-avatar-size:\s*40px;/);
@@ -32,6 +32,8 @@ test("assistant groups retain one avatar and a shared gutter while delivery uses
   assert.doesNotMatch(css, /\.chat-turn-assistant:not\(\.chat-group-start\)/);
   assert.doesNotMatch(room, /message\.role === "user" &&[^\n]*<(?:ChatAvatar|div className="chat-avatar-column")/);
   assert.match(room, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);
+  assert.match(room, /const lastVisibleMessageId = groupedMessages\.at\(-1\)\?\.message\.id/);
+  assert.match(room, /delivery && message\.id === lastVisibleMessageId && <span className="chat-delivery-status">/);
   assert.match(room, /isGroupEnd \? " chat-group-end"/);
   assert.doesNotMatch(css, /\.chat-bubble::(?:before|after)/);
   assert.match(css, /\.chat-turn-user\s*\{\s*justify-content:\s*flex-end;\s*\}/);
