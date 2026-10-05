@@ -49,12 +49,9 @@ import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
 
-export function ChatRoom({ characterId: routeCharacterId, conversationId }: { characterId?: string; conversationId?: string }) {
+export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   const { document, ready } = useFoundation();
-  const { session, messages, loadError } = useChatSession(routeCharacterId ?? "",
-    ready && (!!conversationId || document.characters.some((item) => item.characterId === routeCharacterId)), conversationId);
-  const characterId = conversationId ? session?.characterId ?? "" : routeCharacterId ?? "";
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
@@ -72,11 +69,15 @@ export function ChatRoom({ characterId: routeCharacterId, conversationId }: { ch
   // The key tracks the resolved ordered IDs without reloading on unrelated renders.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterId, regexKey]);
+  const { session, messages, loadError } = useChatSession(
+    characterId,
+    ready && !!character,
+  );
   const chatBackground = useChatBackground(session);
   const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
-  useEffect(() => { setQuotingMessage(null); }, [characterId, conversationId]);
+  useEffect(() => { setQuotingMessage(null); }, [characterId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
@@ -406,8 +407,7 @@ export function ChatRoom({ characterId: routeCharacterId, conversationId }: { ch
     return (
       <div className="chat-app">
         <Link href="/messages">‹ Messages</Link>
-        <p className="chat-notice">{!session && conversationId
-          ? loadError || "Loading conversation…" : "This Character is no longer available."}</p>
+        <p className="chat-notice">This Character is no longer available.</p>
       </div>
     );
   const pending = hasPendingUserContent(messages);

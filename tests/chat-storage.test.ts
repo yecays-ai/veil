@@ -128,7 +128,7 @@ test("open and upgrade failures log only safe stage/error names and keep the use
 test("concurrent direct opens reuse the same legacy-style chat without requiring an index", async () => {
   const factory = new IDBFactory(); const storage = new ChatStorage(() => factory);
   const [direct, same] = await Promise.all([storage.openSession("peter"), new ChatStorage(() => factory).openSession("peter")]);
-  assert.equal(direct.id, same.id); assert.notEqual(direct.id, "character:peter");
+  assert.equal(direct.id, same.id); assert.equal(direct.id, "character:peter");
   await storage.send(direct.id, "Existing chat");
   assert.equal((await storage.readSession(same.id)).messages[0].content, "Existing chat");
   assert.equal((await storage.listSessions()).length, 1);
