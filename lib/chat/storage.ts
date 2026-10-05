@@ -37,6 +37,9 @@ function backupSession(session: ChatSession): BackupSession {
   return {
     id: session.id,
     characterId: session.characterId,
+    ...(session.type ? { type: session.type } : {}),
+    ...(session.participantIds ? { participantIds: session.participantIds } : {}),
+    ...(session.title ? { title: session.title } : {}),
     updatedAt: session.updatedAt,
     ...(session.lastMessageId ? { lastMessageId: session.lastMessageId } : {}),
     ...(session.lastMessagePreview !== undefined
@@ -280,6 +283,19 @@ export class ChatStorage {
       request(tx.objectStore("sessions").getAll()),
     );
   }
+  createGroupSession(participantIds: readonly string[], title: string): Promise<ChatSession> {
+    const members = [...new Set(participantIds.filter(Boolean))];
+    if (members.length < 2) return Promise.reject(new Error("Choose at least two contacts."));
+    const name = title.trim().slice(0, 100);
+    if (!name) return Promise.reject(new Error("Group name is required."));
+    return this.transaction("readwrite", async (tx) => {
+      const session: ChatSession = { id: crypto.randomUUID(), characterId: members[0], type: "group",
+        participantIds: members, title: name, updatedAt: 0, remark: null,
+        autoReplyOnKeyboardDismiss: false, streamOnline: false, nextOrder: 1 };
+      await request(tx.objectStore("sessions").add(session));
+      return session;
+    });
+  }
   async exportBackup(): Promise<BackupChat> {
     // API configuration and keys are intentionally outside this transaction.
     return this.transaction("readonly", conversationBackup, CONVERSATION_STORES);
@@ -316,7 +332,7 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
       const sessions: ChatSession[] = await request(table.getAll());
-      const existing = sessions.filter((session) => session.characterId === characterId);
+      const existing = sessions.filter((session) => session.type !== "group" && session.characterId === characterId);
       // Preserve legacy direct chats in place; otherwise reuse the existing private session.
       const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
       if (direct) return direct;

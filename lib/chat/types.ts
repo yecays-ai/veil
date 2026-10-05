@@ -1,6 +1,9 @@
 export type ChatSession = {
   id: string;
   characterId: string;
+  type?: "direct" | "group";
+  participantIds?: string[];
+  title?: string;
   updatedAt: number;
   lastMessageId?: string;
   lastMessagePreview?: string;

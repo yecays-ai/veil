@@ -30,10 +30,15 @@ const onlyKeys = (value: unknown, keys: string[]) =>
 
 function validSession(session: BackupSession) {
   return (
-    onlyKeys(session, ["id", "characterId", "updatedAt", "nextOrder", "remark",
+    onlyKeys(session, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "nextOrder", "remark",
       "autoReplyOnKeyboardDismiss", "streamOnline", "customCSS", "lastMessageId", "lastMessagePreview"]) &&
     text(session.id) &&
     text(session.characterId) &&
+    (session.type === undefined || session.type === "direct" || session.type === "group") &&
+    (session.participantIds === undefined || (Array.isArray(session.participantIds) &&
+      session.participantIds.length >= 2 && session.participantIds.every(text) &&
+      new Set(session.participantIds).size === session.participantIds.length)) &&
+    (session.title === undefined || text(session.title)) &&
     timestamp(session.updatedAt) &&
     integer(session.nextOrder) &&
     session.nextOrder >= 1 &&

@@ -10,7 +10,8 @@ export const BACKUP_MAX_BYTES = 32 * 1024 * 1024;
 // Keep the backup contract explicit even if live chat records gain new fields.
 export type BackupSession = Pick<ChatSession,
   "id" | "characterId" | "updatedAt" | "lastMessageId" | "lastMessagePreview" |
-  "remark" | "autoReplyOnKeyboardDismiss" | "streamOnline" | "customCSS" | "nextOrder">;
+  "remark" | "autoReplyOnKeyboardDismiss" | "streamOnline" | "customCSS" | "nextOrder" |
+  "type" | "participantIds" | "title">;
 export type BackupMessage = Pick<ChatMessage,
   "id" | "sessionId" | "role" | "content" | "status" |
   "createdAt" | "order" | "requestedBy" | "error" | "quote">;

@@ -9,7 +9,7 @@ test("Character routes open the existing direct chat and keep Messages/Contacts 
   const contacts = readFileSync("components/contacts-pages.tsx", "utf8");
   assert.match(room, /ChatRoom\(\{ characterId \}/);
   assert.match(hook, /\.openSession\(characterId\)/);
-  assert.match(list, /encodeURIComponent\(character.characterId\)/);
+  assert.match(list, /encodeURIComponent\(session.characterId\)/);
   assert.match(contacts, /encodeURIComponent\(character.characterId\)/);
   const route = readFileSync("app/messages/[characterId]/page.tsx", "utf8");
   assert.match(route, /characterId=\{characterId\}/);
