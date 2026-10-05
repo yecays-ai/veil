@@ -6,6 +6,13 @@ const room = readFileSync("components/chat/chat-room.tsx", "utf8");
 const css = readFileSync("app/messages/chat.css", "utf8");
 const appearance = readFileSync("app/appearance.css", "utf8");
 
+function rule(selector: string): string {
+  const pattern = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = css.match(new RegExp(`(?:^|\\n)${pattern}\\s*\\{([^}]*)\\}`));
+  assert.ok(match, `Missing rule: ${selector}`);
+  return match[1];
+}
+
 test("chat header is a glass overlay with the requested lightweight controls", () => {
   for (const icon of ["ChevronLeft", "ChevronRight", "Ellipsis"])
     assert.match(room, new RegExp(`<${icon}`));
@@ -37,6 +44,40 @@ test("assistant groups retain one avatar and a shared gutter while delivery stay
   assert.match(room, /isGroupEnd \? " chat-group-end"/);
   assert.doesNotMatch(css, /\.chat-bubble::(?:before|after)/);
   assert.match(css, /\.chat-turn-user\s*\{\s*justify-content:\s*flex-end;\s*\}/);
+});
+
+test("same-sender bubbles group by corners without merging or tapering the outer side", () => {
+  // Same-sender spacing tightens; the switch between senders keeps its own gap.
+  assert.match(rule(".chat-turn"), /margin-bottom:\s*16px/);
+  assert.match(rule(".chat-turn:not(.chat-group-end)"), /margin-bottom:\s*2px/);
+  assert.match(rule(".chat-bubble"), /border-radius:\s*18px/);
+  // Incoming: the joined side is the left edge, the right side stays round.
+  const assistantFirst = rule(".chat-turn-assistant.chat-group-start:not(.chat-group-end) .chat-bubble");
+  assert.match(assistantFirst, /border-bottom-left-radius:\s*6px/);
+  assert.doesNotMatch(assistantFirst, /border-top-left-radius|border-radius:/);
+  const assistantMiddle = rule(".chat-turn-assistant.chat-group-middle .chat-bubble");
+  assert.match(assistantMiddle, /border-top-left-radius:\s*6px/);
+  assert.match(assistantMiddle, /border-bottom-left-radius:\s*6px/);
+  const assistantLast = rule(".chat-turn-assistant.chat-group-end:not(.chat-group-start) .chat-bubble");
+  assert.match(assistantLast, /border-top-left-radius:\s*6px/);
+  assert.doesNotMatch(assistantLast, /border-bottom-left-radius|border-radius:/);
+  // Outgoing mirrors it on the right edge.
+  const userFirst = rule(".chat-turn-user.chat-group-start:not(.chat-group-end) .chat-bubble");
+  assert.match(userFirst, /border-bottom-right-radius:\s*6px/);
+  assert.doesNotMatch(userFirst, /border-top-right-radius|border-radius:/);
+  const userMiddle = rule(".chat-turn-user.chat-group-middle .chat-bubble");
+  assert.match(userMiddle, /border-top-right-radius:\s*6px/);
+  assert.match(userMiddle, /border-bottom-right-radius:\s*6px/);
+  const userLast = rule(".chat-turn-user.chat-group-end:not(.chat-group-start) .chat-bubble");
+  assert.match(userLast, /border-top-right-radius:\s*6px/);
+  assert.doesNotMatch(userLast, /border-bottom-right-radius|border-radius:/);
+  // A standalone bubble carries neither group class, so it keeps 18px everywhere.
+  assert.match(room, /className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing"/);
+  assert.match(room, /isGroupStart \|\| isGroupEnd \? "" : " chat-group-middle"/);
+  // Corner rules never leak onto the typing indicator turn (no group class).
+  assert.doesNotMatch(css, /^\.chat-turn-(?:assistant|user):not\(\.chat-group-start\) \.chat-bubble/m);
+  assert.doesNotMatch(css, /^\.chat-turn-(?:assistant|user):not\(\.chat-group-end\) \.chat-bubble/m);
+  assert.doesNotMatch(css, /\.chat-bubble::(?:before|after)/);
 });
 
 test("typing copy and enabled Send retain lightweight presentation", () => {

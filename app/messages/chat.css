@@ -250,7 +250,7 @@
   margin-bottom: 16px;
 }
 .chat-turn:not(.chat-group-end) {
-  margin-bottom: 5px;
+  margin-bottom: 2px;
 }
 .chat-turn[data-active] {
   z-index: 65;
@@ -341,6 +341,29 @@
     var(--theme-accent) 12%,
     var(--theme-background)
   );
+}
+/* Group corners: every message stays its own bubble, but the corners that face
+   a neighbour on the sender's own side tighten. The opposite side, and the
+   outer ends of the group, keep the full 18px radius. */
+.chat-turn-assistant.chat-group-start:not(.chat-group-end) .chat-bubble {
+  border-bottom-left-radius: 6px;
+}
+.chat-turn-assistant.chat-group-middle .chat-bubble {
+  border-top-left-radius: 6px;
+  border-bottom-left-radius: 6px;
+}
+.chat-turn-assistant.chat-group-end:not(.chat-group-start) .chat-bubble {
+  border-top-left-radius: 6px;
+}
+.chat-turn-user.chat-group-start:not(.chat-group-end) .chat-bubble {
+  border-bottom-right-radius: 6px;
+}
+.chat-turn-user.chat-group-middle .chat-bubble {
+  border-top-right-radius: 6px;
+  border-bottom-right-radius: 6px;
+}
+.chat-turn-user.chat-group-end:not(.chat-group-start) .chat-bubble {
+  border-top-right-radius: 6px;
 }
 .chat-message-meta {
   display: flex;

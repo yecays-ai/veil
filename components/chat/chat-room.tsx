@@ -474,6 +474,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {empty && <p className="chat-empty-state">No messages yet</p>}
         {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
           const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
+          // Middle of a same-sender group: neither end keeps a full radius.
+          const groupClass = `${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${isGroupStart || isGroupEnd ? "" : " chat-group-middle"}`;
           const visibleText = visibleReplyText(message, session?.streamOnline === true);
           const parsed = message.role === "assistant" ? parseQuotedReply(visibleText)
             : { content: visibleText, preview: null };
@@ -487,7 +489,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               </time>
             </div>}
           <div
-            className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
+            className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${groupClass}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
             data-message-id={message.id}
             data-consecutive={!isGroupStart ? "" : undefined}
             data-active={activeMessage?.id === message.id ? "" : undefined}
