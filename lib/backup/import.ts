@@ -1,3 +1,4 @@
+import { browserBindingStorage } from "../binding-storage";
 import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
@@ -14,6 +15,7 @@ type RestoreDocument<T> = {
   rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
 };
 export type RestoreSources = {
+  bindings?: RestoreDocument<import("../bindings").BindingDocument>;
   foundation: RestoreDocument<BackupV1["foundation"]>;
   theme: RestoreDocument<BackupV1["theme"]>;
   preset: RestoreDocument<BackupV1["preset"]>;
@@ -24,13 +26,14 @@ export type RestoreSources = {
 };
 const browserSources: RestoreSources = {
   foundation: browserFoundationStorage,
+  bindings: browserBindingStorage,
   theme: browserThemeStorage,
   preset: browserPresetStorage,
   chat: chatStorage,
 };
 const snapshot = (sources: RestoreSources) => Promise.all([
   sources.foundation.readRaw(), sources.theme.readRaw(), sources.preset.readRaw(),
-  sources.chat.exportBackup(),
+  sources.chat.exportBackup(), sources.bindings?.readRaw(),
 ]);
 function replacement<T>(
   store: RestoreDocument<T>,
@@ -57,13 +60,14 @@ export function parseBackupV1(text: string): BackupV1 {
 }
 
 export async function requiresOverwriteRestore(sources = browserSources) {
-  const [foundation, theme, preset, chat] = await snapshot(sources);
+  const [foundation, theme, preset, chat, bindings] = await snapshot(sources);
   let customPreset = false;
   try {
     customPreset = preset !== null && stableJson(validatePresetDocument(JSON.parse(preset))) !==
       stableJson(createPresetDocument());
   } catch { customPreset = true; }
   return foundation !== null || theme !== null || customPreset ||
+    (bindings != null && stableJson(JSON.parse(bindings)) !== stableJson({ global: {}, characters: {} })) ||
     !!chat.sessions.length || !!chat.messages.length;
 }
 
@@ -73,8 +77,10 @@ export async function restoreBackupV1(
 ): Promise<void> {
   const validated = validateBackupV1(backup);
   const safe = { ...validated, chat: restorableChat(validated.chat) };
-  const [foundation, theme, preset, chat] = await snapshot(sources);
+  if (safe.bindings && !sources.bindings) throw new Error("Binding storage is required to restore these bindings.");
+  const [foundation, theme, preset, chat, bindings] = await snapshot(sources);
   const documents = [
+    ...(sources.bindings ? [replacement(sources.bindings, bindings ?? null, safe.bindings ?? { global: {}, characters: {} })] : []),
     replacement(sources.foundation, foundation, safe.foundation),
     replacement(sources.theme, theme, safe.theme),
     replacement(sources.preset, preset, safe.preset, createPresetDocument(), validatePresetDocument),
@@ -93,12 +99,14 @@ export async function restoreBackupV1(
       return true;
     });
     // Per-store CAS alone cannot detect an earlier store changing during a later write.
-    const [finalFoundation, finalTheme, finalPreset, finalChat] = await snapshot(sources);
+    const [finalFoundation, finalTheme, finalPreset, finalChat, finalBindings] = await snapshot(sources);
     if (finalFoundation === null || finalTheme === null || finalPreset === null ||
         stableJson(JSON.parse(finalFoundation)) !== stableJson(safe.foundation) ||
         stableJson(JSON.parse(finalTheme)) !== stableJson(safe.theme) ||
         stableJson(JSON.parse(finalPreset)) !== stableJson(safe.preset) ||
-        !sameBackupChat(finalChat, safe.chat))
+        !sameBackupChat(finalChat, safe.chat) ||
+        (sources.bindings && (finalBindings == null || stableJson(JSON.parse(finalBindings)) !==
+          stableJson(safe.bindings ?? { global: {}, characters: {} }))))
       throw new Error("Your data changed during restore.");
   } catch (error) {
     let complete = true;

@@ -1,4 +1,5 @@
 "use client";
+import { useBindings } from "../use-bindings";
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
   type CSSProperties } from "react";
@@ -52,11 +53,12 @@ import { applyRegex } from "../../lib/regex-engine";
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   const { document, ready } = useFoundation();
+  const { bindings } = useBindings();
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
   const [regexGroups, setRegexGroups] = useState<RegexGroup[]>([]);
-  const regexIds = resolveBindings(document.bindings, characterId, "messages").regexIds;
+  const regexIds = resolveBindings(bindings, characterId, "messages").regexIds;
   const regexKey = regexIds?.join("\u0000") ?? "*";
   useEffect(() => {
     let active = true;

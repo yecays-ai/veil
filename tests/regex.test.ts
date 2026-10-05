@@ -1,3 +1,5 @@
+import { createBindingStorage } from "../lib/binding-storage";
+import type { BindingDocument } from "../lib/bindings";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
@@ -5,11 +7,10 @@ import { applyRegex, parseRegexPattern, regexPatternError, testRegexGroups, test
 import { emptyRegexDocument, importRegexGroup, importRegexRule, newRegexGroup, newRegexRule,
   resolveRegexGroups, validateRegexDocument, type RegexGroup, type RegexRule } from "../lib/regex";
 import { createRegexStorage, deleteRegexGroupAndBindings } from "../lib/regex-storage";
-import { createFoundationStorage } from "../lib/foundation-storage";
 import { resolveBindings } from "../lib/bindings";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { ChatStorage } from "../lib/chat/storage";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
 import { assembleChatPrompt } from "../lib/chat/prompt";
 import { evaluateWorldBooks } from "../lib/worldbook-activation";
 import { normalizeWorldBook } from "../lib/worldbook";
@@ -94,30 +95,28 @@ test("Regex bindings keep override order and group deletion removes only Regex r
   const backend = { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); },
     removeItem: (key: string) => { values.delete(key); } };
-  const foundation = createFoundationStorage(() => backend);
+  const foundation = createBindingStorage(() => backend);
   const storage = createRegexStorage(() => backend);
   const a = group([rule("a", "b")], "A"), b = group([rule("b", "c")], "B");
   await storage.save({ version: 1, groups: [a, b] });
-  await foundation.transact((doc) => ({ ...doc,
-    characters: [{ characterId: "p", ...normalizeCharacterInput({ name: "Peter" }) }],
-    bindings: {
+  await foundation.save({
     global: { regexIds: [b.id, a.id], worldBookIds: ["lore"] },
     characters: { p: { defaults: { regexIds: [a.id] }, apps: { messages: { regexIds: [b.id, a.id] } } } },
-  } }));
+  });
   const before = await foundation.load();
-  assert.deepEqual(resolveRegexGroups(await storage.load(), resolveBindings(before.bindings, "p", "messages").regexIds).map((item) => item.id), [b.id, a.id]);
-  assert.deepEqual(resolveBindings(before.bindings, "p", "appearance").regexIds, [a.id]);
-  assert.deepEqual(resolveBindings(before.bindings, null, "messages").regexIds, [b.id, a.id]);
+  assert.deepEqual(resolveRegexGroups(await storage.load(), resolveBindings(before, "p", "messages").regexIds).map((item) => item.id), [b.id, a.id]);
+  assert.deepEqual(resolveBindings(before, "p", "appearance").regexIds, [a.id]);
+  assert.deepEqual(resolveBindings(before, null, "messages").regexIds, [b.id, a.id]);
   await deleteRegexGroupAndBindings(b.id, storage, foundation);
   const after = await foundation.load();
-  assert.deepEqual(resolveBindings(after.bindings, "p", "messages").regexIds, [a.id]);
-  assert.deepEqual(after.bindings.global.worldBookIds, ["lore"]);
+  assert.deepEqual(resolveBindings(after, "p", "messages").regexIds, [a.id]);
+  assert.deepEqual(after.global.worldBookIds, ["lore"]);
   assert.deepEqual((await storage.load()).groups.map((item) => item.id), [a.id]);
 });
 
 async function chatSetup() {
   const storage = new ChatStorage(() => new IDBFactory());
-  const foundation = defaultFoundation();
+  const foundation = testFoundation();
   foundation.runtime.timeAware = false;
   foundation.characters = [{ characterId: "p", ...normalizeCharacterInput({ name: "Peter" }) }];
   const session = await storage.openSession("p");
@@ -135,7 +134,7 @@ test("Chat stores user and each final assistant bubble, while prompt/display rem
     { ...rule("Saved A", "History A", "prompt"), appliesTo: ["assistant"] },
     { ...rule("Saved", "Shown", "display"), appliesTo: ["assistant"] },
   ])] };
-  foundation.bindings.global.regexIds = [groups.groups[0].id];
+  bindings.global.regexIds = [groups.groups[0].id];
   const prompts: string[] = [];
   const engine = createChatEngine(storage, async () => foundation, async function* (_config, turns) {
     prompts.push(turns.map((turn) => turn.content).join("\n"));
@@ -194,3 +193,7 @@ test("Regenerate uses current Regex; provider failure and Stop never apply Store
   assert.equal((await stopped.requestReply(session.id))?.status, "cancelled");
   assert.notEqual((await storage.readSession(session.id)).messages.at(-1)?.content, "Stored A");
 });
+
+let bindings: BindingDocument = { global: {}, characters: {} };
+function testFoundation() { bindings = { global: {}, characters: {} }; return defaultFoundation(); }
+function createChatEngine(...args: Parameters<typeof baseChatEngine>) { args[7] = async () => bindings; return baseChatEngine(...args); }

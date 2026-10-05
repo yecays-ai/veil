@@ -3,6 +3,7 @@ import {
   normalizeFoundation,
   type FoundationDocument,
 } from "./foundation-types";
+import { migrateLegacyBindings } from "./binding-storage";
 
 export interface FoundationStorage {
   load(): Promise<FoundationDocument>;
@@ -24,6 +25,7 @@ export function createFoundationStorage(
 ): FoundationStorage {
   let queue = Promise.resolve();
   const load = async () => {
+    migrateLegacyBindings(getStorage());
     const value = getStorage().getItem(KEY);
     if (!value) return defaultFoundation();
     try {
@@ -37,6 +39,7 @@ export function createFoundationStorage(
   return {
     load,
     async readRaw() {
+      migrateLegacyBindings(getStorage());
       return getStorage().getItem(KEY);
     },
     replaceIfCurrent(expected, document) {

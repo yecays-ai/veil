@@ -111,17 +111,12 @@ test("stable Character IDs, directional Universe relationships and cascade delet
     /different/,
   );
   d = setNodePosition(d, a.characterId, { x: 360, y: 240 });
-  d.bindings = {
-    global: { apiConfigId: "global" },
-    characters: {
-      [a.characterId]: { defaults: { voiceConfigId: "voice" }, apps: {} },
-    },
-  };
+
   assert.deepEqual(normalizeFoundation(JSON.parse(JSON.stringify(d))), d);
   d = deleteCharacter(d, a.characterId);
   assert.equal(d.universe.relations.length, 0);
   assert(!Object.hasOwn(d.universe.nodePositions, a.characterId));
-  assert(!Object.hasOwn(d.bindings.characters, a.characterId));
+  assert(!Object.hasOwn(d, "bindings"));
   assert(!Object.hasOwn(d, "selectedCharacterId"));
   assert.equal(d.universe.id, UNIVERSE_ID);
   assert.equal(d.universe.worldSetting, "World setting");
@@ -217,10 +212,10 @@ test("storage round-trips, serializes edits and persists binding updates in the 
   assert.equal(d.user.timezone, "Europe/Paris");
   assert.equal(d.characters.length, 1);
   assert.equal(d.characters[0].timezone, "Asia/Tokyo");
-  const bindingStorage = createBindingStorage(storage);
-  await bindingStorage.save({ ...d.bindings, global: { presetId: "preset" } });
-  assert.equal((await fresh.load()).bindings.global.presetId, "preset");
-  assert.equal(memory.size, 1);
+  const bindingStorage = createBindingStorage(() => backend);
+  await bindingStorage.save({ characters: {}, global: { presetId: "preset" } });
+  assert.equal((await bindingStorage.load()).global.presetId, "preset");
+  assert.equal(memory.size, 2);
   const failing = createFoundationStorage(() => ({
     ...backend,
     setItem: () => {

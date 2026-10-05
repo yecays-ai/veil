@@ -1,3 +1,4 @@
+import { normalizeBindings } from "../bindings";
 import { normalizeFoundation, type FoundationDocument } from "../foundation-types";
 import { normalizeDocument, type ThemeDocument } from "../theme-types";
 import { createPresetDocument, validatePresetDocument } from "../preset";
@@ -104,7 +105,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
   const chat = record(backup.chat);
   if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION)
     throw new Error("Unsupported backup format.");
-  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "preset", "chat"]) ||
+  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "bindings", "theme", "preset", "chat"]) ||
       !onlyKeys(backup.chat, ["version", "sessions", "messages"]))
     throw new Error("Backup contains unsupported fields.");
   if (
@@ -122,6 +123,12 @@ export function validateBackupV1(value: unknown): BackupV1 {
   const foundationInput = { ...record(backup.foundation) };
   const legacySelection = Object.hasOwn(foundationInput, "selectedCharacterId");
   delete foundationInput.selectedCharacterId;
+  const bindingInput = backup.bindings ?? foundationInput.bindings;
+  delete foundationInput.bindings;
+  const bindings = bindingInput === undefined ? undefined : normalizeBindings(bindingInput,
+    foundation.characters.map((character) => character.characterId));
+  if (bindings && stableJson(bindingInput) !== stableJson(bindings))
+    throw new Error("Backup contains invalid bindings.");
   const theme: ThemeDocument = normalizeDocument(backup.theme);
   const preset = backup.preset === undefined
     ? createPresetDocument()
@@ -136,6 +143,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
     version: BACKUP_VERSION,
     exportedAt: backup.exportedAt,
     foundation,
+    ...(bindings ? { bindings } : {}),
     theme: legacySelection ? migrateLegacyWidgetCharacters(theme, backup.foundation) : theme,
     preset,
     chat: stableChat(chat as BackupChat),

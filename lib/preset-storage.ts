@@ -1,3 +1,4 @@
+import type { BindingStorage } from "./binding-storage";
 import {
   createPresetDocument,
   validatePresetDocument,
@@ -7,7 +8,6 @@ import type { StringStorage } from "./foundation-storage";
 import { assertPresetUpdate, deletePreset } from "./preset-library";
 import { presetFingerprint } from "./preset";
 import { withoutPresetBinding } from "./bindings";
-import type { FoundationStorage } from "./foundation-storage";
 
 export interface PresetStorage {
   load(): Promise<PresetDocument>;
@@ -75,15 +75,14 @@ export function createPresetStorage(getStorage: () => StringStorage): PresetStor
 export const browserPresetStorage = createPresetStorage(() => window.localStorage);
 
 export async function deletePresetAndBindings(
-  id: string, presets: PresetStorage, foundation: Pick<FoundationStorage, "transact">,
+  id: string, presets: PresetStorage, bindings: Pick<BindingStorage, "transact">,
 ): Promise<PresetDocument> {
   await presets.load();
   const before = await presets.readRaw();
   const next = await presets.transact((current) => deletePreset(current, id));
   const after = await presets.readRaw();
   try {
-    await foundation.transact((current) => ({ ...current,
-      bindings: withoutPresetBinding(current.bindings, id) }));
+    await bindings.transact((current) => withoutPresetBinding(current, id));
   } catch (reason) {
     if (after === null || !await presets.rollbackIfCurrent(after, before))
       throw new Error("Preset changed while Binding cleanup failed. Review the Preset and Bindings.");

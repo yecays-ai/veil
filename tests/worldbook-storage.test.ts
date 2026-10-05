@@ -1,7 +1,7 @@
+import { createBindingStorage } from "../lib/binding-storage";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createWorldBookStorage, deleteWorldBookAndBindings } from "../lib/worldbook-storage";
-import { createFoundationStorage } from "../lib/foundation-storage";
 import { exportWorldBook, exportWorldBookEntry, importWorldBook, importWorldBookEntry,
   normalizeWorldBook, normalizeWorldBookEntry } from "../lib/worldbook";
 import { withoutWorldBookBinding } from "../lib/bindings";
@@ -76,15 +76,14 @@ test("deleting a Book removes saved bindings and rolls back if binding storage f
   const storage = () => ({ getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); } });
   const books = createWorldBookStorage(storage);
-  const foundation = createFoundationStorage(storage);
+  const foundation = createBindingStorage(storage);
   const book = normalizeWorldBook({ name: "Bound", entries: [] });
   await books.save({ version: 1, books: [book] });
-  await foundation.transact((current) => ({ ...current,
-    bindings: { ...current.bindings, global: { worldBookIds: [book.id] } } }));
+  await foundation.save({ characters: {}, global: { worldBookIds: [book.id] } });
   await assert.rejects(deleteWorldBookAndBindings(book.id, books,
     { ...foundation, transact: async () => { throw new Error("profile unavailable"); } }), /profile unavailable/);
   assert.equal((await books.load()).books[0].id, book.id);
   await deleteWorldBookAndBindings(book.id, books, foundation);
   assert.deepEqual((await books.load()).books, []);
-  assert.deepEqual((await foundation.load()).bindings.global.worldBookIds, []);
+  assert.deepEqual((await foundation.load()).global.worldBookIds, []);
 });

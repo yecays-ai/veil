@@ -1,4 +1,6 @@
 import { resolveBindings } from "../bindings";
+import type { BindingDocument } from "../bindings";
+import { browserBindingStorage } from "../binding-storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import type { FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
@@ -30,13 +32,15 @@ export function createChatEngine(
     typeof window === "undefined" ? Promise.resolve(emptyWorldBookDocument()) : browserWorldBookStorage.load(),
   regex: () => Promise<RegexDocument> = () =>
     typeof window === "undefined" ? Promise.resolve(emptyRegexDocument()) : browserRegexStorage.load(),
+  bindings: () => Promise<BindingDocument> = () => typeof window === "undefined"
+    ? Promise.resolve({ global: {}, characters: {} }) : browserBindingStorage.load(),
 ) {
   const active = new Map<string, AbortController>();
   async function prepareGeneration(characterId: string) {
     const document = await foundation();
     const character = document.characters.find((item) => item.characterId === characterId);
     if (!character) throw new Error("This Character is no longer available.");
-    const binding = resolveBindings(document.bindings, character.characterId, "messages");
+    const binding = resolveBindings(await bindings(), character.characterId, "messages");
     if (binding.apiConfigId === null)
       throw new Error("The Messages API binding is disabled for this Character.");
     const config = await storage.getApiConfig(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID);
@@ -44,7 +48,7 @@ export function createChatEngine(
       throw new Error("The selected Text API is missing. Choose a saved config in Settings → Text API.");
     validateApiConfig(config);
     const preset = presetForBinding(await presets(), binding.presetId);
-    return { document, character, config, preset };
+    return { document, character, config, preset, binding };
   }
   async function generateReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, regenerateId?: string): Promise<ChatMessage | null> {
     if (active.has(sessionId)) return null;
@@ -60,13 +64,13 @@ export function createChatEngine(
       if (regenerateId === undefined && !current.messages.some((m) =>
         m.role === "user" && m.status === "sent" && !m.requestedBy))
         return null;
-      const { document, character, config, preset } = await prepareGeneration(current.session.characterId);
+      const { document, character, config, preset, binding } = await prepareGeneration(current.session.characterId);
       controller.signal.throwIfAborted();
       const batch = await storage.beginReply(sessionId, regenerateId);
       if (!batch) return null;
       assistant = batch.assistant;
-      const selectedIds = resolveBindings(document.bindings, character.characterId, "messages").worldBookIds;
-      const regexIds = resolveBindings(document.bindings, character.characterId, "messages").regexIds;
+      const selectedIds = binding.worldBookIds;
+      const regexIds = binding.regexIds;
       const regexGroups = resolveRegexGroups(await regex(), regexIds);
       const books = (await worldBooks()).books.filter((book) =>
         selectedIds === undefined || selectedIds.includes(book.id));
@@ -130,7 +134,7 @@ export function createChatEngine(
     async send(sessionId: string, content: string, quoteMessageId?: string) {
       const { session } = await storage.readSession(sessionId);
       const document = await foundation();
-      const ids = resolveBindings(document.bindings, session.characterId, "messages").regexIds;
+      const ids = resolveBindings(await bindings(), session.characterId, "messages").regexIds;
       const groups = resolveRegexGroups(await regex(), ids);
       const character = document.characters.find((item) => item.characterId === session.characterId);
       return storage.send(sessionId, applyRegex(content, groups, "user", "stored",

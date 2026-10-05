@@ -21,6 +21,7 @@ export type BackupChat = {
 };
 
 export type BackupV1 = {
+  bindings?: import("../bindings").BindingDocument;
   format: typeof BACKUP_FORMAT;
   version: typeof BACKUP_VERSION;
   exportedAt: string;
@@ -31,6 +32,7 @@ export type BackupV1 = {
 };
 
 export type BackupSources = {
+  bindings?: { load(): Promise<import("../bindings").BindingDocument> };
   foundation: { load(): Promise<unknown> };
   theme: { load(): Promise<unknown> };
   preset: { load(): Promise<unknown> };

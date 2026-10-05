@@ -1,3 +1,4 @@
+import { browserBindingStorage } from "../binding-storage";
 import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
@@ -15,6 +16,7 @@ import { restorableChat } from "./restorable-chat";
 
 const browserSources: BackupSources = {
   foundation: browserFoundationStorage,
+  bindings: browserBindingStorage,
   theme: browserThemeStorage,
   preset: browserPresetStorage,
   chat: chatStorage,
@@ -27,21 +29,23 @@ export async function exportBackupV1(
   now: () => Date = () => new Date(),
 ): Promise<ExportedBackup> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const [foundationA, themeA, presetA] = await Promise.all([
+    const [foundationA, themeA, presetA, bindingsA] = await Promise.all([
       sources.foundation.load(),
       sources.theme.load(),
       sources.preset.load(),
+      sources.bindings?.load(),
     ]);
     const chat = await sources.chat.exportBackup();
-    const [foundationB, themeB, presetB] = await Promise.all([
+    const [foundationB, themeB, presetB, bindingsB] = await Promise.all([
       sources.foundation.load(),
       sources.theme.load(),
       sources.preset.load(),
+      sources.bindings?.load(),
     ]);
     if (
       stableJson(foundationA) !== stableJson(foundationB) ||
       stableJson(themeA) !== stableJson(themeB) ||
-      stableJson(presetA) !== stableJson(presetB)
+      stableJson(presetA) !== stableJson(presetB) || stableJson(bindingsA) !== stableJson(bindingsB)
     )
       continue;
     const backup = validateBackupV1({
@@ -49,6 +53,7 @@ export async function exportBackupV1(
       version: BACKUP_VERSION,
       exportedAt: now().toISOString(),
       foundation: foundationA,
+      ...(bindingsA ? { bindings: bindingsA } : {}),
       theme: themeA,
       preset: presetA,
       chat: restorableChat(chat),

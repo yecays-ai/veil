@@ -66,7 +66,7 @@ export function deleteCharacter(
   document: FoundationDocument,
   characterId: string,
 ): FoundationDocument {
-  // Normalization removes dangling relations, nodes and bindings atomically.
+  // Normalization removes dangling relations and nodes.
   return normalizeFoundation({
     ...document,
     characters: document.characters.filter(
