@@ -114,6 +114,7 @@ test("an existing v1 database preserves records while adding chat background sto
   try {
     assert.equal(upgraded.objectStoreNames.contains("assets"), true);
     assert.equal(upgraded.objectStoreNames.contains("chatSettings"), true);
+    assert.equal(upgraded.objectStoreNames.contains("worldBookStates"), true);
   } finally {
     upgraded.close();
   }

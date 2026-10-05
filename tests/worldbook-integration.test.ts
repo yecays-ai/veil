@@ -96,12 +96,52 @@ test("Regenerate discards future lore; failure and Stop never commit timed state
   assert.deepEqual(await storage.readWorldBookState(session.id), stateBeforeFailure);
 });
 
-test("an existing official Preset gains World Info markers without rewriting custom pipelines", () => {
+test("existing official and custom Presets gain World Info markers while retaining prior prompt order", () => {
   const old = createBuiltinPreset();
   old.prompts = old.prompts.filter((item) => !item.identifier.startsWith("world-info-"));
   old.promptOrder = old.promptOrder.filter((item) => !item.identifier.startsWith("world-info-"));
   const custom = { ...structuredClone(old), id: "custom", name: "Personal", builtIn: false };
   const document = validatePresetDocument({ version: 3, presets: [old, custom], activePresetId: "custom" });
   assert.equal(document.presets[0].prompts.filter((item) => item.identifier.startsWith("world-info-")).length, 2);
-  assert.equal(document.presets[1].prompts.filter((item) => item.identifier.startsWith("world-info-")).length, 0);
+  assert.equal(document.presets[1].prompts.filter((item) => item.identifier.startsWith("world-info-")).length, 2);
+  assert.deepEqual(document.presets[1].promptOrder.filter((item) => !item.identifier.startsWith("world-info-")), old.promptOrder);
+});
+
+test("editing and deleting real history invalidate sticky lore, and Clear removes timed state", async () => {
+  for (const mutation of ["edit", "delete"] as const) {
+    const { storage, document, session, books } = await setup([{ content: "Old Lore", key: ["Otto"], sticky: 6 }]);
+    const first = await storage.send(session.id, "Otto");
+    const prompts: string[] = [];
+    const engine = createChatEngine(storage, async () => document, async function* (_config, turns) {
+      prompts.push(turns.map((turn) => turn.content).join("\n")); yield "reply";
+    }, undefined, undefined, async () => books);
+    await engine.requestReply(session.id);
+    assert.ok(await storage.readWorldBookState(session.id));
+    if (mutation === "edit") await storage.editMessage(first.id, "Different topic");
+    else await storage.deleteMessages(session.id, [first.id]);
+    await storage.send(session.id, "Hello again");
+    await engine.requestReply(session.id);
+    assert.equal(prompts.length, 2);
+    assert.doesNotMatch(prompts[1], /Old Lore/);
+    assert.equal((await storage.readWorldBookState(session.id))?.cycle, 1);
+    await storage.clearSession(session.id);
+    assert.equal(await storage.readWorldBookState(session.id), null);
+  }
+});
+
+test("Book and Entry toggles are read again for the next generation", async () => {
+  const { storage, document, session, books } = await setup([{ content: "Active Lore", constant: true }]);
+  const prompts: string[] = [];
+  const engine = createChatEngine(storage, async () => document, async function* (_config, turns) {
+    prompts.push(turns.map((turn) => turn.content).join("\n")); yield "reply";
+  }, undefined, undefined, async () => books);
+  await storage.send(session.id, "one"); await engine.requestReply(session.id);
+  assert.match(prompts[0], /Active Lore/);
+  books.books[0].entries[0].enabled = false;
+  await storage.send(session.id, "two"); await engine.requestReply(session.id);
+  assert.doesNotMatch(prompts[1], /Active Lore/);
+  books.books[0].entries[0].enabled = true;
+  books.books[0].enabled = false;
+  await storage.send(session.id, "three"); await engine.requestReply(session.id);
+  assert.doesNotMatch(prompts[2], /Active Lore/);
 });

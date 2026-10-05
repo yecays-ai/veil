@@ -10,7 +10,7 @@ import { downloadWorldBook } from "./files";
 import { useWorldBooks } from "./use-worldbooks";
 
 export function WorldBookList() {
-  const { document, error, notice, busy, run, change, setNotice } = useWorldBooks();
+  const { document, error, notice, busy, run, change, removeBook, setNotice } = useWorldBooks();
   const file = useRef<HTMLInputElement>(null);
   const router = useRouter();
   return <PageShell className="settings-app worldbook-manager" title="WorldBooks" backHref="/settings" backLabel="Back to Settings">
@@ -52,7 +52,7 @@ export function WorldBookList() {
         <button aria-label={`Export ${book.name}`} onClick={() => downloadWorldBook(book)}><Download size={17} /></button>
         <button aria-label={`Delete ${book.name}`} disabled={busy} onClick={() => {
           if (!window.confirm(`Delete ${book.name} and its Entries?`)) return;
-          void run(async () => { await change((current) => ({ ...current, books: current.books.filter((item) => item.id !== book.id) })); });
+          void run(async () => { await removeBook(book.id); });
         }}><Trash2 size={17} /></button>
       </div>
     </article>)}</div>

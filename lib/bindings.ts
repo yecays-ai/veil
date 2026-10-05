@@ -73,3 +73,15 @@ export function resolveBindings(
     ...normalizeBindingSlot(character?.apps[appId]),
   });
 }
+
+export function withoutWorldBookBinding(document: BindingDocument, bookId: string): BindingDocument {
+  const omit = (slot: BindingSlot): BindingSlot => slot.worldBookIds
+    ? { ...slot, worldBookIds: slot.worldBookIds.filter((id) => id !== bookId) } : slot;
+  return {
+    global: omit(document.global),
+    characters: Object.fromEntries(Object.entries(document.characters).map(([id, binding]) => [id, {
+      defaults: omit(binding.defaults),
+      apps: Object.fromEntries(Object.entries(binding.apps).map(([app, slot]) => [app, omit(slot ?? {})])),
+    }])),
+  };
+}

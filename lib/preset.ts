@@ -104,6 +104,25 @@ function previousBuiltinPreset(): Preset {
   return preset;
 }
 
+function withWorldInfoMarkers(preset: Preset): Preset {
+  const updated = structuredClone(preset);
+  for (const [marker, anchor, placeAfter] of [
+    ["world-info-before", "universe", true],
+    ["world-info-after", "relations", true],
+  ] as const) {
+    if (updated.prompts.some((entry) => entry.source === "marker" && entry.marker === marker)) continue;
+    let identifier = marker;
+    if (updated.prompts.some((entry) => entry.identifier === identifier)) identifier += "-runtime";
+    const prompt: MarkerPrompt = { identifier, name: marker === "world-info-before" ? "◇ World Info Before" : "◇ World Info After",
+      role: "system", enabled: true, source: "marker", marker };
+    updated.prompts.push(prompt);
+    const anchorIndex = updated.promptOrder.findIndex((item) => item.identifier === anchor);
+    updated.promptOrder.splice(anchorIndex < 0 ? updated.promptOrder.length : anchorIndex + (placeAfter ? 1 : 0),
+      0, { identifier, enabled: true });
+  }
+  return updated;
+}
+
 export function activePreset(document: PresetDocument): Preset {
   return document.presets.find((preset) => preset.id === document.activePresetId) ?? createBuiltinPreset();
 }
@@ -200,7 +219,7 @@ export function validatePresetDocument(value: unknown): PresetDocument {
       // copy instead of silently discarding them when making the built-in immutable.
       if (migrated.id === BUILTIN_PRESET_ID) migrated.id = `${BUILTIN_PRESET_ID}-migrated`;
       migrated.builtIn = false;
-      document.presets.push(migrated);
+      document.presets.push(withWorldInfoMarkers(migrated));
       document.activePresetId = migrated.id;
     }
     return document;
@@ -212,7 +231,7 @@ export function validatePresetDocument(value: unknown): PresetDocument {
     const preset = validatePreset(item);
     return preset.id === BUILTIN_PRESET_ID &&
       presetFingerprint(preset) === presetFingerprint(previousBuiltinPreset())
-      ? createBuiltinPreset() : preset;
+      ? createBuiltinPreset() : preset.id === BUILTIN_PRESET_ID ? preset : withWorldInfoMarkers(preset);
   });
   const ids = new Set(presets.map((preset) => preset.id));
   if (ids.size !== presets.length || !ids.has(value.activePresetId as string))

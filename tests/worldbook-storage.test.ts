@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createWorldBookStorage } from "../lib/worldbook-storage";
+import { createWorldBookStorage, deleteWorldBookAndBindings } from "../lib/worldbook-storage";
+import { createFoundationStorage } from "../lib/foundation-storage";
 import { exportWorldBook, exportWorldBookEntry, importWorldBook, importWorldBookEntry,
   normalizeWorldBook, normalizeWorldBookEntry } from "../lib/worldbook";
+import { withoutWorldBookBinding } from "../lib/bindings";
 
 test("WorldBook books and entries persist, toggle, reorder and delete", async () => {
   const values = new Map<string, string>();
@@ -56,4 +58,33 @@ test("malformed import rejects without changing an existing document", () => {
     assert.throws(() => importWorldBook(document, json));
   assert.equal(document.books.length, 1);
   assert.equal(document.books[0].name, "Safe");
+});
+
+test("deleting a Book can remove its IDs from every binding layer without changing unrelated selections", () => {
+  const bindings = { global: { worldBookIds: ["gone", "keep"] }, characters: {
+    peter: { defaults: { worldBookIds: ["gone"] }, apps: { messages: { worldBookIds: ["keep", "gone"] } } },
+  } };
+  const cleaned = withoutWorldBookBinding(bindings, "gone");
+  assert.deepEqual(cleaned.global.worldBookIds, ["keep"]);
+  assert.deepEqual(cleaned.characters.peter.defaults.worldBookIds, []);
+  assert.deepEqual(cleaned.characters.peter.apps.messages?.worldBookIds, ["keep"]);
+  assert.deepEqual(bindings.global.worldBookIds, ["gone", "keep"]);
+});
+
+test("deleting a Book removes saved bindings and rolls back if binding storage fails", async () => {
+  const values = new Map<string, string>();
+  const storage = () => ({ getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); } });
+  const books = createWorldBookStorage(storage);
+  const foundation = createFoundationStorage(storage);
+  const book = normalizeWorldBook({ name: "Bound", entries: [] });
+  await books.save({ version: 1, books: [book] });
+  await foundation.transact((current) => ({ ...current,
+    bindings: { ...current.bindings, global: { worldBookIds: [book.id] } } }));
+  await assert.rejects(deleteWorldBookAndBindings(book.id, books,
+    { ...foundation, transact: async () => { throw new Error("profile unavailable"); } }), /profile unavailable/);
+  assert.equal((await books.load()).books[0].id, book.id);
+  await deleteWorldBookAndBindings(book.id, books, foundation);
+  assert.deepEqual((await books.load()).books, []);
+  assert.deepEqual((await foundation.load()).bindings.global.worldBookIds, []);
 });

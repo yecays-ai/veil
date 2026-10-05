@@ -20,7 +20,7 @@ export function WorldBookDetail({ bookId }: { bookId: string }) {
 }
 
 function Detail({ saved, library }: { saved: WorldBook; library: ReturnType<typeof useWorldBooks> }) {
-  const { document, error, notice, busy, run, change, setNotice } = library;
+  const { document, error, notice, busy, run, change, removeBook, setNotice } = library;
   const [draft, setDraft] = useState(saved);
   const file = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -96,7 +96,7 @@ function Detail({ saved, library }: { saved: WorldBook; library: ReturnType<type
     <button className="settings-button settings-danger" disabled={busy} onClick={() => {
       if (!window.confirm(`Delete ${saved.name} and all its Entries?`)) return;
       void run(async () => {
-        await change((current) => ({ ...current, books: current.books.filter((book) => book.id !== saved.id) }));
+        await removeBook(saved.id);
         router.push("/settings/worldbooks");
       });
     }}><Trash2 size={17} />Delete WorldBook</button>

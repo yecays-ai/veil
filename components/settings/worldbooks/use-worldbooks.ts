@@ -1,7 +1,8 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { browserWorldBookStorage } from "../../../lib/worldbook-storage";
+import { browserWorldBookStorage, deleteWorldBookAndBindings } from "../../../lib/worldbook-storage";
 import type { WorldBookDocument } from "../../../lib/worldbook";
+import { browserFoundationStorage } from "../../../lib/foundation-storage";
 
 export function useWorldBooks() {
   const [document, setDocument] = useState<WorldBookDocument>();
@@ -21,5 +22,8 @@ export function useWorldBooks() {
     setDocument(next);
     return next;
   }, []);
-  return { document, error, notice, busy, run, change, setNotice };
+  const removeBook = useCallback(async (bookId: string) => {
+    setDocument(await deleteWorldBookAndBindings(bookId, browserWorldBookStorage, browserFoundationStorage));
+  }, []);
+  return { document, error, notice, busy, run, change, removeBook, setNotice };
 }
