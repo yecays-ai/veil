@@ -1,22 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { exportBackupV1 } from "../lib/backup/export";
+import { exportBackupV1, exportBackupV2 } from "../lib/backup/export";
 import {
-  parseBackupV1,
+  parseBackup,
   isOverwriteConfirmationValid,
+  restoreBackup,
   restoreBackupV1,
   requiresOverwriteRestore,
   type RestoreSources,
 } from "../lib/backup/import";
 import { BACKUP_MAX_BYTES, type BackupChat, type BackupSources } from "../lib/backup/types";
-import { validateBackupV1 } from "../lib/backup/validate";
+import { validateBackup, validateBackupV1 } from "../lib/backup/validate";
 import { ChatStorage } from "../lib/chat/storage";
 import { createChatEngine } from "../lib/chat/engine";
 import { defaultFoundation } from "../lib/foundation-types";
 import { normalizeDocument } from "../lib/theme-types";
 import { activePreset, createBuiltinPreset, createPresetDocument } from "../lib/preset";
 import { copyPreset } from "../lib/preset-library";
+import { emptyRegexDocument } from "../lib/regex";
+import { emptyWorldBookDocument } from "../lib/worldbook";
 
 function chat(): BackupChat {
   return {
@@ -50,16 +53,18 @@ function sources(): BackupSources {
     foundation: { load: async () => defaultFoundation() },
     theme: { load: async () => normalizeDocument(null) },
     preset: { load: async () => createPresetDocument() },
+    regex: { load: async () => emptyRegexDocument() },
+    worldBooks: { load: async () => emptyWorldBookDocument() },
     chat: { exportBackup: async () => chat() },
   };
 }
 
-test("V1 backup is stable, sorted, and contains no Text API configuration", async () => {
-  const { backup, json } = await exportBackupV1(
+test("V2 backup is stable, sorted, and contains no Text API configuration", async () => {
+  const { backup, json } = await exportBackupV2(
     sources(),
     () => new Date("2026-10-04T00:00:00.000Z"),
   );
-  assert.equal(backup.version, 1);
+  assert.equal(backup.version, 2);
   assert.equal(backup.chat.sessions[0].id, "character:a");
   assert.equal(backup.chat.messages[0].id, "m1");
   assert.equal(activePreset(backup.preset).id, "veil-default-v1");
@@ -76,7 +81,7 @@ test("Preset edits are exported and restored while generated defaults remain an 
   assert(directive.source === "prompt");
   directive.content = "Restored response rule";
   source.preset = { load: async () => preset };
-  const { backup } = await exportBackupV1(source);
+  const { backup } = await exportBackupV2(source);
   assert.deepEqual(activePreset(backup.preset).prompts.find((entry) =>
     entry.identifier === "response-directive"), directive);
   const target = restoreSources();
@@ -87,17 +92,45 @@ test("Preset edits are exported and restored while generated defaults remain an 
     entry.identifier !== "chat_output_format");
   await target.preset.replaceIfCurrent(null, legacyDefault as never);
   assert.equal(await requiresOverwriteRestore(target), false);
-  await restoreBackupV1(backup, target);
+  await restoreBackup(backup, target);
   assert.deepEqual(JSON.parse((await target.preset.readRaw())!), preset);
   assert.equal(await requiresOverwriteRestore(target), true);
   assert(!JSON.stringify(backup).includes("apiKey"));
 });
 
 test("legacy V1 backups without Preset data migrate to the built-in default", async () => {
-  const { backup } = await exportBackupV1(sources());
+  const { backup } = await exportBackupV2(sources());
   const legacy = structuredClone(backup) as unknown as Record<string, unknown>;
+  legacy.version = 1;
   delete legacy.preset;
+  delete legacy.regex;
+  delete legacy.worldBooks;
   assert.deepEqual(validateBackupV1(legacy).preset, createPresetDocument());
+});
+
+test("V1 restore preserves Regex and WorldBooks that V1 never contained", async () => {
+  const v1 = structuredClone((await exportBackupV2(sources())).backup) as Record<string, unknown>;
+  v1.version = 1;
+  delete v1.regex;
+  delete v1.worldBooks;
+  const target = restoreSources();
+  const regex = { version: 1 as const, groups: [] };
+  const worldBooks = { version: 1 as const, books: [] };
+  await target.regex.replaceIfCurrent(null, regex);
+  await target.worldBooks.replaceIfCurrent(null, worldBooks);
+  await restoreBackup(validateBackupV1(v1), target);
+  assert.deepEqual(JSON.parse((await target.regex.readRaw())!), regex);
+  assert.deepEqual(JSON.parse((await target.worldBooks.readRaw())!), worldBooks);
+});
+
+test("V2 rejects unknown Regex and WorldBook fields before restore", async () => {
+  const { backup } = await exportBackupV2(sources());
+  const regex = structuredClone(backup);
+  (regex.regex as unknown as Record<string, unknown>).extra = true;
+  const worldBooks = structuredClone(backup);
+  (worldBooks.worldBooks as unknown as Record<string, unknown>).extra = true;
+  assert.throws(() => validateBackup(regex), /unsupported/);
+  assert.throws(() => validateBackup(worldBooks), /unsupported/);
 });
 
 test("backup restores the entire v3 library and active selection, not just the active Preset", async () => {
@@ -108,23 +141,27 @@ test("backup restores the entire v3 library and active selection, not just the a
   library.presets[1].description = "Inactive custom must also survive";
   library.presets[2].generation = { temperature: 0.9, maxTokens: 2048 };
   source.preset = { load: async () => library };
-  const { backup, json } = await exportBackupV1(source);
-  assert.deepEqual(parseBackupV1(json).preset, library);
+  const { backup, json } = await exportBackupV2(source);
+  assert.deepEqual(parseBackup(json).preset, library);
   const target = restoreSources();
-  await restoreBackupV1(backup, target);
+  await restoreBackup(backup, target);
   assert.deepEqual(JSON.parse((await target.preset.readRaw())!), library);
   assert.equal(await requiresOverwriteRestore(target), true);
 });
 
 test("legacy v2 backup Preset migrates during restore without losing active custom content", async () => {
-  const { backup } = await exportBackupV1(sources());
+  const { backup } = await exportBackupV2(sources());
   const custom = { ...createBuiltinPreset(), id: "legacy-custom", builtIn: false, name: "Legacy Custom" };
   custom.generation = { temperature: 0.8 };
-  const legacy = { ...backup, preset: { version: 2, activePreset: custom } };
+  const legacy = structuredClone(backup) as Record<string, unknown>;
+  legacy.version = 1;
+  legacy.preset = { version: 2, activePreset: custom };
+  delete legacy.regex;
+  delete legacy.worldBooks;
   const migrated = validateBackupV1(legacy);
   assert.deepEqual(activePreset(migrated.preset), custom);
   const target = restoreSources();
-  await restoreBackupV1(migrated, target);
+  await restoreBackup(migrated, target);
   assert.deepEqual(JSON.parse((await target.preset.readRaw())!), migrated.preset);
 });
 
@@ -146,15 +183,15 @@ test("backup retries once when foundation or theme changes around chat", async (
       return chat();
     },
   };
-  const { backup } = await exportBackupV1(changing);
+  const { backup } = await exportBackupV2(changing);
   assert.equal(backup.foundation && (backup.foundation as { user: { name: string } }).user.name, "stable");
   assert.equal(chatExports, 2);
 });
 
 test("backup rejects invalid chat references and the 32 MiB limit", async () => {
-  const invalid = await exportBackupV1(sources());
+  const invalid = await exportBackupV2(sources());
   invalid.backup.chat.messages[0].sessionId = "missing";
-  assert.throws(() => validateBackupV1(invalid.backup));
+  assert.throws(() => validateBackup(invalid.backup));
 
   const tooLarge = sources();
   tooLarge.chat = {
@@ -163,7 +200,7 @@ test("backup rejects invalid chat references and the 32 MiB limit", async () => 
       messages: [{ ...chat().messages[0], content: "x".repeat(BACKUP_MAX_BYTES) }],
     }),
   };
-  await assert.rejects(() => exportBackupV1(tooLarge), /32 MiB/);
+  await assert.rejects(() => exportBackupV2(tooLarge), /32 MiB/);
 });
 
 test("backup rejects malformed envelopes, duplicate orders, and stale previews", async () => {
@@ -181,31 +218,31 @@ test("backup rejects malformed envelopes, duplicate orders, and stale previews",
     /chat data/,
   );
 
-  const duplicateOrder = await exportBackupV1(sources());
+  const duplicateOrder = await exportBackupV2(sources());
   duplicateOrder.backup.chat.messages.push({
     ...duplicateOrder.backup.chat.messages[0],
     id: "m2",
   });
-  assert.throws(() => validateBackupV1(duplicateOrder.backup));
+  assert.throws(() => validateBackup(duplicateOrder.backup));
 
-  const stalePreview = await exportBackupV1(sources());
+  const stalePreview = await exportBackupV2(sources());
   stalePreview.backup.chat.sessions[0].lastMessageId = "missing";
-  assert.throws(() => validateBackupV1(stalePreview.backup), /last message/);
+  assert.throws(() => validateBackup(stalePreview.backup), /last message/);
 
-  const invalidProfile = await exportBackupV1(sources());
+  const invalidProfile = await exportBackupV2(sources());
   (invalidProfile.backup.foundation as { extra?: string }).extra = "unknown";
-  assert.throws(() => validateBackupV1(invalidProfile.backup), /profile or appearance/);
+  assert.throws(() => validateBackup(invalidProfile.backup), /profile or appearance/);
 
-  const duplicateCharacter = await exportBackupV1(sources());
+  const duplicateCharacter = await exportBackupV2(sources());
   duplicateCharacter.backup.chat.sessions.push({
     ...duplicateCharacter.backup.chat.sessions[0],
     id: "character:duplicate",
   });
-  assert.throws(() => validateBackupV1(duplicateCharacter.backup), /session IDs/);
+  assert.throws(() => validateBackup(duplicateCharacter.backup), /session IDs/);
 
-  const invalidBatch = await exportBackupV1(sources());
+  const invalidBatch = await exportBackupV2(sources());
   invalidBatch.backup.chat.messages[0].requestedBy = "missing-reply";
-  assert.throws(() => validateBackupV1(invalidBatch.backup), /reply batch/);
+  assert.throws(() => validateBackup(invalidBatch.backup), /reply batch/);
 });
 
 test("ChatStorage backup reads conversations but omits saved API keys", async () => {
@@ -245,19 +282,23 @@ function restoreSources(): RestoreSources {
     foundation: documentStore(),
     theme: documentStore(),
     preset: documentStore(),
+    regex: documentStore(),
+    worldBooks: documentStore(),
     chat: new ChatStorage(() => new IDBFactory()),
   };
 }
 
-test("restore preflights an empty installation and can parse its V1 JSON", async () => {
-  const { backup, json } = await exportBackupV1(sources());
-  assert.deepEqual(parseBackupV1(json), backup);
+test("V2 restore preflights an empty installation and parses its JSON", async () => {
+  const { backup, json } = await exportBackupV2(sources());
+  assert.deepEqual(parseBackup(json), backup);
   const target = restoreSources();
-  await restoreBackupV1(backup, target);
+  await restoreBackup(backup, target);
   assert.deepEqual(JSON.parse((await target.foundation.readRaw())!), backup.foundation);
   assert.deepEqual(JSON.parse((await target.theme.readRaw())!), backup.theme);
+  assert.deepEqual(JSON.parse((await target.regex.readRaw())!), backup.regex);
+  assert.deepEqual(JSON.parse((await target.worldBooks.readRaw())!), backup.worldBooks);
   assert.deepEqual(await target.chat.exportBackup(), backup.chat);
-  await restoreBackupV1(backup, target); // Retrying the identical backup is safe.
+  await restoreBackup(backup, target); // Retrying the identical backup is safe.
 });
 
 test("restore never overwrites an existing installation without confirmation", async () => {
@@ -331,6 +372,16 @@ test("overwrite restore rolls back earlier stores when a later replacement fails
     preset: {
       readRaw: async () => null,
       replaceIfCurrent: async () => assert.fail("preset replacement must not run"),
+      rollbackIfCurrent: async () => true,
+    },
+    regex: {
+      readRaw: async () => null,
+      replaceIfCurrent: async () => assert.fail("regex replacement must not run"),
+      rollbackIfCurrent: async () => true,
+    },
+    worldBooks: {
+      readRaw: async () => null,
+      replaceIfCurrent: async () => assert.fail("WorldBook replacement must not run"),
       rollbackIfCurrent: async () => true,
     },
     chat: {
@@ -470,21 +521,21 @@ test("validator rejects unusable timestamps and malformed chat records", async (
 });
 
 test("reply batch references must link a user to a later assistant in the same session", async () => {
-  const { backup } = await exportBackupV1(sources());
+  const { backup } = await exportBackupV2(sources());
   backup.chat = streamingChat();
-  assert.doesNotThrow(() => validateBackupV1(backup));
+  assert.doesNotThrow(() => validateBackup(backup));
   for (const role of ["assistant", "system"] as const) {
     const invalid = structuredClone(backup);
     invalid.chat.messages[0].role = role;
-    assert.throws(() => validateBackupV1(invalid), /reply batch/);
+    assert.throws(() => validateBackup(invalid), /reply batch/);
   }
   const self = structuredClone(backup);
   self.chat.messages[1].requestedBy = "reply";
-  assert.throws(() => validateBackupV1(self), /reply batch/);
+  assert.throws(() => validateBackup(self), /reply batch/);
   const reversed = structuredClone(backup);
   reversed.chat.messages[0].order = 2;
   reversed.chat.messages[1].order = 1;
-  assert.throws(() => validateBackupV1(reversed), /reply batch/);
+  assert.throws(() => validateBackup(reversed), /reply batch/);
 });
 
 test("successful chat write cannot hide concurrent foundation/theme edits", async () => {

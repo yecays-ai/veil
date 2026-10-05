@@ -25,6 +25,8 @@ export type RegexImportResult = { document: RegexDocument; warnings: string[] };
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+const onlyKeys = (value: Record<string, unknown>, keys: readonly string[]) =>
+  Object.keys(value).every((key) => keys.includes(key));
 const text = (value: unknown, max: number) => typeof value === "string" ? value.slice(0, max) : "";
 export const emptyRegexDocument = (): RegexDocument => ({ version: 1, groups: [] });
 
@@ -44,12 +46,14 @@ export function canSaveRegexGroup(group: RegexGroup): boolean {
 }
 
 export function validateRegexDocument(value: unknown): RegexDocument {
-  if (!record(value) || value.version !== 1 || !Array.isArray(value.groups) ||
+  if (!record(value) || !onlyKeys(value, ["version", "groups"]) ||
+    value.version !== 1 || !Array.isArray(value.groups) ||
     value.groups.filter((group: unknown) => !record(group) || group.id !== DEFAULT_REGEX_GROUP_ID).length > 100)
     throw new Error("Saved Regex data has an unsupported format.");
   const groupIds = new Set<string>();
   const groups = value.groups.map((group): RegexGroup => {
-    if (!record(group) || typeof group.id !== "string" || !group.id || groupIds.has(group.id) ||
+    if (!record(group) || !onlyKeys(group, ["id", "name", "description", "enabled", "rules", "createdAt", "updatedAt"]) ||
+      typeof group.id !== "string" || !group.id || groupIds.has(group.id) ||
       typeof group.name !== "string" || !group.name.trim() || group.name.length > 200 ||
       typeof group.description !== "string" || group.description.length > 2000 ||
       typeof group.enabled !== "boolean" || !Array.isArray(group.rules) || group.rules.length > 200 ||
@@ -59,7 +63,8 @@ export function validateRegexDocument(value: unknown): RegexDocument {
     groupIds.add(group.id);
     const ruleIds = new Set<string>();
     const rules = group.rules.map((rule): RegexRule => {
-      if (!record(rule) || typeof rule.id !== "string" || !rule.id || ruleIds.has(rule.id) ||
+      if (!record(rule) || !onlyKeys(rule, ["id", "name", "find", "replace", "enabled", "appliesTo", "mode"]) ||
+        typeof rule.id !== "string" || !rule.id || ruleIds.has(rule.id) ||
         typeof rule.name !== "string" || rule.name.length > 200 ||
         typeof rule.find !== "string" || rule.find.length > 4000 ||
         typeof rule.replace !== "string" || rule.replace.length > 12000 ||

@@ -2,9 +2,14 @@ import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
 import { browserPresetStorage } from "../preset-storage";
+import { browserRegexStorage } from "../regex-storage";
+import { browserWorldBookStorage } from "../worldbook-storage";
 import { createPresetDocument, validatePresetDocument } from "../preset";
-import { BACKUP_MAX_BYTES, type BackupChat, type BackupV1 } from "./types";
-import { validateBackupV1 } from "./validate";
+import { defaultRegexGroup } from "../regex-defaults";
+import { emptyRegexDocument, validateRegexDocument } from "../regex";
+import { emptyWorldBookDocument, validateWorldBookDocument } from "../worldbook";
+import { BACKUP_MAX_BYTES, type Backup, type BackupChat, type BackupV1, type BackupV2 } from "./types";
+import { validateBackup } from "./validate";
 import { sameBackupChat, stableJson } from "./equality";
 import { restorableChat } from "./restorable-chat";
 
@@ -14,9 +19,11 @@ type RestoreDocument<T> = {
   rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
 };
 export type RestoreSources = {
-  foundation: RestoreDocument<BackupV1["foundation"]>;
-  theme: RestoreDocument<BackupV1["theme"]>;
-  preset: RestoreDocument<BackupV1["preset"]>;
+  foundation: RestoreDocument<Backup["foundation"]>;
+  theme: RestoreDocument<Backup["theme"]>;
+  preset: RestoreDocument<Backup["preset"]>;
+  regex: RestoreDocument<BackupV2["regex"]>;
+  worldBooks: RestoreDocument<BackupV2["worldBooks"]>;
   chat: {
     exportBackup(): Promise<BackupChat>;
     replaceBackup(expected: BackupChat, backup: BackupChat): Promise<void>;
@@ -26,22 +33,26 @@ const browserSources: RestoreSources = {
   foundation: browserFoundationStorage,
   theme: browserThemeStorage,
   preset: browserPresetStorage,
+  regex: browserRegexStorage,
+  worldBooks: browserWorldBookStorage,
   chat: chatStorage,
 };
 const snapshot = (sources: RestoreSources) => Promise.all([
   sources.foundation.readRaw(), sources.theme.readRaw(), sources.preset.readRaw(),
+  sources.regex.readRaw(), sources.worldBooks.readRaw(),
   sources.chat.exportBackup(),
 ]);
 function replacement<T>(
   store: RestoreDocument<T>,
   before: string | null,
   next: T,
-  empty?: T,
+  empty?: T | T[],
   normalize: (value: unknown) => unknown = (value) => value,
 ) {
   return {
     matches: () => before === null || stableJson(normalize(JSON.parse(before))) === stableJson(next) ||
-      (empty !== undefined && stableJson(normalize(JSON.parse(before))) === stableJson(empty)),
+      (empty !== undefined && (Array.isArray(empty) ? empty : [empty]).some((candidate) =>
+        stableJson(normalize(JSON.parse(before))) === stableJson(candidate))),
     async apply() {
       const target = await store.replaceIfCurrent(before, next);
       return () => store.rollbackIfCurrent(target, before);
@@ -50,35 +61,59 @@ function replacement<T>(
 }
 export const isOverwriteConfirmationValid = (value: string) => value === "RESTORE";
 
-export function parseBackupV1(text: string): BackupV1 {
+export function parseBackup(text: string): Backup {
   if (new TextEncoder().encode(text).byteLength > BACKUP_MAX_BYTES)
     throw new Error("Backup is larger than the 32 MiB import limit.");
-  return validateBackupV1(JSON.parse(text));
+  return validateBackup(JSON.parse(text));
+}
+
+/** @deprecated V1 callers should use parseBackup; only V1 input is accepted here. */
+export function parseBackupV1(text: string): BackupV1 {
+  const backup = parseBackup(text);
+  if (backup.version !== 1) throw new Error("This backup requires VEIL Backup V2 support.");
+  return backup;
 }
 
 export async function requiresOverwriteRestore(sources = browserSources) {
-  const [foundation, theme, preset, chat] = await snapshot(sources);
+  const [foundation, theme, preset, regex, worldBooks, chat] = await snapshot(sources);
   let customPreset = false;
   try {
     customPreset = preset !== null && stableJson(validatePresetDocument(JSON.parse(preset))) !==
       stableJson(createPresetDocument());
   } catch { customPreset = true; }
-  return foundation !== null || theme !== null || customPreset ||
+  let customRegex = false, customWorldBooks = false;
+  try {
+    customRegex = regex !== null && stableJson(validateRegexDocument(JSON.parse(regex))) !==
+      stableJson({ version: 1, groups: [defaultRegexGroup()] }) &&
+      stableJson(validateRegexDocument(JSON.parse(regex))) !== stableJson(emptyRegexDocument());
+  } catch { customRegex = true; }
+  try {
+    customWorldBooks = worldBooks !== null && stableJson(validateWorldBookDocument(JSON.parse(worldBooks))) !==
+      stableJson(emptyWorldBookDocument());
+  } catch { customWorldBooks = true; }
+  return foundation !== null || theme !== null || customPreset || customRegex || customWorldBooks ||
     !!chat.sessions.length || !!chat.messages.length;
 }
 
 /** Both empty and confirmed overwrite restores use the same guarded writes and rollback. */
-export async function restoreBackupV1(
-  backup: BackupV1, sources = browserSources, overwrite = false,
+export async function restoreBackup(
+  backup: Backup, sources = browserSources, overwrite = false,
 ): Promise<void> {
-  const validated = validateBackupV1(backup);
+  const validated = validateBackup(backup);
   const safe = { ...validated, chat: restorableChat(validated.chat) };
-  const [foundation, theme, preset, chat] = await snapshot(sources);
+  const [foundation, theme, preset, regex, worldBooks, chat] = await snapshot(sources);
   const documents = [
     replacement(sources.foundation, foundation, safe.foundation),
     replacement(sources.theme, theme, safe.theme),
     replacement(sources.preset, preset, safe.preset, createPresetDocument(), validatePresetDocument),
   ];
+  if (safe.version === 2) {
+    documents.push(
+      replacement(sources.regex, regex, safe.regex,
+        [{ version: 1, groups: [defaultRegexGroup()] }, emptyRegexDocument()], validateRegexDocument),
+      replacement(sources.worldBooks, worldBooks, safe.worldBooks, emptyWorldBookDocument(), validateWorldBookDocument),
+    );
+  }
   if (!overwrite && (
     documents.some(({ matches }) => !matches()) ||
     ((chat.sessions.length || chat.messages.length) && !sameBackupChat(chat, safe.chat))
@@ -93,11 +128,14 @@ export async function restoreBackupV1(
       return true;
     });
     // Per-store CAS alone cannot detect an earlier store changing during a later write.
-    const [finalFoundation, finalTheme, finalPreset, finalChat] = await snapshot(sources);
+    const [finalFoundation, finalTheme, finalPreset, finalRegex, finalWorldBooks, finalChat] = await snapshot(sources);
     if (finalFoundation === null || finalTheme === null || finalPreset === null ||
         stableJson(JSON.parse(finalFoundation)) !== stableJson(safe.foundation) ||
         stableJson(JSON.parse(finalTheme)) !== stableJson(safe.theme) ||
         stableJson(JSON.parse(finalPreset)) !== stableJson(safe.preset) ||
+        (safe.version === 2 && (finalRegex === null || finalWorldBooks === null ||
+          stableJson(validateRegexDocument(JSON.parse(finalRegex))) !== stableJson(safe.regex) ||
+          stableJson(validateWorldBookDocument(JSON.parse(finalWorldBooks))) !== stableJson(safe.worldBooks))) ||
         !sameBackupChat(finalChat, safe.chat))
       throw new Error("Your data changed during restore.");
   } catch (error) {
@@ -110,4 +148,11 @@ export async function restoreBackupV1(
     const result = complete ? "Previous data was restored." : "Rollback was incomplete.";
     throw new Error(`${reason} ${result} Reload VEIL before trying again.`);
   }
+}
+
+/** V1 restores deliberately leave Regex and WorldBooks untouched: those fields never existed in V1. */
+export async function restoreBackupV1(
+  backup: Backup, sources = browserSources, overwrite = false,
+): Promise<void> {
+  return restoreBackup(backup, sources, overwrite);
 }

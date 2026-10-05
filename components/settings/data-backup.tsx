@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
-import { exportBackupV1 } from "../../lib/backup/export";
-import { parseBackupV1, restoreBackupV1, requiresOverwriteRestore, isOverwriteConfirmationValid } from "../../lib/backup/import";
-import { BACKUP_MAX_BYTES, type BackupV1 } from "../../lib/backup/types";
+import { exportBackupV2 } from "../../lib/backup/export";
+import { parseBackup, restoreBackup, requiresOverwriteRestore, isOverwriteConfirmationValid } from "../../lib/backup/import";
+import { BACKUP_MAX_BYTES, type Backup } from "../../lib/backup/types";
 import { PageShell } from "../page-shell";
 import { Alert } from "./ui/feedback";
 import {
@@ -17,7 +17,7 @@ export function DataBackupSettings() {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
-  const [candidate, setCandidate] = useState<{ backup: BackupV1; overwrite: boolean } | null>(null);
+  const [candidate, setCandidate] = useState<{ backup: Backup; overwrite: boolean } | null>(null);
   const [confirmation, setConfirmation] = useState("");
   const [storage, setStorage] = useState<StorageHealth | null>(null);
   useEffect(() => {
@@ -38,7 +38,7 @@ export function DataBackupSettings() {
     } finally { setBusy(false); }
   }
   async function download() {
-    const { json } = await exportBackupV1();
+    const { json } = await exportBackupV2();
     const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -52,7 +52,7 @@ export function DataBackupSettings() {
     setConfirmation("");
     if (!file) return;
     if (file.size > BACKUP_MAX_BYTES) throw new Error("Backup is larger than the 32 MiB import limit.");
-    const backup = parseBackupV1(await file.text());
+    const backup = parseBackup(await file.text());
     setCandidate({ backup, overwrite: await requiresOverwriteRestore() });
   }
   const confirmed = !candidate?.overwrite || isOverwriteConfirmationValid(confirmation);
@@ -61,7 +61,7 @@ export function DataBackupSettings() {
   });
   async function restore() {
     if (!candidate || !confirmed) return;
-    await restoreBackupV1(candidate.backup, undefined, candidate.overwrite);
+    await restoreBackup(candidate.backup, undefined, candidate.overwrite);
     setCandidate(null);
     setConfirmation("");
     setStatus("Restore completed. Reload VEIL to use the restored data.");
@@ -106,7 +106,7 @@ export function DataBackupSettings() {
       </section>
       <section className="settings-editor" aria-labelledby="backup-heading">
         <h2 id="backup-heading">Export backup</h2>
-        <p>Download your profile, characters, appearance and chats as a JSON backup.</p>
+        <p>Download your profile, characters, appearance, presets, Regex rules, WorldBooks and chats as a JSON backup.</p>
         <p>Text API configurations and API keys are excluded from backups and retained during restore.</p>
         <button className="settings-button" disabled={busy} onClick={() => void run(download)}>Download backup</button>
         <label>
@@ -126,7 +126,7 @@ export function DataBackupSettings() {
             <p>Close other VEIL tabs before restoring.</p>
             {candidate.overwrite ? (
               <label>
-                This replaces local profiles, appearance and chats. Type RESTORE to confirm.
+                This replaces local profiles, appearance, presets, Regex rules, WorldBooks and chats. Type RESTORE to confirm.
                 <input className="settings-input" value={confirmation} disabled={busy}
                   onChange={(event) => setConfirmation(event.target.value)} />
               </label>

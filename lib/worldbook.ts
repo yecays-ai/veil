@@ -25,6 +25,8 @@ export type WorldBookDocument = { version: 1; books: WorldBook[] };
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
+const onlyKeys = (value: Record<string, unknown>, keys: readonly string[]) =>
+  Object.keys(value).every((key) => keys.includes(key));
 const integer = (value: unknown, fallback: number, minimum = 0) =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= minimum ? value : fallback;
 const keywordList = (value: unknown): string[] => {
@@ -74,18 +76,21 @@ export function normalizeWorldBook(value: unknown, id: string = crypto.randomUUI
 }
 
 export function validateWorldBookDocument(value: unknown): WorldBookDocument {
-  if (!record(value) || value.version !== 1 || !Array.isArray(value.books))
+  if (!record(value) || !onlyKeys(value, ["version", "books"]) ||
+    value.version !== 1 || !Array.isArray(value.books))
     throw new Error("Saved WorldBook data has an unsupported format.");
   const bookIds = new Set<string>();
   const books = value.books.map((item) => {
-    if (!record(item) || typeof item.id !== "string" || !item.id || bookIds.has(item.id) ||
+    if (!record(item) || !onlyKeys(item, ["id", "name", "description", "enabled", "entries"]) ||
+      typeof item.id !== "string" || !item.id || bookIds.has(item.id) ||
         typeof item.name !== "string" || !item.name.trim() || typeof item.description !== "string" ||
         typeof item.enabled !== "boolean" || !Array.isArray(item.entries))
       throw new Error("Saved WorldBook contains invalid books or duplicate IDs.");
     bookIds.add(item.id);
     const entryIds = new Set<string>();
     const entries = item.entries.map((entry) => {
-      if (!record(entry) || typeof entry.id !== "string" || !entry.id || entryIds.has(entry.id) ||
+      if (!record(entry) || !onlyKeys(entry, ["id", "name", "content", "enabled", "keywords", "matchMode", "caseSensitive", "constant", "scanDepth", "priority", "position", "sticky", "cooldown", "delay"]) ||
+        typeof entry.id !== "string" || !entry.id || entryIds.has(entry.id) ||
           typeof entry.name !== "string" || typeof entry.content !== "string" ||
           typeof entry.enabled !== "boolean" || !Array.isArray(entry.keywords) ||
           !entry.keywords.every((keyword) => typeof keyword === "string") ||

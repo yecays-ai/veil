@@ -7,8 +7,8 @@ import { migrateLegacyWidgetCharacters } from "../lib/legacy-widget-character";
 import { normalizeDocument } from "../lib/theme-types";
 import { browserThemeStorage } from "../lib/theme-storage";
 import { resolveHereThereCharacter } from "../lib/here-there-binding";
-import { exportBackupV1 } from "../lib/backup/export";
-import { parseBackupV1 } from "../lib/backup/import";
+import { exportBackupV2 } from "../lib/backup/export";
+import { parseBackup } from "../lib/backup/import";
 import { createPresetDocument } from "../lib/preset";
 
 function characters() {
@@ -80,7 +80,7 @@ test("Theme loading persists legacy widget binding so later Foundation changes c
 
 test("old backup selection imports safely and new exports omit it", async () => {
   const foundation = characters();
-  const { backup } = await exportBackupV1({
+  const { backup } = await exportBackupV2({
     foundation: { load: async () => foundation }, theme: { load: async () => normalizeDocument(null) },
     preset: { load: async () => createPresetDocument() },
     chat: { exportBackup: async () => ({ version: 1, sessions: [], messages: [] }) },
@@ -88,7 +88,7 @@ test("old backup selection imports safely and new exports omit it", async () => 
   assert(!Object.hasOwn(backup.foundation, "selectedCharacterId"));
   const old = { ...backup, foundation: { ...backup.foundation,
     selectedCharacterId: foundation.characters[1].characterId } };
-  const imported = parseBackupV1(JSON.stringify(old));
+  const imported = parseBackup(JSON.stringify(old));
   assert.deepEqual(imported.foundation, foundation);
   assert.equal(imported.theme.current.widgets[0].config.characterId, foundation.characters[1].characterId);
   assert(!Object.hasOwn(imported.foundation, "selectedCharacterId"));

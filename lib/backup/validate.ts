@@ -1,13 +1,17 @@
 import { normalizeFoundation, type FoundationDocument } from "../foundation-types";
 import { normalizeDocument, type ThemeDocument } from "../theme-types";
 import { createPresetDocument, validatePresetDocument } from "../preset";
+import { emptyRegexDocument, validateRegexDocument } from "../regex";
+import { emptyWorldBookDocument, validateWorldBookDocument } from "../worldbook";
 import {
   BACKUP_FORMAT,
   BACKUP_VERSION,
+  type Backup,
   type BackupChat,
   type BackupMessage,
   type BackupSession,
   type BackupV1,
+  type BackupV2,
 } from "./types";
 import { stableJson } from "./equality";
 import { migrateLegacyWidgetCharacters } from "../legacy-widget-character";
@@ -103,7 +107,7 @@ function stableChat(chat: BackupChat): BackupChat {
 export function validateBackupV1(value: unknown): BackupV1 {
   const backup = record(value);
   const chat = record(backup.chat);
-  if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION)
+  if (backup.format !== BACKUP_FORMAT || backup.version !== 1)
     throw new Error("Unsupported backup format.");
   if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "preset", "chat"]) ||
       !onlyKeys(backup.chat, ["version", "sessions", "messages"]))
@@ -134,7 +138,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
     throw new Error("Backup contains invalid profile or appearance data.");
   return {
     format: BACKUP_FORMAT,
-    version: BACKUP_VERSION,
+    version: 1,
     exportedAt: backup.exportedAt,
     foundation,
     theme: legacySelection ? migrateLegacyWidgetCharacters(theme, backup.foundation) : theme,
@@ -142,3 +146,37 @@ export function validateBackupV1(value: unknown): BackupV1 {
     chat: stableChat(chat as BackupChat),
   };
 }
+
+/** V2 is strict: its complete envelope and both new document types must validate exactly. */
+export function validateBackupV2(value: unknown): BackupV2 {
+  const backup = record(value);
+  if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION)
+    throw new Error("Unsupported backup format.");
+  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "preset", "regex", "worldBooks", "chat"]))
+    throw new Error("Backup contains unsupported fields.");
+  const legacy = validateBackupV1({
+    format: backup.format,
+    version: 1,
+    exportedAt: backup.exportedAt,
+    foundation: backup.foundation,
+    theme: backup.theme,
+    preset: backup.preset,
+    chat: backup.chat,
+  });
+  const regex = validateRegexDocument(backup.regex);
+  const worldBooks = validateWorldBookDocument(backup.worldBooks);
+  return { ...legacy, version: BACKUP_VERSION, regex, worldBooks };
+}
+
+/** V1 remains importable; its newer documents deliberately remain absent. */
+export function validateBackup(value: unknown): Backup {
+  const backup = record(value);
+  if (backup.version === 1) return validateBackupV1(value);
+  if (backup.version === BACKUP_VERSION) return validateBackupV2(value);
+  throw new Error("Unsupported backup format.");
+}
+
+export const missingBackupDocuments = () => ({
+  regex: emptyRegexDocument(),
+  worldBooks: emptyWorldBookDocument(),
+});

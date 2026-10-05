@@ -2,9 +2,11 @@ import type { ChatSession, ChatMessage } from "../chat/types";
 import type { FoundationDocument } from "../foundation-types";
 import type { ThemeDocument } from "../theme-types";
 import type { PresetDocument } from "../preset";
+import type { RegexDocument } from "../regex";
+import type { WorldBookDocument } from "../worldbook";
 
 export const BACKUP_FORMAT = "veil-backup";
-export const BACKUP_VERSION = 1;
+export const BACKUP_VERSION = 2;
 export const BACKUP_MAX_BYTES = 32 * 1024 * 1024;
 
 // Keep the backup contract explicit even if live chat records gain new fields.
@@ -22,7 +24,7 @@ export type BackupChat = {
 
 export type BackupV1 = {
   format: typeof BACKUP_FORMAT;
-  version: typeof BACKUP_VERSION;
+  version: 1;
   exportedAt: string;
   foundation: FoundationDocument;
   theme: ThemeDocument;
@@ -30,9 +32,20 @@ export type BackupV1 = {
   chat: BackupChat;
 };
 
+export type BackupV2 = Omit<BackupV1, "version"> & {
+  version: typeof BACKUP_VERSION;
+  regex: RegexDocument;
+  worldBooks: WorldBookDocument;
+};
+
+export type Backup = BackupV1 | BackupV2;
+
 export type BackupSources = {
   foundation: { load(): Promise<unknown> };
   theme: { load(): Promise<unknown> };
   preset: { load(): Promise<unknown> };
+  /** Optional only for non-browser callers that predate V2; omitted sections export safe empty documents. */
+  regex?: { load(): Promise<unknown> };
+  worldBooks?: { load(): Promise<unknown> };
   chat: { exportBackup(): Promise<BackupChat> };
 };
