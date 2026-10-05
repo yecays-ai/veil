@@ -4,7 +4,6 @@ import {
   createCharacter,
   updateCharacter,
   deleteCharacter,
-  selectCharacter,
   saveUser,
   saveUniverse,
   saveRelation,
@@ -112,7 +111,6 @@ test("stable Character IDs, directional Universe relationships and cascade delet
     /different/,
   );
   d = setNodePosition(d, a.characterId, { x: 360, y: 240 });
-  d = selectCharacter(d, a.characterId);
   d.bindings = {
     global: { apiConfigId: "global" },
     characters: {
@@ -124,11 +122,11 @@ test("stable Character IDs, directional Universe relationships and cascade delet
   assert.equal(d.universe.relations.length, 0);
   assert(!Object.hasOwn(d.universe.nodePositions, a.characterId));
   assert(!Object.hasOwn(d.bindings.characters, a.characterId));
-  assert.equal(d.selectedCharacterId, b.characterId);
+  assert(!Object.hasOwn(d, "selectedCharacterId"));
   assert.equal(d.universe.id, UNIVERSE_ID);
   assert.equal(d.universe.worldSetting, "World setting");
   d = deleteCharacter(d, b.characterId);
-  assert.equal(d.selectedCharacterId, null);
+  assert(!Object.hasOwn(d, "selectedCharacterId"));
 });
 test("node coordinates and imported records are normalized without prototype keys", () => {
   let d = pair();

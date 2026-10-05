@@ -8,7 +8,6 @@ export const FOUNDATION_COPY = {
     delete: "Delete",
     loading: "Loading…",
     saved: "Saved.",
-    selected: "Selected.",
     empty: "Not set",
     back: "← Characters",
     uploadAvatar: "Upload avatar",
@@ -51,8 +50,6 @@ export const FOUNDATION_COPY = {
     empty: "No Characters yet.",
     edit: "Edit Character",
     create: "Create Character",
-    select: "Set as Active",
-    current: "Active",
     deleted: "Character deleted.",
     notFound: "Character not found.",
     deleteQuestion:

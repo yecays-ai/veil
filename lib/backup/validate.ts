@@ -10,6 +10,7 @@ import {
   type BackupV1,
 } from "./types";
 import { stableJson } from "./equality";
+import { migrateLegacyWidgetCharacters } from "../legacy-widget-character";
 
 const roles = new Set(["user", "assistant", "system"]);
 const statuses = new Set(["sent", "streaming", "complete", "cancelled", "error"]);
@@ -119,12 +120,15 @@ export function validateBackupV1(value: unknown): BackupV1 {
   )
     throw new Error("Backup has invalid chat data.");
   const foundation: FoundationDocument = normalizeFoundation(backup.foundation);
+  const foundationInput = { ...record(backup.foundation) };
+  const legacySelection = Object.hasOwn(foundationInput, "selectedCharacterId");
+  delete foundationInput.selectedCharacterId;
   const theme: ThemeDocument = normalizeDocument(backup.theme);
   const preset = backup.preset === undefined
     ? createPresetDocument()
     : validatePresetDocument(backup.preset);
   if (
-    stableJson(backup.foundation) !== stableJson(foundation) ||
+    stableJson(foundationInput) !== stableJson(foundation) ||
     stableJson(backup.theme) !== stableJson(theme)
   )
     throw new Error("Backup contains invalid profile or appearance data.");
@@ -133,7 +137,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
     version: BACKUP_VERSION,
     exportedAt: backup.exportedAt,
     foundation,
-    theme,
+    theme: legacySelection ? migrateLegacyWidgetCharacters(theme, backup.foundation) : theme,
     preset,
     chat: stableChat(chat as BackupChat),
   };

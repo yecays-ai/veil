@@ -8,9 +8,10 @@ import { browserThemeStorage } from "../lib/theme-storage";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
 import { loadWeatherState, clearWeatherCache } from "../lib/weather";
 import { localTime, resolveTimezone } from "../lib/participant-config";
+import { migrateLegacyWidgetCharacters } from "../lib/legacy-widget-character";
 
 function foundation() {
-  return { ...defaultFoundation(), selectedCharacterId: "a", characters: [
+  return { ...defaultFoundation(), characters: [
     { ...normalizeCharacterInput({ name: "A", timezone: "Asia/Shanghai",
       location: { label: "Chengdu", coordinates: { latitude: 30.66, longitude: 104.06 } } }), characterId: "a" },
     { ...normalizeCharacterInput({ name: "B", timezone: "America/New_York",
@@ -38,18 +39,16 @@ test("legacy first binding is persisted once and independent widget IDs survive 
   try {
     const document = foundation();
     let theme = normalizeDocument(null);
-    const widgetId = theme.current.widgets[0].id;
-    assert.equal(resolveHereThereCharacter(theme.current.widgets[0].config, document)?.characterId, "a");
-    theme = bindHereThereCharacter(theme, widgetId, "a", true);
+    assert.equal(resolveHereThereCharacter(theme.current.widgets[0].config, document), undefined);
+    theme = migrateLegacyWidgetCharacters(theme, { ...document, selectedCharacterId: "a" });
     theme.current.widgets.push({ ...theme.current.widgets[0], id: "second", page: 2 });
     theme = bindHereThereCharacter(theme, "second", "b");
     await browserThemeStorage.save(normalizeDocument(theme));
     theme = await browserThemeStorage.load();
     assert.equal(theme.current.widgets[0].config.characterId, "a");
     assert.equal(theme.current.widgets[1].config.characterId, "b");
-    document.selectedCharacterId = "b";
     assert.equal(resolveHereThereCharacter(theme.current.widgets[0].config, document)?.characterId, "a");
-    assert.deepEqual(bindHereThereCharacter(theme, widgetId, "b", true), theme);
+    assert.deepEqual(migrateLegacyWidgetCharacters(theme, { ...document, selectedCharacterId: "b" }), theme);
     assert.deepEqual(bindHereThereCharacter(theme, "missing-widget", "b"), theme);
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
@@ -84,7 +83,7 @@ test("invalid or deleted explicit bindings never silently select a different Cha
   assert.equal(resolveHereThereCharacter({ hour12: false, showSeconds: false, characterId: "a" },
     { ...document, characters: document.characters.filter((item) => item.characterId !== "a") }), undefined);
   assert.equal(resolveHereThereCharacter({ hour12: false, showSeconds: false },
-    { ...document, characters: [], selectedCharacterId: null }), undefined);
+    { ...document, characters: [] }), undefined);
 });
 
 test("Character name picker commits the instance binding while weather continues using profiles", () => {

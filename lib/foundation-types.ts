@@ -51,7 +51,6 @@ export type FoundationDocument = {
   version: 1;
   user: UserProfile;
   characters: Character[];
-  selectedCharacterId: string | null;
   universe: Universe;
   bindings: BindingDocument;
   runtime: { timeAware: boolean };
@@ -174,7 +173,6 @@ export function defaultFoundation(): FoundationDocument {
     version: 1,
     user: normalizeUser(userConfig),
     characters: [],
-    selectedCharacterId: null,
     universe: {
       id: UNIVERSE_ID,
       name: "Universe",
@@ -250,11 +248,6 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
     version: 1,
     user: normalizeUser(raw.user),
     characters,
-    selectedCharacterId:
-      typeof raw.selectedCharacterId === "string" &&
-      seen.has(raw.selectedCharacterId)
-        ? raw.selectedCharacterId
-        : (characters[0]?.characterId ?? null),
     universe: {
       id: UNIVERSE_ID,
       name: optionalText(world.name, 100) || "Universe",

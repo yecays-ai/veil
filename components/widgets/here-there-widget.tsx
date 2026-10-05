@@ -76,21 +76,13 @@ function Side({
 
 export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const now = useDeviceClock();
-  const { document, ready: foundationReady } = useFoundation();
-  const { ready: themeReady, commit } = useTheme();
+  const { document } = useFoundation();
+  const { commit } = useTheme();
   const character = resolveHereThereCharacter(widget.config, document);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
-  const migrationAttempt = useRef<string | null>(null);
-  useEffect(() => {
-    if (!foundationReady || !themeReady || widget.config.characterId || !character
-      || migrationAttempt.current === widget.id) return;
-    migrationAttempt.current = widget.id;
-    void commit((theme) => bindHereThereCharacter(theme, widget.id, character.characterId, true))
-      .catch(() => setError("Character binding could not be saved."));
-  }, [foundationReady, themeReady, widget.id, widget.config.characterId, character, commit]);
   useEffect(() => {
     if (pickerOpen) dialog.current?.showModal();
     else dialog.current?.close();

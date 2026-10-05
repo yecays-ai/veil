@@ -258,14 +258,6 @@
   font-size: 0.9em;
   margin: 0;
 }
-.active-badge {
-  border-radius: 20px;
-  padding: 6px 10px;
-  font-size: 0.72em;
-  background: color-mix(in srgb, var(--theme-text) 6%, transparent);
-  opacity: 0.7;
-  white-space: nowrap;
-}
 .danger-area {
   padding: 24px 0 0;
   margin-top: 28px;

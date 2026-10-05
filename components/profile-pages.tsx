@@ -8,7 +8,6 @@ import {
   createCharacter,
   deleteCharacter,
   saveUser,
-  selectCharacter,
   updateCharacter,
 } from "../lib/foundation";
 import {
@@ -109,9 +108,6 @@ export function CharactersPage() {
                     </small>
                   )}
                 </span>
-                {document.selectedCharacterId === c.characterId && (
-                  <span className="active-badge">{C.characters.current}</span>
-                )}
                 <span className="subtle" aria-hidden="true">
                   ›
                 </span>
@@ -155,8 +151,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
         <p>{C.characters.notFound}</p>
       </PageShell>
     );
-  const isNew = !characterId,
-    active = document.selectedCharacterId === characterId;
+  const isNew = !characterId;
   async function action(operation: () => Promise<unknown>) {
     setBusy(true);
     setNotice("");
@@ -211,21 +206,6 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
         <>
           <ProfileView profile={character!} kind="character">
             <button onClick={() => setEditing(true)}>{C.common.edit}</button>
-            {active ? (
-              <span className="active-badge">{C.characters.current}</span>
-            ) : (
-              <button
-                className="primary-button"
-                disabled={busy}
-                onClick={() =>
-                  void action(() =>
-                    commit((d) => selectCharacter(d, characterId!)),
-                  )
-                }
-              >
-                {C.characters.select}
-              </button>
-            )}
           </ProfileView>
           <footer className="danger-area">
             {confirmDelete ? (

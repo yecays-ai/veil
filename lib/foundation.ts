@@ -43,7 +43,6 @@ export function createCharacter(
       ...document.characters,
       { ...normalizeCharacterInput(input), characterId },
     ],
-    selectedCharacterId: document.selectedCharacterId ?? characterId,
   });
 }
 export function updateCharacter(
@@ -67,21 +66,13 @@ export function deleteCharacter(
   document: FoundationDocument,
   characterId: string,
 ): FoundationDocument {
-  // Normalization removes dangling relations, nodes, selection and bindings atomically.
+  // Normalization removes dangling relations, nodes and bindings atomically.
   return normalizeFoundation({
     ...document,
     characters: document.characters.filter(
       (c) => c.characterId !== characterId,
     ),
   });
-}
-export function selectCharacter(
-  document: FoundationDocument,
-  characterId: string,
-): FoundationDocument {
-  if (!document.characters.some((c) => c.characterId === characterId))
-    throw new Error("Character not found.");
-  return { ...document, selectedCharacterId: characterId };
 }
 export function saveUniverse(
   document: FoundationDocument,

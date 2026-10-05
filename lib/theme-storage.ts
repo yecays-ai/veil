@@ -1,5 +1,7 @@
 import { normalizeDocument, type ThemeDocument } from "./theme-types";
 import { encodeStoredImage } from "./image-processing";
+import { browserFoundationStorage } from "./foundation-storage";
+import { migrateLegacyWidgetCharacters } from "./legacy-widget-character";
 
 // Replace this adapter when user-isolated cloud storage becomes available.
 export interface ThemeStorage {
@@ -14,14 +16,29 @@ const KEY = "companion-phone.appearance.v1";
 export const browserThemeStorage: ThemeStorage = {
   async load() {
     const raw = window.localStorage.getItem(KEY);
-    if (!raw) return normalizeDocument(null);
+    let theme: ThemeDocument;
     try {
-      return normalizeDocument(JSON.parse(raw));
+      theme = normalizeDocument(raw ? JSON.parse(raw) : null);
     } catch {
       throw new Error(
         "Saved appearance is invalid. Restore Default to replace it.",
       );
     }
+    if (!theme.current.widgets.some((widget) => widget.type === "here-there" && !widget.config.characterId))
+      return theme;
+    let foundation: unknown;
+    try {
+      const stored = await browserFoundationStorage.readRaw();
+      foundation = stored ? JSON.parse(stored) : undefined;
+    } catch {
+      return theme;
+    }
+    const migrated = migrateLegacyWidgetCharacters(theme, foundation);
+    if (migrated !== theme) {
+      if (window.localStorage.getItem(KEY) !== raw) return browserThemeStorage.load();
+      await browserThemeStorage.save(migrated);
+    }
+    return migrated;
   },
   async readRaw() {
     return window.localStorage.getItem(KEY);
