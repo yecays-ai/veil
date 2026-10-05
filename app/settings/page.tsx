@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { BookOpen, Regex, SlidersHorizontal } from "lucide-react";
+import { BookOpen, GitBranch, Regex, SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -32,6 +32,13 @@ export default function Page() {
             description: "Prompt pipelines and reply settings",
             href: "/settings/presets",
             icon: <SlidersHorizontal size={20} />,
+          },
+          {
+            id: "bindings",
+            label: "Bindings",
+            description: "Defaults and Character choices",
+            href: "/settings/bindings",
+            icon: <GitBranch size={20} />,
           },
           {
             id: "worldbooks",

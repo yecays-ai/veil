@@ -756,8 +756,7 @@ export class ChatStorage {
       return configs.map(normalizeApiConfig);
     });
   }
-  // Keep dangling binding IDs deliberately: deleting a reference would inherit
-  // another provider. Missing resources fail closed in the chat engine.
+  // Callers that also manage Foundation bindings use deleteApiConfigAndBindings.
   deleteApiConfig(id: string): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
       await request(tx.objectStore("apiConfigs").delete(id));

@@ -1,6 +1,24 @@
 import type { ApiConfig } from "../chat/types";
 import { completionUrl, validateApiConfig } from "../chat/provider";
 import type { BindingDocument } from "../bindings";
+import { withoutApiConfigBinding } from "../bindings";
+import type { ChatStorage } from "../chat/storage";
+import type { FoundationStorage } from "../foundation-storage";
+
+export async function deleteApiConfigAndBindings(
+  id: string, storage: ChatStorage, foundation: Pick<FoundationStorage, "transact">,
+): Promise<void> {
+  const previous = await storage.getApiConfig(id);
+  if (!previous) return;
+  await storage.deleteApiConfig(id);
+  try {
+    await foundation.transact((current) => ({ ...current,
+      bindings: withoutApiConfigBinding(current.bindings, id) }));
+  } catch (reason) {
+    if (!await storage.getApiConfig(id)) await storage.saveApiConfig(previous);
+    throw reason;
+  }
+}
 
 export function apiConfigReferences(
   bindings: BindingDocument,

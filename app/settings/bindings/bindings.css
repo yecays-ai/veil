@@ -1,0 +1,34 @@
+.binding-manager .binding-section { margin: 0 0 28px; }
+.binding-manager .binding-section h2 { font-size: 15px; margin: 0 0 12px; }
+.binding-manager .binding-context { margin: 0 0 22px; font-size: 14px; opacity: .65; }
+.binding-manager .binding-link, .binding-manager .binding-field {
+  display: block;
+  margin: 8px 0;
+  border: 1px solid var(--settings-border);
+  border-radius: 15px;
+  background: var(--theme-surface);
+}
+.binding-manager .binding-link { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
+.binding-manager .binding-link > span { flex: 1; min-width: 0; }
+.binding-manager .binding-link small, .binding-manager .binding-field small {
+  display: block; margin-top: 5px; font-size: 12px; opacity: .6; overflow-wrap: anywhere;
+}
+.binding-manager .binding-field { overflow: hidden; }
+.binding-manager .binding-field-main {
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 16px;
+  border: 0; background: transparent; text-align: left;
+}
+.binding-manager .binding-field-main > span { flex: 1; min-width: 0; }
+.binding-manager .binding-field-main[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.binding-manager .binding-reset { margin: 0 16px 12px; padding: 4px 0; border: 0; background: none;
+  color: var(--theme-accent); font-size: 12px; }
+.binding-manager .binding-picker { display: grid; padding: 8px 12px 12px; border-top: 1px solid var(--settings-border); }
+.binding-manager .binding-picker > button { min-height: 44px; padding: 8px; border: 0;
+  border-bottom: 1px solid var(--settings-border); background: transparent; text-align: left; }
+.binding-manager .binding-picker > button > span { float: right; color: var(--theme-accent); }
+.binding-manager .binding-picker > p { margin: 12px 8px; font-size: 13px; opacity: .65; }
+.binding-manager .binding-selected-order { display: grid; gap: 6px; margin: 12px 8px 0; font-size: 12px; }
+.binding-manager .binding-selected-order > div { display: flex; align-items: center; gap: 8px; }
+.binding-manager .binding-selected-order > div span { flex: 1; min-width: 0; }
+.binding-manager .binding-selected-order button { min-width: 36px; min-height: 36px;
+  border: 1px solid var(--settings-border); border-radius: 9px; background: transparent; }

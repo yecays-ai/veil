@@ -127,6 +127,13 @@ export function activePreset(document: PresetDocument): Preset {
   return document.presets.find((preset) => preset.id === document.activePresetId) ?? createBuiltinPreset();
 }
 
+export function presetForBinding(document: PresetDocument, presetId: string | null | undefined): Preset {
+  if (presetId === null) return document.presets.find((preset) => preset.id === BUILTIN_PRESET_ID)
+    ?? createBuiltinPreset();
+  return (presetId && document.presets.find((preset) => preset.id === presetId))
+    || activePreset(document);
+}
+
 const roles = new Set(["system", "user", "assistant"]);
 const markers = new Set<PresetMarker>(
   ["user", "universe", "world-info-before", "world-info-after", "character", "relations", "memory", "history"],

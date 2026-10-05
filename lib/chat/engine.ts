@@ -1,7 +1,7 @@
 import { resolveBindings } from "../bindings";
 import { browserFoundationStorage } from "../foundation-storage";
 import type { FoundationDocument } from "../foundation-types";
-import { activePreset, createPresetDocument, type PresetDocument } from "../preset";
+import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
 import { assembleChatPrompt } from "./prompt";
 import {
@@ -36,14 +36,14 @@ export function createChatEngine(
     const document = await foundation();
     const character = document.characters.find((item) => item.characterId === characterId);
     if (!character) throw new Error("This Character is no longer available.");
-    const binding = resolveBindings(document.bindings, character.characterId, "messages").apiConfigId;
-    if (binding === null)
+    const binding = resolveBindings(document.bindings, character.characterId, "messages");
+    if (binding.apiConfigId === null)
       throw new Error("The Messages API binding is disabled for this Character.");
-    const config = await storage.getApiConfig(binding ?? DEFAULT_API_CONFIG_ID);
+    const config = await storage.getApiConfig(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID);
     if (!config)
       throw new Error("The selected Text API is missing. Choose a saved config in Settings → Text API.");
     validateApiConfig(config);
-    const preset = activePreset(await presets());
+    const preset = presetForBinding(await presets(), binding.presetId);
     return { document, character, config, preset };
   }
   async function generateReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, regenerateId?: string): Promise<ChatMessage | null> {

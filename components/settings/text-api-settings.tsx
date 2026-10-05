@@ -13,6 +13,7 @@ import {
 import { validateApiConfig } from "../../lib/chat/provider";
 import {
   apiConfigReferences,
+  deleteApiConfigAndBindings,
   fetchTextApiModels,
   testTextApiConnection,
 } from "../../lib/settings/text-api";
@@ -356,7 +357,7 @@ export function TextApiSettings() {
                 }}
                 onConfirm={() =>
                   void run("Deleting…", async () => {
-                    await chatStorage.deleteApiConfig(draft.id);
+                    await deleteApiConfigAndBindings(draft.id, chatStorage, { transact: commit });
                     setConfigs(await chatStorage.listApiConfigs());
                     edit(null);
                   })
@@ -366,8 +367,7 @@ export function TextApiSettings() {
                 {apiConfigReferences(document.bindings, draft.id).length}{" "}
                 explicit binding reference(s)
                 {globalId === draft.id ? ", including the current default" : ""}
-                . Referenced chats will stop working until a replacement is
-                explicitly selected. Bindings will not be redirected.
+                . Referenced bindings will be cleared without selecting another provider.
               </ConfirmDialog>
             )}
             {discarding && (
