@@ -332,6 +332,25 @@ export class ChatStorage {
       return session;
     });
   }
+  // Explicitly create an additional conversation; the Character entry point
+  // continues to use openSession and preserves its existing direct-chat ID.
+  createSession(characterId: string): Promise<ChatSession> {
+    if (!characterId)
+      return Promise.reject(new Error("Character is required."));
+    return this.transaction("readwrite", async (tx) => {
+      const session: ChatSession = {
+        id: crypto.randomUUID(),
+        characterId,
+        updatedAt: 0,
+        remark: null,
+        autoReplyOnKeyboardDismiss: false,
+        streamOnline: false,
+        nextOrder: 1,
+      };
+      await request(tx.objectStore("sessions").add(session));
+      return session;
+    });
+  }
   readSession(
     sessionId: string,
   ): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
