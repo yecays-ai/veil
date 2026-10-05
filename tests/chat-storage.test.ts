@@ -59,9 +59,7 @@ test("a new chat database installs the complete current schema", async () => {
       "sessions",
       "worldBookStates",
     ]);
-    assert.deepEqual(Array.from(db.transaction("sessions").objectStore("sessions").indexNames), [
-      "characterId",
-    ]);
+    assert.deepEqual(Array.from(db.transaction("sessions").objectStore("sessions").indexNames), []);
     assert.deepEqual(Array.from(db.transaction("messages").objectStore("messages").indexNames), [
       "sessionId",
     ]);
@@ -90,8 +88,11 @@ test("v3 identity upgrade preserves legacy conversation and all session-linked d
   assert.deepEqual(await storage.readSession(session.id), { session, messages: [message] });
   assert.deepEqual(await storage.readWorldBookState(session.id), state);
   assert.equal((await storage.openSession("peter")).id, session.id);
+  await storage.createSession("peter");
+  assert.equal((await storage.openSession("peter")).id, session.id);
+  assert.deepEqual(await storage.readSession(session.id), { session, messages: [message] });
   const db = await openDatabase(factory);
-  assert.equal(db.transaction("sessions").objectStore("sessions").index("characterId").unique, false);
+  assert.equal(db.transaction("sessions").objectStore("sessions").indexNames.contains("characterId"), false);
   const asset = db.transaction("assets").objectStore("assets").get("image");
   await new Promise<void>((resolve) => { asset.onsuccess = () => { assert.equal(asset.result.blob.size, 5); resolve(); }; });
   db.close();
@@ -162,14 +163,15 @@ test("an existing v1 database preserves records while adding chat background sto
   }
 });
 
-test("a damaged same-version database is not silently repaired", async () => {
+test("a current database without a characterId index supports direct-chat reuse without schema repair", async () => {
   const factory = new IDBFactory();
   const db = await createV1Database(factory, false, CHAT_DATABASE_VERSION);
   db.close();
 
   const storage = new ChatStorage(() => factory);
   await storage.listSessions();
-  await assert.rejects(() => storage.openSession("missing-index"));
+  const session = await storage.openSession("missing-index");
+  assert.equal((await storage.openSession("missing-index")).id, session.id);
 
   const reopened = await openDatabase(factory);
   try {

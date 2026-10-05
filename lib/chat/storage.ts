@@ -168,7 +168,6 @@ export class ChatStorage {
           if (event.oldVersion < 4) {
             const sessions = req.transaction!.objectStore("sessions");
             if (sessions.indexNames.contains("characterId")) sessions.deleteIndex("characterId");
-            sessions.createIndex("characterId", "characterId", { unique: false });
           }
         };
         req.onsuccess = () => {
@@ -301,7 +300,8 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
       if (reuseDirect) {
-        const existing: ChatSession[] = await request(table.index("characterId").getAll(characterId));
+        const sessions: ChatSession[] = await request(table.getAll());
+        const existing = sessions.filter((session) => session.characterId === characterId);
         const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
         if (direct) return direct;
       }
