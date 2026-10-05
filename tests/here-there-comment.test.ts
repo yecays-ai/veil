@@ -118,3 +118,44 @@ test("non-chat generation leaves sessions, messages and WorldBook activation sta
   assert.deepEqual(await storage.exportBackup(), before);
   assert.deepEqual(await storage.readWorldBookState(session.id), world);
 });
+
+test("orphaned persisted pending comments recover while live requests stay deduplicated", async () => {
+  const value = fixture();
+  await value.commit((theme) => ({ ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((widget) =>
+    ({ ...widget, config: { ...widget.config, comment: { characterId: "a", requestId: "interrupted", status: "pending" as const } } })) } }));
+  assert.equal(claimHereThereCommentAttempt(value.theme().current.widgets[0], new Set()), true);
+  let release!: () => void; let started!: () => void; let calls = 0;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const ready = new Promise<void>((resolve) => { started = resolve; });
+  const services = { ...value.services, provider: async function* () { calls++; started(); await held; yield "Recovered pending."; } };
+  const running = ensureHereThereComment("here-there-default", value.context, value.commit, services);
+  await ready;
+  assert.equal(claimHereThereCommentAttempt(value.theme().current.widgets[0], new Set()), false);
+  await ensureHereThereComment("here-there-default", value.context, value.commit, services);
+  release(); await running;
+  assert.equal(calls, 1);
+  assert.equal(value.theme().current.widgets[0].config.comment?.text, "Recovered pending.");
+  assert.equal(claimHereThereCommentAttempt(value.theme().current.widgets[0], new Set()), false);
+});
+
+test("safe diagnostics distinguish failure stages without exposing provider errors or credentials", async () => {
+  for (const stage of ["api-disabled", "api-missing", "api-validation", "provider-generation", "empty-output", "complete-storage"] as const) {
+    const value = fixture(); const diagnostics: string[] = [];
+    if (stage === "api-disabled") value.foundation.bindings.global.apiConfigId = null;
+    const services = { ...value.services, diagnostic: (stage: string) => { diagnostics.push(stage); },
+      api: stage === "api-missing" ? async () => undefined : stage === "api-validation"
+        ? async (id: string) => ({ ...await value.services.api(id), apiKey: "", baseUrl: "invalid-secret-url" }) : value.services.api,
+      provider: async function* () {
+        if (stage === "provider-generation") throw new Error("secret-key provider response body");
+        yield stage === "empty-output" ? "" : "Hello.";
+      } };
+    await ensureHereThereComment("here-there-default", value.context, async (update) => {
+      if (stage === "complete-storage" && update(value.theme()).current.widgets[0].config.comment?.status === "complete")
+        throw new Error("storage secret");
+      await value.commit(update);
+    }, services);
+    assert.deepEqual(diagnostics, [stage]);
+    assert.equal(value.theme().current.widgets[0].config.comment?.status, "failed");
+    assert.equal(value.theme().current.widgets[0].config.comment?.text, undefined);
+  }
+});

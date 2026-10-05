@@ -83,8 +83,20 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [inputModality, setInputModality] = useState<"touch" | "keyboard">("keyboard");
+  const touchInteraction = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const commentAttempts = useRef(new Set<string>());
+  useEffect(() => {
+    if (inputModality !== "touch") return;
+    function keyboardInteraction() {
+      touchInteraction.current = false;
+      setInputModality("keyboard");
+    }
+    // Tab may start outside the widget; restore its ring before focus arrives.
+    window.addEventListener("keydown", keyboardInteraction, true);
+    return () => window.removeEventListener("keydown", keyboardInteraction, true);
+  }, [inputModality]);
   useEffect(() => {
     if (pickerOpen) dialog.current?.showModal();
     else dialog.current?.close();
@@ -118,7 +130,12 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   }, [foundationReady, themeReady, now, character, widget, widget.id, widget.config.characterId,
     widget.config.comment, document, hereWeather, thereWeather, commit]);
   return (
-    <div className={`here-there-widget size-${widget.size}`}>
+    <div className={`here-there-widget size-${widget.size}`} data-input-modality={inputModality}
+      onPointerDownCapture={(event) => {
+        touchInteraction.current = event.pointerType === "touch" || event.pointerType === "pen";
+        setInputModality(touchInteraction.current ? "touch" : "keyboard");
+      }}
+      onKeyDownCapture={() => { touchInteraction.current = false; setInputModality("keyboard"); }}>
       <span className="widget-eyebrow here-there-title">
         {C.hereThere.title}
       </span>
@@ -152,7 +169,11 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
         <p className="here-there-comment">{widget.config.comment.text}</p>}
       {error && !pickerOpen && <span role="alert" className="participant-weather">{error}</span>}
       <dialog ref={dialog} className="here-there-character-picker" aria-label="Choose THERE Character"
-        onClose={() => setPickerOpen(false)} onPointerDown={(event) => event.stopPropagation()}
+        onClose={() => {
+          setPickerOpen(false);
+          const focused = dialog.current?.ownerDocument.activeElement;
+          if (touchInteraction.current && focused instanceof HTMLElement && focused.closest(".desktop-home")) focused.blur();
+        }} onPointerDown={(event) => event.stopPropagation()}
         onClick={(event) => { event.stopPropagation(); if (event.target === event.currentTarget) setPickerOpen(false); }}>
         <div className="here-there-picker-header"><strong>Character</strong>
           <button type="button" onClick={() => setPickerOpen(false)} aria-label="Close Character picker">×</button></div>

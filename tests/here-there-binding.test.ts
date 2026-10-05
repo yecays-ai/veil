@@ -95,3 +95,16 @@ test("Character name picker commits the instance binding while weather continues
   assert.match(source, /setPickerOpen\(false\)/);
   assert.doesNotMatch(source, /geolocation|Places|widget\.config\.(here|there)/);
 });
+
+test("picker touch focus suppression is local and keyboard interaction restores visible focus", () => {
+  const source = readFileSync("components/widgets/here-there-widget.tsx", "utf8");
+  const css = readFileSync("app/desktop.css", "utf8");
+  assert.match(source, /data-input-modality=\{inputModality\}/);
+  assert.match(source, /event\.pointerType === "touch"/);
+  assert.match(source, /onKeyDownCapture=.*touchInteraction\.current = false; setInputModality\("keyboard"\)/);
+  assert.match(source, /window\.addEventListener\("keydown", keyboardInteraction, true\)/);
+  assert.match(source, /window\.removeEventListener\("keydown", keyboardInteraction, true\)/);
+  assert.match(source, /touchInteraction\.current && focused instanceof HTMLElement && focused\.closest\("\.desktop-home"\)\) focused\.blur\(\)/);
+  assert.match(css, /\.here-there-widget\[data-input-modality="touch"\] :focus-visible \{ outline: none; \}/);
+  assert.match(css, /\.desktop-home :focus-visible \{\s*outline: 2px solid/);
+});

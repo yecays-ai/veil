@@ -12,9 +12,12 @@ import { chatStorage } from "./chat/storage";
 import { sanitizeHistoryTimestamps } from "./chat/timestamp-sanitizer";
 import type { WidgetInstance } from "./widget-types";
 
+// Persisted pending state is not proof that a request survived a page reload.
+const activeComments = new Set<string>();
+
 export function claimHereThereCommentAttempt(widget: WidgetInstance, attempts: Set<string>): boolean {
   const key = `${widget.id}:${widget.config.characterId}`;
-  if (widget.config.comment && widget.config.comment.status !== "failed" || attempts.has(key)) return false;
+  if (widget.config.comment?.status === "complete" || activeComments.has(key) || attempts.has(key)) return false;
   attempts.add(key);
   return true;
 }
@@ -23,7 +26,8 @@ type Context = { foundation: FoundationDocument; characterId: string; now: Date;
   hereWeather: WeatherState; thereWeather: WeatherState };
 type Commit = (update: (theme: ThemeDocument) => ThemeDocument) => Promise<void>;
 type Dependencies = { foundation: () => Promise<FoundationDocument>; presets: () => Promise<PresetDocument>;
-  api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider };
+  api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider;
+  diagnostic?: (stage: string) => void };
 const dependencies: Dependencies = { foundation: () => browserFoundationStorage.load(),
   presets: () => browserPresetStorage.load(), api: (id) => chatStorage.getApiConfig(id), provider: openAITextProvider };
 
@@ -38,40 +42,63 @@ function facts(profile: ParticipantConfig, weather: WeatherState, now: Date) {
 export async function ensureHereThereComment(widgetId: string, context: Context, commit: Commit,
   services: Dependencies = dependencies): Promise<void> {
   if (context.hereWeather.status === "loading" || context.thereWeather.status === "loading") return;
-  const requestId = crypto.randomUUID();
+  const key = `${widgetId}:${context.characterId}`;
+  if (activeComments.has(key)) return;
+  activeComments.add(key);
+  let requestId = "";
+  let stage = "claim-storage";
+  function diagnostic() {
+    // Fixed stage names only; never forward exception text, config or response bodies.
+    try { (services.diagnostic ?? ((stage) => console.warn(`[Here & There comment] failed at ${stage}`)))(stage); } catch { /* Diagnostics must remain quiet. */ }
+  }
   let claimed = false;
   try {
+    requestId = crypto.randomUUID();
     await commit((theme) => ({ ...theme, current: { ...theme.current,
       widgets: theme.current.widgets.map((widget) => {
         if (widget.id !== widgetId || widget.type !== "here-there" || widget.config.characterId !== context.characterId
-          || widget.config.comment && widget.config.comment.status !== "failed") return widget;
+          || widget.config.comment?.status === "complete") return widget;
         claimed = true;
         return { ...widget, config: { ...widget.config, comment: {
           characterId: context.characterId, requestId, status: "pending" as const } } };
       }) } }));
     if (!claimed) return;
+    stage = "foundation-load";
     const foundation = await services.foundation();
+    stage = "character-resolution";
     const character = foundation.characters.find((item) => item.characterId === context.characterId);
     if (!character) throw new Error("Character unavailable");
     const binding = normalizeBindingSlot({ ...foundation.bindings.global,
       ...foundation.bindings.characters[character.characterId]?.defaults });
+    stage = "api-disabled";
     if (binding.apiConfigId === null) throw new Error("API disabled");
+    stage = "api-load";
     const api = await services.api(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID);
+    stage = "api-missing";
     if (!api) throw new Error("API unavailable");
+    stage = "api-validation";
     validateApiConfig(api);
+    stage = "preset-load";
     const preset = presetForBinding(await services.presets(), binding.presetId);
+    stage = "prompt-assembly";
     const prompt = assembleChatPrompt(foundation, character, [], [], undefined, preset, context.now);
     prompt.messages.push({ role: "system", content: `You are ${character.name}. This is a Home widget remark, not a chat reply.\nCharacter profile: ${JSON.stringify(character)}\nUser profile: ${JSON.stringify(foundation.user)}\nHERE: ${JSON.stringify(facts(context.foundation.user, context.hereWeather, context.now))}\nTHERE: ${JSON.stringify(facts(context.foundation.characters.find((item) => item.characterId === context.characterId) ?? character, context.thereWeather, context.now))}\nWrite exactly one short, natural in-character sentence reacting to this context, as a casual remark rather than a weather report. Never invent unavailable weather or temperatures. Output only the remark; no timestamps, headings or multiple messages.` });
     prompt.messages.push({ role: "user", content: "Make your brief Here & There remark." });
     let text = "";
     const controller = new AbortController();
+    stage = "provider-generation";
     for await (const part of services.provider(api, prompt.messages, controller.signal,
       { ...preset.generation, maxTokens: Math.min(preset.generation.maxTokens ?? 128, 128) })) text += part;
     text = sanitizeHistoryTimestamps(text).trim();
+    stage = "empty-output";
     if (!text) throw new Error("Empty remark");
+    stage = "complete-storage";
     await finish("complete", text.slice(0, 500));
   } catch {
-    if (claimed) await finish("failed").catch(() => {});
+    diagnostic();
+    if (claimed) await finish("failed").catch(() => { stage = "failure-storage"; diagnostic(); });
+  } finally {
+    activeComments.delete(key);
   }
   async function finish(status: "complete" | "failed", text?: string) {
     await commit((theme) => ({ ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((widget) =>
