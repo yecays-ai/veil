@@ -1,6 +1,6 @@
 # VEIL
 
-A phone across worlds.
+'A phone across worlds.'
 
 Minimal, character-neutral Next.js App Router and TypeScript app. Mobile-first phone viewport with a Home Screen, Character text conversations in Messages, and Appearance settings.
 
