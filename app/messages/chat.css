@@ -27,9 +27,10 @@
   flex: 1;
   font-size: 1.5em;
 }
-.messages-header > button { width: 44px; height: 44px; border: 0; background: transparent;
-  display: grid; place-items: center; color: inherit; }
-.messages-header > button svg { width: 26px; height: 26px; }
+.messages-header > .messages-add-button { width: 36px; height: 36px; padding: 0; border: 0 !important;
+  border-radius: 50%; background: transparent !important; display: grid; place-items: center;
+  align-self: center; color: inherit; line-height: 0; }
+.messages-header > .messages-add-button svg { width: 21px; height: 21px; display: block; stroke-width: 1.8; }
 .messages-large-title { margin: 0 0 18px; font-size: 2.15em; line-height: 1; letter-spacing: -.04em; }
 .messages-search { width: 100%; margin-top: 0; min-height: 44px; padding: 0 13px; border: 0;
   border-radius: 12px; background: color-mix(in srgb, var(--theme-text) 8%, var(--theme-surface));
@@ -99,6 +100,18 @@
   flex: none;
 }
 .group-avatar svg { width: 22px; height: 22px; opacity: .7; }
+.chat-action-layer { position: absolute; z-index: 90; inset: 0; background: transparent; }
+.chat-action-popover { position: absolute; top: calc(max(18px, env(safe-area-inset-top)) + 43px);
+  right: max(18px, env(safe-area-inset-right)); width: 154px; overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--theme-text) 8%, transparent); border-radius: 13px;
+  background: color-mix(in srgb, var(--theme-background) 97%, transparent);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%); }
+.chat-action-popover button { width: 100%; min-height: 48px; display: flex; align-items: center;
+  gap: 10px; padding: 0 13px; border: 0; border-radius: 0; background: transparent;
+  color: inherit; font: inherit; font-size: 13px; text-align: left; }
+.chat-action-popover button + button { border-top: 1px solid color-mix(in srgb, var(--theme-text) 8%, transparent); }
+.chat-action-popover button:active { background: color-mix(in srgb, var(--theme-text) 6%, transparent); }
+.chat-action-popover svg { width: 18px; height: 18px; opacity: .68; }
 .chat-sheet-backdrop { position: absolute; z-index: 80; inset: 0; display: flex; align-items: flex-end;
   padding: 12px; background: rgb(0 0 0 / 22%); backdrop-filter: blur(3px); }
 .chat-sheet { width: 100%; max-height: min(72%, 600px); display: flex; flex-direction: column;

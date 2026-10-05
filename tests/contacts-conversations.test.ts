@@ -47,9 +47,13 @@ test("groups reference Contact Characters and never replace the unique direct ch
 
 test("Chats and Contacts expose the required mobile navigation and creation entries", () => {
   const chats = readFileSync("components/chat/messages-home.tsx", "utf8");
+  const chatCss = readFileSync("app/messages/chat.css", "utf8");
   const contacts = readFileSync("components/contacts-pages.tsx", "utf8");
   assert.match(chats, /New Message/); assert.match(chats, /New Group/); assert.match(chats, /Add Friend/);
   assert.match(chats, /session\.type === "group"/); assert.match(chats, /RootAppHeader/);
+  assert.match(chats, /chat-action-popover/); assert.match(chats, /CirclePlus/);
+  assert.match(chatCss, /\.chat-action-layer[^}]+background: transparent/);
+  assert.doesNotMatch(chatCss.match(/\.chat-action-layer[^}]+}/)?.[0] ?? "", /backdrop-filter/);
   assert.match(contacts, /useContacts/); assert.match(contacts, /href="\/contacts\/add"/);
   assert.match(contacts, /backHref="\/contacts"/);
 });
