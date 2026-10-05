@@ -22,12 +22,10 @@ function hereThereConfig(value: unknown): WidgetConfig {
     && !["__proto__", "constructor", "prototype"].includes(characterId) ? { characterId } : {}) };
   const comment = raw.comment as Record<string, unknown> | undefined;
   if (comment && config.characterId && comment.characterId === config.characterId
-    && typeof comment.requestId === "string" && comment.requestId.length > 0 && comment.requestId.length <= 100
-    && ["pending", "complete", "failed"].includes(String(comment.status))
-    && (comment.status !== "complete" || (typeof comment.text === "string" && !!comment.text.trim())))
-    config.comment = { characterId: config.characterId, requestId: comment.requestId,
-      status: comment.status as "pending" | "complete" | "failed",
-      ...(comment.status === "complete" ? { text: (comment.text as string).trim().slice(0, 500) } : {}) };
+    && typeof comment.generatedAt === "string" && Number.isFinite(Date.parse(comment.generatedAt))
+    && typeof comment.text === "string" && !!comment.text.trim())
+    config.comment = { characterId: config.characterId, generatedAt: comment.generatedAt,
+      text: comment.text.trim().slice(0, 500) };
   return config;
 }
 

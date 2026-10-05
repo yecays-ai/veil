@@ -14,7 +14,7 @@ import {
 import type { WidgetInstance } from "../../lib/widget-types";
 import { useDeviceClock } from "./use-device-clock";
 import { useWeatherState } from "./use-weather";
-import { claimHereThereCommentAttempt, ensureHereThereComment } from "../../lib/here-there-comment";
+import { hereThereCommentNeedsRefresh, ensureHereThereComment } from "../../lib/here-there-comment";
 
 function Weather({ state }: { state: WeatherState }) {
   switch (state.status) {
@@ -86,7 +86,7 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const [inputModality, setInputModality] = useState<"touch" | "keyboard">("keyboard");
   const touchInteraction = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  const commentAttempts = useRef(new Set<string>());
+  const commentGenerating = useRef(false);
   useEffect(() => {
     if (inputModality !== "touch") return;
     function keyboardInteraction() {
@@ -124,9 +124,10 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   useEffect(() => {
     if (!foundationReady || !themeReady || !now || !character
       || hereWeather.status === "loading" || thereWeather.status === "loading"
-      || !claimHereThereCommentAttempt(widget, commentAttempts.current)) return;
-    void ensureHereThereComment(widget.id, { foundation: document, characterId: character.characterId,
-      now, hereWeather, thereWeather }, commit);
+      || commentGenerating.current || !hereThereCommentNeedsRefresh(widget, now)) return;
+    commentGenerating.current = true;
+    void ensureHereThereComment(widget, { foundation: document, characterId: character.characterId,
+      now, hereWeather, thereWeather }, commit).finally(() => { commentGenerating.current = false; });
   }, [foundationReady, themeReady, now, character, widget, widget.id, widget.config.characterId,
     widget.config.comment, document, hereWeather, thereWeather, commit]);
   return (
@@ -164,8 +165,7 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
           </div>
         )}
       </div>
-      {character && widget.config.comment?.status === "complete"
-        && widget.config.comment.characterId === character.characterId &&
+      {character && widget.config.comment?.characterId === character.characterId &&
         <p className="here-there-comment">{widget.config.comment.text}</p>}
       {error && !pickerOpen && <span role="alert" className="participant-weather">{error}</span>}
       <dialog ref={dialog} className="here-there-character-picker" aria-label="Choose THERE Character"
