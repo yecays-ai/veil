@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { ensureHereThereComment } from "../lib/here-there-comment";
+import { claimHereThereCommentAttempt, ensureHereThereComment } from "../lib/here-there-comment";
 import { bindHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { normalizeDocument, type ThemeDocument } from "../lib/theme-types";
@@ -80,17 +80,31 @@ test("rebind invalidates old comments and late results cannot overwrite a new bi
   assert.equal(value.theme().current.widgets[0].config.comment?.text, "New B.");
 });
 
-test("failures and disabled or missing APIs remain quiet and never retry on subsequent loads", async () => {
+test("failures remain quiet without a same-mount loop, retry on a fresh mount, then persist success", async () => {
   for (const mode of ["disabled", "missing", "failure", "empty"] as const) {
     const value = fixture(); let calls = 0;
     if (mode === "disabled") value.foundation.bindings.global.apiConfigId = null;
     const services = { ...value.services, api: mode === "missing" ? async () => undefined : value.services.api,
       provider: async function* () { calls++; if (mode === "failure") throw new Error("failed"); yield ""; } };
+    const attempts = new Set<string>();
+    assert.equal(claimHereThereCommentAttempt(value.theme().current.widgets[0], attempts), true);
     await ensureHereThereComment("here-there-default", value.context, value.commit, services);
-    await ensureHereThereComment("here-there-default", value.context, value.commit, services);
+    assert.equal(claimHereThereCommentAttempt(value.theme().current.widgets[0], attempts), false);
     assert.equal(value.theme().current.widgets[0].config.comment?.status, "failed");
     assert.equal(value.theme().current.widgets[0].config.comment?.text, undefined);
     assert.equal(calls, mode === "disabled" || mode === "missing" ? 0 : 1);
+    const reloaded = normalizeDocument(JSON.parse(JSON.stringify(value.theme())));
+    assert.equal(claimHereThereCommentAttempt(reloaded.current.widgets[0], new Set()), true);
+    delete value.foundation.bindings.global.apiConfigId;
+    await Promise.all([1, 2].map(() => ensureHereThereComment("here-there-default", value.context, value.commit,
+      { ...value.services, provider: async function* () { calls++; yield "Recovered."; } })));
+    assert.equal(calls, mode === "disabled" || mode === "missing" ? 1 : 2);
+    assert.equal(value.theme().current.widgets[0].config.comment?.text, "Recovered.");
+    assert.equal(claimHereThereCommentAttempt(value.theme().current.widgets[0], new Set()), false);
+    await ensureHereThereComment("here-there-default", value.context, value.commit,
+      { ...value.services, provider: async function* () { calls++; yield "Unexpected regeneration."; } });
+    assert.equal(calls, mode === "disabled" || mode === "missing" ? 1 : 2);
+    assert.equal(value.theme().current.widgets[0].config.comment?.text, "Recovered.");
   }
 });
 

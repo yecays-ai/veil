@@ -10,6 +10,14 @@ import { browserFoundationStorage } from "./foundation-storage";
 import { browserPresetStorage } from "./preset-storage";
 import { chatStorage } from "./chat/storage";
 import { sanitizeHistoryTimestamps } from "./chat/timestamp-sanitizer";
+import type { WidgetInstance } from "./widget-types";
+
+export function claimHereThereCommentAttempt(widget: WidgetInstance, attempts: Set<string>): boolean {
+  const key = `${widget.id}:${widget.config.characterId}`;
+  if (widget.config.comment && widget.config.comment.status !== "failed" || attempts.has(key)) return false;
+  attempts.add(key);
+  return true;
+}
 
 type Context = { foundation: FoundationDocument; characterId: string; now: Date;
   hereWeather: WeatherState; thereWeather: WeatherState };
@@ -36,7 +44,7 @@ export async function ensureHereThereComment(widgetId: string, context: Context,
     await commit((theme) => ({ ...theme, current: { ...theme.current,
       widgets: theme.current.widgets.map((widget) => {
         if (widget.id !== widgetId || widget.type !== "here-there" || widget.config.characterId !== context.characterId
-          || widget.config.comment) return widget;
+          || widget.config.comment && widget.config.comment.status !== "failed") return widget;
         claimed = true;
         return { ...widget, config: { ...widget.config, comment: {
           characterId: context.characterId, requestId, status: "pending" as const } } };

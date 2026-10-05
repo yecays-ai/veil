@@ -14,7 +14,7 @@ import {
 import type { WidgetInstance } from "../../lib/widget-types";
 import { useDeviceClock } from "./use-device-clock";
 import { useWeatherState } from "./use-weather";
-import { ensureHereThereComment } from "../../lib/here-there-comment";
+import { claimHereThereCommentAttempt, ensureHereThereComment } from "../../lib/here-there-comment";
 
 function Weather({ state }: { state: WeatherState }) {
   switch (state.status) {
@@ -84,7 +84,7 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const dialog = useRef<HTMLDialogElement>(null);
-  const commentAttempt = useRef<string | null>(null);
+  const commentAttempts = useRef(new Set<string>());
   useEffect(() => {
     if (pickerOpen) dialog.current?.showModal();
     else dialog.current?.close();
@@ -110,13 +110,12 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
     character?.location?.coordinates?.longitude ?? null,
   );
   useEffect(() => {
-    const key = `${widget.id}:${widget.config.characterId}`;
-    if (!foundationReady || !themeReady || !now || !character || widget.config.comment
-      || hereWeather.status === "loading" || thereWeather.status === "loading" || commentAttempt.current === key) return;
-    commentAttempt.current = key;
+    if (!foundationReady || !themeReady || !now || !character
+      || hereWeather.status === "loading" || thereWeather.status === "loading"
+      || !claimHereThereCommentAttempt(widget, commentAttempts.current)) return;
     void ensureHereThereComment(widget.id, { foundation: document, characterId: character.characterId,
       now, hereWeather, thereWeather }, commit);
-  }, [foundationReady, themeReady, now, character, widget.id, widget.config.characterId,
+  }, [foundationReady, themeReady, now, character, widget, widget.id, widget.config.characterId,
     widget.config.comment, document, hereWeather, thereWeather, commit]);
   return (
     <div className={`here-there-widget size-${widget.size}`}>
