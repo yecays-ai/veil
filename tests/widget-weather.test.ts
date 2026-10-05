@@ -2,129 +2,175 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { defaultDesktop, normalizeDesktop } from "../lib/desktop-layout";
-import { resolveParticipantPlace, type ParticipantConfig } from "../lib/participant-config";
+import {
+  PLACE_ERROR_CACHE_MS,
+  clearPlaceCache,
+  geocodingUrl,
+  lookupPlace,
+  parseGeocodingResult,
+  placeQueryKey,
+} from "../lib/place-lookup";
 import { defaultSnapshot, normalizeSnapshot } from "../lib/theme-types";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
-import { normalizeWidgetPlace, type WidgetPlace } from "../lib/widget-types";
 import {
   WEATHER_CACHE_MS,
   WEATHER_ERROR_CACHE_MS,
   cachedWeather,
   clearWeatherCache,
   fetchCurrentWeather,
+  loadWeatherState,
   openMeteoUrl,
   parseOpenMeteoCurrent,
   weatherCacheKey,
   weatherCodeSummary,
 } from "../lib/weather";
 
-const hereThere = WIDGET_REGISTRY["here-there"];
-
-const shanghai: WidgetPlace = {
-  label: "Shanghai",
-  latitude: 31.23,
-  longitude: 121.47,
+const CHENGDU = {
+  id: 1815286,
+  name: "Chengdu",
+  latitude: 30.66667,
+  longitude: 104.06667,
   timezone: "Asia/Shanghai",
+  admin1: "Sichuan",
+  country: "China",
 };
+const geocodingBody = (results: unknown[]) => JSON.stringify({ results });
+const weatherBody = (temperature: number, code: number) =>
+  JSON.stringify({ current: { temperature_2m: temperature, weather_code: code } });
 
-test("legacy Here & There configs stay valid and keep their exact shape", () => {
-  // Unset places stay omitted, so loading Home never rewrites legacy layouts.
-  assert.deepEqual(hereThere.normalizeConfig({ hour12: true, showSeconds: true }), {
-    hour12: true, showSeconds: true,
-  });
-  assert.deepEqual(hereThere.normalizeConfig(undefined), {
-    hour12: false, showSeconds: false,
-  });
-  assert.deepEqual(hereThere.normalizeConfig({ hour12: true, here: null }), {
+function fetcherFor(routes: { geocoding?: unknown[]; weather?: string }): {
+  fetch: typeof fetch;
+  calls: string[];
+} {
+  const calls: string[] = [];
+  const fetchStub: typeof fetch = async (input) => {
+    const url = String(input);
+    calls.push(url);
+    if (url.startsWith("https://geocoding-api.open-meteo.com"))
+      return new Response(geocodingBody(routes.geocoding ?? []), { status: 200 });
+    return new Response(routes.weather ?? weatherBody(17, 3), { status: 200 });
+  };
+  return { fetch: fetchStub, calls };
+}
+
+test("Here & There keeps the plain time config and never stores its own places", () => {
+  assert.deepEqual(WIDGET_REGISTRY["here-there"].normalizeConfig({ hour12: true }), {
     hour12: true, showSeconds: false,
   });
-  assert.deepEqual(hereThere.normalizeConfig({ here: shanghai }), {
-    hour12: false, showSeconds: false, here: shanghai,
-  });
-  // Clock keeps its own config shape: no place fields leak across types.
-  assert.deepEqual(WIDGET_REGISTRY.clock.normalizeConfig({ hour12: true }), {
-    hour12: true, showSeconds: false,
-  });
+  // A layout saved by the short-lived widget-place build must load unchanged.
   const legacy = defaultDesktop();
-  legacy.widgets[0].config = { hour12: false, showSeconds: false };
-  const reloaded = normalizeDesktop(JSON.parse(JSON.stringify(legacy)));
-  assert.equal(reloaded.widgets.length, 1);
-  assert.equal(reloaded.widgets[0].type, "here-there");
-  assert.deepEqual(reloaded.widgets[0].config, {
-    hour12: false, showSeconds: false,
-  });
-});
-
-test("saved places survive the layout document round trip", () => {
   const widgets = [{
-    ...defaultDesktop().widgets[0],
+    ...legacy.widgets[0],
     config: {
-      hour12: true,
+      hour12: false,
       showSeconds: false,
-      here: shanghai,
-      there: { label: "", latitude: null, longitude: null, timezone: "UTC" },
+      here: { label: "Chengdu", latitude: 30.66, longitude: 104.06, timezone: "Asia/Shanghai" },
     },
   }];
-  const snapshot = normalizeSnapshot({ ...defaultSnapshot(), widgets });
-  assert.deepEqual(snapshot.widgets[0].config.here, shanghai);
-  assert.deepEqual(snapshot.widgets[0].config.there, {
-    label: "", latitude: null, longitude: null, timezone: "UTC",
-  });
-  assert.equal(snapshot.widgets[0].config.hour12, true);
+  const reloaded = normalizeDesktop({ widgets });
+  assert.equal(reloaded.widgets.length, 1);
+  assert.deepEqual(reloaded.widgets[0].config, { hour12: false, showSeconds: false });
+  assert.deepEqual(
+    normalizeSnapshot({ ...defaultSnapshot(), widgets }).widgets[0].config,
+    { hour12: false, showSeconds: false },
+  );
+  assert.deepEqual(normalizeDesktop(defaultDesktop()).widgets, defaultDesktop().widgets);
 });
 
-test("partial, out-of-range and invalid place fields are dropped safely", () => {
-  assert.equal(normalizeWidgetPlace(null), null);
-  assert.equal(normalizeWidgetPlace({}), null);
-  assert.equal(normalizeWidgetPlace({ label: "   " }), null);
-  assert.equal(normalizeWidgetPlace({ latitude: 999, longitude: 13.4 }), null);
-  assert.deepEqual(
-    normalizeWidgetPlace({ label: "Berlin", latitude: 52.52, longitude: 999 }),
-    { label: "Berlin", latitude: null, longitude: null, timezone: null },
-  );
-  assert.deepEqual(normalizeWidgetPlace({ label: "Berlin", latitude: 52.52, longitude: 13.4 }), {
-    label: "Berlin", latitude: 52.52, longitude: 13.4, timezone: null,
-  });
-  assert.deepEqual(normalizeWidgetPlace({ label: "Nowhere", timezone: "Mars/Olympus" }), {
-    label: "Nowhere", latitude: null, longitude: null, timezone: null,
-  });
-});
-
-test("a widget place overrides the profile field by field", () => {
-  const profile: ParticipantConfig = {
-    name: "A",
-    location: { label: "Kyoto", coordinates: { latitude: 35, longitude: 135.8 } },
-    timezone: "Asia/Tokyo",
-  };
-  assert.deepEqual(resolveParticipantPlace(null, profile), {
-    label: "Kyoto",
-    timezone: "Asia/Tokyo",
-    coordinates: { latitude: 35, longitude: 135.8 },
-  });
-  // Label-only override keeps the profile's timezone and weather coordinates.
-  assert.deepEqual(
-    resolveParticipantPlace(
-      { label: "Osaka", latitude: null, longitude: null, timezone: null },
-      profile,
-    ),
-    { label: "Osaka", timezone: "Asia/Tokyo", coordinates: { latitude: 35, longitude: 135.8 } },
-  );
-  // Weather coordinates override without touching the timezone concept.
-  assert.deepEqual(
-    resolveParticipantPlace(
-      { label: "", latitude: 64.15, longitude: -21.94, timezone: null },
-      profile,
-    ),
-    { label: "Kyoto", timezone: "Asia/Tokyo", coordinates: { latitude: 64.15, longitude: -21.94 } },
-  );
-  assert.deepEqual(resolveParticipantPlace(shanghai, profile), {
-    label: "Shanghai",
+test("geocoding turns a typed location name into weather coordinates", () => {
+  assert.equal(placeQueryKey("  New   York "), "new york");
+  const url = geocodingUrl("Chengdu");
+  assert.match(url, /^https:\/\/geocoding-api\.open-meteo\.com\/v1\/search\?/);
+  assert.match(url, /name=Chengdu/);
+  assert.match(url, /count=1/);
+  assert.doesNotMatch(url, /key|token|secret/i);
+  assert.deepEqual(parseGeocodingResult({ results: [CHENGDU] }), {
+    label: "Chengdu",
+    detail: "Sichuan, China",
+    coordinates: { latitude: 30.66667, longitude: 104.06667 },
     timezone: "Asia/Shanghai",
-    coordinates: { latitude: 31.23, longitude: 121.47 },
   });
+  assert.equal(parseGeocodingResult({ results: [] }), null);
+  assert.equal(parseGeocodingResult({}), null);
+  assert.equal(parseGeocodingResult({ results: [{ name: "Nowhere" }] }), null);
+  assert.equal(
+    parseGeocodingResult({ results: [{ ...CHENGDU, latitude: 999 }] }),
+    null,
+  );
+});
+
+test("an unknown or failed place lookup resolves to null and is cached", async () => {
+  clearPlaceCache();
+  const { fetch: stub, calls } = fetcherFor({ geocoding: [] });
+  assert.equal(await lookupPlace("Nowhereville", stub, 0), null);
+  assert.equal(calls.length, 1);
+  assert.equal(await lookupPlace("Nowhereville", stub, PLACE_ERROR_CACHE_MS - 1), null);
+  assert.equal(calls.length, 1);
+
+  const offline: typeof fetch = async () => {
+    throw new Error("offline");
+  };
+  assert.equal(await lookupPlace("Chengdu", offline, 0), null);
+});
+
+test("Here & There weather comes from the saved profile location", async () => {
+  clearWeatherCache();
+  clearPlaceCache();
+  const { fetch: stub } = fetcherFor({ geocoding: [CHENGDU] });
+  // 1. A profile with only a location name is geocoded before the weather call.
+  const named = await loadWeatherState(
+    { label: "Chengdu", coordinates: null },
+    stub,
+    1000,
+  );
+  assert.deepEqual(named, {
+    status: "ready",
+    temperatureC: 17,
+    summary: "Overcast",
+    icon: "☁️",
+    updatedAt: new Date(1000).toISOString(),
+  });
+  assert.ok(cachedWeather({ latitude: 30.66667, longitude: 104.06667 }, 1000));
+  // 2. A profile that already stores coordinates skips geocoding entirely.
+  const stored = await loadWeatherState(
+    { label: "Chengdu", coordinates: { latitude: 30.66667, longitude: 104.06667 } },
+    stub,
+    2000,
+  );
+  assert.equal(stored.status, "ready");
+  // 3. No location at all stays a quiet, concise unavailable state.
+  assert.deepEqual(await loadWeatherState({ label: null, coordinates: null }, stub, 0), {
+    status: "not-configured",
+  });
+  assert.deepEqual(await loadWeatherState({ label: "  ", coordinates: null }, stub, 0), {
+    status: "not-configured",
+  });
+});
+
+test("an unresolvable profile location reports unavailable instead of empty", async () => {
+  clearWeatherCache();
+  clearPlaceCache();
+  const { fetch: stub } = fetcherFor({ geocoding: [] });
   assert.deepEqual(
-    resolveParticipantPlace(null, { name: "B", location: null, timezone: null }),
-    { label: null, timezone: null, coordinates: null },
+    await loadWeatherState({ label: "Nowhereville", coordinates: null }, stub, 0),
+    { status: "error", message: "Weather unavailable" },
+  );
+  const offline: typeof fetch = async () => {
+    throw new Error("offline");
+  };
+  assert.equal(
+    (await loadWeatherState({ label: "New York", coordinates: null }, offline, 0)).status,
+    "error",
+  );
+  assert.equal(
+    (
+      await loadWeatherState(
+        { label: null, coordinates: { latitude: 1, longitude: 2 } },
+        offline,
+        0,
+      )
+    ).status,
+    "error",
   );
 });
 
@@ -152,10 +198,7 @@ test("a successful reading is rounded, cached and refreshed only when stale", as
   const calls: string[] = [];
   const fetcher: typeof fetch = async (input) => {
     calls.push(String(input));
-    return new Response(
-      JSON.stringify({ current: { temperature_2m: 21.6, weather_code: 3 } }),
-      { status: 200, headers: { "content-type": "application/json" } },
-    );
+    return new Response(weatherBody(21.6, 3), { status: 200 });
   };
   const coordinates = { latitude: 1.5, longitude: 2.5 };
   const request = { coordinates, timezone: "UTC" };
@@ -175,26 +218,7 @@ test("a successful reading is rounded, cached and refreshed only when stale", as
   assert.equal(weatherCacheKey(coordinates), "1.50,2.50");
 });
 
-test("concurrent requests for the same place share one fetch", async () => {
-  clearWeatherCache();
-  let calls = 0;
-  const fetcher: typeof fetch = async () => {
-    calls += 1;
-    return new Response(JSON.stringify({ current: { temperature_2m: 5, weather_code: 0 } }), {
-      status: 200,
-    });
-  };
-  const request = { coordinates: { latitude: 9.5, longitude: 10.5 }, timezone: "UTC" };
-  const [a, b] = await Promise.all([
-    fetchCurrentWeather(request, fetcher, 0),
-    fetchCurrentWeather(request, fetcher, 0),
-  ]);
-  assert.equal(calls, 1);
-  assert.deepEqual(a, b);
-  assert.equal(a.status, "ready");
-});
-
-test("failures fall back to an error state without throwing or hammering", async () => {
+test("failures fall back to an error state without throwing", async () => {
   clearWeatherCache();
   const offline: typeof fetch = async () => {
     throw new Error("offline");
@@ -211,35 +235,41 @@ test("failures fall back to an error state without throwing or hammering", async
 
   const serverError: typeof fetch = async () => new Response("nope", { status: 500 });
   assert.equal(
-    (await fetchCurrentWeather(
-      { coordinates: { latitude: 5.5, longitude: 6.5 }, timezone: "UTC" },
-      serverError,
-      0,
-    )).status,
+    (
+      await fetchCurrentWeather(
+        { coordinates: { latitude: 5.5, longitude: 6.5 }, timezone: "UTC" },
+        serverError,
+        0,
+      )
+    ).status,
     "error",
   );
   // Missing fetcher (for example a non-browser render) is still graceful.
   assert.equal(
-    (await fetchCurrentWeather(
-      { coordinates: { latitude: 7.5, longitude: 8.5 }, timezone: "UTC" },
-      undefined,
-      0,
-    )).status,
+    (
+      await fetchCurrentWeather(
+        { coordinates: { latitude: 7.5, longitude: 8.5 }, timezone: "UTC" },
+        undefined,
+        0,
+      )
+    ).status,
     "error",
   );
   assert.equal(parseOpenMeteoCurrent({}, 0).status, "error");
   assert.equal(parseOpenMeteoCurrent({ current: { temperature_2m: "x" } }, 0).status, "error");
 });
 
-test("weather is part of Here & There and never asks for device location", () => {
+test("Here & There owns no place state and asks for no device location", () => {
   const widget = readFileSync("components/widgets/here-there-widget.tsx", "utf8");
-  const renderer = readFileSync("components/widgets/widget-renderer.tsx", "utf8");
+  const hook = readFileSync("components/widgets/use-weather.ts", "utf8");
+  const css = readFileSync("app/desktop.css", "utf8");
   assert.deepEqual(Object.keys(WIDGET_REGISTRY).sort(), ["clock", "here-there"]);
-  assert.doesNotMatch(widget, /geolocation/);
-  assert.match(widget, /useWeatherState\(/);
-  assert.match(widget, /resolveParticipantPlace\(widget\.config\.here/);
-  assert.match(widget, /resolveParticipantPlace\(widget\.config\.there/);
-  assert.match(widget, /className="participant-weather"/);
-  assert.doesNotMatch(widget, /status: "not-configured"/);
-  assert.match(renderer, /<View widget=\{widget\} editing=\{editing\} \/>/);
+  // Locations come from the profiles, never from widget config or geolocation.
+  assert.match(widget, /document\.user\.location\?\.label/);
+  assert.match(widget, /character\?\.location\?\.label/);
+  assert.match(widget, /character\?\.location\?\.coordinates\?\.latitude/);
+  assert.doesNotMatch(widget, /geolocation|widget\.config\.here|widget\.config\.there/);
+  assert.doesNotMatch(widget, /<input/);
+  assert.match(hook, /loadWeatherState\(/);
+  assert.doesNotMatch(css, /here-there-places/);
 });

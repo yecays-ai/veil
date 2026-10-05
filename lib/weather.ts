@@ -4,6 +4,7 @@ import type {
   WeatherProvider,
   WeatherState,
 } from "./participant-config";
+import { lookupPlace } from "./place-lookup";
 
 // Open-Meteo is keyless, so a small in-memory cache is enough to keep Home from
 // re-requesting on every render. Successful readings live longer than failures.
@@ -148,3 +149,28 @@ export async function fetchCurrentWeather(
 export const openMeteoWeatherProvider: WeatherProvider = {
   getWeather: (request) => fetchCurrentWeather(request),
 };
+
+// One side of Here & There: saved coordinates win, otherwise the place name is
+// geocoded first. A name that cannot be resolved reports an error instead of
+// pretending the place was never set.
+export async function loadWeatherState(
+  target: { label: string | null; coordinates: Coordinates | null },
+  fetcher: typeof fetch | undefined = globalThis.fetch,
+  now: number = Date.now(),
+): Promise<WeatherState> {
+  if (target.coordinates)
+    return fetchCurrentWeather(
+      { coordinates: target.coordinates, timezone: "UTC" },
+      fetcher,
+      now,
+    );
+  const name = target.label?.trim();
+  if (!name) return { status: "not-configured" };
+  const match = await lookupPlace(name, fetcher, now);
+  if (!match) return { status: "error", message: "Weather unavailable" };
+  return fetchCurrentWeather(
+    { coordinates: match.coordinates, timezone: match.timezone ?? "UTC" },
+    fetcher,
+    now,
+  );
+}

@@ -2,45 +2,48 @@
 
 import { useEffect, useState } from "react";
 import type { WeatherState } from "../../lib/participant-config";
-import {
-  cachedWeather,
-  fetchCurrentWeather,
-  weatherCacheKey,
-} from "../../lib/weather";
+import { placeQueryKey } from "../../lib/place-lookup";
+import { cachedWeather, loadWeatherState, weatherCacheKey } from "../../lib/weather";
 
-// One request per side per session: the cache answers repeat renders, and the
-// hook only re-fetches when the saved coordinates actually change.
+// One side of Here & There. Saved coordinates are used directly; a bare place
+// name is geocoded first. Both steps are cached, so repeat renders stay quiet
+// and the widget only re-resolves when the place actually changes.
 export function useWeatherState(
+  label: string | null,
   latitude: number | null,
   longitude: number | null,
 ): WeatherState {
-  const [fetched, setFetched] = useState<{
+  const placeName =
+    latitude === null || longitude === null ? (label?.trim() || null) : null;
+  const coordinates =
+    latitude !== null && longitude !== null ? { latitude, longitude } : null;
+  const key = coordinates
+    ? weatherCacheKey(coordinates)
+    : placeName
+      ? `place:${placeQueryKey(placeName)}`
+      : "";
+  const [loaded, setLoaded] = useState<{
     key: string;
     state: WeatherState;
   } | null>(null);
-  const cached =
-    latitude === null || longitude === null
-      ? null
-      : cachedWeather({ latitude, longitude });
+  const cached = coordinates ? cachedWeather(coordinates) : null;
 
   useEffect(() => {
-    if (latitude === null || longitude === null) return;
-    const coordinates = { latitude, longitude };
-    const key = weatherCacheKey(coordinates);
-    // The render-time cache check above is only a hint; re-read at request time.
-    if (cachedWeather(coordinates)) return;
+    if (!key) return;
     let active = true;
-    void fetchCurrentWeather({ coordinates, timezone: "UTC" }).then((next) => {
-      if (active) setFetched({ key, state: next });
+    const target =
+      latitude !== null && longitude !== null
+        ? { label: null, coordinates: { latitude, longitude } }
+        : { label: placeName, coordinates: null };
+    void loadWeatherState(target).then((state) => {
+      if (active) setLoaded({ key, state });
     });
     return () => {
       active = false;
     };
-  }, [latitude, longitude]);
+  }, [key, latitude, longitude, placeName]);
 
-  if (latitude === null || longitude === null)
-    return { status: "not-configured" };
-  if (fetched && fetched.key === weatherCacheKey({ latitude, longitude }))
-    return fetched.state;
+  if (!key) return { status: "not-configured" };
+  if (loaded?.key === key) return loaded.state;
   return cached ?? { status: "loading" };
 }
