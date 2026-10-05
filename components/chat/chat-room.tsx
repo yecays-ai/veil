@@ -61,6 +61,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useEffect(() => { setQuotingMessage(null); }, [characterId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [regeneration, setRegeneration] = useState<{ messageId: string; content: string } | null>(null);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
@@ -335,6 +336,30 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       if (mounted.current) setGenerating(false);
     }
   }
+  async function regenerate(message: ChatMessage) {
+    if (!session || generating || revealState?.pending || replyLock.current || chatEngine.isGenerating(session.id)) return;
+    const sessionId = session.id;
+    replyLock.current = true;
+    closeActions();
+    setGenerating(true);
+    setRegeneration({ messageId: message.id, content: "" });
+    setError("");
+    try {
+      await chatEngine.regenerateMessage(message.id, (content) => {
+        if (mounted.current && currentSessionId.current === sessionId)
+          setRegeneration({ messageId: message.id, content });
+      }, sessionId);
+    } catch (reason) {
+      if (mounted.current && currentSessionId.current === sessionId)
+        setError(reason instanceof Error ? reason.message : "Message could not be regenerated.");
+    } finally {
+      replyLock.current = false;
+      if (mounted.current && currentSessionId.current === sessionId) {
+        setRegeneration(null);
+        setGenerating(false);
+      }
+    }
+  }
   useKeyboardDismissAutoReply(shell, {
     sessionId: session?.characterId === characterId ? session.id : undefined,
     enabled: session?.autoReplyOnKeyboardDismiss === true,
@@ -371,7 +396,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     (generating && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
   const visibleMessages = messages.filter((message) => !hidden(message));
   const groupedMessages = groupVisibleMessages(visibleMessages);
-  const typing = !!revealState?.pending || (generating && session?.streamOnline !== true);
+  const typing = !!revealState?.pending || (generating && !regeneration && session?.streamOnline !== true);
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
@@ -423,7 +448,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {empty && <p className="chat-empty-state">No messages yet</p>}
         {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
           const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
-          const visibleText = visibleReplyText(message, session?.streamOnline === true);
+          const regenerating = regeneration?.messageId === message.id;
+          const visibleText = regenerating ? (session?.streamOnline ? regeneration.content : "")
+            : visibleReplyText(message, session?.streamOnline === true);
           const parsed = message.role === "assistant" ? parseQuotedReply(visibleText)
             : { content: visibleText, preview: null };
           const quotePreview = message.quote?.preview ?? parsed.preview;
@@ -460,7 +487,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
                 {parsed.content ||
-                  (message.status === "streaming" && generating ? "…" : "")}
+                  (regenerating || (message.status === "streaming" && generating) ? "…" : "")}
               </p>
               <MessageFooter messageId={message.id} />
               <span className="chat-message-meta">
@@ -589,7 +616,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               setMultiSelect(true); setSelectionStartId(id); setSelectedIds(new Set([id])); closeActions(); }} />
             <Action label="Favorite" icon={Bookmark} disabled />
             <Action label="Delete" icon={Trash2} danger onClick={() => { setConfirmDelete([activeMessage.id]); closeActions(); }} />
-            <Action label="Regenerate" icon={RotateCcw} disabled />
+            <Action label="Regenerate" icon={RotateCcw}
+              disabled={activeMessage.role !== "assistant" || activeMessage.status !== "complete" || generating || !!revealState?.pending}
+              onClick={() => void regenerate(activeMessage)} />
             {getMessageActions(activeMessage).map((action) => <Action key={action.id}
               label={action.label} icon={Plus} onClick={() => {
                 const message = activeMessage;

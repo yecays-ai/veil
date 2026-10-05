@@ -10,7 +10,7 @@ import {
   type ReplyBatch,
 } from "./types";
 import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
-import { sameBackupChat } from "../backup/equality";
+import { sameBackupChat, stableJson } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
 
@@ -399,6 +399,47 @@ export class ChatStorage {
       if (session.lastMessageId === id)
         await request(sessions.put({ ...session, updatedAt: Date.now(),
           lastMessagePreview: trimmed.slice(0, 120) }));
+      return next;
+    });
+  }
+
+  readRegenerationTarget(id: string): Promise<{ session: ChatSession; message: ChatMessage; history: ChatMessage[] }> {
+    return this.transaction("readonly", async (tx) => {
+      const message: ChatMessage | undefined = await request(tx.objectStore("messages").get(id));
+      if (!message || message.role !== "assistant" || message.status !== "complete")
+        throw new Error("Only completed Assistant messages can be regenerated.");
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(message.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const all: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(message.sessionId));
+      if (all.some((item) => item.status === "streaming"))
+        throw new Error("A reply is already in progress.");
+      return { session, message, history: all.filter((item) => item.order < message.order).sort((a, b) => a.order - b.order) };
+    });
+  }
+
+  replaceRegeneratedMessage(original: ChatMessage, content: string, signal?: AbortSignal): Promise<ChatMessage> {
+    if (!content.trim()) return Promise.reject(new Error("The API returned no reply text."));
+    return this.transaction("readwrite", async (tx) => {
+      signal?.throwIfAborted();
+      const abort = () => { try { tx.abort(); } catch { /* Transaction already finished. */ } };
+      const cleanup = () => signal?.removeEventListener("abort", abort);
+      signal?.addEventListener("abort", abort, { once: true });
+      tx.addEventListener("complete", cleanup, { once: true });
+      tx.addEventListener("abort", cleanup, { once: true });
+      const table = tx.objectStore("messages");
+      const current: ChatMessage | undefined = await request(table.get(original.id));
+      if (!current || current.role !== "assistant" || current.status !== "complete" ||
+          stableJson(current) !== stableJson(original))
+        throw new Error("The message changed while regeneration was in progress.");
+      const all: ChatMessage[] = await request(table.index("sessionId").getAll(current.sessionId));
+      if (all.some((item) => item.status === "streaming")) throw new Error("A reply is already in progress.");
+      const next: ChatMessage = { ...current, content: content.trim(), status: "complete" };
+      delete next.error;
+      await request(table.put(next));
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession = await request(sessions.get(current.sessionId));
+      if (session.lastMessageId === next.id)
+        await request(sessions.put({ ...session, lastMessagePreview: next.content.slice(0, 120) }));
       return next;
     });
   }
