@@ -75,8 +75,7 @@ function stableChat(chat: BackupChat): BackupChat {
     a.sessionId.localeCompare(b.sessionId) || a.order - b.order || a.id.localeCompare(b.id));
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
   const messageById = new Map(messages.map((m) => [m.id, m]));
-  if (sessionById.size !== sessions.length ||
-      new Set(sessions.map((s) => s.characterId)).size !== sessions.length)
+  if (sessionById.size !== sessions.length)
     throw new Error("Chat backup contains duplicate or invalid session IDs.");
   if (messageById.size !== messages.length ||
       new Set(messages.map((m) => JSON.stringify([m.sessionId, m.order]))).size !== messages.length)

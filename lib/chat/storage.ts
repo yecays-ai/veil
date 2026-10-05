@@ -18,7 +18,7 @@ import { normalizeChatFormatting, type ChatFormattingSettings } from "./formatti
 import { normalizeBackgroundBlur } from "./types";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
-export const CHAT_DATABASE_VERSION = 3;
+export const CHAT_DATABASE_VERSION = 4;
 const CONVERSATION_STORES = ["sessions", "messages"];
 const STORES = [...CONVERSATION_STORES, "apiConfigs", "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
@@ -165,6 +165,11 @@ export class ChatStorage {
             if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
             ensureV3Schema(req.result, transaction);
           }
+          if (event.oldVersion < 4) {
+            const sessions = req.transaction!.objectStore("sessions");
+            if (sessions.indexNames.contains("characterId")) sessions.deleteIndex("characterId");
+            sessions.createIndex("characterId", "characterId", { unique: false });
+          }
         };
         req.onsuccess = () => {
           if (blocked) {
@@ -286,17 +291,22 @@ export class ChatStorage {
       await addConversationBackup(tx, backup);
     }, CONVERSATION_STORES);
   }
+  // Compatibility entry for the current direct-chat UI, not Conversation identity.
   openSession(characterId: string): Promise<ChatSession> {
+    return this.createSession(characterId, true);
+  }
+  createSession(characterId: string, reuseDirect = false): Promise<ChatSession> {
     if (!characterId)
       return Promise.reject(new Error("Character is required."));
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
-      const existing: ChatSession | undefined = await request(
-        table.index("characterId").get(characterId),
-      );
-      if (existing) return existing;
+      if (reuseDirect) {
+        const existing: ChatSession[] = await request(table.index("characterId").getAll(characterId));
+        const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
+        if (direct) return direct;
+      }
       const session: ChatSession = {
-        id: `character:${characterId}`,
+        id: crypto.randomUUID(),
         characterId,
         updatedAt: 0,
         remark: null,

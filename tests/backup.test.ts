@@ -199,9 +199,13 @@ test("backup rejects malformed envelopes, duplicate orders, and stale previews",
   const duplicateCharacter = await exportBackupV1(sources());
   duplicateCharacter.backup.chat.sessions.push({
     ...duplicateCharacter.backup.chat.sessions[0],
-    id: "character:duplicate",
+    id: duplicateCharacter.backup.chat.sessions[0].id,
   });
   assert.throws(() => validateBackupV1(duplicateCharacter.backup), /session IDs/);
+  const sharedCharacter = await exportBackupV1(sources());
+  sharedCharacter.backup.chat.sessions.push({ id: "independent-conversation", characterId: "a",
+    updatedAt: 0, nextOrder: 1, remark: null, autoReplyOnKeyboardDismiss: false });
+  assert.equal(validateBackupV1(sharedCharacter.backup).chat.sessions.length, 2);
 
   const invalidBatch = await exportBackupV1(sources());
   invalidBatch.backup.chat.messages[0].requestedBy = "missing-reply";

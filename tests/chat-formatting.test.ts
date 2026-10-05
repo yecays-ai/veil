@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { ChatStorage } from "../lib/chat/storage";
+import { CHAT_DATABASE_VERSION, ChatStorage } from "../lib/chat/storage";
 import { applyRegex } from "../lib/regex-engine";
 import { DEFAULT_REGEX_GROUP_ID, DEFAULT_RULE_IDS, defaultRegexGroup } from "../lib/regex-defaults";
 import { browserRegexStorage } from "../lib/regex-storage";
@@ -46,7 +46,7 @@ test("legacy Chat Formatting flags migrate once and edited default rules survive
   const storage = new ChatStorage(() => factory);
   await storage.openSession("peter");
   const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open("veil-chat-v1", 3);
+    const request = factory.open("veil-chat-v1", CHAT_DATABASE_VERSION);
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });

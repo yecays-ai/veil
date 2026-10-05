@@ -49,9 +49,11 @@ import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
 
-export function ChatRoom({ characterId }: { characterId: string }) {
+export function ChatRoom({ conversationId }: { conversationId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   const { document, ready } = useFoundation();
+  const { session, messages, loadError } = useChatSession(conversationId, ready);
+  const characterId = session?.characterId ?? "";
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
@@ -69,15 +71,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   // The key tracks the resolved ordered IDs without reloading on unrelated renders.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [characterId, regexKey]);
-  const { session, messages, loadError } = useChatSession(
-    characterId,
-    ready && !!character,
-  );
   const chatBackground = useChatBackground(session);
   const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
-  useEffect(() => { setQuotingMessage(null); }, [characterId]);
+  useEffect(() => { setQuotingMessage(null); }, [conversationId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
@@ -86,7 +84,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const sendingLock = useRef(false);
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
-  currentSessionId.current = session?.characterId === characterId ? session.id : undefined;
+  currentSessionId.current = session?.id === conversationId ? session.id : undefined;
   const { queue: revealQueue, state: revealState } = useBubbleReveal(
     currentSessionId.current, messages, session?.streamOnline === true, !!loadError,
   );
@@ -310,7 +308,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   async function send() {
-    if (!session || session.characterId !== characterId || sendingLock.current || !draft.trim() || loadError) return;
+    if (!session || session.id !== conversationId || sendingLock.current || !draft.trim() || loadError) return;
     setError("");
     try {
       await persistDraft(draft, session.id, true);
@@ -322,7 +320,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   async function reply() {
-    if (!session || session.characterId !== characterId || replyLock.current || sendingLock.current ||
+    if (!session || session.id !== conversationId || replyLock.current || sendingLock.current ||
       chatEngine.isGenerating(session.id) || loadError) return;
     const sessionId = session.id;
     replyLock.current = true;
@@ -381,7 +379,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   useKeyboardDismissAutoReply(shell, {
-    sessionId: session?.characterId === characterId ? session.id : undefined,
+    sessionId: session?.id === conversationId ? session.id : undefined,
     enabled: session?.autoReplyOnKeyboardDismiss === true,
     blocked: generating || !!revealState?.pending || sending || multiSelect || !!activeMessage || !!editingMessage ||
       chatInfoOpen || confirmClear || !!confirmDelete,
@@ -403,6 +401,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <p className="chat-notice">Loading Character…</p>
       </div>
     );
+  if (!session)
+    return <div className="chat-app"><Link href="/messages">‹ Messages</Link>
+      <p className="chat-notice">{loadError || "Loading conversation…"}</p></div>;
   if (!character)
     return (
       <div className="chat-app">
