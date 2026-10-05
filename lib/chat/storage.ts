@@ -320,7 +320,7 @@ export class ChatStorage {
       const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
       if (direct) return direct;
       const session: ChatSession = {
-        id: `character:${characterId}`,
+        id: crypto.randomUUID(),
         characterId,
         updatedAt: 0,
         remark: null,
@@ -329,6 +329,15 @@ export class ChatStorage {
         nextOrder: 1,
       };
       await request(table.add(session));
+      return session;
+    });
+  }
+  createSession(characterId: string): Promise<ChatSession> {
+    if (!characterId) return Promise.reject(new Error("Character is required."));
+    return this.transaction("readwrite", async (tx) => {
+      const session: ChatSession = { id: crypto.randomUUID(), characterId, updatedAt: 0,
+        remark: null, autoReplyOnKeyboardDismiss: false, streamOnline: false, nextOrder: 1 };
+      await request(tx.objectStore("sessions").add(session));
       return session;
     });
   }

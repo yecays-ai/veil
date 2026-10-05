@@ -41,8 +41,8 @@ export function ContactProfile({ characterId }: { characterId: string }) {
     if (!character || busy) return;
     setBusy(true); setError("");
     try {
-      await chatStorage.openSession(character.characterId);
-      router.push(`/messages/${encodeURIComponent(character.characterId)}`);
+      const session = await chatStorage.openSession(character.characterId);
+      router.push(`/messages/conversation/${encodeURIComponent(session.id)}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Conversation could not be opened.");
       setBusy(false);

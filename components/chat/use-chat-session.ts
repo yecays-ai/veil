@@ -4,7 +4,7 @@ import { chatStorage } from "../../lib/chat/storage";
 import { chatEngine } from "../../lib/chat/engine";
 import type { ChatMessage, ChatSession } from "../../lib/chat/types";
 
-export function useChatSession(characterId: string, enabled: boolean) {
+export function useChatSession(characterId: string, enabled: boolean, conversationId?: string) {
   const [session, setSession] = useState<ChatSession | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState("");
@@ -31,8 +31,10 @@ export function useChatSession(characterId: string, enabled: boolean) {
           );
       }
     }
-    chatStorage
-      .openSession(characterId)
+    const opening = conversationId
+      ? chatStorage.readSession(conversationId).then((data) => data.session)
+      : chatStorage.openSession(characterId);
+    opening
       .then(async (opened) => {
         sessionId = opened.id;
         if (!active) return;
@@ -52,6 +54,7 @@ export function useChatSession(characterId: string, enabled: boolean) {
       unsubscribe();
       if (sessionId) chatEngine.stop(sessionId);
     };
-  }, [characterId, enabled]);
-  return { session, messages, loadError: error };
+  }, [characterId, enabled, conversationId]);
+  const matches = conversationId ? session?.id === conversationId : session?.characterId === characterId;
+  return { session: matches ? session : null, messages: matches ? messages : [], loadError: error };
 }
