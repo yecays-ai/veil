@@ -8,13 +8,14 @@ import { PresenceBadge } from "./presence";
 import { PageShell } from "./page-shell";
 import { chatStorage } from "../lib/chat/storage";
 import { contactMatches } from "../lib/contact-search";
+import { RootAppHeader } from "./root-app-header";
 
 export function ContactsHome() {
   const { document, ready } = useFoundation();
   const [query, setQuery] = useState("");
   const contacts = document.characters.filter((character) => contactMatches(character.name, undefined, query));
   return <div className="social-root">
-    <h1>Contacts</h1>
+    <RootAppHeader title="Contacts" />
     <input className="social-search" type="search" aria-label="Search contacts"
       placeholder="Search contacts..." value={query} onChange={(event) => setQuery(event.target.value)} />
     {!ready ? <p>Loading contacts…</p> : document.characters.length === 0 ? <p>No contacts yet.</p>

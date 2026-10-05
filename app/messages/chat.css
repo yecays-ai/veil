@@ -21,6 +21,7 @@
   align-items: center;
   gap: 12px;
 }
+.messages-header { margin-bottom: 0; }
 .messages-header h1 {
   margin: 0;
   flex: 1;
@@ -36,7 +37,6 @@
 .messages-filters button { min-height: 34px; padding: 6px 14px; border: 0; border-radius: 18px;
   background: color-mix(in srgb, var(--theme-text) 7%, var(--theme-surface)); }
 .messages-filters button[aria-pressed="true"] { background: var(--theme-text); color: var(--theme-surface); }
-.messages-header > a:first-child,
 .chat-back {
   font-size: 32px;
   width: 32px;

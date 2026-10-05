@@ -5,6 +5,7 @@ import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
 import { ChatAvatar } from "./avatar";
+import { RootAppHeader } from "../root-app-header";
 
 export function MessagesHome() {
   const { document, ready } = useFoundation();
@@ -51,10 +52,8 @@ export function MessagesHome() {
   });
   return (
     <div className="chat-app messages-home">
-      <header className="messages-header">
-        <h1>Chats</h1>
-        <button type="button" aria-label="New chat" title="New chat" disabled>+</button>
-      </header>
+      <RootAppHeader title="Chats" className="messages-header" rightAction={
+        <button type="button" aria-label="New chat" title="New chat" disabled>+</button>} />
       <input className="messages-search" type="search" aria-label="Search chats"
         placeholder="Search chats..." value={query} onChange={(event) => setQuery(event.target.value)} />
       <div className="messages-filters" role="group" aria-label="Conversation type">

@@ -21,11 +21,12 @@ import { ProfileForm } from "./profile-form";
 import { Avatar, ProfileView } from "./profile-view";
 import { PageShell } from "./page-shell";
 import { PresenceBadge } from "./presence";
+import { RootAppHeader } from "./root-app-header";
 
 export function ProfileHub() {
   const { document, ready } = useFoundation();
   return <div className="social-root profile-hub">
-    <h1>Profile</h1>
+    <RootAppHeader title="Profile" />
     {!ready ? <p>{C.common.loading}</p> : <>
       <Link className="profile-hub-identity" href="/profile/details">
         <Avatar avatar={document.user.avatar} name={document.user.name} large />

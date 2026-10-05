@@ -8,6 +8,9 @@
   max(20px, var(--app-safe-right)) max(24px, var(--app-safe-bottom)) max(20px, var(--app-safe-left));
   color: var(--theme-text); }
 .social-root h1 { margin: 0 0 22px; font-size: 1.8em; }
+.root-app-header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.root-app-header > h1, .social-root .root-app-header > h1 { flex: 1; min-width: 0; margin: 0; }
+.root-app-header > .app-page-back { flex: none; }
 .social-search { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 0;
   border-radius: 12px; background: color-mix(in srgb, var(--theme-text) 8%, var(--theme-surface));
   color: var(--theme-text); font: inherit; font-size: 16px; }
