@@ -14,9 +14,6 @@ export type ThemeProfile = {
     fit: "cover" | "contain";
     opacity: number;
     blur: number;
-    scale: number;
-    x: number;
-    y: number;
   };
   icons: Partial<Record<AppId, string>>;
   dock: { background: string; image: string | null; radius: number };
@@ -56,9 +53,6 @@ export function defaultSnapshot(): ThemeSnapshot {
         fit: "cover",
         opacity: 1,
         blur: 0,
-        scale: 100,
-        x: 50,
-        y: 50,
       },
       icons: {},
       dock: { background: "#e9e9ec", image: null, radius: 24 },
@@ -173,9 +167,6 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
         fit: w.fit === "contain" ? "contain" : "cover",
         opacity: number(w.opacity, 1, 0, 1),
         blur: number(w.blur, 0, 0, 20),
-        scale: number(w.scale, 100, 100, 200),
-        x: number(w.x, 50, 0, 100),
-        y: number(w.y, 50, 0, 100),
       },
       icons,
       dock: {

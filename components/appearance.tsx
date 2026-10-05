@@ -241,9 +241,6 @@ export function Appearance() {
                   wallpaper: {
                     ...p.wallpaper,
                     source,
-                    scale: 100,
-                    x: 50,
-                    y: 50,
                   },
                 }))
               }

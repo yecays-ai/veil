@@ -1,44 +1,40 @@
 "use client";
 import { useEffect, useState } from "react";
-import { resolveChatBackgroundImage } from "../../lib/chat/background";
+import { resolveChatBackground } from "../../lib/chat/background";
 import { chatStorage } from "../../lib/chat/storage";
-import type { ChatSession } from "../../lib/chat/types";
+import type { ChatBackgroundSettings, ChatSession } from "../../lib/chat/types";
 
 export function useChatBackground(session: ChatSession | null) {
-  const sessionBackground = session?.backgroundImage;
-  const [assetId, setAssetId] = useState<string | null>(null);
-  const [url, setUrl] = useState<string | null>(null);
+  const [settings, setSettings] = useState<ChatBackgroundSettings>({ id: "chat-background" });
+  const [asset, setAsset] = useState<{ id: string; url: string } | null>(null);
+  const resolved = resolveChatBackground(session, settings);
 
   useEffect(() => {
     let active = true;
-    async function refresh() {
-      const settings = await chatStorage.readChatBackgroundSettings();
-      if (active)
-        setAssetId(resolveChatBackgroundImage({ backgroundImage: sessionBackground }, settings));
-    }
-    void refresh();
-    const unsubscribe = chatStorage.subscribe(() => void refresh());
+    const refresh = () => void chatStorage.readChatBackgroundSettings().then((next) => {
+      if (active) setSettings(next);
+    });
+    refresh();
+    const unsubscribe = chatStorage.subscribe(refresh);
     return () => { active = false; unsubscribe(); };
-  }, [sessionBackground]);
+  }, []);
 
   useEffect(() => {
+    const id = resolved.image;
+    if (!id) return;
     let active = true;
     let objectUrl: string | undefined;
     void (async () => {
-      const blob = assetId ? await chatStorage.readChatImage(assetId) : null;
-      if (!active) return;
-      if (!blob) {
-        setUrl(null);
-      } else {
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      }
+      const blob = await chatStorage.readChatImage(id);
+      if (!active || !blob) return;
+      objectUrl = URL.createObjectURL(blob);
+      setAsset({ id, url: objectUrl });
     })();
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [assetId]);
+  }, [resolved.image]);
 
-  return url;
+  return { url: asset?.id === resolved.image ? asset.url : null, blur: resolved.blur };
 }

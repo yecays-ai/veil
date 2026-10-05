@@ -96,6 +96,25 @@
   background-size: cover;
   background-repeat: no-repeat;
 }
+.chat-room[data-chat-background="custom"]::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  pointer-events: none;
+  inset: var(--chat-background-inset, 0px);
+  background-image: var(--chat-background-image);
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  filter: blur(var(--chat-background-blur, 0px));
+}
+.chat-background-preview { position: relative; overflow: hidden; }
+.chat-background-preview-image {
+  position: absolute;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
 .chat-settings-button {
   flex: none;
   width: 44px;
@@ -190,6 +209,7 @@
 }
 .chat-history {
   position: absolute;
+  z-index: 1;
   inset: 0;
   flex: none;
   min-height: 0;

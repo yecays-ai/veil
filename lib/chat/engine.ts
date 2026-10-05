@@ -103,7 +103,8 @@ export function createChatEngine(
       content = sanitizeHistoryTimestamps(rawContent);
       if (!content.trim()) throw new Error("The API returned no reply text.");
       const completed = await storage.finalizeReply(assistant.id, content, activationState,
-        (part) => applyRegex(part, regexGroups, "assistant", "stored"));
+        (part) => applyRegex(part, regexGroups, "assistant", "stored",
+          { character: character.name, user: document.user.name }));
       // Optional presentation notification; it cannot turn a committed reply into an error.
       try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
       return completed[0];
@@ -131,7 +132,9 @@ export function createChatEngine(
       const document = await foundation();
       const ids = resolveBindings(document.bindings, session.characterId, "messages").regexIds;
       const groups = resolveRegexGroups(await regex(), ids);
-      return storage.send(sessionId, applyRegex(content, groups, "user", "stored"), quoteMessageId);
+      const character = document.characters.find((item) => item.characterId === session.characterId);
+      return storage.send(sessionId, applyRegex(content, groups, "user", "stored",
+        { character: character?.name, user: document.user.name }), quoteMessageId);
     },
     isGenerating: (sessionId: string) => active.has(sessionId),
     stop: (sessionId: string) => active.get(sessionId)?.abort(),

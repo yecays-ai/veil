@@ -65,7 +65,9 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(css, /\.chat-info-body\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(room, /<span>Chat Background/);
   assert.match(room, /<ChatBackgroundSettings session=\{session\}/);
-  assert.match(room, /data-chat-background=\{chatBackgroundUrl \? "custom" : "default"\}/);
+  assert.match(room, /data-chat-background=\{chatBackground\.url \? "custom" : "default"\}/);
+  assert.match(room, /--chat-background-image/);
+  assert.match(css, /\.chat-room\[data-chat-background="custom"\]::before\s*\{[^}]*z-index:\s*0/);
   assert.match(room, /<span>Custom CSS<small>/);
   assert.match(room, /<CustomCSSSettings session=\{session\}/);
   assert.match(room, /session\?\.customCSS && <SessionCustomCSS css=\{session\.customCSS\}/);

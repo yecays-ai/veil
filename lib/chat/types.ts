@@ -8,6 +8,7 @@ export type ChatSession = {
   autoReplyOnKeyboardDismiss: boolean;
   streamOnline?: boolean;
   backgroundImage?: string;
+  backgroundBlur?: number;
   customCSS?: string;
   nextOrder: number;
 };
@@ -15,7 +16,13 @@ export type ChatSession = {
 export type ChatBackgroundSettings = {
   id: "chat-background";
   globalChatBackgroundImage?: string;
+  blur?: number;
 };
+
+export function normalizeBackgroundBlur(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value)
+    ? Math.min(20, Math.max(0, value)) : 0;
+}
 
 export type ChatImageAsset = {
   id: string;

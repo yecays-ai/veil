@@ -4,6 +4,12 @@ export type RegexStep = { ruleId: string; ruleName: string; before: string; afte
   status: "matched" | "unchanged" | "invalid"; error?: string };
 const cache = new Map<string, RegExp>();
 const CACHE_LIMIT = 64;
+export type RegexVariables = { character?: string; user?: string };
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function resolveVariables(find: string, variables: RegexVariables): string {
+  return find.replace(/\{\{(character|user)\}\}/g, (_, key: keyof RegexVariables) =>
+    variables[key]?.trim() ? escapeRegex(variables[key]!.trim()) : "(?!)");
+}
 
 export function parseRegexPattern(find: string): { pattern: string; flags: string } {
   if (!find.startsWith("/")) return { pattern: find, flags: "" };
@@ -15,8 +21,8 @@ export function parseRegexPattern(find: string): { pattern: string; flags: strin
   }
   return { pattern: find, flags: "" };
 }
-function compiled(find: string): RegExp {
-  const { pattern, flags } = parseRegexPattern(find);
+function compiled(find: string, variables: RegexVariables = {}): RegExp {
+  const { pattern, flags } = parseRegexPattern(resolveVariables(find, variables));
   const key = `${pattern}\u0000${flags}`;
   const existing = cache.get(key);
   if (existing) return existing;
@@ -39,11 +45,11 @@ function replaceCaptures(template: string, match: string, captures: (string | un
     return index <= captures.length ? captures[index - 1] ?? "" : token;
   });
 }
-export function testRegexRule(rule: RegexRule, text: string): { output: string; step: RegexStep } {
+export function testRegexRule(rule: RegexRule, text: string, variables: RegexVariables = {}): { output: string; step: RegexStep } {
   const base = { ruleId: rule.id, ruleName: rule.name, before: text };
   if (!rule.find) return { output: text, step: { ...base, after: text, status: "unchanged" } };
   try {
-    const pattern = compiled(rule.find);
+    const pattern = compiled(rule.find, variables);
     const output = text.replace(pattern, (...args) => {
       const groups = typeof args.at(-1) === "object" ? args.at(-1) as Record<string, string> : undefined;
       const offsetIndex = args.length - (groups ? 3 : 2);
@@ -57,20 +63,22 @@ export function testRegexRule(rule: RegexRule, text: string): { output: string; 
       error: reason instanceof Error ? reason.message : "Invalid pattern." } };
   }
 }
-export function testRegexGroups(text: string, groups: readonly RegexGroup[], role: RegexRole, target: RegexMode) {
+export function testRegexGroups(text: string, groups: readonly RegexGroup[], role: RegexRole, target: RegexMode,
+  variables: RegexVariables = {}) {
   let output = text;
   const steps: RegexStep[] = [];
   for (const group of groups) {
     if (!group.enabled) continue;
     for (const rule of group.rules) {
       if (!rule.enabled || !rule.appliesTo.includes(role) || rule.mode !== target) continue;
-      const result = testRegexRule(rule, output);
+      const result = testRegexRule(rule, output, variables);
       output = result.output;
       steps.push(result.step);
     }
   }
   return { output, steps };
 }
-export function applyRegex(text: string, groups: readonly RegexGroup[], role: RegexRole, target: RegexMode): string {
-  return testRegexGroups(text, groups, role, target).output;
+export function applyRegex(text: string, groups: readonly RegexGroup[], role: RegexRole, target: RegexMode,
+  variables: RegexVariables = {}): string {
+  return testRegexGroups(text, groups, role, target, variables).output;
 }

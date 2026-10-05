@@ -46,7 +46,8 @@ function eligibleMessages(context: PromptRuntimeContext) {
 }
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
   const body = message.role === "user" || message.role === "assistant"
-    ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt")
+    ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt",
+      { character: context.character.name, user: context.foundation.user.name })
     : message.content;
   return messageHistoryContentWithBody(message, body);
 }

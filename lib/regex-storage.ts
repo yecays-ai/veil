@@ -1,6 +1,8 @@
 import type { FoundationStorage, StringStorage } from "./foundation-storage";
 import { withoutRegexBinding } from "./bindings";
 import { emptyRegexDocument, validateRegexDocument, type RegexDocument } from "./regex";
+import { DEFAULT_REGEX_GROUP_ID, DEFAULT_RULE_IDS, withDefaultRegexGroup } from "./regex-defaults";
+import { chatStorage } from "./chat/storage";
 
 const KEY = "veil.regex.v1";
 export function createRegexStorage(getStorage: () => StringStorage) {
@@ -25,7 +27,43 @@ export function createRegexStorage(getStorage: () => StringStorage) {
     },
   };
 }
-export const browserRegexStorage = createRegexStorage(() => window.localStorage);
+const rawBrowserRegexStorage = createRegexStorage(() => window.localStorage);
+let initializing: Promise<void> | undefined;
+async function ensureBrowserDefaults() {
+  if (!initializing) initializing = (async () => {
+    const current = await rawBrowserRegexStorage.load();
+    if (current.groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID)) return;
+    const legacy = await chatStorage.readLegacyChatFormatting();
+    const addDefaults = (document: RegexDocument): RegexDocument => {
+      if (document.groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID)) return document;
+      const groups = withDefaultRegexGroup(document.groups);
+      if (legacy) {
+        const defaults = groups[0];
+        defaults.rules = defaults.rules.map((rule) => {
+          const key = (Object.keys(DEFAULT_RULE_IDS) as (keyof typeof DEFAULT_RULE_IDS)[])
+            .find((item) => DEFAULT_RULE_IDS[item] === rule.id);
+          return key ? { ...rule, enabled: legacy[key] } : rule;
+        });
+      }
+      return { ...document, groups };
+    };
+    try { await rawBrowserRegexStorage.transact(addDefaults); }
+    catch (reason) {
+      if (!(await rawBrowserRegexStorage.load()).groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID))
+        throw reason;
+    }
+    if (legacy) await chatStorage.deleteLegacyChatFormatting();
+  })().finally(() => { initializing = undefined; });
+  await initializing;
+}
+export const browserRegexStorage = {
+  async load() { await ensureBrowserDefaults(); return rawBrowserRegexStorage.load(); },
+  async save(document: RegexDocument) { await ensureBrowserDefaults(); return rawBrowserRegexStorage.save(document); },
+  async transact(update: (current: RegexDocument) => RegexDocument) {
+    await ensureBrowserDefaults();
+    return rawBrowserRegexStorage.transact(update);
+  },
+};
 
 export async function deleteRegexGroupAndBindings(
   groupId: string,
@@ -33,6 +71,7 @@ export async function deleteRegexGroupAndBindings(
   foundation: FoundationStorage,
 ): Promise<RegexDocument> {
   const before = await regex.load();
+  if (groupId === DEFAULT_REGEX_GROUP_ID) throw new Error("Default Rules cannot be deleted.");
   const index = before.groups.findIndex((group) => group.id === groupId);
   if (index < 0) throw new Error("Regex Group not found.");
   await regex.transact((current) => ({ ...current,

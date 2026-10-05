@@ -10,6 +10,7 @@ import { canSaveRegexGroup, exportRegexGroup, importRegexRule, newRegexRule, typ
 import { testRegexGroups } from "../../../lib/regex-engine";
 import { downloadRegex } from "./files";
 import { useRegex } from "./use-regex";
+import { DEFAULT_REGEX_GROUP_ID } from "../../../lib/regex-defaults";
 
 export function RegexDetail({ groupId }: { groupId: string }) {
   const library = useRegex();
@@ -69,7 +70,7 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
       });
     }} />
     <section className="regex-section"><div className="regex-section-heading"><h2>Rules</h2>
-      <button className="settings-button" disabled={busy || dirty} onClick={() => void run(async () => {
+      <button className="settings-button" disabled={busy || dirty || saved.id === DEFAULT_REGEX_GROUP_ID} onClick={() => void run(async () => {
         const rule = newRegexRule();
         await change((current) => ({ ...current, groups: current.groups.map((group) => group.id === saved.id
           ? { ...group, rules: [...group.rules, rule], updatedAt: Date.now() } : group) }));
@@ -95,12 +96,12 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
           })} />Enabled</label>
           <button aria-label={`Move ${rule.name} up`} disabled={busy || dirty || index === 0} onClick={() => reorder(index, index - 1)}><ArrowUp size={17} /></button>
           <button aria-label={`Move ${rule.name} down`} disabled={busy || dirty || index === saved.rules.length - 1} onClick={() => reorder(index, index + 1)}><ArrowDown size={17} /></button>
-          <button aria-label={`Delete ${rule.name}`} disabled={busy || dirty} onClick={() => {
+          {saved.id !== DEFAULT_REGEX_GROUP_ID && <button aria-label={`Delete ${rule.name}`} disabled={busy || dirty} onClick={() => {
             if (!window.confirm(`Delete ${rule.name || "this Rule"}?`)) return;
             void run(async () => { await change((current) => ({ ...current, groups: current.groups.map((group) => group.id !== saved.id ? group : {
               ...group, rules: group.rules.filter((item) => item.id !== rule.id), updatedAt: Date.now(),
             }) })); });
-          }}><Trash2 size={17} /></button>
+          }}><Trash2 size={17} /></button>}
         </div>
       </article>)}</div>
       <button className="settings-button" disabled={busy || dirty} onClick={() => file.current?.click()}><Upload size={17} />Import Rule</button>
@@ -121,9 +122,9 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
     </div></section>
     <section className="regex-section"><h2>Group Actions</h2><div className="settings-action-row regex-actions">
       <button className="settings-button" onClick={() => downloadRegex(exportRegexGroup(saved), saved.name)}><Download size={17} />Export Group</button>
-    <button className="settings-button settings-danger" disabled={busy} onClick={() => {
+    {saved.id !== DEFAULT_REGEX_GROUP_ID && <button className="settings-button settings-danger" disabled={busy} onClick={() => {
       if (!window.confirm(`Delete ${saved.name} and all its Rules?`)) return;
       void run(async () => { await removeGroup(saved.id); router.push("/settings/regex"); });
-    }}><Trash2 size={17} />Delete Regex Group</button></div></section>
+    }}><Trash2 size={17} />Delete Regex Group</button>}</div></section>
   </PageShell>;
 }

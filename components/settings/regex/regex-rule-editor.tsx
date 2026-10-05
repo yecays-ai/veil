@@ -9,6 +9,7 @@ import { exportRegexRule, type RegexMode, type RegexRole, type RegexRule } from 
 import { regexPatternError, testRegexRule } from "../../../lib/regex-engine";
 import { downloadRegex } from "./files";
 import { useRegex } from "./use-regex";
+import { DEFAULT_REGEX_GROUP_ID } from "../../../lib/regex-defaults";
 
 const modes: { value: RegexMode; label: string; description: string }[] = [
   { value: "stored", label: "Stored", description: "Changes the saved message." },
@@ -75,7 +76,7 @@ function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string
     </div></section>
     <div className="settings-action-row regex-actions">
       <button className="settings-button" onClick={() => downloadRegex(exportRegexRule(saved), saved.name)}><Download size={17} />Export Rule</button>
-      <button className="settings-button settings-danger" disabled={busy} onClick={() => {
+      {groupId !== DEFAULT_REGEX_GROUP_ID && <button className="settings-button settings-danger" disabled={busy} onClick={() => {
         if (!window.confirm(`Delete ${saved.name || "this Rule"}?`)) return;
         void run(async () => {
           await change((current) => ({ ...current, groups: current.groups.map((group) => group.id !== groupId ? group : {
@@ -83,7 +84,7 @@ function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string
           }) }));
           router.push(back);
         });
-      }}><Trash2 size={17} />Delete Rule</button>
+      }}><Trash2 size={17} />Delete Rule</button>}
     </div>
   </PageShell>;
 }

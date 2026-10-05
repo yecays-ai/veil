@@ -1,21 +1,56 @@
 "use client";
 import Link from "next/link";
-import { useRef } from "react";
-import { ChevronRight, Download, Plus, Trash2, Upload } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, Upload } from "lucide-react";
 import { PageShell } from "../../page-shell";
 import { Alert } from "../ui/feedback";
-import { importRegexGroup, exportRegexGroup } from "../../../lib/regex";
+import { importRegexGroup, newRegexGroup, newRegexRule, type RegexRule } from "../../../lib/regex";
+import { DEFAULT_REGEX_GROUP_ID } from "../../../lib/regex-defaults";
 import { useRegex } from "./use-regex";
-import { downloadRegex } from "./files";
+import { RegexInlineRule } from "./regex-inline-rule";
 
 export function RegexList() {
-  const { document, error, notice, busy, run, change, removeGroup, setNotice } = useRegex();
+  const { document, error, notice, busy, run, change, setNotice } = useRegex();
   const file = useRef<HTMLInputElement>(null);
-  return <PageShell className="settings-app regex-manager" title="Advanced Regex" backHref="/settings" backLabel="Back to Settings">
-    <div className="settings-action-row regex-actions">
-      <button className="settings-button" disabled={!document || busy} onClick={() => file.current?.click()}><Upload size={17} />Import</button>
-      <Link className="settings-button" href="/settings/regex/new"><Plus size={17} />New Regex</Link>
-    </div>
+  const [newRuleId, setNewRuleId] = useState<string | null>(null);
+  const defaults = document?.groups.find((group) => group.id === DEFAULT_REGEX_GROUP_ID);
+  const custom = document?.groups.filter((group) => group.id !== DEFAULT_REGEX_GROUP_ID) ?? [];
+  async function saveRule(groupId: string, next: RegexRule) {
+    await change((current) => ({ ...current, groups: current.groups.map((group) => group.id !== groupId ? group : {
+      ...group, updatedAt: Date.now(), rules: group.rules.map((rule) => rule.id === next.id ? next : rule),
+    }) }));
+  }
+  return <PageShell className="settings-app regex-manager" title="Regex" backHref="/settings" backLabel="Back to Settings">
+    {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
+    {!document && !error && <p role="status">Loading Regex Rules…</p>}
+    <section className="regex-section"><h2>Default Rules</h2>
+      {defaults?.rules.map((rule) => <RegexInlineRule key={rule.id} rule={rule} busy={busy}
+        onSave={(next) => saveRule(DEFAULT_REGEX_GROUP_ID, next)} />)}
+    </section>
+    <section className="regex-section"><h2>Custom Rules</h2>
+      {custom.length === 0 && <p>No custom rules yet.</p>}
+      {custom.map((group) => <div key={group.id} className="regex-custom-group">
+        <Link href={`/settings/regex/${group.id}`}>{group.name} · Group settings</Link>
+        {group.rules.map((rule) => <RegexInlineRule key={rule.id} rule={rule} busy={busy}
+          initiallyOpen={rule.id === newRuleId}
+          onSave={(next) => saveRule(group.id, next)} />)}
+        <Link className="settings-button" href={`/settings/regex/${group.id}`}>Add Rule to {group.name}</Link>
+      </div>)}
+      <div className="settings-action-row regex-actions">
+        <button className="settings-button" disabled={!document || busy} onClick={() => void run(async () => {
+          const rule = newRegexRule();
+          const first = custom.find((item) => item.enabled);
+          const group = first ?? { ...newRegexGroup(), name: "My Rules" };
+          await change((current) => ({ ...current, groups: first
+            ? current.groups.map((item) => item.id === first.id
+              ? { ...item, rules: [...item.rules, rule], updatedAt: Date.now() } : item)
+            : [...current.groups, { ...group, rules: [rule] }] }));
+          setNewRuleId(rule.id);
+        })}><Plus size={17} />Add Rule</button>
+        <Link className="settings-button" href="/settings/regex/new">New Group</Link>
+        <button className="settings-button" disabled={!document || busy} onClick={() => file.current?.click()}><Upload size={17} />Import</button>
+      </div>
+    </section>
     <input hidden ref={file} type="file" accept=".json,application/json" onChange={(event) => {
       const selected = event.target.files?.[0]; event.target.value = "";
       if (selected) void run(async () => {
@@ -28,26 +63,5 @@ export function RegexList() {
         setNotice(warnings.length ? `Imported. ${warnings.join(" ")}` : "Regex Group imported.");
       });
     }} />
-    {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
-    {!document && !error && <p role="status">Loading Regex Groups…</p>}
-    {document?.groups.length === 0 && <p>No Regex Groups yet.</p>}
-    <div className="regex-list">{document?.groups.map((group) => <article className="regex-card" key={group.id}>
-      <Link className="regex-card-main" href={`/settings/regex/${group.id}`}>
-        <span><strong>{group.name}</strong>{group.description && <small>{group.description}</small>}
-          <small>{group.rules.length} Rules · {group.enabled ? "Enabled" : "Disabled"}</small></span>
-        <ChevronRight size={18} aria-hidden="true" />
-      </Link>
-      <div className="regex-row-actions">
-        <label><input type="checkbox" checked={group.enabled} disabled={busy} onChange={(event) => void run(async () => {
-          await change((current) => ({ ...current, groups: current.groups.map((item) => item.id === group.id
-            ? { ...item, enabled: event.target.checked, updatedAt: Date.now() } : item) }));
-        })} />Enabled</label>
-        <button aria-label={`Export ${group.name}`} onClick={() => downloadRegex(exportRegexGroup(group), group.name)}><Download size={17} /></button>
-        <button aria-label={`Delete ${group.name}`} disabled={busy} onClick={() => {
-          if (!window.confirm(`Delete ${group.name} and its Rules?`)) return;
-          void run(async () => { await removeGroup(group.id); });
-        }}><Trash2 size={17} /></button>
-      </div>
-    </article>)}</div>
   </PageShell>;
 }

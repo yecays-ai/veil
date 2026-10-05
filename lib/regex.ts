@@ -1,3 +1,5 @@
+import { DEFAULT_REGEX_GROUP_ID } from "./regex-defaults";
+
 export type RegexRole = "user" | "assistant";
 export type RegexMode = "stored" | "prompt" | "display";
 export type RegexRule = {
@@ -42,7 +44,8 @@ export function canSaveRegexGroup(group: RegexGroup): boolean {
 }
 
 export function validateRegexDocument(value: unknown): RegexDocument {
-  if (!record(value) || value.version !== 1 || !Array.isArray(value.groups) || value.groups.length > 100)
+  if (!record(value) || value.version !== 1 || !Array.isArray(value.groups) ||
+    value.groups.filter((group: unknown) => !record(group) || group.id !== DEFAULT_REGEX_GROUP_ID).length > 100)
     throw new Error("Saved Regex data has an unsupported format.");
   const groupIds = new Set<string>();
   const groups = value.groups.map((group): RegexGroup => {
@@ -141,5 +144,9 @@ export const exportRegexRule = (rule: RegexRule) => JSON.stringify(rule, null, 2
 export function resolveRegexGroups(document: RegexDocument, ids?: readonly string[]): RegexGroup[] {
   if (ids === undefined) return document.groups;
   const byId = new Map(document.groups.map((group) => [group.id, group]));
-  return ids.flatMap((id) => { const group = byId.get(id); return group ? [group] : []; });
+  const defaults = document.groups.filter((group) => group.id === DEFAULT_REGEX_GROUP_ID);
+  return [...defaults, ...ids.flatMap((id) => {
+    const group = byId.get(id);
+    return group && group.id !== DEFAULT_REGEX_GROUP_ID ? [group] : [];
+  })];
 }

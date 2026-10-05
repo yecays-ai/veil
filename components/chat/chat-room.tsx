@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
+  type CSSProperties } from "react";
 import {
   Bookmark,
   ChevronLeft,
@@ -47,7 +48,6 @@ import { resolveBindings } from "../../lib/bindings";
 import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
-import { defaultChatFormatting, formatAssistantMessage } from "../../lib/chat/formatting";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -56,14 +56,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     (c) => c.characterId === characterId,
   );
   const [regexGroups, setRegexGroups] = useState<RegexGroup[]>([]);
-  const [chatFormatting, setChatFormatting] = useState(defaultChatFormatting);
-  useEffect(() => {
-    let active = true;
-    void chatStorage.readChatFormatting().then((settings) => {
-      if (active) setChatFormatting(settings);
-    }).catch(() => { /* Chat remains usable with default formatting. */ });
-    return () => { active = false; };
-  }, [characterId]);
   const regexIds = resolveBindings(document.bindings, characterId, "messages").regexIds;
   const regexKey = regexIds?.join("\u0000") ?? "*";
   useEffect(() => {
@@ -81,7 +73,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     characterId,
     ready && !!character,
   );
-  const chatBackgroundUrl = useChatBackground(session);
+  const chatBackground = useChatBackground(session);
   const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
@@ -399,6 +391,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     streamOnline?: boolean;
     autoReplyOnKeyboardDismiss?: boolean;
     backgroundImage?: string | null;
+    backgroundBlur?: number | null;
   }) {
     if (!session) return;
     try { await chatStorage.updateSessionSettings(session.id, patch); }
@@ -435,8 +428,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   </div>;
   return (
     <div className="chat-app chat-room chat-room-wrapper" ref={shell}
-      style={chatBackgroundUrl ? { backgroundImage: `url(${JSON.stringify(chatBackgroundUrl)})` } : undefined}
-      data-chat-background={chatBackgroundUrl ? "custom" : "default"}
+      style={chatBackground.url ? {
+        "--chat-background-image": `url(${JSON.stringify(chatBackground.url)})`,
+        "--chat-background-blur": `${chatBackground.blur}px`,
+        "--chat-background-inset": chatBackground.blur ? `${-2 * chatBackground.blur}px` : "0px",
+      } as CSSProperties : undefined}
+      data-chat-background={chatBackground.url ? "custom" : "default"}
       data-context-menu-open={activeMessage ? "" : undefined}>
       {session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
       <header className="chat-header page-header">
@@ -513,9 +510,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
                 {(parsed.content && (message.role === "user" || message.role === "assistant")
-                  ? applyRegex(message.role === "assistant"
-                    ? formatAssistantMessage(parsed.content, character.name, chatFormatting)
-                    : parsed.content, regexGroups, message.role, "display") : parsed.content) ||
+                  ? applyRegex(parsed.content, regexGroups, message.role, "display",
+                    { character: character.name, user: document.user.name }) : parsed.content) ||
                   (message.status === "streaming" && generating ? "…" : "")}
               </p>
               <MessageFooter messageId={message.id} />

@@ -125,13 +125,12 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
             style={{
               backgroundImage: `url(${JSON.stringify(profile.wallpaper.source)})`,
               backgroundSize: profile.wallpaper.fit,
-              backgroundPosition: `${profile.wallpaper.x}% ${profile.wallpaper.y}%`,
+              backgroundPosition: "center",
               opacity: profile.wallpaper.opacity,
               filter: `blur(${profile.wallpaper.blur}px)`,
               inset: profile.wallpaper.blur
                 ? `${-2 * profile.wallpaper.blur}px`
                 : 0,
-              transform: `scale(${profile.wallpaper.scale / 100})`,
             }}
           />
         )}

@@ -15,6 +15,7 @@ import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
 import { normalizeChatFormatting, type ChatFormattingSettings } from "./formatting";
+import { normalizeBackgroundBlur } from "./types";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
 export const CHAT_DATABASE_VERSION = 3;
@@ -111,6 +112,16 @@ const request = <T>(req: IDBRequest<T>): Promise<T> =>
     req.onerror = () =>
       reject(new Error("Chat storage could not be read or written."));
   });
+
+async function deleteUnusedChatImage(tx: IDBTransaction, id: string | undefined) {
+  if (!id) return;
+  const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
+  const global: ChatBackgroundSettings | undefined = await request(
+    tx.objectStore("chatSettings").get(CHAT_BACKGROUND_SETTINGS_ID));
+  if (sessions.some((session) => session.backgroundImage === id) ||
+      global?.globalChatBackgroundImage === id) return;
+  await request(tx.objectStore("assets").delete(id));
+}
 
 async function commitWorldBookState(tx: IDBTransaction, sessionId: string, state: WorldBookActivationState) {
   const current: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(sessionId));
@@ -324,6 +335,7 @@ export class ChatStorage {
   updateSessionSettings(sessionId: string, patch: {
     streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean;
     backgroundImage?: string | null;
+    backgroundBlur?: number | null;
     customCSS?: string | null;
   }): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
@@ -347,6 +359,14 @@ export class ChatStorage {
           delete next.backgroundImage;
         }
       }
+      if (patch.backgroundBlur !== undefined) {
+        if (patch.backgroundBlur === null) delete next.backgroundBlur;
+        else {
+          if (!Number.isFinite(patch.backgroundBlur) || patch.backgroundBlur < 0 || patch.backgroundBlur > 20)
+            throw new Error("Invalid conversation background blur.");
+          next.backgroundBlur = patch.backgroundBlur;
+        }
+      }
       if (patch.customCSS !== undefined) {
         if (patch.customCSS !== null && typeof patch.customCSS !== "string")
           throw new Error("Invalid conversation CSS.");
@@ -355,6 +375,8 @@ export class ChatStorage {
         else delete next.customCSS;
       }
       await request(table.put(next));
+      if (session.backgroundImage !== next.backgroundImage)
+        await deleteUnusedChatImage(tx, session.backgroundImage);
     });
   }
 
@@ -384,27 +406,30 @@ export class ChatStorage {
     });
   }
 
+  deleteChatImageIfUnused(id: string): Promise<void> {
+    return this.transaction("readwrite", (tx) => deleteUnusedChatImage(tx, id));
+  }
+
   readChatBackgroundSettings(): Promise<ChatBackgroundSettings> {
     return this.transaction("readonly", async (tx) => {
       const settings: ChatBackgroundSettings | undefined = await request(
         tx.objectStore("chatSettings").get(CHAT_BACKGROUND_SETTINGS_ID),
       );
-      return settings ?? { id: CHAT_BACKGROUND_SETTINGS_ID };
+      return { ...settings, id: CHAT_BACKGROUND_SETTINGS_ID,
+        blur: normalizeBackgroundBlur(settings?.blur) };
     });
   }
 
-  readChatFormatting(): Promise<ChatFormattingSettings> {
-    return this.transaction("readonly", async (tx) => normalizeChatFormatting(
-      await request(tx.objectStore("chatSettings").get(CHAT_FORMATTING_SETTINGS_ID))));
+  readLegacyChatFormatting(): Promise<ChatFormattingSettings | null> {
+    return this.transaction("readonly", async (tx) => {
+      const saved = await request(tx.objectStore("chatSettings").get(CHAT_FORMATTING_SETTINGS_ID));
+      return saved ? normalizeChatFormatting(saved) : null;
+    });
   }
 
-  updateChatFormatting(patch: Partial<Omit<ChatFormattingSettings, "id">>): Promise<ChatFormattingSettings> {
+  deleteLegacyChatFormatting(): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
-      const table = tx.objectStore("chatSettings");
-      const current = normalizeChatFormatting(await request(table.get(CHAT_FORMATTING_SETTINGS_ID)));
-      const next = normalizeChatFormatting({ ...current, ...patch });
-      await request(table.put(next));
-      return next;
+      await request(tx.objectStore("chatSettings").delete(CHAT_FORMATTING_SETTINGS_ID));
     });
   }
 
@@ -416,11 +441,26 @@ export class ChatStorage {
         const asset = await request(tx.objectStore("assets").get(backgroundImage));
         if (!asset) throw new Error("Global chat background image was not found.");
       }
+      const current: ChatBackgroundSettings | undefined = await request(
+        tx.objectStore("chatSettings").get(CHAT_BACKGROUND_SETTINGS_ID));
       const settings: ChatBackgroundSettings = {
         id: CHAT_BACKGROUND_SETTINGS_ID,
         ...(backgroundImage ? { globalChatBackgroundImage: backgroundImage } : {}),
+        blur: normalizeBackgroundBlur(current?.blur),
       };
       await request(tx.objectStore("chatSettings").put(settings));
+      if (current?.globalChatBackgroundImage !== settings.globalChatBackgroundImage)
+        await deleteUnusedChatImage(tx, current?.globalChatBackgroundImage);
+    });
+  }
+
+  updateGlobalChatBackgroundBlur(blur: number): Promise<void> {
+    if (!Number.isFinite(blur) || blur < 0 || blur > 20)
+      return Promise.reject(new Error("Invalid global chat background blur."));
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("chatSettings");
+      const current: ChatBackgroundSettings | undefined = await request(table.get(CHAT_BACKGROUND_SETTINGS_ID));
+      await request(table.put({ ...current, id: CHAT_BACKGROUND_SETTINGS_ID, blur }));
     });
   }
 
