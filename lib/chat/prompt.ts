@@ -3,6 +3,7 @@ import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
 import type { ChatMessage, PromptTurn } from "./types";
 import { buildTimeContext, historyTimestamp } from "./time-context";
 import { messageHistoryContent } from "./quote";
+import type { WorldBookActivation } from "../worldbook-activation";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -13,6 +14,7 @@ export type PromptRuntimeContext = {
   currentMessages: readonly ChatMessage[];
   pending: readonly ChatMessage[];
   memory: MemorySlot;
+  worldInfo?: WorldBookActivation;
   time?: ReturnType<typeof buildTimeContext>;
 };
 
@@ -50,6 +52,10 @@ export function resolvePresetMarker(
     case "universe":
       return JSON.stringify({ name: context.foundation.universe.name,
         worldSetting: context.foundation.universe.worldSetting });
+    case "world-info-before":
+      return context.worldInfo?.before.map((item) => item.entry.content).join("\n\n") || null;
+    case "world-info-after":
+      return context.worldInfo?.after.map((item) => item.entry.content).join("\n\n") || null;
     case "character":
       return JSON.stringify({ ...profile(context.character), backstory: context.character.backstory,
         personality: context.character.personality, speakingStyle: context.character.speakingStyle });
@@ -81,10 +87,11 @@ export function assembleChatPrompt(
   memory: MemorySlot = emptyMemorySlot(),
   preset: Preset = createBuiltinPreset(),
   now: Date = new Date(),
+  worldInfo?: WorldBookActivation,
 ): { sections: PromptSection[]; messages: PromptTurn[] } {
   const time = foundation.runtime?.timeAware !== false
     ? buildTimeContext(now, foundation.user.timezone, character.timezone) : undefined;
-  const context = { foundation, character, currentMessages, pending, memory, time };
+  const context = { foundation, character, currentMessages, pending, memory, time, worldInfo };
   const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
   const sections: PromptSection[] = [], messages: PromptTurn[] = [];
   let timeInjected = false;

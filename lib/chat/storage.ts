@@ -13,11 +13,12 @@ import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
 import { sameBackupChat } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
+import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v1";
-export const CHAT_DATABASE_VERSION = 2;
+export const CHAT_DATABASE_VERSION = 3;
 const CONVERSATION_STORES = ["sessions", "messages"];
-const STORES = [...CONVERSATION_STORES, "apiConfigs", "chatSettings", "assets"];
+const STORES = [...CONVERSATION_STORES, "apiConfigs", "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
@@ -98,6 +99,9 @@ function ensureV2Schema(db: IDBDatabase, transaction: IDBTransaction) {
   storeForUpgrade(db, transaction, "chatSettings");
   storeForUpgrade(db, transaction, "assets");
 }
+function ensureV3Schema(db: IDBDatabase, transaction: IDBTransaction) {
+  storeForUpgrade(db, transaction, "worldBookStates");
+}
 
 const request = <T>(req: IDBRequest<T>): Promise<T> =>
   new Promise((resolve, reject) => {
@@ -134,6 +138,11 @@ export class ChatStorage {
             const transaction = req.transaction;
             if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
             ensureV2Schema(req.result, transaction);
+          }
+          if (event.oldVersion < 3) {
+            const transaction = req.transaction;
+            if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
+            ensureV3Schema(req.result, transaction);
           }
         };
         req.onsuccess = () => {
@@ -291,6 +300,15 @@ export class ChatStorage {
       );
       return { session, messages: messages.sort((a, b) => a.order - b.order) };
     });
+  }
+
+  readWorldBookState(sessionId: string): Promise<WorldBookActivationState | null> {
+    return this.transaction("readonly", async (tx) => {
+      const saved: { id: string; state: WorldBookActivationState } | undefined = await request(
+        tx.objectStore("worldBookStates").get(sessionId),
+      );
+      return saved?.state ?? null;
+    }, ["worldBookStates"]);
   }
 
   updateSessionSettings(sessionId: string, patch: {
@@ -459,6 +477,7 @@ export class ChatStorage {
       const table = tx.objectStore("messages");
       const messages: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
       for (const message of messages) await request(table.delete(message.id));
+      await request(tx.objectStore("worldBookStates").delete(sessionId));
       await request(sessions.put({ ...session, updatedAt: Date.now(), nextOrder: 1,
         lastMessageId: undefined, lastMessagePreview: "" }));
       return messages.length;
@@ -605,7 +624,7 @@ export class ChatStorage {
       return next;
     });
   }
-  finalizeReply(id: string, content: string): Promise<ChatMessage[]> {
+  finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState): Promise<ChatMessage[]> {
     const parts = splitAssistantReply(content);
     if (!parts.length)
       return Promise.reject(new Error("The API returned no reply text."));
@@ -648,6 +667,13 @@ export class ChatStorage {
           lastMessagePreview: final.content.slice(0, 120),
         } : {}),
       }));
+      if (worldBookState) {
+        const current: ChatMessage[] = await request(table.index("sessionId").getAll(existing.sessionId));
+        const prefix = historyFingerprint(current);
+        if (worldBookState.prefix.every((item, index) => item === prefix[index]))
+          await request(tx.objectStore("worldBookStates").put({ id: existing.sessionId,
+            state: { ...worldBookState, prefix } }));
+      }
       return completed;
     });
   }

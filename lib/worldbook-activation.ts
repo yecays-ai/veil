@@ -10,6 +10,7 @@ export type TimedEntryState = {
 export type WorldBookActivationState = {
   cycle: number;
   prefix: string[];
+  signature?: string;
   entries: Record<string, TimedEntryState>;
 };
 export type ActivatedEntry = { bookId: string; entry: WorldBookEntry };
@@ -63,8 +64,10 @@ export function evaluateWorldBooks(
   state: WorldBookActivationState | null,
 ): WorldBookActivation {
   const valid = compatibleActivationState(state, messages);
-  const cycle = valid.cycle + 1;
-  const entries: Record<string, TimedEntryState> = structuredClone(valid.entries);
+  const signature = JSON.stringify(books);
+  const current = valid.signature === signature ? valid : { cycle: 0, prefix: [], entries: {} };
+  const cycle = current.cycle + 1;
+  const entries: Record<string, TimedEntryState> = structuredClone(current.entries);
   const context = realChatMessages(messages).map(messageHistoryContent);
   const candidates: (ActivatedEntry & { index: number })[] = [];
   books.forEach((book, bookOrder) => {
@@ -94,5 +97,5 @@ export function evaluateWorldBooks(
   candidates.sort((a, b) => b.entry.priority - a.entry.priority || a.index - b.index);
   const before: ActivatedEntry[] = [], after: ActivatedEntry[] = [];
   for (const { bookId, entry } of candidates) (entry.position === "before" ? before : after).push({ bookId, entry });
-  return { before, after, nextState: { cycle, prefix: historyFingerprint(messages), entries } };
+  return { before, after, nextState: { cycle, prefix: historyFingerprint(messages), signature, entries } };
 }

@@ -54,6 +54,7 @@ test("a new chat database installs the complete current schema", async () => {
       "chatSettings",
       "messages",
       "sessions",
+      "worldBookStates",
     ]);
     assert.deepEqual(Array.from(db.transaction("sessions").objectStore("sessions").indexNames), [
       "characterId",

@@ -5,6 +5,8 @@ export const BUILTIN_PRESET_ID = "veil-default-v1";
 export type PresetMarker =
   | "user"
   | "universe"
+  | "world-info-before"
+  | "world-info-after"
   | "character"
   | "relations"
   | "memory"
@@ -66,10 +68,14 @@ export function createBuiltinPreset(): Preset {
         source: "marker", marker: "user" },
       { identifier: "universe", name: "◇ Universe", role: "system", enabled: true,
         source: "marker", marker: "universe" },
+      { identifier: "world-info-before", name: "◇ World Info Before", role: "system", enabled: true,
+        source: "marker", marker: "world-info-before" },
       { identifier: "character", name: "◇ Character", role: "system", enabled: true,
         source: "marker", marker: "character" },
       { identifier: "relations", name: "◇ Character Relations", role: "system", enabled: true,
         source: "marker", marker: "relations" },
+      { identifier: "world-info-after", name: "◇ World Info After", role: "system", enabled: true,
+        source: "marker", marker: "world-info-after" },
       { identifier: "memory", name: "◇ Memory", role: "system", enabled: true,
         source: "marker", marker: "memory" },
       { identifier: "history", name: "◇ Recent History", role: "system", enabled: true,
@@ -78,7 +84,7 @@ export function createBuiltinPreset(): Preset {
       { identifier: "response-directive", name: "Response Directive", role: "system",
         enabled: true, source: "prompt", content: "" },
     ],
-    promptOrder: ["base", "user", "universe", "character", "relations", "memory",
+    promptOrder: ["base", "user", "universe", "world-info-before", "character", "relations", "world-info-after", "memory",
       "history", "chat_output_format", "response-directive"].map((identifier) =>
       ({ identifier, enabled: true })),
     generation: {},
@@ -88,13 +94,23 @@ export function createBuiltinPreset(): Preset {
 export const createPresetDocument = (): PresetDocument =>
   ({ version: 3, presets: [createBuiltinPreset()], activePresetId: BUILTIN_PRESET_ID });
 
+// Existing VEIL Default documents predate the two World Info markers. Upgrade
+// only that exact official shape; a custom Preset keeps its chosen pipeline.
+function previousBuiltinPreset(): Preset {
+  const preset = createBuiltinPreset();
+  const worldMarkers = new Set(["world-info-before", "world-info-after"]);
+  preset.prompts = preset.prompts.filter((entry) => !worldMarkers.has(entry.identifier));
+  preset.promptOrder = preset.promptOrder.filter((entry) => !worldMarkers.has(entry.identifier));
+  return preset;
+}
+
 export function activePreset(document: PresetDocument): Preset {
   return document.presets.find((preset) => preset.id === document.activePresetId) ?? createBuiltinPreset();
 }
 
 const roles = new Set(["system", "user", "assistant"]);
 const markers = new Set<PresetMarker>(
-  ["user", "universe", "character", "relations", "memory", "history"],
+  ["user", "universe", "world-info-before", "world-info-after", "character", "relations", "memory", "history"],
 );
 const object = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -178,7 +194,8 @@ export function validatePresetDocument(value: unknown): PresetDocument {
       );
     }
     const document = createPresetDocument();
-    if (presetFingerprint(migrated) !== presetFingerprint(createBuiltinPreset())) {
+    if (presetFingerprint(migrated) !== presetFingerprint(createBuiltinPreset()) &&
+        presetFingerprint(migrated) !== presetFingerprint(previousBuiltinPreset())) {
       // Earlier versions allowed edits to the default. Preserve them as a custom
       // copy instead of silently discarding them when making the built-in immutable.
       if (migrated.id === BUILTIN_PRESET_ID) migrated.id = `${BUILTIN_PRESET_ID}-migrated`;
@@ -191,7 +208,12 @@ export function validatePresetDocument(value: unknown): PresetDocument {
   if (value.version !== 3 || !exactKeys(value, ["version", "presets", "activePresetId"]) ||
       !Array.isArray(value.presets) || !text(value.activePresetId))
     throw new Error("Preset library has an unsupported format.");
-  const presets = value.presets.map(validatePreset);
+  const presets = value.presets.map((item) => {
+    const preset = validatePreset(item);
+    return preset.id === BUILTIN_PRESET_ID &&
+      presetFingerprint(preset) === presetFingerprint(previousBuiltinPreset())
+      ? createBuiltinPreset() : preset;
+  });
   const ids = new Set(presets.map((preset) => preset.id));
   if (ids.size !== presets.length || !ids.has(value.activePresetId as string))
     throw new Error("Preset library contains duplicate IDs or an invalid active Preset.");

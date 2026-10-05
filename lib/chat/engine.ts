@@ -12,6 +12,9 @@ import {
 import { ChatStorage, chatStorage } from "./storage";
 import { DEFAULT_API_CONFIG_ID, type ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
+import { browserWorldBookStorage } from "../worldbook-storage";
+import { emptyWorldBookDocument, type WorldBookDocument } from "../worldbook";
+import { evaluateWorldBooks } from "../worldbook-activation";
 
 export function createChatEngine(
   storage: ChatStorage,
@@ -19,6 +22,8 @@ export function createChatEngine(
   provider: TextProvider = openAITextProvider,
   presets: () => Promise<PresetDocument> = async () => createPresetDocument(),
   now: () => Date = () => new Date(),
+  worldBooks: () => Promise<WorldBookDocument> = () =>
+    typeof window === "undefined" ? Promise.resolve(emptyWorldBookDocument()) : browserWorldBookStorage.load(),
 ) {
   const active = new Map<string, AbortController>();
   async function prepareGeneration(characterId: string) {
@@ -52,6 +57,11 @@ export function createChatEngine(
       const batch = await storage.beginReply(sessionId, regenerateId);
       if (!batch) return null;
       assistant = batch.assistant;
+      const selectedIds = resolveBindings(document.bindings, character.characterId, "messages").worldBookIds;
+      const books = (await worldBooks()).books.filter((book) =>
+        selectedIds === undefined || selectedIds.includes(book.id));
+      const activation = evaluateWorldBooks(books, batch.messages,
+        await storage.readWorldBookState(sessionId));
       const prompt = assembleChatPrompt(
         document,
         character,
@@ -60,6 +70,7 @@ export function createChatEngine(
         undefined,
         preset,
         now(),
+        activation,
       );
       for await (const text of provider(
         config,
@@ -78,7 +89,7 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       content = sanitizeHistoryTimestamps(rawContent);
       if (!content.trim()) throw new Error("The API returned no reply text.");
-      const completed = await storage.finalizeReply(assistant.id, content);
+      const completed = await storage.finalizeReply(assistant.id, content, activation.nextState);
       // Optional presentation notification; it cannot turn a committed reply into an error.
       try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
       return completed[0];
