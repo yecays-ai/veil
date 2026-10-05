@@ -11,7 +11,6 @@ import { presetFingerprint, type Preset, type PresetPrompt } from "../../../lib/
 import { buildDisplayedPrompts, copyPreset, deletePrompt, exportPreset, movePrompt,
   promptEnabled, setActivePreset, updatePreset } from "../../../lib/preset-library";
 import { usePresetLibrary } from "./use-preset-library";
-import { useFoundation } from "../../foundation-provider";
 
 export function PresetDetail({ presetId }: { presetId: string }) {
   const library = usePresetLibrary();
@@ -24,7 +23,6 @@ export function PresetDetail({ presetId }: { presetId: string }) {
 
 function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<typeof usePresetLibrary> }) {
   const { document, error, notice, busy, run, change, remove, setNotice } = library;
-  const { commit } = useFoundation();
   const [draft, setDraft] = useState(() => structuredClone(saved));
   const [baseline, setBaseline] = useState(saved);
   const [deleting, setDeleting] = useState(false);
@@ -62,7 +60,7 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
     }}>Delete {draft.prompts.find((entry) => entry.identifier === deletingPrompt)?.name} from this Preset?</ConfirmDialog>
     : deleting ? <ConfirmDialog title="Delete Preset?" confirmLabel="Delete" busy={busy}
     onCancel={() => { if (!busy) setDeleting(false); }} onConfirm={() => void run(async () => {
-      await remove(saved.id, { transact: commit }); router.push("/settings/presets");
+      await remove(saved.id); router.push("/settings/presets");
     })}>Delete {saved.name}? If active, VEIL Default will be used.</ConfirmDialog> : undefined;
   return <div className="preset-route" onClickCapture={(event) => {
     if (dirty && (event.target as HTMLElement).closest("a") && !window.confirm("Discard unsaved changes?")) event.preventDefault();

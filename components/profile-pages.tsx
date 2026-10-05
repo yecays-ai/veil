@@ -1,4 +1,5 @@
 "use client";
+import { browserBindingStorage } from "../lib/binding-storage";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -218,6 +219,11 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
                     onClick={() =>
                       void action(async () => {
                         await commit((d) => deleteCharacter(d, characterId!));
+                        await browserBindingStorage.transact((bindings) => {
+                          const characters = { ...bindings.characters };
+                          delete characters[characterId!];
+                          return { ...bindings, characters };
+                        });
                         router.push("/characters");
                       })
                     }

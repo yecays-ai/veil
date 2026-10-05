@@ -1,3 +1,4 @@
+import { browserBindingStorage } from "../binding-storage";
 import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
@@ -9,9 +10,10 @@ import {
   BACKUP_MAX_BYTES,
   BACKUP_VERSION,
   type BackupSources,
+  type BackupV1,
   type BackupV2,
 } from "./types";
-import { validateBackupV2 } from "./validate";
+import { validateBackupV1, validateBackupV2 } from "./validate";
 import { stableJson } from "./equality";
 import { restorableChat } from "./restorable-chat";
 import { emptyRegexDocument } from "../regex";
@@ -19,6 +21,7 @@ import { emptyWorldBookDocument } from "../worldbook";
 
 const browserSources: BackupSources = {
   foundation: browserFoundationStorage,
+  bindings: browserBindingStorage,
   theme: browserThemeStorage,
   preset: browserPresetStorage,
   regex: browserRegexStorage,
@@ -33,16 +36,18 @@ export async function exportBackupV2(
   now: () => Date = () => new Date(),
 ): Promise<ExportedBackup> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const [foundationA, themeA, presetA, regexA, worldBooksA] = await Promise.all([
+    const [foundationA, bindingsA, themeA, presetA, regexA, worldBooksA] = await Promise.all([
       sources.foundation.load(),
+      sources.bindings?.load(),
       sources.theme.load(),
       sources.preset.load(),
       sources.regex?.load() ?? emptyRegexDocument(),
       sources.worldBooks?.load() ?? emptyWorldBookDocument(),
     ]);
     const chat = await sources.chat.exportBackup();
-    const [foundationB, themeB, presetB, regexB, worldBooksB] = await Promise.all([
+    const [foundationB, bindingsB, themeB, presetB, regexB, worldBooksB] = await Promise.all([
       sources.foundation.load(),
+      sources.bindings?.load(),
       sources.theme.load(),
       sources.preset.load(),
       sources.regex?.load() ?? emptyRegexDocument(),
@@ -52,6 +57,7 @@ export async function exportBackupV2(
       stableJson(foundationA) !== stableJson(foundationB) ||
       stableJson(themeA) !== stableJson(themeB) ||
       stableJson(presetA) !== stableJson(presetB) ||
+      stableJson(bindingsA) !== stableJson(bindingsB) ||
       stableJson(regexA) !== stableJson(regexB) ||
       stableJson(worldBooksA) !== stableJson(worldBooksB)
     )
@@ -61,6 +67,7 @@ export async function exportBackupV2(
       version: BACKUP_VERSION,
       exportedAt: now().toISOString(),
       foundation: foundationA,
+      ...(bindingsA ? { bindings: bindingsA } : {}),
       theme: themeA,
       preset: presetA,
       regex: regexA,
@@ -76,5 +83,21 @@ export async function exportBackupV2(
 }
 
 export const exportBackup = exportBackupV2;
-/** @deprecated Exports are V2 from this release onward. */
-export const exportBackupV1 = exportBackupV2;
+/** Compatibility export for callers that explicitly require the legacy V1 envelope. */
+export async function exportBackupV1(
+  sources: BackupSources = browserSources,
+  now: () => Date = () => new Date(),
+): Promise<{ backup: BackupV1; json: string }> {
+  const { backup } = await exportBackupV2(sources, now);
+  const v1 = validateBackupV1({
+    format: backup.format,
+    version: 1,
+    exportedAt: backup.exportedAt,
+    foundation: backup.foundation,
+    ...(backup.bindings ? { bindings: backup.bindings } : {}),
+    theme: backup.theme,
+    preset: backup.preset,
+    chat: backup.chat,
+  });
+  return { backup: v1, json: JSON.stringify(v1) };
+}

@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { browserRegexStorage, deleteRegexGroupAndBindings } from "../../../lib/regex-storage";
-import { browserFoundationStorage } from "../../../lib/foundation-storage";
+import { browserBindingStorage } from "../../../lib/binding-storage";
 import type { RegexDocument } from "../../../lib/regex";
 
 export function useRegex() {
@@ -23,7 +23,7 @@ export function useRegex() {
     return next;
   }, []);
   const removeGroup = useCallback(async (groupId: string) => {
-    setDocument(await deleteRegexGroupAndBindings(groupId, browserRegexStorage, browserFoundationStorage));
+    setDocument(await deleteRegexGroupAndBindings(groupId, browserRegexStorage, browserBindingStorage));
   }, []);
   return { document, error, notice, busy, run, change, removeGroup, setNotice };
 }

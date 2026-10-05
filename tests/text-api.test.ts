@@ -1,3 +1,4 @@
+import type { BindingDocument } from "../lib/bindings";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
@@ -7,7 +8,7 @@ import {
   defaultFoundation,
   normalizeCharacterInput,
 } from "../lib/foundation-types";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
 import { resolveBindings } from "../lib/bindings";
 import {
   apiConfigReferences,
@@ -93,11 +94,11 @@ test("named config CRUD preserves multiple stable resources and independent cred
 
 test("deletion retains references and chat fails closed instead of picking a different provider", async () => {
   const store = new ChatStorage(() => new IDBFactory());
-  const document = defaultFoundation();
+  const document = testFoundation();
   document.characters = [
     { characterId: "a", ...normalizeCharacterInput({ name: "A" }) },
   ];
-  document.bindings = {
+  bindings = {
     global: { apiConfigId: "second" },
     characters: {
       a: {
@@ -106,7 +107,7 @@ test("deletion retains references and chat fails closed instead of picking a dif
       },
     },
   };
-  assert.equal(apiConfigReferences(document.bindings, config.id).length, 2);
+  assert.equal(apiConfigReferences(bindings, config.id).length, 2);
   await store.saveApiConfig(config);
   await store.saveApiConfig({ ...config, id: "second" });
   const session = await store.openSession("a");
@@ -125,7 +126,7 @@ test("deletion retains references and chat fails closed instead of picking a dif
   assert.equal(calls, 1);
   await store.deleteApiConfig(config.id);
   assert.equal(
-    resolveBindings(document.bindings, "a", "messages").apiConfigId,
+    resolveBindings(bindings, "a", "messages").apiConfigId,
     config.id,
   );
   await engine.send(session.id, "Second");
@@ -140,7 +141,7 @@ test("deletion retains references and chat fails closed instead of picking a dif
     ).length,
     1,
   );
-  document.bindings.characters.a.apps.messages = { apiConfigId: null };
+  bindings.characters.a.apps.messages = { apiConfigId: null };
   await assert.rejects(engine.requestReply(session.id), /disabled/);
 });
 
@@ -219,3 +220,7 @@ test("Fetch Models endpoint normalization, selection candidates and failures nev
     globalThis.fetch = original;
   }
 });
+
+let bindings: BindingDocument = { global: {}, characters: {} };
+function testFoundation() { bindings = { global: {}, characters: {} }; return defaultFoundation(); }
+function createChatEngine(...args: Parameters<typeof baseChatEngine>) { args[7] = async () => bindings; return baseChatEngine(...args); }

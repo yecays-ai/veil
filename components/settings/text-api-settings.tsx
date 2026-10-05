@@ -1,10 +1,10 @@
 "use client";
+import { useBindings } from "../use-bindings";
 import { PageShell } from "../page-shell";
 import { BottomSheet, ConfirmDialog } from "./ui/modal";
 import { Input, Select } from "./ui/form";
 import { Alert } from "./ui/feedback";
 import { useEffect, useState } from "react";
-import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
 import {
   DEFAULT_API_CONFIG_ID,
@@ -19,7 +19,7 @@ import {
 } from "../../lib/settings/text-api";
 
 export function TextApiSettings() {
-  const { document, ready: foundationReady, commit } = useFoundation();
+  const { bindings, ready: bindingsReady, error: bindingError, commit } = useBindings();
   const [configs, setConfigs] = useState<NamedApiConfig[]>([]);
   const [draft, setDraft] = useState<NamedApiConfig | null>(null);
   const [ready, setReady] = useState(false);
@@ -54,9 +54,9 @@ export function TextApiSettings() {
   const unchanged =
     !!draft && !!saved && JSON.stringify(saved) === JSON.stringify(draft);
   const globalId =
-    document.bindings.global.apiConfigId === undefined
+    bindings.global.apiConfigId === undefined
       ? DEFAULT_API_CONFIG_ID
-      : document.bindings.global.apiConfigId;
+      : bindings.global.apiConfigId;
   function edit(config: NamedApiConfig | null) {
     setDraft(config);
     setNotice("");
@@ -142,7 +142,7 @@ export function TextApiSettings() {
         </Alert>
       )}
       {notice && <Alert>{notice}</Alert>}
-      {error && <Alert variant="danger">{error}</Alert>}
+      {(error || bindingError) && <Alert variant="danger">{error || bindingError}</Alert>}
     </>
   );
   return (
@@ -311,21 +311,12 @@ export function TextApiSettings() {
                     disabled={
                       !unchanged ||
                       !!busy ||
-                      !foundationReady ||
+                      !bindingsReady ||
                       globalId === draft.id
                     }
                     onClick={() =>
                       void run("Selecting…", async () => {
-                        await commit((d) => ({
-                          ...d,
-                          bindings: {
-                            ...d.bindings,
-                            global: {
-                              ...d.bindings.global,
-                              apiConfigId: draft.id,
-                            },
-                          },
-                        }));
+                        await commit((d) => ({ ...d, global: { ...d.global, apiConfigId: draft.id } }));
                         setNotice(
                           "Default selected. Existing Character and app overrides are preserved.",
                         );
@@ -364,7 +355,7 @@ export function TextApiSettings() {
                 }
               >
                 Delete “{draft.name}”?{" "}
-                {apiConfigReferences(document.bindings, draft.id).length}{" "}
+                {apiConfigReferences(bindings, draft.id).length}{" "}
                 explicit binding reference(s)
                 {globalId === draft.id ? ", including the current default" : ""}
                 . Referenced bindings will be cleared without selecting another provider.

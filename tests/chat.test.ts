@@ -1,8 +1,9 @@
+import type { BindingDocument } from "../lib/bindings";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { CHAT_DATABASE_NAME, ChatStorage } from "../lib/chat/storage";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
 import { assembleChatPrompt, emptyMemorySlot } from "../lib/chat/prompt";
 import {
   completionUrl,
@@ -22,7 +23,7 @@ import { defaultSnapshot } from "../lib/theme-types";
 import { exportTheme } from "../lib/theme-package";
 
 function foundation() {
-  const document = defaultFoundation();
+  const document = testFoundation();
   document.user.name = "Writer";
   document.user.aboutMe = "User biography";
   document.universe.name = "Harbor";
@@ -520,7 +521,7 @@ test("API configuration is local/separate, respects binding precedence, and neve
   const bound = { ...config, id: "character-api", model: "bound-model" };
   await storage.saveApiConfig(bound);
   const document = foundation();
-  document.bindings.characters.a = {
+  bindings.characters.a = {
     defaults: { apiConfigId: bound.id },
     apps: {},
   };
@@ -547,7 +548,7 @@ test("API configuration is local/separate, respects binding precedence, and neve
   ]);
   assert(!unrelated.includes(config.apiKey));
   assert(!unrelated.includes("apiKey"));
-  document.bindings.characters.a.apps.messages = { apiConfigId: null };
+  bindings.characters.a.apps.messages = { apiConfigId: null };
   await engine.send(session.id, "new");
   await assert.rejects(
     () => engine.requestReply(session.id),
@@ -651,3 +652,7 @@ test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and
     globalThis.fetch = originalFetch;
   }
 });
+
+let bindings: BindingDocument = { global: {}, characters: {} };
+function testFoundation() { bindings = { global: {}, characters: {} }; return defaultFoundation(); }
+function createChatEngine(...args: Parameters<typeof baseChatEngine>) { args[7] = async () => bindings; return baseChatEngine(...args); }

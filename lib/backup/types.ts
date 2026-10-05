@@ -12,7 +12,8 @@ export const BACKUP_MAX_BYTES = 32 * 1024 * 1024;
 // Keep the backup contract explicit even if live chat records gain new fields.
 export type BackupSession = Pick<ChatSession,
   "id" | "characterId" | "updatedAt" | "lastMessageId" | "lastMessagePreview" |
-  "remark" | "autoReplyOnKeyboardDismiss" | "streamOnline" | "customCSS" | "nextOrder">;
+  "remark" | "autoReplyOnKeyboardDismiss" | "streamOnline" | "customCSS" | "nextOrder" |
+  "type" | "participantIds" | "title">;
 export type BackupMessage = Pick<ChatMessage,
   "id" | "sessionId" | "role" | "content" | "status" |
   "createdAt" | "order" | "requestedBy" | "error" | "quote">;
@@ -23,6 +24,7 @@ export type BackupChat = {
 };
 
 export type BackupV1 = {
+  bindings?: import("../bindings").BindingDocument;
   format: typeof BACKUP_FORMAT;
   version: 1;
   exportedAt: string;
@@ -41,6 +43,7 @@ export type BackupV2 = Omit<BackupV1, "version"> & {
 export type Backup = BackupV1 | BackupV2;
 
 export type BackupSources = {
+  bindings?: { load(): Promise<import("../bindings").BindingDocument> };
   foundation: { load(): Promise<unknown> };
   theme: { load(): Promise<unknown> };
   preset: { load(): Promise<unknown> };

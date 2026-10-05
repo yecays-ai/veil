@@ -1,3 +1,4 @@
+import { normalizeBindings } from "../bindings";
 import { normalizeFoundation, type FoundationDocument } from "../foundation-types";
 import { normalizeDocument, type ThemeDocument } from "../theme-types";
 import { createPresetDocument, validatePresetDocument } from "../preset";
@@ -33,10 +34,15 @@ const onlyKeys = (value: unknown, keys: string[]) =>
 
 function validSession(session: BackupSession) {
   return (
-    onlyKeys(session, ["id", "characterId", "updatedAt", "nextOrder", "remark",
+    onlyKeys(session, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "nextOrder", "remark",
       "autoReplyOnKeyboardDismiss", "streamOnline", "customCSS", "lastMessageId", "lastMessagePreview"]) &&
     text(session.id) &&
     text(session.characterId) &&
+    (session.type === undefined || session.type === "direct" || session.type === "group") &&
+    (session.participantIds === undefined || (Array.isArray(session.participantIds) &&
+      session.participantIds.length >= 2 && session.participantIds.every(text) &&
+      new Set(session.participantIds).size === session.participantIds.length)) &&
+    (session.title === undefined || text(session.title)) &&
     timestamp(session.updatedAt) &&
     integer(session.nextOrder) &&
     session.nextOrder >= 1 &&
@@ -79,8 +85,7 @@ function stableChat(chat: BackupChat): BackupChat {
     a.sessionId.localeCompare(b.sessionId) || a.order - b.order || a.id.localeCompare(b.id));
   const sessionById = new Map(sessions.map((s) => [s.id, s]));
   const messageById = new Map(messages.map((m) => [m.id, m]));
-  if (sessionById.size !== sessions.length ||
-      new Set(sessions.map((s) => s.characterId)).size !== sessions.length)
+  if (sessionById.size !== sessions.length)
     throw new Error("Chat backup contains duplicate or invalid session IDs.");
   if (messageById.size !== messages.length ||
       new Set(messages.map((m) => JSON.stringify([m.sessionId, m.order]))).size !== messages.length)
@@ -109,7 +114,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
   const chat = record(backup.chat);
   if (backup.format !== BACKUP_FORMAT || backup.version !== 1)
     throw new Error("Unsupported backup format.");
-  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "preset", "chat"]) ||
+  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "bindings", "theme", "preset", "chat"]) ||
       !onlyKeys(backup.chat, ["version", "sessions", "messages"]))
     throw new Error("Backup contains unsupported fields.");
   if (
@@ -127,6 +132,12 @@ export function validateBackupV1(value: unknown): BackupV1 {
   const foundationInput = { ...record(backup.foundation) };
   const legacySelection = Object.hasOwn(foundationInput, "selectedCharacterId");
   delete foundationInput.selectedCharacterId;
+  const bindingInput = backup.bindings ?? foundationInput.bindings;
+  delete foundationInput.bindings;
+  const bindings = bindingInput === undefined ? undefined : normalizeBindings(bindingInput,
+    foundation.characters.map((character) => character.characterId));
+  if (bindings && stableJson(bindingInput) !== stableJson(bindings))
+    throw new Error("Backup contains invalid bindings.");
   const theme: ThemeDocument = normalizeDocument(backup.theme);
   const preset = backup.preset === undefined
     ? createPresetDocument()
@@ -141,6 +152,7 @@ export function validateBackupV1(value: unknown): BackupV1 {
     version: 1,
     exportedAt: backup.exportedAt,
     foundation,
+    ...(bindings ? { bindings } : {}),
     theme: legacySelection ? migrateLegacyWidgetCharacters(theme, backup.foundation) : theme,
     preset,
     chat: stableChat(chat as BackupChat),
@@ -152,13 +164,14 @@ export function validateBackupV2(value: unknown): BackupV2 {
   const backup = record(value);
   if (backup.format !== BACKUP_FORMAT || backup.version !== BACKUP_VERSION)
     throw new Error("Unsupported backup format.");
-  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "theme", "preset", "regex", "worldBooks", "chat"]))
+  if (!onlyKeys(value, ["format", "version", "exportedAt", "foundation", "bindings", "theme", "preset", "regex", "worldBooks", "chat"]))
     throw new Error("Backup contains unsupported fields.");
   const legacy = validateBackupV1({
     format: backup.format,
     version: 1,
     exportedAt: backup.exportedAt,
     foundation: backup.foundation,
+    bindings: backup.bindings,
     theme: backup.theme,
     preset: backup.preset,
     chat: backup.chat,

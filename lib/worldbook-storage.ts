@@ -1,4 +1,5 @@
-import type { FoundationStorage, StringStorage } from "./foundation-storage";
+import type { BindingStorage } from "./binding-storage";
+import type { StringStorage } from "./foundation-storage";
 import { emptyWorldBookDocument, validateWorldBookDocument, type WorldBookDocument } from "./worldbook";
 import { withoutWorldBookBinding } from "./bindings";
 
@@ -53,7 +54,7 @@ export const browserWorldBookStorage = createWorldBookStorage(() => window.local
 export async function deleteWorldBookAndBindings(
   bookId: string,
   worldBooks: WorldBookStorage,
-  foundation: FoundationStorage,
+  bindings: BindingStorage,
 ): Promise<WorldBookDocument> {
   const before = await worldBooks.load();
   const index = before.books.findIndex((book) => book.id === bookId);
@@ -61,8 +62,7 @@ export async function deleteWorldBookAndBindings(
   await worldBooks.transact((current) => ({ ...current,
     books: current.books.filter((book) => book.id !== bookId) }));
   try {
-    await foundation.transact((current) => ({ ...current,
-      bindings: withoutWorldBookBinding(current.bindings, bookId) }));
+    await bindings.transact((current) => withoutWorldBookBinding(current, bookId));
   } catch (reason) {
     // Restore the book if binding cleanup could not be committed.
     await worldBooks.transact((current) => current.books.some((book) => book.id === bookId) ? current : {

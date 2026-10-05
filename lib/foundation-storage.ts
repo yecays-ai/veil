@@ -7,6 +7,7 @@ import {
   browserDocumentStorage,
   type DocumentStorage,
 } from "./core-document-storage";
+import { migrateLegacyBindings } from "./binding-storage";
 
 export interface FoundationStorage {
   load(): Promise<FoundationDocument>;
@@ -29,6 +30,8 @@ export function createFoundationStorage(
 ): FoundationStorage {
   let queue = Promise.resolve();
   const load = async () => {
+    migrateLegacyBindings(getStorage());
+    migrateLegacyBindings(getStorage());
     const value = getStorage().getItem(KEY);
     if (!value) return defaultFoundation();
     try {
@@ -42,6 +45,8 @@ export function createFoundationStorage(
   return {
     load,
     async readRaw() {
+      migrateLegacyBindings(getStorage());
+      migrateLegacyBindings(getStorage());
       return getStorage().getItem(KEY);
     },
     replaceIfCurrent(expected, document) {
@@ -105,10 +110,15 @@ export function createIndexedDBFoundationStorage(
   const readRaw = async () => {
     const current = await documents.read(KEY);
     if (current !== null) return current;
-    const previous = legacy().getItem(KEY);
+    const legacyStorage = legacy();
+    const previous = legacyStorage.getItem(KEY);
     if (previous === null) return null;
-    // Validate before copying and retain the original for rollback to older builds.
-    return documents.putIfAbsent(KEY, normalizeRaw(previous));
+    // Validate before migration, then let the bindings migration split its own
+    // document from the legacy Foundation payload. The original local copy is
+    // retained for rollback to older builds.
+    normalizeRaw(previous);
+    migrateLegacyBindings(legacyStorage);
+    return documents.putIfAbsent(KEY, normalizeRaw(legacyStorage.getItem(KEY) ?? previous));
   };
   return {
     async load() {

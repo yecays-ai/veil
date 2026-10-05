@@ -49,20 +49,20 @@ function displayValue(field: ManagedBindingField, value: BindingSlot[ManagedBind
 }
 
 export function BindingHome() {
-  const { document, resources, error, busy, update } = useBindingManager();
+  const { document, bindings, resources, error, busy, update } = useBindingManager();
   const [openField, setOpenField] = useState<ManagedBindingField | null>(null);
   return <PageShell className="settings-app binding-manager" title="Bindings" backHref="/settings" backLabel="Back to Settings">
     {error && <Alert variant="danger">{error}</Alert>}
     {!resources && !error && <p role="status">Loading Bindings…</p>}
     {resources && <>
-      <BindingFields title="Global Defaults" fields={FIELDS} own={document.bindings.global}
-        effective={resolveBindings(document.bindings, null, "messages")} resources={resources}
+      <BindingFields title="Global Defaults" fields={FIELDS} own={bindings.global}
+        effective={resolveBindings(bindings, null, "messages")} resources={resources}
         busy={busy} openField={openField} setOpenField={setOpenField}
         update={(field, value) => update({}, field, value)} />
       <section className="binding-section"><h2>Characters</h2>
         {document.characters.length === 0 && <p>No Characters yet.</p>}
         {document.characters.map((character) => {
-          const binding = document.bindings.characters[character.characterId];
+          const binding = bindings.characters[character.characterId];
           const count = managedOverrideCount(binding?.defaults) +
             bindingApps.reduce((total, app) => total + managedOverrideCount(binding?.apps[app.id]), 0);
           return <Link className="binding-link" key={character.characterId}
@@ -78,7 +78,7 @@ export function BindingHome() {
 
 export function BindingEditor({ characterId, appId }: { characterId?: string; appId?: string }) {
   const manager = useBindingManager();
-  const { document, resources, error, busy, update } = manager;
+  const { document, bindings, resources, error, busy, update } = manager;
   const [openField, setOpenField] = useState<ManagedBindingField | null>(null);
   const character = characterId ? document.characters.find((item) => item.characterId === characterId) : undefined;
   const validApp: AppId | undefined = appId && isAppId(appId) ? appId : undefined;
@@ -88,14 +88,14 @@ export function BindingEditor({ characterId, appId }: { characterId?: string; ap
   const backHref = app ? `/settings/bindings/${encodeURIComponent(characterId!)}`
     : character ? "/settings/bindings" : "/settings/bindings";
   const invalid = (!!characterId && !character) || (!!appId && !app);
-  const binding = characterId ? document.bindings.characters[characterId] : undefined;
+  const binding = characterId ? bindings.characters[characterId] : undefined;
   const own: BindingSlot = app ? binding?.apps[app.id] ?? {} : character ? binding?.defaults ?? {}
-    : document.bindings.global;
-  const inherited: BindingSlot = app ? resolveBindings({ ...document.bindings,
-    characters: { ...document.bindings.characters,
+    : bindings.global;
+  const inherited: BindingSlot = app ? resolveBindings({ ...bindings,
+    characters: { ...bindings.characters,
       [characterId!]: { defaults: binding?.defaults ?? {}, apps: {} } } }, characterId!, app.id)
-    : resolveBindings(document.bindings, null, "messages");
-  const effective = resolveBindings(document.bindings, characterId ?? null, validApp ?? "messages");
+    : resolveBindings(bindings, null, "messages");
+  const effective = resolveBindings(bindings, characterId ?? null, validApp ?? "messages");
   return <PageShell className="settings-app binding-manager" title={title} backHref={backHref} backLabel="Back to Bindings">
     {error && <Alert variant="danger">{error}</Alert>}
     {invalid ? <p>Binding target not found.</p> : !resources ? <p role="status">Loading Bindings…</p> : <>

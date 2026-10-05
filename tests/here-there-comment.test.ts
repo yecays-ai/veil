@@ -13,6 +13,7 @@ import { WIDGET_REGISTRY } from "../lib/widget-registry";
 
 function fixture() {
   const foundation = defaultFoundation();
+  let bindings: import("../lib/bindings").BindingDocument = { global: {}, characters: {} };
   foundation.characters = ["a", "b"].map((characterId) => ({ characterId,
     ...normalizeCharacterInput({ name: characterId, location: { label: characterId === "a" ? "New York" : "Tokyo" },
       timezone: characterId === "a" ? "America/New_York" : "Asia/Tokyo" }) }));
@@ -26,10 +27,10 @@ function fixture() {
   const context = { foundation, characterId: "a", now: new Date("2026-10-06T12:00:00Z"),
     hereWeather: { status: "error", message: "unavailable" } as WeatherState,
     thereWeather: { status: "ready", temperatureC: 16, summary: "Cloudy", icon: "", updatedAt: "now" } as WeatherState };
-  const services = { foundation: async () => foundation, presets: async () => createPresetDocument(),
+  const services = { bindings: async () => bindings, foundation: async () => foundation, presets: async () => createPresetDocument(),
     api: async (id: string) => ({ id, apiKey: "test", model: "test", baseUrl: "https://example.test/v1" }),
     provider: async function* () { yield "Wish you were here."; } as TextProvider };
-  return { foundation, context, services, commit, theme: () => theme };
+  return { get bindings() { return bindings; }, set bindings(value) { bindings = value; }, foundation, context, services, commit, theme: () => theme };
 }
 
 test("widget generation resolves Global then Character defaults and ignores Messages overrides", async () => {
@@ -37,7 +38,7 @@ test("widget generation resolves Global then Character defaults and ignores Mess
   const preset = { ...createBuiltinPreset(), id: "character-preset", name: "Character", builtIn: false,
     prompts: createBuiltinPreset().prompts.map((entry) => entry.source === "prompt" && entry.identifier === "base"
       ? { ...entry, content: "CHARACTER_PRESET" } : entry) };
-  value.foundation.bindings = { global: { apiConfigId: "global" }, characters: { a: {
+  value.bindings = { global: { apiConfigId: "global" }, characters: { a: {
     defaults: { apiConfigId: "character", presetId: preset.id },
     apps: { messages: { apiConfigId: "messages-only", presetId: "veil-default" } } } } };
   value.services.presets = async () => ({ ...createPresetDocument(), presets: [createBuiltinPreset(), preset] });
@@ -77,13 +78,13 @@ test("failed initial generation and refresh write nothing and later eligible cal
     const before = JSON.stringify(value.theme());
     const context = { ...value.context, now: new Date(value.context.now.getTime() + HERE_THERE_COMMENT_REFRESH_MS) };
     for (const mode of ["failure", "empty", "missing", "disabled"] as const) {
-      if (mode === "disabled") value.foundation.bindings.global.apiConfigId = null;
+      if (mode === "disabled") value.bindings.global.apiConfigId = null;
       await ensureHereThereComment(value.theme().current.widgets[0], context, value.commit, {
         ...value.services, api: mode === "missing" ? async () => undefined : value.services.api,
         provider: async function* () { if (mode === "failure") throw new Error("failed"); yield ""; },
       });
       assert.equal(JSON.stringify(value.theme()), before);
-      delete value.foundation.bindings.global.apiConfigId;
+      delete value.bindings.global.apiConfigId;
     }
     await ensureHereThereComment(value.theme().current.widgets[0], context, value.commit,
       { ...value.services, provider: async function* () { yield "Recovered."; } });

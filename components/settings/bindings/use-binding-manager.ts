@@ -1,4 +1,5 @@
 "use client";
+import { useBindings } from "../../use-bindings";
 import { useEffect, useState } from "react";
 import { useFoundation } from "../../foundation-provider";
 import { cleanStaleBindings, setBindingField,
@@ -18,7 +19,9 @@ export type BindingResources = {
 };
 
 export function useBindingManager() {
-  const { document, ready, commit } = useFoundation();
+  const { document, ready: foundationReady } = useFoundation();
+  const { bindings, ready: bindingsReady, error: bindingError, commit } = useBindings();
+  const ready = foundationReady && bindingsReady;
   const [resources, setResources] = useState<BindingResources | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,10 +40,9 @@ export function useBindingManager() {
         regexIds: new Set(regex.groups.filter((item) => item.id !== DEFAULT_REGEX_GROUP_ID)
           .map((item) => item.id)),
       };
-      const cleaned = cleanStaleBindings(document.bindings, available);
-      if (JSON.stringify(cleaned) !== JSON.stringify(document.bindings))
-        await commit((current) => ({ ...current,
-          bindings: cleanStaleBindings(current.bindings, available) }));
+      const cleaned = cleanStaleBindings(bindings, available);
+      if (JSON.stringify(cleaned) !== JSON.stringify(bindings))
+        await commit((current) => cleanStaleBindings(current, available));
       if (active) setResources({
         api: api.map((item) => ({ id: item.id, name: item.name })),
         presets: preset.presets.map((item) => ({ id: item.id, name: item.name })),
@@ -60,12 +62,11 @@ export function useBindingManager() {
     if (!resources || busy) return;
     setBusy(true); setError("");
     try {
-      await commit((current) => ({ ...current,
-        bindings: setBindingField(current.bindings, scope, field, value) }));
+      await commit((current) => setBindingField(current, scope, field, value));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Binding could not be saved.");
     } finally { setBusy(false); }
   }
 
-  return { document, resources, error, busy, update };
+  return { document, bindings, resources, error: error || bindingError, busy, update };
 }

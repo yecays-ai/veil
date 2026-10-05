@@ -70,13 +70,14 @@ test("root pages reuse Foundation and existing Chat without fictional social dat
   const profile = readFileSync("components/profile-pages.tsx", "utf8");
   const moments = readFileSync("app/moments/page.tsx", "utf8");
   const messages = readFileSync("components/chat/messages-home.tsx", "utf8");
-  assert.match(contacts, /document\.characters\.filter/);
+  assert.match(contacts, /useContacts/);
   assert.match(contacts, /chatStorage\.openSession\(character\.characterId\)/);
   assert.match(profile, /document\.user\.name/);
   assert.match(profile, /href="\/profile\/details"/);
   assert.doesNotMatch(profile, /href="\/settings"/);
   assert.match(messages, /chatStorage\.listSessions/);
   assert.match(messages, /Search chats/);
-  assert.doesNotMatch(messages, /Back to Home|document\.user|在线/);
+  assert.match(messages, /RootAppHeader/);
+  assert.doesNotMatch(messages, /document\.user|在线/);
   assert.doesNotMatch(moments, /SocialAccount|posts|followers|publish/);
 });

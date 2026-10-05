@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { browserPresetStorage, deletePresetAndBindings } from "../../../lib/preset-storage";
-import type { FoundationStorage } from "../../../lib/foundation-storage";
+import { browserBindingStorage } from "../../../lib/binding-storage";
 import type { PresetDocument } from "../../../lib/preset";
 
 export function usePresetLibrary() {
@@ -33,8 +33,8 @@ export function usePresetLibrary() {
     if (mounted.current) setDocument(next);
     return next;
   }
-  async function remove(id: string, foundation: Pick<FoundationStorage, "transact">) {
-    const next = await deletePresetAndBindings(id, browserPresetStorage, foundation);
+  async function remove(id: string) {
+    const next = await deletePresetAndBindings(id, browserPresetStorage, browserBindingStorage);
     if (mounted.current) setDocument(next);
     return next;
   }

@@ -1,3 +1,4 @@
+import { browserBindingStorage } from "../binding-storage";
 import { chatStorage } from "../chat/storage";
 import { browserFoundationStorage } from "../foundation-storage";
 import { browserThemeStorage } from "../theme-storage";
@@ -20,10 +21,11 @@ type RestoreDocument<T> = {
 };
 export type RestoreSources = {
   foundation: RestoreDocument<Backup["foundation"]>;
+  bindings?: RestoreDocument<import("../bindings").BindingDocument>;
   theme: RestoreDocument<Backup["theme"]>;
   preset: RestoreDocument<Backup["preset"]>;
-  regex: RestoreDocument<BackupV2["regex"]>;
-  worldBooks: RestoreDocument<BackupV2["worldBooks"]>;
+  regex?: RestoreDocument<BackupV2["regex"]>;
+  worldBooks?: RestoreDocument<BackupV2["worldBooks"]>;
   chat: {
     exportBackup(): Promise<BackupChat>;
     replaceBackup(expected: BackupChat, backup: BackupChat): Promise<void>;
@@ -31,6 +33,7 @@ export type RestoreSources = {
 };
 const browserSources: RestoreSources = {
   foundation: browserFoundationStorage,
+  bindings: browserBindingStorage,
   theme: browserThemeStorage,
   preset: browserPresetStorage,
   regex: browserRegexStorage,
@@ -38,8 +41,9 @@ const browserSources: RestoreSources = {
   chat: chatStorage,
 };
 const snapshot = (sources: RestoreSources) => Promise.all([
-  sources.foundation.readRaw(), sources.theme.readRaw(), sources.preset.readRaw(),
-  sources.regex.readRaw(), sources.worldBooks.readRaw(),
+  sources.foundation.readRaw(), sources.bindings?.readRaw(), sources.theme.readRaw(),
+  sources.preset.readRaw(), sources.regex?.readRaw() ?? Promise.resolve(null),
+  sources.worldBooks?.readRaw() ?? Promise.resolve(null),
   sources.chat.exportBackup(),
 ]);
 function replacement<T>(
@@ -75,7 +79,7 @@ export function parseBackupV1(text: string): BackupV1 {
 }
 
 export async function requiresOverwriteRestore(sources = browserSources) {
-  const [foundation, theme, preset, regex, worldBooks, chat] = await snapshot(sources);
+  const [foundation, bindings, theme, preset, regex, worldBooks, chat] = await snapshot(sources);
   let customPreset = false;
   try {
     customPreset = preset !== null && stableJson(validatePresetDocument(JSON.parse(preset))) !==
@@ -92,6 +96,7 @@ export async function requiresOverwriteRestore(sources = browserSources) {
       stableJson(emptyWorldBookDocument());
   } catch { customWorldBooks = true; }
   return foundation !== null || theme !== null || customPreset || customRegex || customWorldBooks ||
+    (bindings != null && stableJson(JSON.parse(bindings)) !== stableJson({ global: {}, characters: {} })) ||
     !!chat.sessions.length || !!chat.messages.length;
 }
 
@@ -101,17 +106,23 @@ export async function restoreBackup(
 ): Promise<void> {
   const validated = validateBackup(backup);
   const safe = { ...validated, chat: restorableChat(validated.chat) };
-  const [foundation, theme, preset, regex, worldBooks, chat] = await snapshot(sources);
+  if (safe.bindings && !sources.bindings) throw new Error("Binding storage is required to restore these bindings.");
+  if (safe.version === 2 && (!sources.regex || !sources.worldBooks))
+    throw new Error("Regex and WorldBook storage are required to restore a V2 backup.");
+  const [foundation, bindings, theme, preset, regex, worldBooks, chat] = await snapshot(sources);
   const documents = [
+    ...(sources.bindings ? [replacement(sources.bindings, bindings ?? null, safe.bindings ?? { global: {}, characters: {} })] : []),
     replacement(sources.foundation, foundation, safe.foundation),
     replacement(sources.theme, theme, safe.theme),
     replacement(sources.preset, preset, safe.preset, createPresetDocument(), validatePresetDocument),
   ];
   if (safe.version === 2) {
+    const regexStore = sources.regex!;
+    const worldBookStore = sources.worldBooks!;
     documents.push(
-      replacement(sources.regex, regex, safe.regex,
+      replacement(regexStore, regex, safe.regex,
         [{ version: 1, groups: [defaultRegexGroup()] }, emptyRegexDocument()], validateRegexDocument),
-      replacement(sources.worldBooks, worldBooks, safe.worldBooks, emptyWorldBookDocument(), validateWorldBookDocument),
+      replacement(worldBookStore, worldBooks, safe.worldBooks, emptyWorldBookDocument(), validateWorldBookDocument),
     );
   }
   if (!overwrite && (
@@ -128,7 +139,7 @@ export async function restoreBackup(
       return true;
     });
     // Per-store CAS alone cannot detect an earlier store changing during a later write.
-    const [finalFoundation, finalTheme, finalPreset, finalRegex, finalWorldBooks, finalChat] = await snapshot(sources);
+    const [finalFoundation, finalBindings, finalTheme, finalPreset, finalRegex, finalWorldBooks, finalChat] = await snapshot(sources);
     if (finalFoundation === null || finalTheme === null || finalPreset === null ||
         stableJson(JSON.parse(finalFoundation)) !== stableJson(safe.foundation) ||
         stableJson(JSON.parse(finalTheme)) !== stableJson(safe.theme) ||
@@ -136,7 +147,9 @@ export async function restoreBackup(
         (safe.version === 2 && (finalRegex === null || finalWorldBooks === null ||
           stableJson(validateRegexDocument(JSON.parse(finalRegex))) !== stableJson(safe.regex) ||
           stableJson(validateWorldBookDocument(JSON.parse(finalWorldBooks))) !== stableJson(safe.worldBooks))) ||
-        !sameBackupChat(finalChat, safe.chat))
+        !sameBackupChat(finalChat, safe.chat) ||
+        (sources.bindings && (finalBindings == null || stableJson(JSON.parse(finalBindings)) !==
+          stableJson(safe.bindings ?? { global: {}, characters: {} }))))
       throw new Error("Your data changed during restore.");
   } catch (error) {
     let complete = true;

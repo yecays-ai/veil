@@ -1,15 +1,16 @@
+import type { BindingDocument } from "../lib/bindings";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { createBuiltinPreset, createPresetDocument, validatePresetDocument } from "../lib/preset";
 import { normalizeWorldBook } from "../lib/worldbook";
 
 async function setup(entries: object[]) {
   const storage = new ChatStorage(() => new IDBFactory());
-  const document = defaultFoundation();
+  const document = testFoundation();
   document.runtime.timeAware = false;
   document.characters = [{ characterId: "p", ...normalizeCharacterInput({ name: "Peter" }) }];
   const session = await storage.openSession("p");
@@ -57,7 +58,7 @@ test("empty World Info markers produce no prompt content, and disabled bindings 
   }, undefined, undefined, async () => books);
   await engine.requestReply(session.id);
   assert.doesNotMatch(prompts[0], /world-info-before|world-info-after|Hidden Lore/);
-  document.bindings.global.worldBookIds = [];
+  bindings.global.worldBookIds = [];
   await storage.send(session.id, "Other");
   await engine.requestReply(session.id);
   assert.doesNotMatch(prompts[1], /Hidden Lore/);
@@ -99,7 +100,7 @@ test("Regenerate discards future lore; failure and Stop each consume one started
 test("failure before provider start does not advance WorldBook cycles", async () => {
   const { storage, document, session, books } = await setup([{ content: "Lore", constant: true }]);
   await storage.send(session.id, "hello");
-  document.bindings.global.apiConfigId = "missing-config";
+  bindings.global.apiConfigId = "missing-config";
   const engine = createChatEngine(storage, async () => document, async function* () { assert.fail("provider must not start"); },
     undefined, undefined, async () => books);
   await assert.rejects(engine.requestReply(session.id), /missing/);
@@ -155,3 +156,7 @@ test("Book and Entry toggles are read again for the next generation", async () =
   await storage.send(session.id, "three"); await engine.requestReply(session.id);
   assert.doesNotMatch(prompts[2], /Active Lore/);
 });
+
+let bindings: BindingDocument = { global: {}, characters: {} };
+function testFoundation() { bindings = { global: {}, characters: {} }; return defaultFoundation(); }
+function createChatEngine(...args: Parameters<typeof baseChatEngine>) { args[7] = async () => bindings; return baseChatEngine(...args); }

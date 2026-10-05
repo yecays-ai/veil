@@ -116,11 +116,11 @@ test("V1 restore preserves Regex and WorldBooks that V1 never contained", async 
   const target = restoreSources();
   const regex = { version: 1 as const, groups: [] };
   const worldBooks = { version: 1 as const, books: [] };
-  await target.regex.replaceIfCurrent(null, regex);
-  await target.worldBooks.replaceIfCurrent(null, worldBooks);
+  await target.regex!.replaceIfCurrent(null, regex);
+  await target.worldBooks!.replaceIfCurrent(null, worldBooks);
   await restoreBackup(validateBackupV1(v1), target);
-  assert.deepEqual(JSON.parse((await target.regex.readRaw())!), regex);
-  assert.deepEqual(JSON.parse((await target.worldBooks.readRaw())!), worldBooks);
+  assert.deepEqual(JSON.parse((await target.regex!.readRaw())!), regex);
+  assert.deepEqual(JSON.parse((await target.worldBooks!.readRaw())!), worldBooks);
 });
 
 test("V2 rejects unknown Regex and WorldBook fields before restore", async () => {
@@ -236,9 +236,13 @@ test("backup rejects malformed envelopes, duplicate orders, and stale previews",
   const duplicateCharacter = await exportBackupV2(sources());
   duplicateCharacter.backup.chat.sessions.push({
     ...duplicateCharacter.backup.chat.sessions[0],
-    id: "character:duplicate",
+    id: duplicateCharacter.backup.chat.sessions[0].id,
   });
   assert.throws(() => validateBackup(duplicateCharacter.backup), /session IDs/);
+  const sharedCharacter = await exportBackupV2(sources());
+  sharedCharacter.backup.chat.sessions.push({ id: "independent-conversation", characterId: "a",
+    updatedAt: 0, nextOrder: 1, remark: null, autoReplyOnKeyboardDismiss: false });
+  assert.equal(validateBackup(sharedCharacter.backup).chat.sessions.length, 2);
 
   const invalidBatch = await exportBackupV2(sources());
   invalidBatch.backup.chat.messages[0].requestedBy = "missing-reply";
@@ -295,8 +299,8 @@ test("V2 restore preflights an empty installation and parses its JSON", async ()
   await restoreBackup(backup, target);
   assert.deepEqual(JSON.parse((await target.foundation.readRaw())!), backup.foundation);
   assert.deepEqual(JSON.parse((await target.theme.readRaw())!), backup.theme);
-  assert.deepEqual(JSON.parse((await target.regex.readRaw())!), backup.regex);
-  assert.deepEqual(JSON.parse((await target.worldBooks.readRaw())!), backup.worldBooks);
+  assert.deepEqual(JSON.parse((await target.regex!.readRaw())!), backup.regex);
+  assert.deepEqual(JSON.parse((await target.worldBooks!.readRaw())!), backup.worldBooks);
   assert.deepEqual(await target.chat.exportBackup(), backup.chat);
   await restoreBackup(backup, target); // Retrying the identical backup is safe.
 });

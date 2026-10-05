@@ -1,4 +1,6 @@
 import { normalizeBindingSlot } from "./bindings";
+import type { BindingDocument } from "./bindings";
+import { browserBindingStorage } from "./binding-storage";
 import type { FoundationDocument } from "./foundation-types";
 import { presetForBinding, type PresetDocument } from "./preset";
 import { assembleChatPrompt } from "./chat/prompt";
@@ -27,9 +29,10 @@ type Context = { foundation: FoundationDocument; characterId: string; now: Date;
   hereWeather: WeatherState; thereWeather: WeatherState };
 type Commit = (update: (theme: ThemeDocument) => ThemeDocument) => Promise<void>;
 type Dependencies = { foundation: () => Promise<FoundationDocument>; presets: () => Promise<PresetDocument>;
-  api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider };
+  api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider; bindings: () => Promise<BindingDocument> };
 const dependencies: Dependencies = { foundation: () => browserFoundationStorage.load(),
-  presets: () => browserPresetStorage.load(), api: (id) => chatStorage.getApiConfig(id), provider: openAITextProvider };
+  presets: () => browserPresetStorage.load(), api: (id) => chatStorage.getApiConfig(id), provider: openAITextProvider,
+  bindings: () => browserBindingStorage.load() };
 
 function facts(profile: ParticipantConfig, weather: WeatherState, now: Date) {
   const timezone = resolveTimezone(profile.timezone).timezone;
@@ -47,8 +50,9 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
     const foundation = await services.foundation();
     const character = foundation.characters.find((item) => item.characterId === context.characterId);
     if (!character) throw new Error("Character unavailable");
-    const binding = normalizeBindingSlot({ ...foundation.bindings.global,
-      ...foundation.bindings.characters[character.characterId]?.defaults });
+    const bindings = await services.bindings();
+    const binding = normalizeBindingSlot({ ...bindings.global,
+      ...bindings.characters[character.characterId]?.defaults });
     if (binding.apiConfigId === null) throw new Error("API disabled");
     const api = await services.api(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID);
     if (!api) throw new Error("API unavailable");

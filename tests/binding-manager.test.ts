@@ -1,3 +1,4 @@
+import { createBindingStorage } from "../lib/binding-storage";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
@@ -5,9 +6,8 @@ import { APP_REGISTRY, bindingCapableApps } from "../lib/app-registry";
 import { cleanStaleBindings, resolveBindings, setBindingField,
   withoutApiConfigBinding, withoutPresetBinding, type BindingDocument } from "../lib/bindings";
 import { ChatStorage } from "../lib/chat/storage";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
-import { createFoundationStorage } from "../lib/foundation-storage";
 import { createBuiltinPreset, createPresetDocument, presetForBinding } from "../lib/preset";
 import { createPresetStorage, deletePresetAndBindings } from "../lib/preset-storage";
 import { deleteApiConfigAndBindings } from "../lib/settings/text-api";
@@ -79,12 +79,12 @@ test("Preset binding chooses per-app, per-character and active fallback in real 
       ? { ...entry, content: "PRESET_B_ONLY" } : entry) };
   const library = { ...createPresetDocument(), presets: [createBuiltinPreset(), presetA, presetB],
     activePresetId: "preset-a" };
-  const foundation = defaultFoundation(); foundation.runtime.timeAware = false;
+  const foundation = testFoundation(); foundation.runtime.timeAware = false;
   foundation.characters = [
     { characterId: "p", ...normalizeCharacterInput({ name: "Peter" }) },
     { characterId: "l", ...normalizeCharacterInput({ name: "Lan" }) },
   ];
-  foundation.bindings = { global: {}, characters: { p: { defaults: { presetId: "preset-b" },
+  bindings = { global: {}, characters: { p: { defaults: { presetId: "preset-b" },
     apps: { messages: { presetId: "preset-a" } } } } };
   const captured: string[] = [];
   const engine = createChatEngine(chat, async () => foundation, async function* (_config, prompt) {
@@ -94,11 +94,11 @@ test("Preset binding chooses per-app, per-character and active fallback in real 
   const lan = await chat.openSession("l");
   async function reply(id: string) { await engine.send(id, "hi"); await engine.requestReply(id); }
   await reply(peter.id); await reply(lan.id);
-  foundation.bindings = setBindingField(foundation.bindings, { characterId: "p", appId: "messages" }, "presetId", undefined);
+  bindings = setBindingField(bindings, { characterId: "p", appId: "messages" }, "presetId", undefined);
   await reply(peter.id);
-  foundation.bindings = setBindingField(foundation.bindings, { characterId: "p" }, "presetId", undefined);
+  bindings = setBindingField(bindings, { characterId: "p" }, "presetId", undefined);
   await reply(peter.id);
-  foundation.bindings = setBindingField(foundation.bindings, { characterId: "p" }, "presetId", null);
+  bindings = setBindingField(bindings, { characterId: "p" }, "presetId", null);
   await reply(peter.id);
   assert(captured[0].includes("PRESET_A_ONLY"));
   assert(captured[1].includes("PRESET_A_ONLY"));
@@ -113,24 +113,22 @@ test("Preset and Text API deletion remove dangling IDs without switching a clear
   const backend = { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); },
     removeItem: (key: string) => { values.delete(key); } };
-  const foundation = createFoundationStorage(() => backend);
+  const foundation = createBindingStorage(() => backend);
   const presets = createPresetStorage(() => backend);
   const custom = { ...createBuiltinPreset(), id: "custom", name: "Custom", builtIn: false };
   await presets.save({ ...createPresetDocument(), presets: [createBuiltinPreset(), custom], activePresetId: "custom" });
-  await foundation.transact((current) => ({ ...current,
-    characters: [{ characterId: "p", ...normalizeCharacterInput({ name: "Peter" }) }],
-    bindings: { global: { presetId: "custom", apiConfigId: "api-a" },
+  await foundation.save({ global: { presetId: "custom", apiConfigId: "api-a" },
       characters: { p: { defaults: { presetId: "custom", apiConfigId: "api-a" },
-        apps: { messages: { presetId: "custom", apiConfigId: "api-a" } } } } } }));
+        apps: { messages: { presetId: "custom", apiConfigId: "api-a" } } } } });
   await deletePresetAndBindings("custom", presets, foundation);
   assert.equal((await presets.load()).activePresetId, "veil-default-v1");
-  const afterPreset = (await foundation.load()).bindings;
+  const afterPreset = (await foundation.load());
   assert.equal(afterPreset.global.presetId, undefined);
   assert.equal(afterPreset.characters.p.apps.messages?.presetId, undefined);
   const chat = new ChatStorage(() => new IDBFactory());
   await chat.saveApiConfig({ id: "api-a", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   await deleteApiConfigAndBindings("api-a", chat, foundation);
-  const afterApi = (await foundation.load()).bindings;
+  const afterApi = (await foundation.load());
   assert.equal(afterApi.global.apiConfigId, null);
   assert.equal(afterApi.characters.p.defaults.apiConfigId, null);
   assert.equal(afterApi.characters.p.apps.messages?.apiConfigId, null);
@@ -157,3 +155,7 @@ test("failed cross-store cleanup restores a deleted Preset or Text API", async (
   await assert.rejects(() => deleteApiConfigAndBindings("api-a", chat, failing), /Foundation unavailable/);
   assert(await chat.getApiConfig("api-a"));
 });
+
+let bindings: BindingDocument = { global: {}, characters: {} };
+function testFoundation() { bindings = { global: {}, characters: {} }; return defaultFoundation(); }
+function createChatEngine(...args: Parameters<typeof baseChatEngine>) { args[7] = async () => bindings; return baseChatEngine(...args); }

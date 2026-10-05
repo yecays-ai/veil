@@ -1,5 +1,4 @@
 import { userConfig } from "../config/user";
-import { normalizeBindings, type BindingDocument } from "./bindings";
 import type { ManualLocation } from "./participant-config";
 
 export const UNIVERSE_ID = "veil-universe" as const;
@@ -52,7 +51,6 @@ export type FoundationDocument = {
   user: UserProfile;
   characters: Character[];
   universe: Universe;
-  bindings: BindingDocument;
   runtime: { timeAware: boolean };
 };
 
@@ -180,7 +178,6 @@ export function defaultFoundation(): FoundationDocument {
       relations: [],
       nodePositions: {},
     },
-    bindings: { global: {}, characters: {} },
     runtime: { timeAware: true },
   };
 }
@@ -255,10 +252,6 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
       relations,
       nodePositions,
     },
-    bindings: normalizeBindings(
-      raw.bindings,
-      characters.map((c) => c.characterId),
-    ),
     runtime: { timeAware: record(raw.runtime).timeAware !== false },
   };
 }

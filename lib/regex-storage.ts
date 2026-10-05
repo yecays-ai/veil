@@ -1,4 +1,5 @@
-import type { FoundationStorage, StringStorage } from "./foundation-storage";
+import type { BindingStorage } from "./binding-storage";
+import type { StringStorage } from "./foundation-storage";
 import { withoutRegexBinding } from "./bindings";
 import { emptyRegexDocument, validateRegexDocument, type RegexDocument } from "./regex";
 import { DEFAULT_REGEX_GROUP_ID, DEFAULT_RULE_IDS, withDefaultRegexGroup } from "./regex-defaults";
@@ -99,7 +100,7 @@ export const browserRegexStorage = {
 export async function deleteRegexGroupAndBindings(
   groupId: string,
   regex: RegexStorage,
-  foundation: FoundationStorage,
+  bindings: BindingStorage,
 ): Promise<RegexDocument> {
   const before = await regex.load();
   if (groupId === DEFAULT_REGEX_GROUP_ID) throw new Error("Default Rules cannot be deleted.");
@@ -108,8 +109,7 @@ export async function deleteRegexGroupAndBindings(
   await regex.transact((current) => ({ ...current,
     groups: current.groups.filter((group) => group.id !== groupId) }));
   try {
-    await foundation.transact((current) => ({ ...current,
-      bindings: withoutRegexBinding(current.bindings, groupId) }));
+    await bindings.transact((current) => withoutRegexBinding(current, groupId));
   } catch (reason) {
     await regex.transact((current) => current.groups.some((group) => group.id === groupId) ? current : {
       ...current,
