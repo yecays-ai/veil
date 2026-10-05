@@ -1,10 +1,17 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { exportBackupV1 } from "../../lib/backup/export";
 import { parseBackupV1, restoreBackupV1, requiresOverwriteRestore, isOverwriteConfirmationValid } from "../../lib/backup/import";
 import { BACKUP_MAX_BYTES, type BackupV1 } from "../../lib/backup/types";
 import { PageShell } from "../page-shell";
 import { Alert } from "./ui/feedback";
+import {
+  formatStorageBytes,
+  readStorageHealth,
+  requestPersistentStorage,
+  storageUsageRatio,
+  type StorageHealth,
+} from "../../lib/storage-health";
 
 export function DataBackupSettings() {
   const [status, setStatus] = useState("");
@@ -12,6 +19,14 @@ export function DataBackupSettings() {
   const [failed, setFailed] = useState(false);
   const [candidate, setCandidate] = useState<{ backup: BackupV1; overwrite: boolean } | null>(null);
   const [confirmation, setConfirmation] = useState("");
+  const [storage, setStorage] = useState<StorageHealth | null>(null);
+  useEffect(() => {
+    let active = true;
+    void readStorageHealth().then((health) => {
+      if (active) setStorage(health);
+    });
+    return () => { active = false; };
+  }, []);
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setStatus("");
@@ -41,6 +56,9 @@ export function DataBackupSettings() {
     setCandidate({ backup, overwrite: await requiresOverwriteRestore() });
   }
   const confirmed = !candidate?.overwrite || isOverwriteConfirmationValid(confirmation);
+  const usageRatio = storageUsageRatio(storage ?? {
+    supported: false, persisted: null, usage: null, quota: null,
+  });
   async function restore() {
     if (!candidate || !confirmed) return;
     await restoreBackupV1(candidate.backup, undefined, candidate.overwrite);
@@ -50,6 +68,42 @@ export function DataBackupSettings() {
   }
   return (
     <PageShell className="settings-app" title="Data & Backup" backHref="/settings" backLabel="Back to Settings">
+      <section className="settings-editor" aria-labelledby="storage-heading">
+        <h2 id="storage-heading">Local storage</h2>
+        <p>VEIL keeps private data in this browser. Persistent protection reduces the chance that the browser clears it automatically, but it does not replace backups.</p>
+        {!storage ? <p role="status">Checking storage…</p> : (
+          <>
+            <p>
+              {storage.usage === null ? "Storage use is unavailable." : (
+                <>Using {formatStorageBytes(storage.usage)}{storage.quota === null
+                  ? "." : ` of approximately ${formatStorageBytes(storage.quota)}.`}</>
+              )}
+            </p>
+            {usageRatio !== null && usageRatio >= 0.7 && (
+              <Alert variant={usageRatio >= 0.85 ? "danger" : "info"}>
+                Browser storage is {Math.round(usageRatio * 100)}% full. Export a backup and remove unused large images.
+              </Alert>
+            )}
+            <p>{storage.persisted === true
+              ? "Persistent storage protection is active."
+              : storage.persisted === false
+                ? "Storage is currently best effort and may be cleared by the browser."
+                : "This browser does not report its persistence status."}</p>
+            {storage.persisted === false && (
+              <button className="settings-button" disabled={busy}
+                onClick={() => void run(async () => {
+                  const health = await requestPersistentStorage();
+                  setStorage(health);
+                  setStatus(health.persisted
+                    ? "Persistent storage protection is active."
+                    : "The browser did not grant persistent storage. Keep regular backups.");
+                })}>
+                Protect local data
+              </button>
+            )}
+          </>
+        )}
+      </section>
       <section className="settings-editor" aria-labelledby="backup-heading">
         <h2 id="backup-heading">Export backup</h2>
         <p>Download your profile, characters, appearance and chats as a JSON backup.</p>
