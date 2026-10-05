@@ -328,7 +328,10 @@
   position: relative;
   margin: 0;
   padding: 12px 14px;
-  border-radius: 18px;
+  /* Browsers scale corner radii down until they fit the box, so this reads as a
+     variable radius: a single-line bubble clamps to half its height (pill-round)
+     while taller bubbles keep the 24px cap. */
+  border-radius: 24px;
   background: var(--theme-surface);
   font-size: 0.9em;
   line-height: 1.5;
@@ -344,7 +347,7 @@
 }
 /* Group corners: every message stays its own bubble, but the corners that face
    a neighbour on the sender's own side tighten. The opposite side, and the
-   outer ends of the group, keep the full 18px radius. */
+   outer ends of the group, keep the full (variable) radius. */
 .chat-turn-assistant.chat-group-start:not(.chat-group-end) .chat-bubble {
   border-bottom-left-radius: 6px;
 }

@@ -50,7 +50,9 @@ test("same-sender bubbles group by corners without merging or tapering the outer
   // Same-sender spacing tightens; the switch between senders keeps its own gap.
   assert.match(rule(".chat-turn"), /margin-bottom:\s*16px/);
   assert.match(rule(".chat-turn:not(.chat-group-end)"), /margin-bottom:\s*2px/);
-  assert.match(rule(".chat-bubble"), /border-radius:\s*18px/);
+  // Height-adaptive: a single-line bubble clamps to half its height (pill-round)
+  // while taller bubbles stop at the 24px cap.
+  assert.match(rule(".chat-bubble"), /border-radius:\s*24px/);
   // Incoming: the joined side is the left edge, the right side stays round.
   const assistantFirst = rule(".chat-turn-assistant.chat-group-start:not(.chat-group-end) .chat-bubble");
   assert.match(assistantFirst, /border-bottom-left-radius:\s*6px/);
@@ -71,7 +73,7 @@ test("same-sender bubbles group by corners without merging or tapering the outer
   const userLast = rule(".chat-turn-user.chat-group-end:not(.chat-group-start) .chat-bubble");
   assert.match(userLast, /border-top-right-radius:\s*6px/);
   assert.doesNotMatch(userLast, /border-bottom-right-radius|border-radius:/);
-  // A standalone bubble carries neither group class, so it keeps 18px everywhere.
+  // A standalone bubble carries both group classes, so every corner stays round.
   assert.match(room, /className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing"/);
   assert.match(room, /isGroupStart \|\| isGroupEnd \? "" : " chat-group-middle"/);
   // Corner rules never leak onto the typing indicator turn (no group class).
