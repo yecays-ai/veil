@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Circle, CircleCheck, Plus } from "lucide-react";
 import { useState } from "react";
 import { useFoundation } from "./foundation-provider";
@@ -14,8 +14,17 @@ import { useContacts } from "./use-contacts";
 import { addContact, contactDisplayName } from "../lib/contact-storage";
 import { ContactInfo } from "./contact-info";
 import type { ContactReturnSource } from "../lib/contact-navigation";
+import { contactIdsFromQuery, contactSelectionState, type ContactSelectionMode } from "../lib/contact-route-state";
 
-type ContactSelectionMode = "single" | "multi";
+export function ContactsRoute() {
+  const { mode, initialSelection } = contactSelectionState(useSearchParams());
+  return <ContactsHome mode={mode} initialSelection={initialSelection} />;
+}
+
+export function CreateGroupRoute() {
+  const characterIds = contactIdsFromQuery(useSearchParams());
+  return <CreateGroupPage characterIds={characterIds} />;
+}
 
 function contactsSelectionHref(mode: ContactSelectionMode, characterIds: readonly string[] = []) {
   const params = new URLSearchParams({ mode });
@@ -43,16 +52,10 @@ export function ContactsHome({ mode, initialSelection = [] }: {
   const contacts = document.characters.filter((character) => ids.has(character.characterId)
     && contactMatches(character.name, contactByCharacter.get(character.characterId)?.remark ?? undefined, query));
   const selectedContacts = [...new Set(selected.filter((id) => ids.has(id)))];
-  async function openDirect(characterId: string) {
+  function openDirect(characterId: string) {
     if (openingId) return;
     setOpeningId(characterId); setError("");
-    try {
-      await chatStorage.openSession(characterId);
-      router.push(`/messages/${encodeURIComponent(characterId)}`);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Conversation could not be opened.");
-      setOpeningId("");
-    }
+    router.push(`/messages/${encodeURIComponent(characterId)}`);
   }
   function toggleSelected(characterId: string) {
     setSelected((current) => current.includes(characterId)
@@ -79,7 +82,7 @@ export function ContactsHome({ mode, initialSelection = [] }: {
             </span>}
           </>;
           if (mode === "single") return <button className="social-row contact-select-row" type="button" key={character.characterId}
-            disabled={!!openingId} onClick={() => void openDirect(character.characterId)}>{content}</button>;
+            disabled={!!openingId} onClick={() => openDirect(character.characterId)}>{content}</button>;
           if (mode === "multi") return <button className="social-row contact-select-row" type="button" key={character.characterId}
             aria-pressed={selectedContacts.includes(character.characterId)} onClick={() => toggleSelected(character.characterId)}>{content}</button>;
           return <Link className="social-row" key={character.characterId}

@@ -74,3 +74,10 @@
   transform: scale(0.84);
   opacity: 0.62;
 }
+.route-loading {
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  font-size: 14px;
+  opacity: .62;
+}

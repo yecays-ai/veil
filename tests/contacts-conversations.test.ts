@@ -3,6 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { IDBFactory } from "fake-indexeddb";
 import { addContact, createContactStorage, removeContact } from "../lib/contact-storage";
+import { contactSelectionState } from "../lib/contact-route-state";
 import { ChatStorage } from "../lib/chat/storage";
 import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
 import { createCharacter } from "../lib/foundation";
@@ -51,8 +52,28 @@ test("New Message single-select opens or creates the one direct Conversation", a
   assert.equal((await chat.listSessions()).length, 1);
   const source = readFileSync("components/contacts-pages.tsx", "utf8");
   assert.match(source, /if \(mode === "single"\) return <button[\s\S]*?openDirect\(character\.characterId\)/);
-  assert.match(source, /async function openDirect\(characterId: string\)[\s\S]*?chatStorage\.openSession\(characterId\)/);
+  assert.match(source, /function openDirect\(characterId: string\)[\s\S]*?router\.push/);
+  assert.doesNotMatch(source.match(/function openDirect[\s\S]*?function toggleSelected/)?.[0] ?? "", /chatStorage\.openSession/);
   assert.match(source, /router\.push\(`\/messages\/\$\{encodeURIComponent\(characterId\)\}`\)/);
+  const sessionHook = readFileSync("components/chat/use-chat-session.ts", "utf8");
+  assert.match(sessionHook, /chatStorage\s*\.\s*openSession\(characterId\)/);
+});
+
+test("Contacts query state remains client-side and preserves normal, single, multi and repeated contact parameters", () => {
+  assert.deepEqual(contactSelectionState(new URLSearchParams()), { mode: undefined, initialSelection: [] });
+  assert.deepEqual(contactSelectionState(new URLSearchParams("mode=single")), { mode: "single", initialSelection: [] });
+  assert.deepEqual(contactSelectionState(new URLSearchParams("mode=multi&contact=peter&contact=lan")), {
+    mode: "multi", initialSelection: ["peter", "lan"],
+  });
+  assert.deepEqual(contactSelectionState(new URLSearchParams("mode=unexpected&contact=peter")), {
+    mode: undefined, initialSelection: ["peter"],
+  });
+  const page = readFileSync("app/contacts/page.tsx", "utf8");
+  const groupPage = readFileSync("app/contacts/create-group/page.tsx", "utf8");
+  assert.match(page, /<Suspense fallback=\{<ContactsHome \/>\}><ContactsRoute \/><\/Suspense>/);
+  assert.match(groupPage, /<Suspense fallback=\{<CreateGroupPage characterIds=\{\[\]\} \/>\}><CreateGroupRoute \/><\/Suspense>/);
+  assert.doesNotMatch(page, /searchParams|await/);
+  assert.doesNotMatch(groupPage, /searchParams|await/);
 });
 
 test("group multi-select continues to Create Group and creates a group Conversation", async () => {

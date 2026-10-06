@@ -39,6 +39,10 @@ export function MessagesHome() {
     if (event.key === "Escape") setMenuOpen(false); };
     window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close);
   }, [menuOpen]);
+  useEffect(() => {
+    router.prefetch("/contacts?mode=single");
+    router.prefetch("/contacts?mode=multi");
+  }, [router]);
   const characters = new Map(document.characters.map((item) => [item.characterId, item]));
   const contactByCharacter = new Map(contacts.document.contacts.map((item) => [item.characterId, item]));
   function onListPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
