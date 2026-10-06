@@ -16,6 +16,7 @@ export function buildTimeContext(
   userTimezone?: string | null,
   characterTimezone?: string | null,
   deviceTimezone: string | null = getDeviceTimezone(),
+  weather?: RuntimeWeatherContext,
 ) {
   const userZone = validTimezone(userTimezone) ?? validTimezone(deviceTimezone) ?? "UTC";
   const characterZone = validTimezone(characterTimezone) ?? userZone;
@@ -37,8 +38,40 @@ export function buildTimeContext(
     "Use them only to understand when messages occurred.",
     "Never reproduce, quote, imitate, paraphrase, or include these timestamp lines in your reply.",
     "Your reply must contain only the Character's actual message text.",
+    ...weatherLines(weather),
   ].join("\n");
   return { user, character, differentDate, differentLocalTime, content };
+}
+
+export type RuntimeWeatherFact = {
+  location: string;
+  temperatureC: number;
+  summary: string;
+};
+
+export type RuntimeWeatherContext = {
+  user?: RuntimeWeatherFact;
+  character?: RuntimeWeatherFact;
+};
+
+function weatherLines(weather?: RuntimeWeatherContext): string[] {
+  if (!weather?.user && !weather?.character) return [];
+  return [
+    "",
+    "Current weather facts (use only when relevant; do not proactively report them):",
+    ...(weather.user ? [
+      "User current weather:",
+      `Location: ${weather.user.location}`,
+      `Temperature: ${weather.user.temperatureC}°C`,
+      `Conditions: ${weather.user.summary}`,
+    ] : []),
+    ...(weather.character ? [
+      "Character current weather:",
+      `Location: ${weather.character.location}`,
+      `Temperature: ${weather.character.temperatureC}°C`,
+      `Conditions: ${weather.character.summary}`,
+    ] : []),
+  ];
 }
 
 export function historyTimestamp(createdAt: number, userTimezone: string) {

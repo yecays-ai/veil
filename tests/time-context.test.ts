@@ -9,6 +9,7 @@ import { createChatEngine } from "../lib/chat/engine";
 import { ChatStorage } from "../lib/chat/storage";
 import { createBuiltinPreset, createPresetDocument } from "../lib/preset";
 import type { ChatMessage, PromptTurn } from "../lib/chat/types";
+import type { WeatherState } from "../lib/participant-config";
 
 const instant = new Date("2026-10-04T13:50:00Z");
 function foundation() {
@@ -93,6 +94,62 @@ test("every generation re-reads runtime setting and clock, OFF removes current c
   await engine.send(session.id, "third"); await engine.requestReply(session.id);
   assert(!JSON.stringify(prompts[2]).includes("Current time context:"));
   assert(prompts[2].some((turn) => turn.content === "first"));
+});
+
+test("Chat runtime includes User and Character weather as separate time-context facts", async () => {
+  const factory = new IDBFactory();
+  const storage = new ChatStorage(() => factory);
+  const session = await storage.openSession("a");
+  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
+  const document = foundation();
+  document.user.location = { label: "Chengdu", coordinates: { latitude: 30.67, longitude: 104.06 } };
+  document.characters[0].location = { label: "New York", coordinates: { latitude: 40.71, longitude: -74.01 } };
+  const prompts: PromptTurn[][] = [];
+  const targets: string[] = [];
+  const ready = (temperatureC: number, summary: string): WeatherState => ({
+    status: "ready", temperatureC, summary, icon: "weather", updatedAt: instant.toISOString(),
+  });
+  const engine = createChatEngine(storage, async () => structuredClone(document),
+    async function* (_config, prompt) { prompts.push(prompt); yield "reply"; },
+    async () => createPresetDocument(), () => instant, undefined, undefined, undefined,
+    async (target) => {
+      targets.push(target.label ?? "");
+      return target.label === "Chengdu" ? ready(18, "Overcast") : ready(9, "Rain");
+    });
+
+  await engine.send(session.id, "How is it outside?");
+  await engine.requestReply(session.id);
+
+  assert.deepEqual(targets, ["Chengdu", "New York"]);
+  const runtime = prompts[0].find((turn) => turn.role === "system" && turn.content.includes("Current time context:"))!;
+  assert.match(runtime.content, /User current weather:\nLocation: Chengdu\nTemperature: 18°C\nConditions: Overcast/);
+  assert.match(runtime.content, /Character current weather:\nLocation: New York\nTemperature: 9°C\nConditions: Rain/);
+  assert(runtime.content.indexOf("User current weather:") < runtime.content.indexOf("Character current weather:"));
+  assert.match(runtime.content, /do not proactively report them/);
+});
+
+test("weather lookup failure is omitted and does not prevent Chat generation", async () => {
+  const factory = new IDBFactory();
+  const storage = new ChatStorage(() => factory);
+  const session = await storage.openSession("a");
+  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
+  const document = foundation();
+  document.user.location = { label: "Chengdu", coordinates: null };
+  document.characters[0].location = { label: "New York", coordinates: null };
+  const prompts: PromptTurn[][] = [];
+  const engine = createChatEngine(storage, async () => structuredClone(document),
+    async function* (_config, prompt) { prompts.push(prompt); yield "I hope your day is going well."; },
+    async () => createPresetDocument(), () => instant, undefined, undefined, undefined,
+    async () => { throw new Error("weather unavailable"); });
+
+  await engine.send(session.id, "Hey");
+  const reply = await engine.requestReply(session.id);
+
+  assert.equal(reply?.status, "complete");
+  assert.equal(reply?.content, "I hope your day is going well.");
+  const runtime = prompts[0].find((turn) => turn.role === "system" && turn.content.includes("Current time context:"))!;
+  assert.match(runtime.content, /Current time context:/);
+  assert.doesNotMatch(runtime.content, /Current weather facts|User current weather|Character current weather/);
 });
 
 test("runtime owns the timestamp boundary even without output format and with custom prompt order", () => {

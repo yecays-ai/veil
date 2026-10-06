@@ -1,7 +1,7 @@
 import type { Character, FoundationDocument, ProfileBasics } from "../foundation-types";
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
 import type { ChatMessage, PromptTurn } from "./types";
-import { buildTimeContext, historyTimestamp } from "./time-context";
+import { buildTimeContext, historyTimestamp, type RuntimeWeatherContext } from "./time-context";
 import { messageHistoryContentWithBody } from "./quote";
 import type { WorldBookActivation } from "../worldbook-activation";
 import { applyRegex } from "../regex-engine";
@@ -99,9 +99,10 @@ export function assembleChatPrompt(
   now: Date = new Date(),
   worldInfo?: WorldBookActivation,
   regexGroups: readonly RegexGroup[] = [],
+  weather?: RuntimeWeatherContext,
 ): { sections: PromptSection[]; messages: PromptTurn[] } {
   const time = foundation.runtime?.timeAware !== false
-    ? buildTimeContext(now, foundation.user.timezone, character.timezone) : undefined;
+    ? buildTimeContext(now, foundation.user.timezone, character.timezone, undefined, weather) : undefined;
   const context = { foundation, character, currentMessages, pending, memory, time, worldInfo, regexGroups };
   const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
   const sections: PromptSection[] = [], messages: PromptTurn[] = [];

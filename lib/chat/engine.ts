@@ -21,6 +21,19 @@ import type { WorldBookActivationState } from "../worldbook-activation";
 import { browserRegexStorage } from "../regex-storage";
 import { emptyRegexDocument, resolveRegexGroups, type RegexDocument } from "../regex";
 import { applyRegex } from "../regex-engine";
+import { loadWeatherState } from "../weather";
+import type { Coordinates, WeatherState } from "../participant-config";
+
+type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
+
+async function safeWeather(loader: WeatherLoader, location: FoundationDocument["user"]["location"]) {
+  if (!location) return { status: "not-configured" } as const;
+  try {
+    return await loader({ label: location.label, coordinates: location.coordinates });
+  } catch {
+    return { status: "error", message: "Weather unavailable" } as const;
+  }
+}
 
 export function createChatEngine(
   storage: ChatStorage,
@@ -34,6 +47,7 @@ export function createChatEngine(
     typeof window === "undefined" ? Promise.resolve(emptyRegexDocument()) : browserRegexStorage.load(),
   bindings: () => Promise<BindingDocument> = () => typeof window === "undefined"
     ? Promise.resolve({ global: {}, characters: {} }) : browserBindingStorage.load(),
+  weatherLoader: WeatherLoader = (target) => loadWeatherState(target),
 ) {
   const active = new Map<string, AbortController>();
   async function prepareGeneration(characterId: string) {
@@ -77,6 +91,17 @@ export function createChatEngine(
       const activation = evaluateWorldBooks(books, batch.messages,
         await storage.readWorldBookState(sessionId));
       activationState = activation.nextState;
+      const weather = document.runtime?.timeAware === false ? undefined : await Promise.all([
+        safeWeather(weatherLoader, document.user.location),
+        safeWeather(weatherLoader, character.location),
+      ]).then(([user, characterWeather]) => ({
+        ...(user.status === "ready" && document.user.location ? {
+          user: { location: document.user.location.label, temperatureC: user.temperatureC, summary: user.summary },
+        } : {}),
+        ...(characterWeather.status === "ready" && character.location ? {
+          character: { location: character.location.label, temperatureC: characterWeather.temperatureC, summary: characterWeather.summary },
+        } : {}),
+      }));
       const prompt = assembleChatPrompt(
         document,
         character,
@@ -87,6 +112,7 @@ export function createChatEngine(
         now(),
         activation,
         regexGroups,
+        weather,
       );
       providerStarted = true;
       for await (const text of provider(
