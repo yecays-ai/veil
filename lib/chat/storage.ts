@@ -735,7 +735,8 @@ export class ChatStorage {
   }
   finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
     transformPart: (part: string) => string = (part) => part): Promise<ChatMessage[]> {
-    const parts = splitAssistantReply(content).map(transformPart);
+    const parts = splitAssistantReply(content).map(transformPart).map((part) => part.trim())
+      .filter((part) => !!part && !/^blank line$/i.test(part));
     if (!parts.length)
       return Promise.reject(new Error("The API returned no reply text."));
     return this.transaction("readwrite", async (tx) => {

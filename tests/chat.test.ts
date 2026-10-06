@@ -251,6 +251,21 @@ test("multi-bubble finalization updates session order and preview to the last pa
   assert.deepEqual(saved.messages.map((message) => message.content), ["question", "one", "two"]);
 });
 
+test("stored transforms cannot persist blank-line placeholders or empty assistant bubbles", async () => {
+  const { storage } = create();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "question");
+  const batch = await storage.beginReply(session.id);
+  assert(batch);
+  const parts = await storage.finalizeReply(batch.assistant.id,
+    "normal reply\n\nremove me\n\nplaceholder\n\nsecond reply", undefined,
+    (part) => part === "remove me" ? "  \n " : part === "placeholder" ? "blank line" : part);
+  assert.deepEqual(parts.map((message) => message.content), ["normal reply", "second reply"]);
+  const saved = await storage.readSession(session.id);
+  assert.deepEqual(saved.messages.map((message) => message.content),
+    ["question", "normal reply", "second reply"]);
+});
+
 test("message maintenance edits storage and deletion repairs order, preview and reply claims", async () => {
   const { storage } = create();
   const session = await storage.openSession("a");

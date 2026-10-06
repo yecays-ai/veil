@@ -16,8 +16,9 @@ function fixture() {
   const backend = { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); },
     removeItem: (key: string) => { values.delete(key); } };
-  const bindings = { global: { apiConfigId: null, worldBookIds: ["b", "a"] },
-    characters: { peter: { defaults: { regexIds: [] }, apps: { messages: { presetId: "custom" } } } } };
+  const bindings = { global: { apiConfigId: null, worldBookIds: ["b", "a"], regexIds: ["global-regex"] },
+    characters: { peter: { defaults: { regexIds: ["peter-default"] },
+      apps: { messages: { presetId: "custom", regexIds: ["peter-message"] } } } } };
   const foundation = { ...defaultFoundation(),
     characters: [{ characterId: "peter", ...normalizeCharacterInput({ name: "Peter" }) }], bindings };
   values.set("veil.foundation.v1", JSON.stringify(foundation));
@@ -30,6 +31,10 @@ test("legacy bindings migrate once, retain inheritance values and leave Foundati
   assert.equal(Object.hasOwn(normalizeFoundation(value.foundation), "bindings"), false);
   assert.equal(Object.hasOwn(await foundation.load(), "bindings"), false);
   assert.deepEqual(await bindings.load(), value.bindings);
+  assert.deepEqual((await bindings.load()).characters.peter.defaults.regexIds,
+    value.bindings.characters.peter.defaults.regexIds);
+  assert.deepEqual((await bindings.load()).characters.peter.apps.messages!.regexIds,
+    value.bindings.characters.peter.apps.messages.regexIds);
   assert.equal(Object.hasOwn(JSON.parse(value.values.get("veil.foundation.v1")!), "bindings"), false);
   await bindings.save({ global: { presetId: "changed" }, characters: {} });
   await foundation.transact((document) => ({ ...document, user: { ...document.user, name: "Edited" } }));
