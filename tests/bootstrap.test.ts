@@ -12,6 +12,8 @@ import { createRegexStorage } from "../lib/regex-storage";
 import { createPresetStorage } from "../lib/preset-storage";
 import { BUILTIN_PRESET_ID, createBuiltinPreset, createPresetDocument } from "../lib/preset";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
+import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
+import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
 import { DEFAULT_REGEX_GROUP_ID, defaultRegexGroup } from "../lib/regex-defaults";
 import { emptyWorldBookDocument } from "../lib/worldbook";
 import type { StringStorage } from "../lib/storage-types";
@@ -109,4 +111,60 @@ test("startup does not overwrite a user-customized Default Rules group", async (
   await bootstrapCurrentProduct(createPresetStorage(() => memory), createBindingStorage(() => memory),
     createRegexStorage(() => memory));
   assert.equal((await createRegexStorage(() => memory).load()).groups[0].rules[0].replace, "user choice");
+});
+
+test("bootstrap replaces an unreadable Preset document while preserving Peter, API Config and chat history", async () => {
+  const memory = new MemoryStorage();
+  memory.setItem("veil.preset.v1", "{obsolete preset data");
+  memory.setItem("veil.bindings.v1", JSON.stringify({
+    global: { apiConfigId: "peter-api", presetId: "removed-preset" }, characters: {},
+  }));
+  const presets = createPresetStorage(() => memory);
+  const bindings = createBindingStorage(() => memory);
+  const regex = createRegexStorage(() => memory);
+
+  const idb = new IDBFactory();
+  const foundationStorage = createIndexedDBFoundationStorage(new IndexedDBDocumentStorage(() => idb));
+  const peter = { characterId: "peter", ...normalizeCharacterInput({ name: "Peter" }) };
+  await foundationStorage.transact((current) => ({ ...current, characters: [peter] }));
+  const api = new ApiConfigStorage(() => idb);
+  await api.saveApiConfig({ id: "peter-api", name: "Peter API", provider: "Custom",
+    baseUrl: "https://provider.example/v1", apiKey: "kept-secret", model: "chat-model" });
+  const chat = new ChatStorage(() => idb);
+  const session = await chat.openSession(peter.characterId);
+  await chat.send(session.id, "Earlier question");
+  const firstReply = await chat.beginReply(session.id);
+  assert(firstReply);
+  await chat.finalizeReply(firstReply.assistant.id, "Earlier answer");
+  await chat.send(session.id, "New question after update");
+  const before = await chat.readSession(session.id);
+
+  await bootstrapCurrentProduct(presets, bindings, regex);
+
+  assert.deepEqual(await presets.load(), createPresetDocument());
+  const messageBinding = resolveBindings(await bindings.load(), peter.characterId, "messages");
+  assert.equal(messageBinding.presetId, BUILTIN_PRESET_ID);
+  assert.equal(messageBinding.apiConfigId, "peter-api");
+  assert.equal((await foundationStorage.load()).characters[0].characterId, peter.characterId);
+  assert.deepEqual(await api.getApiConfig("peter-api"), {
+    id: "peter-api", name: "Peter API", provider: "Custom",
+    baseUrl: "https://provider.example/v1", apiKey: "kept-secret", model: "chat-model",
+  });
+  assert.deepEqual(await chat.readSession(session.id), before);
+
+  let calls = 0;
+  const engine = createChatEngine(chat, () => foundationStorage.load(), async function* (config, prompt) {
+    calls++;
+    assert.equal(config.id, "peter-api");
+    assert(prompt.some((turn) => turn.content.includes("Earlier answer")));
+    yield "Reply after recovery.";
+  }, () => presets.load(), undefined, undefined, async () => regex.load(),
+  () => bindings.load(), undefined, (id) => api.getApiConfig(id));
+  await engine.requestReply(session.id);
+  assert.equal(calls, 1);
+  const after = await chat.readSession(session.id);
+  assert.deepEqual(after.messages.slice(0, 2), before.messages.slice(0, 2));
+  assert.equal(after.messages[2].id, before.messages[2].id);
+  assert.equal(after.messages[2].content, before.messages[2].content);
+  assert(after.messages.some((message) => message.content === "Reply after recovery."));
 });

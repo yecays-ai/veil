@@ -25,18 +25,20 @@ function withCanonicalBuiltin(document: PresetDocument): PresetDocument {
     preset.id === BUILTIN_PRESET_ID ? createBuiltinPreset() : preset) });
 }
 export function createPresetStorage(getStorage: () => StringStorage): PresetStorage {
-  const read = () => {
-    const raw = getStorage().getItem(KEY);
-    if (raw === null) return null;
+  const parse = (raw: string): PresetDocument => {
     try {
       const validated = validatePresetDocument(JSON.parse(raw));
       const builtin = validated.presets.find((preset) => preset.id === BUILTIN_PRESET_ID)!;
-      const document = builtin.builtIn ? withCanonicalBuiltin(validated) : validated;
-      const canonical = JSON.stringify(document);
-      if (canonical !== raw) getStorage().setItem(KEY, canonical);
-      return document;
-    }
-    catch { throw new Error("Saved Preset data could not be read."); }
+      return builtin.builtIn ? withCanonicalBuiltin(validated) : validated;
+    } catch { throw new Error("Saved Preset data could not be read."); }
+  };
+  const read = () => {
+    const raw = getStorage().getItem(KEY);
+    if (raw === null) return null;
+    const document = parse(raw);
+    const canonical = JSON.stringify(document);
+    if (canonical !== raw) getStorage().setItem(KEY, canonical);
+    return document;
   };
   const write = (document: PresetDocument, previous: PresetDocument | null) => {
     const validated = validatePresetDocument(document);
@@ -53,10 +55,23 @@ export function createPresetStorage(getStorage: () => StringStorage): PresetStor
   };
   return {
     async load() {
-      const saved = read();
-      if (saved) return saved;
-      const document = createPresetDocument();
-      getStorage().setItem(KEY, JSON.stringify(document));
+      const storage = getStorage();
+      const raw = storage.getItem(KEY);
+      if (raw === null) {
+        const document = createPresetDocument();
+        storage.setItem(KEY, JSON.stringify(document));
+        return document;
+      }
+      let document: PresetDocument;
+      try { document = parse(raw); }
+      catch {
+        // Only replace the same unreadable value. If another tab repaired or
+        // updated Presets during validation, re-read instead of overwriting it.
+        if (storage.getItem(KEY) !== raw) return this.load();
+        document = createPresetDocument();
+      }
+      const canonical = JSON.stringify(document);
+      if (canonical !== raw) storage.setItem(KEY, canonical);
       return document;
     },
     async save(document) {
