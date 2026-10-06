@@ -25,7 +25,7 @@ import {
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { chatStorage } from "../../lib/chat/storage";
-import type { ChatMessage, ChatSession } from "../../lib/chat/types";
+import { DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER, type ChatMessage, type ChatSession } from "../../lib/chat/types";
 import {
   messageMenuPosition,
   selectMessageRange,
@@ -56,11 +56,11 @@ import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   const { document, ready } = useFoundation();
-  const [bubbleDelayScale, setBubbleDelayScale] = useState(1);
+  const [bubbleDelayMsPerCharacter, setBubbleDelayMsPerCharacter] = useState(DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER);
   useEffect(() => {
     let active = true;
     const refresh = () => void chatStorage.readGlobalProfileSettings().then((settings) => {
-      if (active) setBubbleDelayScale(settings.bubbleDelayScale);
+      if (active) setBubbleDelayMsPerCharacter(settings.bubbleDelayMsPerCharacter);
     });
     refresh();
     const unsubscribe = chatStorage.subscribe(refresh);
@@ -364,7 +364,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         (content) => persistDraft(content, sessionId, false),
         async () => {
           if (mounted.current && currentSessionId.current === sessionId) {
-            revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleDelayScale);
+            revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleDelayMsPerCharacter);
             const token = revealToken;
             return chatEngine.requestReply(sessionId, (completed) => {
               if (mounted.current && currentSessionId.current === sessionId)
@@ -391,7 +391,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setGenerating(true);
     nearBottom.current = true;
     const retained = messages.filter((item) => item.order < message.order);
-    const revealToken = revealQueue.begin(sessionId, retained, session.streamOnline === true, performance.now(), bubbleDelayScale);
+    const revealToken = revealQueue.begin(sessionId, retained, session.streamOnline === true, performance.now(), bubbleDelayMsPerCharacter);
     setError("");
     try {
       await chatEngine.regenerateMessage(message.id, (completed) => {

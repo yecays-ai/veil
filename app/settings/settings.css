@@ -19,7 +19,25 @@
 .settings-runtime-toggle > .veil-switch { flex: none; }
 .global-profile-section { margin: 0 0 24px; }
 .global-profile-section .settings-runtime-toggle { margin-bottom: 0; }
-.global-timing-select { width: 96px; flex: none; }
+.global-timing-fields {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--settings-border);
+  border-radius: 20px;
+  background: var(--theme-surface);
+}
+.global-timing-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+}
+.global-timing-row > span { flex: 1; min-width: 0; }
+.global-timing-row input { width: 104px; min-width: 104px; flex: none; }
+.global-timing-fields > small { font-size: 12px; line-height: 1.45; opacity: .6; }
+.global-timing-save { justify-self: end; margin-top: 4px; }
 .global-background-card {
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);

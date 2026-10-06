@@ -44,15 +44,27 @@ test("chat sessions, messages and session-linked settings remain available in th
   assert.deepEqual(reloaded.messages.map((message) => message.content), ["hello"]);
 });
 
-test("global profile settings persist timing and Here & There enable state", async () => {
+test("global profile settings persist canonical character pacing and Here & There enable state", async () => {
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
-  await storage.updateBubbleDelayScale(1.5);
+  assert.equal((await storage.readGlobalProfileSettings()).bubbleDelayMsPerCharacter, 15);
+  await storage.updateBubbleDelayMsPerCharacter(50);
   await storage.updateHereThereEnabled(false, 1_000_000);
   const reloaded = await new ChatStorage(() => factory).readGlobalProfileSettings();
-  assert.equal(reloaded.bubbleDelayScale, 1.5);
+  assert.equal(reloaded.bubbleDelayMsPerCharacter, 50);
   assert.equal(reloaded.hereThereEnabled, false);
   assert.equal(reloaded.nextCommentAt, null);
+  await assert.rejects(storage.updateBubbleDelayMsPerCharacter(0), /Invalid bubble timing/);
+  await assert.rejects(storage.updateBubbleDelayMsPerCharacter(Number.NaN), /Invalid bubble timing/);
+  const db = await database(factory);
+  const raw = await new Promise<Record<string, unknown>>((resolve, reject) => {
+    const request = db.transaction("chatSettings").objectStore("chatSettings").get("global-profile-settings");
+    request.onsuccess = () => resolve(request.result as Record<string, unknown>);
+    request.onerror = () => reject(request.error);
+  });
+  assert.equal(raw.bubbleDelayMsPerCharacter, 50);
+  assert.equal(Object.hasOwn(raw, "bubbleDelayScale"), false);
+  db.close();
 });
 
 test("Here & There keeps one persisted future schedule and atomically claims an opportunity", async () => {

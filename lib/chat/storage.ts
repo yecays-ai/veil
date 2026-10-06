@@ -5,7 +5,7 @@ import {
   type ChatSession,
   type ReplyBatch,
   type GlobalProfileSettings,
-  normalizeBubbleDelayScale,
+  normalizeBubbleDelayMsPerCharacter,
 } from "./types";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
@@ -364,22 +364,23 @@ export class ChatStorage {
       const saved: Partial<GlobalProfileSettings> | undefined = await request(
         tx.objectStore("chatSettings").get(GLOBAL_PROFILE_SETTINGS_ID));
       return { id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayScale: normalizeBubbleDelayScale(saved?.bubbleDelayScale),
+        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(saved?.bubbleDelayMsPerCharacter),
         hereThereEnabled: saved?.hereThereEnabled !== false,
         nextCommentAt: typeof saved?.nextCommentAt === "number" && Number.isFinite(saved.nextCommentAt)
           ? saved.nextCommentAt : null };
     }, ["chatSettings"]);
   }
 
-  updateBubbleDelayScale(value: number): Promise<void> {
-    if (!Number.isFinite(value)) return Promise.reject(new Error("Invalid bubble timing."));
+  updateBubbleDelayMsPerCharacter(value: number): Promise<void> {
+    if (!Number.isFinite(value) || value <= 0) return Promise.reject(new Error("Invalid bubble timing."));
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
-      await request(table.put({ ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayScale: normalizeBubbleDelayScale(value),
+      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(value),
         hereThereEnabled: current?.hereThereEnabled !== false,
-        nextCommentAt: typeof current?.nextCommentAt === "number" ? current.nextCommentAt : null }));
+        nextCommentAt: typeof current?.nextCommentAt === "number" && Number.isFinite(current.nextCommentAt)
+          ? current.nextCommentAt : null }));
     }, ["chatSettings"]);
   }
 
@@ -391,8 +392,8 @@ export class ChatStorage {
       const nextCommentAt = current?.nextCommentAt;
       const valid = typeof nextCommentAt === "number" && Number.isFinite(nextCommentAt);
       const next = !enabled ? null : valid ? nextCommentAt! : now + randomDelay(random);
-      const saved = { ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayScale: normalizeBubbleDelayScale(current?.bubbleDelayScale),
+      const saved = { id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(current?.bubbleDelayMsPerCharacter),
         hereThereEnabled: enabled, nextCommentAt: next };
       if (!valid || !current) await request(table.put(saved));
       return { ...saved, id: GLOBAL_PROFILE_SETTINGS_ID };
@@ -403,8 +404,8 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
-      await request(table.put({ ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayScale: normalizeBubbleDelayScale(current?.bubbleDelayScale),
+      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(current?.bubbleDelayMsPerCharacter),
         hereThereEnabled: enabled,
         nextCommentAt: enabled ? now + randomDelay(random) : null }));
     }, ["chatSettings"]);
@@ -416,8 +417,8 @@ export class ChatStorage {
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
       if (current?.hereThereEnabled === false || typeof current?.nextCommentAt !== "number"
         || !Number.isFinite(current.nextCommentAt) || current.nextCommentAt > now) return false;
-      await request(table.put({ ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayScale: normalizeBubbleDelayScale(current.bubbleDelayScale),
+      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(current.bubbleDelayMsPerCharacter),
         hereThereEnabled: true, nextCommentAt: now + randomDelay(random) }));
       return true;
     }, ["chatSettings"]);

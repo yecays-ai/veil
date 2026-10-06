@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { BubbleRevealQueue, bubbleDelayMs, groupVisibleMessages, hiddenForReveal } from "../lib/chat/bubble-pacing";
+import { BubbleRevealQueue, bubbleDelayMs, bubbleDelayMsPerCharacterFromInput, groupVisibleMessages, hiddenForReveal } from "../lib/chat/bubble-pacing";
 import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
+import { DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER } from "../lib/chat/types";
 import type { ChatMessage } from "../lib/chat/types";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 
@@ -18,14 +20,61 @@ test("pacing clamps short and long text and counts Unicode characters", () => {
   assert.equal(bubbleDelayMs("a".repeat(1000)), 2400);
 });
 
-test("default timing keeps the current formula and global multiplier safely changes it", () => {
+test("default timing preserves 450ms plus 15ms per character, clamped to 600–2400ms", () => {
+  assert.equal(DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER, 15);
   assert.equal(bubbleDelayMs("short"), 600);
   assert.equal(bubbleDelayMs("a".repeat(50)), Math.min(2400, Math.max(600, 450 + 50 * 15)));
-  assert.equal(bubbleDelayMs("a".repeat(50), 2), 2400);
-  assert.equal(bubbleDelayMs("a".repeat(50), 0.5), 600);
+  assert.equal(bubbleDelayMs("a".repeat(10), 50), 950);
+  assert.equal(bubbleDelayMs("a".repeat(30), 20), 1050);
+  assert.equal(bubbleDelayMs("a".repeat(1000), 0.01), 600);
   assert.equal(bubbleDelayMs("a".repeat(70), Number.NaN), bubbleDelayMs("a".repeat(70)));
   assert.equal(bubbleDelayMs("a".repeat(70), 100), 2400);
-  assert.equal(bubbleDelayMs("a".repeat(70), -100), 750);
+  assert.equal(bubbleDelayMs("a".repeat(70), -100), bubbleDelayMs("a".repeat(70)));
+});
+
+test("Characters and Seconds convert to one positive finite milliseconds-per-character value", () => {
+  assert.equal(bubbleDelayMsPerCharacterFromInput(20, 0.3), 15);
+  assert.equal(bubbleDelayMsPerCharacterFromInput(10, 0.5), 50);
+  assert.equal(bubbleDelayMsPerCharacterFromInput(30, 0.6), 20);
+  assert.equal(bubbleDelayMsPerCharacterFromInput(0, 0.3), null);
+  assert.equal(bubbleDelayMsPerCharacterFromInput(20, Number.NaN), null);
+  assert.equal(bubbleDelayMsPerCharacterFromInput(1, Number.MAX_VALUE), null);
+});
+
+test("timing settings present the default as 20 characters in 0.3 seconds and omit multiplier UI", () => {
+  const ui = readFileSync("components/settings/global-profile-settings.tsx", "utf8");
+  assert.equal(20 * DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER / 1000, 0.3);
+  assert.match(ui, /useState\("20"\)/);
+  assert.match(ui, /useState\("0\.3"\)/);
+  assert.match(ui, /aria-label="Characters"/);
+  assert.match(ui, /aria-label="Seconds"/);
+  assert.match(ui, /bubbleDelayMsPerCharacterFromInput\(characters, seconds\)/);
+  assert.doesNotMatch(ui, /Timing multiplier|global-timing-select|<select[^>]*global-timing/);
+  assert.doesNotMatch(ui, /0\.5×|1×|2×/);
+  const css = readFileSync("app/settings/settings.css", "utf8");
+  assert.match(css, /\.global-timing-row > span\s*\{[^}]*flex:\s*1;\s*min-width:\s*0/);
+  assert.match(css, /\.global-timing-row input\s*\{[^}]*min-width:\s*104px;\s*flex:\s*none/);
+});
+
+test("runtime settings and reveal queue use only the canonical character pace", () => {
+  const sources = ["lib/chat/types.ts", "lib/chat/storage.ts", "lib/chat/bubble-pacing.ts",
+    "components/chat/chat-room.tsx", "components/settings/global-profile-settings.tsx"]
+    .map((path) => readFileSync(path, "utf8")).join("\n");
+  assert.doesNotMatch(sources, /bubbleDelayScale|BUBBLE_DELAY_SCALE|normalizeBubbleDelayScale|updateBubbleDelayScale|Timing multiplier/);
+  assert.match(sources, /bubbleDelayMsPerCharacter/);
+  assert.match(sources, /revealQueue\.begin\(sessionId, messages,[\s\S]*?bubbleDelayMsPerCharacter\)/);
+});
+
+test("BubbleRevealQueue applies configured milliseconds per character", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const queue = new BubbleRevealQueue();
+  const token = queue.begin("s", [], false, 0, 50);
+  const parts = [message("a", "a".repeat(10)), message("b", "b".repeat(10))];
+  queue.complete("s", parts, 0, token);
+  t.mock.timers.tick(949);
+  assert.equal(queue.getSnapshot().hiddenIds.size, 2);
+  t.mock.timers.tick(1);
+  assert.deepEqual([...queue.getSnapshot().hiddenIds], ["b"]);
 });
 
 test("three bubbles reveal in order, using upcoming length and first latency credit", (t) => {
