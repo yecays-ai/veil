@@ -42,9 +42,8 @@ export function ChatBackgroundSettings({ session, onBack }: {
   const [settings, setSettings] = useState<ChatBackgroundSettings>({ id: "chat-background" });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [crop, setCrop] = useState<{ source: string; scope: "conversation" | "global" } | null>(null);
+  const [crop, setCrop] = useState<string | null>(null);
   const conversationInput = useRef<HTMLInputElement>(null);
-  const globalInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     let active = true;
     const refresh = () => void chatStorage.readChatBackgroundSettings().then((next) => {
@@ -57,12 +56,12 @@ export function ChatBackgroundSettings({ session, onBack }: {
   const effectiveId = resolveChatBackgroundImage(session, settings);
   const effectivePreview = useAssetPreview(effectiveId);
 
-  async function choose(file: File | undefined, scope: "conversation" | "global") {
+  async function choose(file: File | undefined) {
     if (!file) return;
     setBusy(true);
     setError("");
     try {
-      setCrop({ source: await readImage(file), scope });
+      setCrop(await readImage(file));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Image could not be opened.");
     } finally {
@@ -70,16 +69,13 @@ export function ChatBackgroundSettings({ session, onBack }: {
     }
   }
 
-  async function saveCrop(value: string, scope: "conversation" | "global") {
+  async function saveCrop(value: string) {
     setBusy(true);
     setError("");
     let id: string | undefined;
     try {
       id = await saveChatImageToIndexedDB(await (await fetch(value)).blob());
-      if (scope === "conversation")
-        await chatStorage.updateSessionSettings(session.id, { backgroundImage: id });
-      else
-        await chatStorage.updateGlobalChatBackground(id);
+      await chatStorage.updateSessionSettings(session.id, { backgroundImage: id });
       setCrop(null);
     } catch (reason) {
       if (id) await chatStorage.deleteChatImageIfUnused(id);
@@ -90,15 +86,12 @@ export function ChatBackgroundSettings({ session, onBack }: {
     }
   }
 
-  async function clear(scope: "conversation" | "global") {
+  async function clearConversation() {
     setBusy(true);
     setError("");
     try {
-      if (scope === "conversation")
-        await chatStorage.updateSessionSettings(session.id,
-          { backgroundImage: null, backgroundBlur: null });
-      else
-        await chatStorage.updateGlobalChatBackground(null);
+      await chatStorage.updateSessionSettings(session.id,
+        { backgroundImage: null, backgroundBlur: null });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Chat background could not be cleared.");
     } finally {
@@ -131,7 +124,7 @@ export function ChatBackgroundSettings({ session, onBack }: {
           Choose Background
         </button>
         {(session.backgroundImage || session.backgroundBlur !== undefined) && <button type="button" disabled={busy}
-          onClick={() => void clear("conversation")}>
+          onClick={() => void clearConversation()}>
           Restore Global
         </button>}
         <label>Conversation blur ({normalizeBackgroundBlur(session.backgroundBlur ?? settings.blur)}px)
@@ -142,32 +135,12 @@ export function ChatBackgroundSettings({ session, onBack }: {
               setError(reason instanceof Error ? reason.message : "Blur could not be saved."))} />
         </label>
         <input ref={conversationInput} hidden type="file" accept="image/*" onChange={(event) => {
-          void choose(event.target.files?.[0], "conversation"); event.target.value = "";
-        }} />
-      </section>
-      <section className="chat-background-section">
-        <div><strong>Global Chat Background</strong>
-          <small>{settings.globalChatBackgroundImage ? "Set" : "Not set"}</small></div>
-        <button type="button" disabled={busy} onClick={() => globalInput.current?.click()}>
-          Choose Global Background
-        </button>
-        {settings.globalChatBackgroundImage && <button type="button" disabled={busy}
-          onClick={() => void clear("global")}>
-          Clear Global
-        </button>}
-        <label>Global blur ({normalizeBackgroundBlur(settings.blur)}px)
-          <input type="range" min="0" max="20" step="1" disabled={busy}
-            value={normalizeBackgroundBlur(settings.blur)}
-            onChange={(event) => void chatStorage.updateGlobalChatBackgroundBlur(Number(event.target.value))
-              .catch((reason) => setError(reason instanceof Error ? reason.message : "Blur could not be saved."))} />
-        </label>
-        <input ref={globalInput} hidden type="file" accept="image/*" onChange={(event) => {
-          void choose(event.target.files?.[0], "global"); event.target.value = "";
+          void choose(event.target.files?.[0]); event.target.value = "";
         }} />
       </section>
       {error && <p className="chat-notice" role="alert">{error}</p>}
     </div>
-    {crop && <ImageCropDialog source={crop.source} shape="portrait" title="Adjust chat background"
-      onSave={(value) => saveCrop(value, crop.scope)} onCancel={() => setCrop(null)} />}
+    {crop && <ImageCropDialog source={crop} shape="portrait" title="Adjust chat background"
+      onSave={saveCrop} onCancel={() => setCrop(null)} />}
   </section>;
 }

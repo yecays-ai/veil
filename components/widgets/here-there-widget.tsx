@@ -14,6 +14,8 @@ import {
 import type { WidgetInstance } from "../../lib/widget-types";
 import { useDeviceClock } from "./use-device-clock";
 import { useWeatherState } from "./use-weather";
+import { chatStorage } from "../../lib/chat/storage";
+import type { GlobalProfileSettings } from "../../lib/chat/types";
 import { HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh, ensureHereThereComment,
   startHereThereCommentAttempt } from "../../lib/here-there-comment";
 
@@ -88,6 +90,21 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const touchInteraction = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const commentAttempts = useRef(new HereThereCommentAttemptGuard());
+  const [profileSettings, setProfileSettings] = useState<GlobalProfileSettings | null>(null);
+  useEffect(() => {
+    let active = true;
+    const refresh = async () => {
+      try {
+        let next = await chatStorage.readGlobalProfileSettings();
+        if (next.hereThereEnabled && next.nextCommentAt === null)
+          next = await chatStorage.ensureHereThereSchedule();
+        if (active) setProfileSettings(next);
+      } catch { /* Keep generation disabled when settings cannot be read. */ }
+    };
+    void refresh();
+    const unsubscribe = chatStorage.subscribe(() => void refresh());
+    return () => { active = false; unsubscribe(); };
+  }, []);
   useEffect(() => {
     if (inputModality !== "touch") return;
     function keyboardInteraction() {
@@ -122,16 +139,29 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
     character?.location?.coordinates?.latitude ?? null,
     character?.location?.coordinates?.longitude ?? null,
   );
+  const scheduledAt = profileSettings?.nextCommentAt;
+  const characterId = character?.characterId;
+  const clockReady = now !== null;
   useEffect(() => {
-    if (!foundationReady || !themeReady || !now || !character
-      || hereWeather.status === "loading" || thereWeather.status === "loading") return;
-    const attempt = startHereThereCommentAttempt(
-      () => commentAttempts.current.begin(character.characterId, hereThereCommentNeedsRefresh(widget, now)),
-      () => ensureHereThereComment(widget, { foundation: document, characterId: character.characterId,
-        now, hereWeather, thereWeather }, commit));
-    if (attempt) void attempt.finally(() => commentAttempts.current.finish(character.characterId));
-  }, [foundationReady, themeReady, now, character, widget, widget.id, widget.config.characterId,
-    widget.config.comment, document, hereWeather, thereWeather, commit]);
+    if (!profileSettings?.hereThereEnabled || scheduledAt === null || scheduledAt === undefined
+      || !foundationReady || !themeReady || !clockReady || !characterId) return;
+    const runOpportunity = () => {
+      const opportunityTime = new Date();
+      const attempt = startHereThereCommentAttempt(
+        () => commentAttempts.current.begin(characterId,
+          hereThereCommentNeedsRefresh(widget, opportunityTime, scheduledAt), String(scheduledAt)),
+        () => ensureHereThereComment(widget, { foundation: document, characterId,
+          now: opportunityTime, hereWeather, thereWeather }, commit));
+      if (attempt) void attempt.finally(async () => {
+        commentAttempts.current.finish(characterId, String(scheduledAt));
+        try { setProfileSettings(await chatStorage.readGlobalProfileSettings()); } catch { /* Retry on next mount. */ }
+      });
+    };
+    const delay = Math.max(0, scheduledAt - Date.now());
+    const timer = window.setTimeout(runOpportunity, delay);
+    return () => window.clearTimeout(timer);
+  }, [profileSettings?.hereThereEnabled, scheduledAt, foundationReady, themeReady, clockReady,
+    characterId, widget, document, hereWeather, thereWeather, commit]);
   return (
     <div className={`here-there-widget size-${widget.size}`} data-input-modality={inputModality}
       onPointerDownCapture={(event) => {

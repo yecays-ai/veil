@@ -4,6 +4,8 @@ import {
   type ChatImageAsset,
   type ChatSession,
   type ReplyBatch,
+  type GlobalProfileSettings,
+  normalizeBubbleDelayScale,
 } from "./types";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
@@ -14,6 +16,14 @@ export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
 const STORES = ["sessions", "messages", "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
+const GLOBAL_PROFILE_SETTINGS_ID = "global-profile-settings";
+const COMMENT_MIN_DELAY_MS = 60 * 60 * 1000;
+const COMMENT_MAX_DELAY_MS = 5 * 60 * 60 * 1000;
+function randomDelay(random: () => number) {
+  const value = random();
+  const unit = Number.isFinite(value) ? Math.min(0.999999999, Math.max(0, value)) : 0.5;
+  return COMMENT_MIN_DELAY_MS + Math.floor(unit * (COMMENT_MAX_DELAY_MS - COMMENT_MIN_DELAY_MS));
+}
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
 function logOpenFailure(stage: string, error: unknown) {
@@ -347,6 +357,70 @@ export class ChatStorage {
       return { ...settings, id: CHAT_BACKGROUND_SETTINGS_ID,
         blur: normalizeBackgroundBlur(settings?.blur) };
     });
+  }
+
+  readGlobalProfileSettings(): Promise<GlobalProfileSettings> {
+    return this.transaction("readonly", async (tx) => {
+      const saved: Partial<GlobalProfileSettings> | undefined = await request(
+        tx.objectStore("chatSettings").get(GLOBAL_PROFILE_SETTINGS_ID));
+      return { id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayScale: normalizeBubbleDelayScale(saved?.bubbleDelayScale),
+        hereThereEnabled: saved?.hereThereEnabled !== false,
+        nextCommentAt: typeof saved?.nextCommentAt === "number" && Number.isFinite(saved.nextCommentAt)
+          ? saved.nextCommentAt : null };
+    }, ["chatSettings"]);
+  }
+
+  updateBubbleDelayScale(value: number): Promise<void> {
+    if (!Number.isFinite(value)) return Promise.reject(new Error("Invalid bubble timing."));
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("chatSettings");
+      const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
+      await request(table.put({ ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayScale: normalizeBubbleDelayScale(value),
+        hereThereEnabled: current?.hereThereEnabled !== false,
+        nextCommentAt: typeof current?.nextCommentAt === "number" ? current.nextCommentAt : null }));
+    }, ["chatSettings"]);
+  }
+
+  async ensureHereThereSchedule(now = Date.now(), random = Math.random): Promise<GlobalProfileSettings> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("chatSettings");
+      const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
+      const enabled = current?.hereThereEnabled !== false;
+      const nextCommentAt = current?.nextCommentAt;
+      const valid = typeof nextCommentAt === "number" && Number.isFinite(nextCommentAt);
+      const next = !enabled ? null : valid ? nextCommentAt! : now + randomDelay(random);
+      const saved = { ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayScale: normalizeBubbleDelayScale(current?.bubbleDelayScale),
+        hereThereEnabled: enabled, nextCommentAt: next };
+      if (!valid || !current) await request(table.put(saved));
+      return { ...saved, id: GLOBAL_PROFILE_SETTINGS_ID };
+    }, ["chatSettings"]);
+  }
+
+  updateHereThereEnabled(enabled: boolean, now = Date.now(), random = Math.random): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("chatSettings");
+      const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
+      await request(table.put({ ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayScale: normalizeBubbleDelayScale(current?.bubbleDelayScale),
+        hereThereEnabled: enabled,
+        nextCommentAt: enabled ? now + randomDelay(random) : null }));
+    }, ["chatSettings"]);
+  }
+
+  claimHereThereOpportunity(now = Date.now(), random = Math.random): Promise<boolean> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("chatSettings");
+      const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
+      if (current?.hereThereEnabled === false || typeof current?.nextCommentAt !== "number"
+        || !Number.isFinite(current.nextCommentAt) || current.nextCommentAt > now) return false;
+      await request(table.put({ ...current, id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleDelayScale: normalizeBubbleDelayScale(current.bubbleDelayScale),
+        hereThereEnabled: true, nextCommentAt: now + randomDelay(random) }));
+      return true;
+    }, ["chatSettings"]);
   }
 
   updateGlobalChatBackground(backgroundImage: string | null): Promise<void> {
