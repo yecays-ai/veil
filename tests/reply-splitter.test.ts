@@ -13,3 +13,10 @@ test("assistant reply parts are trimmed, empty parts dropped, and one segment st
   assert.deepEqual(splitAssistantReply("  one natural message  "), ["one natural message"]);
   assert.deepEqual(splitAssistantReply(" \n\n\n "), []);
 });
+
+test("repeated literal Blank separators between paragraphs are treated as formatting", () => {
+  assert.deepEqual(splitAssistantReply(
+    "First paragraph\n\nBlank\n\nSecond paragraph\n\nBlank\n\nThird paragraph"),
+  ["First paragraph", "Second paragraph", "Third paragraph"]);
+  assert.deepEqual(splitAssistantReply("A\n\nBlank\n\nB"), ["A", "Blank", "B"]);
+});

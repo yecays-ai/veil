@@ -40,6 +40,7 @@ export const CHAT_OUTPUT_FORMAT = [
   "This is an instant-message text conversation.",
   "Decide naturally how many messages to send based on the Character's personality, Speaking Style, current emotion, and context.",
   "A single reply may contain multiple independent messages. Separate each message with one blank line.",
+  "Use a real empty line (two newline characters) as the separator; never output a word or label to stand in for that empty line.",
   "Keep each message concise, natural, and like real chat. Do not split sentences mechanically just to create more messages.",
   "If a sentence would naturally be sent on its own, send it as its own message.",
   "Avoid long paragraphs or essay-like replies unless the current context truly calls for one.",

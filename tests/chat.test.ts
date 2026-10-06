@@ -21,6 +21,7 @@ import {
 } from "../lib/foundation-types";
 import { defaultSnapshot } from "../lib/theme-types";
 import { exportTheme } from "../lib/theme-package";
+import { withDefaultRegexGroup } from "../lib/regex-defaults";
 
 function foundation() {
   const document = testFoundation();
@@ -264,6 +265,27 @@ test("stored transforms cannot persist blank-line placeholders or empty assistan
   const saved = await storage.readSession(session.id);
   assert.deepEqual(saved.messages.map((message) => message.content),
     ["question", "normal reply", "second reply"]);
+});
+
+test("literal Blank separator artifacts are split away before stored Regex and persistence", async () => {
+  const { storage } = create();
+  const session = await storage.openSession("a");
+  await storage.saveApiConfig(config);
+  const raw = "First paragraph\n\nBlank\n\nSecond paragraph\n\nBlank\n\nThird paragraph";
+  const defaults = withDefaultRegexGroup([]);
+  assert(defaults[0].rules.every((rule) => rule.mode === "display"));
+  const engine = createChatEngine(storage, async () => foundation(), async function* () { yield raw; },
+    undefined, undefined, undefined, async () => ({ version: 1, groups: defaults }));
+  await engine.send(session.id, "Continue.");
+
+  const first = await engine.requestReply(session.id);
+  const saved = (await storage.readSession(session.id)).messages;
+
+  assert.equal(first?.content, "First paragraph");
+  assert.deepEqual(saved.slice(1).map((item) => item.content), [
+    "First paragraph", "Second paragraph", "Third paragraph",
+  ]);
+  assert(saved.slice(1).every((item) => item.content.toLowerCase() !== "blank"));
 });
 
 test("message maintenance edits storage and deletion repairs order, preview and reply claims", async () => {
