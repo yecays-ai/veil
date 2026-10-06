@@ -802,6 +802,7 @@ function ChatHistorySearchPage({ sessionId, messages, characterName, onBack, onJ
 }) {
   const [query, setQuery] = useState("");
   const [searchResult, setSearchResult] = useState<{ query: string; messages: ChatMessage[] } | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const trimmed = query.trim();
     if (!trimmed || !sessionId) return;
@@ -823,14 +824,14 @@ function ChatHistorySearchPage({ sessionId, messages, characterName, onBack, onJ
     </header>
     <div className="chat-info-body">
       <label className="chat-history-search-field"><Search aria-hidden="true" />
-        <input type="search" aria-label="Search messages in this conversation"
+        <input ref={searchInput} type="search" aria-label="Search messages in this conversation"
           placeholder="Search messages" value={query} onChange={(event) => setQuery(event.target.value)} />
       </label>
       {!query.trim() ? <p className="chat-info-search-unavailable">Search messages in this conversation.</p> :
         searching ? <p className="chat-info-search-unavailable" role="status">Searching…</p> : results.length === 0 ?
           <p className="chat-info-search-unavailable" role="status">No messages found.</p> : <div className="chat-history-search-results">
             {results.map((message) => <button key={message.id} type="button" className="chat-history-search-result"
-              onClick={() => onJumpToMessage(message.id)}>
+              onClick={() => { searchInput.current?.blur(); onJumpToMessage(message.id); }}>
               <span className="chat-history-search-result-heading">
                 <strong>{message.role === "user" ? "Me" : characterName}</strong>
                 <time dateTime={new Date(message.createdAt).toISOString()}>

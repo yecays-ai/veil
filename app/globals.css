@@ -179,3 +179,14 @@ a:focus-visible { outline: 3px solid #2563eb; outline-offset: 4px; }
   font: inherit;
   font-weight: 600;
 }
+
+/* Prevent iOS Safari from zooming the visual viewport on small text controls.
+   Touch-only so desktop typography remains unchanged. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="color"]):not([hidden]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+}

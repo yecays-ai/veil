@@ -4,6 +4,8 @@ import test from "node:test";
 
 const room = readFileSync("components/chat/chat-room.tsx", "utf8");
 const css = readFileSync("app/messages/chat.css", "utf8");
+const globalCss = readFileSync("app/globals.css", "utf8");
+const layout = readFileSync("app/layout.tsx", "utf8");
 const appearance = readFileSync("app/appearance.css", "utf8");
 
 function rule(selector: string): string {
@@ -142,10 +144,16 @@ test("Chat history search returns through Chat Info and jumps by message ID with
   assert.match(room, /function ChatHistorySearchPage/);
   assert.match(room, /searchConversationMessages\(messages, sessionId, trimmed, controller\.signal\)/);
   assert.match(room, /message\.role === "user" \? "Me" : characterName/);
-  assert.match(room, /onClick=\{\(\) => onJumpToMessage\(message\.id\)\}/);
+  assert.match(room, /searchInput\.current\?\.blur\(\); onJumpToMessage\(message\.id\)/);
   assert.match(room, /message\.id !== pendingSearchJumpId && !!revealState && hiddenForReveal/);
   assert.match(css, /\.chat-turn-search-highlight \.chat-bubble\s*\{\s*animation: chat-search-highlight 1\.7s/);
   assert.doesNotMatch(room.slice(room.indexOf("onJumpToMessage={(messageId)"), room.indexOf("onUpdate={updateSetting}")), /chatStorage|chatEngine/);
+});
+
+test("mobile text inputs retain a 16px minimum without restricting viewport zoom", () => {
+  assert.match(globalCss, /@media \(hover: none\) and \(pointer: coarse\)\s*\{[\s\S]*?textarea,[\s\S]*?select,[\s\S]*?\[contenteditable="true"\]\s*\{\s*font-size: 16px !important;/);
+  assert.doesNotMatch(layout, /userScalable|maximumScale|maximum-scale|user-scalable/);
+  assert.match(layout, /initialScale: 1/);
 });
 
 test("message input focus has no accent outline, ring, or shadow", () => {
