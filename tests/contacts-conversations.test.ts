@@ -133,6 +133,25 @@ test("horizontal swipe intent gives vertical scrolling priority and clamps the r
   assert.equal(shouldRevealConversationDelete(-30), false);
 });
 
+test("swipe Delete red is confined to the action and the row stays opaque in front", () => {
+  const css = readFileSync("app/messages/chat.css", "utf8");
+  const wrapper = css.match(/\.conversation-swipe-row\s*\{([^}]+)\}/)?.[1] ?? "";
+  const foreground = css.match(/\.conversation-row\s*\{([^}]+)\}/)?.[1] ?? "";
+  const action = css.match(/\.chat-app button\.conversation-delete-action\s*\{([^}]+)\}/)?.[1] ?? "";
+  assert.match(wrapper, /background:\s*transparent/);
+  assert.doesNotMatch(wrapper, /#d7464d|border-bottom\s*:/);
+  assert.match(foreground, /background:\s*var\(--theme-surface\)/);
+  assert.match(foreground, /z-index:\s*2/);
+  assert.match(action, /background:\s*#d7464d/);
+  assert.match(action, /color:\s*white/);
+  assert.match(action, /border:\s*0/);
+  assert.match(action, /border-radius:\s*0/);
+  assert.match(action, /outline:\s*0/);
+  assert.match(action, /place-items:\s*center/);
+  assert.match(action, /width:\s*84px/);
+  assert.match(readFileSync("components/chat/messages-home.tsx", "utf8"), /aria-hidden=\{!rowOpen\}/);
+});
+
 test("group Conversations remain separate from unique direct Conversations", async () => {
   const chat = new ChatStorage(() => new IDBFactory());
   const group = await chat.createGroupSession(["peter", "ghost", "peter"], "Friends");
