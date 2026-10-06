@@ -23,6 +23,21 @@ export type ChatBackgroundSettings = {
   blur?: number;
 };
 
+export type GlobalProfileSettings = {
+  id: "global-profile-settings";
+  bubbleDelayScale: number;
+  hereThereEnabled: boolean;
+  nextCommentAt: number | null;
+};
+
+export const DEFAULT_BUBBLE_DELAY_SCALE = 1;
+export const MIN_BUBBLE_DELAY_SCALE = 0.5;
+export const MAX_BUBBLE_DELAY_SCALE = 2;
+export function normalizeBubbleDelayScale(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_BUBBLE_DELAY_SCALE;
+  return Math.min(MAX_BUBBLE_DELAY_SCALE, Math.max(MIN_BUBBLE_DELAY_SCALE, value));
+}
+
 export function normalizeBackgroundBlur(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.min(20, Math.max(0, value)) : 0;

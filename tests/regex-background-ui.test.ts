@@ -23,7 +23,7 @@ test("Chat Background uses existing crop dialog and blurs only its layer", () =>
   const editor = readFileSync("components/chat/chat-background-settings.tsx", "utf8");
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
   const css = readFileSync("app/messages/chat.css", "utf8");
-  assert.match(editor, /<ImageCropDialog source=\{crop\.source\}/);
+  assert.match(editor, /<ImageCropDialog source=\{crop\}/);
   assert.match(editor, /onCancel=\{\(\) => setCrop\(null\)\}/);
   assert.match(editor, /saveChatImageToIndexedDB\(await \(await fetch\(value\)\)\.blob\(\)\)/);
   assert.match(room, /--chat-background-blur/);

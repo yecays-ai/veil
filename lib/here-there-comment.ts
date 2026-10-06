@@ -3,38 +3,39 @@ import type { BindingDocument } from "./bindings";
 import { browserBindingStorage } from "./binding-storage";
 import type { FoundationDocument } from "./foundation-types";
 import { presetForBinding, type PresetDocument } from "./preset";
-import { assembleChatPrompt } from "./chat/prompt";
 import { validateApiConfig, openAITextProvider, type TextProvider } from "./chat/provider";
 import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "./api-config";
 import { browserApiConfigStorage } from "./api-config-storage";
-import { localTime, resolveTimezone, type ParticipantConfig, type WeatherState } from "./participant-config";
+import { localTime, resolveTimezone, type WeatherState } from "./participant-config";
 import type { ThemeDocument } from "./theme-types";
 import { browserFoundationStorage } from "./foundation-storage";
 import { browserPresetStorage } from "./preset-storage";
+import { chatStorage } from "./chat/storage";
 import { sanitizeHistoryTimestamps } from "./chat/timestamp-sanitizer";
 import { createCompletionRequestContext, logPromptSummary } from "./chat/request-diagnostics";
 import type { WidgetInstance } from "./widget-types";
 
-// Global behavior default; a future Settings control can supply this value.
-export const HERE_THERE_COMMENT_REFRESH_MS = 3 * 60 * 60 * 1000;
+export const HERE_THERE_COMMENT_MIN_DELAY_MS = 60 * 60 * 1000;
+export const HERE_THERE_COMMENT_MAX_DELAY_MS = 5 * 60 * 60 * 1000;
 
 export class HereThereCommentAttemptGuard {
   private readonly attempted = new Set<string>();
   private readonly inFlight = new Set<string>();
 
-  begin(characterId: string, needsRefresh: boolean): boolean {
+  begin(characterId: string, needsRefresh: boolean, opportunity = "default"): boolean {
+    const key = `${characterId}:${opportunity}`;
     if (!needsRefresh) {
-      this.attempted.delete(characterId);
+      this.attempted.delete(key);
       return false;
     }
-    if (this.attempted.has(characterId) || this.inFlight.has(characterId)) return false;
-    this.attempted.add(characterId);
-    this.inFlight.add(characterId);
+    if (this.attempted.has(key) || this.inFlight.has(key)) return false;
+    this.attempted.add(key);
+    this.inFlight.add(key);
     return true;
   }
 
-  finish(characterId: string) {
-    this.inFlight.delete(characterId);
+  finish(characterId: string, opportunity = "default") {
+    this.inFlight.delete(`${characterId}:${opportunity}`);
   }
 }
 
@@ -44,35 +45,29 @@ export function startHereThereCommentAttempt(begin: () => boolean,
 }
 
 export function hereThereCommentNeedsRefresh(widget: WidgetInstance, now: Date,
-  interval = HERE_THERE_COMMENT_REFRESH_MS): boolean {
-  const comment = widget.config.comment;
-  return !comment || comment.characterId !== widget.config.characterId || !comment.text.trim()
-    || !Number.isFinite(Date.parse(comment.generatedAt))
-    || now.getTime() - Date.parse(comment.generatedAt) >= interval;
+  nextCommentAt: number | null | undefined): boolean {
+  return !!widget.config.characterId && typeof nextCommentAt === "number"
+    && Number.isFinite(nextCommentAt) && now.getTime() >= nextCommentAt;
 }
 
 type Context = { foundation: FoundationDocument; characterId: string; now: Date;
   hereWeather: WeatherState; thereWeather: WeatherState };
 type Commit = (update: (theme: ThemeDocument) => ThemeDocument) => Promise<void>;
 type Dependencies = { foundation: () => Promise<FoundationDocument>; presets: () => Promise<PresetDocument>;
-  api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider; bindings: () => Promise<BindingDocument> };
+  api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider; bindings: () => Promise<BindingDocument>;
+  settings: () => Promise<{ hereThereEnabled: boolean }>;
+  claimOpportunity: (now: number) => Promise<boolean> };
 const dependencies: Dependencies = { foundation: () => browserFoundationStorage.load(),
   presets: () => browserPresetStorage.load(), api: (id) => browserApiConfigStorage.getApiConfig(id), provider: openAITextProvider,
-  bindings: () => browserBindingStorage.load() };
-
-function facts(profile: ParticipantConfig, weather: WeatherState, now: Date) {
-  const timezone = resolveTimezone(profile.timezone).timezone;
-  return { name: profile.name, location: profile.location?.label ?? null,
-    localDate: new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now),
-    localTime: localTime(now, timezone, false, false), timezone,
-    weather: weather.status === "ready" ? { temperatureC: weather.temperatureC, summary: weather.summary } : "unavailable" };
-}
+  bindings: () => browserBindingStorage.load(), settings: () => chatStorage.readGlobalProfileSettings(),
+  claimOpportunity: (now) => chatStorage.claimHereThereOpportunity(now) };
 
 export async function ensureHereThereComment(widget: WidgetInstance, context: Context, commit: Commit,
   services: Dependencies = dependencies): Promise<void> {
-  if (context.hereWeather.status === "loading" || context.thereWeather.status === "loading"
-    || widget.config.characterId !== context.characterId || !hereThereCommentNeedsRefresh(widget, context.now)) return;
+  if (widget.config.characterId !== context.characterId) return;
   try {
+    const settings = await services.settings();
+    if (!settings.hereThereEnabled || !await services.claimOpportunity(context.now.getTime())) return;
     const foundation = await services.foundation();
     const character = foundation.characters.find((item) => item.characterId === context.characterId);
     if (!character) throw new Error("Character unavailable");
@@ -84,18 +79,21 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
     if (!api) throw new Error("API unavailable");
     validateApiConfig(api);
     const preset = presetForBinding(await services.presets(), binding.presetId);
-    const prompt = assembleChatPrompt(foundation, character, [], [], undefined, preset, context.now);
-    const contextInstruction = `You are ${character.name}. This is a Home widget remark, not a chat reply.\nHERE: ${JSON.stringify(facts(context.foundation.user, context.hereWeather, context.now))}\nTHERE: ${JSON.stringify(facts(context.foundation.characters.find((item) => item.characterId === context.characterId) ?? character, context.thereWeather, context.now))}\nWrite exactly one short, natural in-character sentence reacting to this context, as a casual remark rather than a weather report. Never invent unavailable weather or temperatures. Output only the remark; no timestamps, headings or multiple messages.`;
-    prompt.messages.push({ role: "system", content: contextInstruction });
-    const pendingInstruction = "Make your brief Here & There remark.";
-    prompt.messages.push({ role: "user", content: pendingInstruction });
-    prompt.diagnostics.push({ identifier: "here-there-context", role: "system", characterLength: contextInstruction.length },
-      { identifier: "pending", role: "user", characterLength: pendingInstruction.length });
+    const userTime = localTime(context.now, resolveTimezone(context.foundation.user.timezone).timezone, false, false);
+    const characterTime = localTime(context.now, resolveTimezone(character.timezone).timezone, false, false);
+    const promptText = (value: string | null, limit = 500) => value?.trim().slice(0, limit) || "unspecified";
+    const weatherText = (weather: WeatherState) => weather.status === "ready"
+      ? `${weather.temperatureC}°C, ${weather.summary.slice(0, 120)}` : "unavailable";
+    const contextInstruction = `You are ${promptText(character.name, 100)}. Make one short, natural in-character remark about the current time or weather.\nPersonality: ${promptText(character.personality)}\nSpeaking Style: ${promptText(character.speakingStyle)}\nCurrent local time (HERE): ${userTime}; weather: ${weatherText(context.hereWeather)}\nCurrent local time (THERE): ${characterTime}; weather: ${weatherText(context.thereWeather)}. Never invent weather or temperatures. Output only the remark.`;
+    const messages = [{ role: "system" as const, content: contextInstruction }];
+    const diagnostics = [{ identifier: "here-there-context", role: "system" as const, characterLength: contextInstruction.length }];
+    const latestSettings = await services.settings();
+    if (!latestSettings.hereThereEnabled) return;
     let text = "";
     const controller = new AbortController();
     const request = createCompletionRequestContext("here-there-comment");
-    logPromptSummary(request, api.model, prompt.diagnostics, prompt.messages);
-    for await (const part of services.provider(api, prompt.messages, controller.signal,
+    logPromptSummary(request, api.model, diagnostics, messages);
+    for await (const part of services.provider(api, messages, controller.signal,
       { ...preset.generation, maxTokens: Math.min(preset.generation.maxTokens ?? 128, 128) },
       request)) text += part;
     text = sanitizeHistoryTimestamps(text).trim();

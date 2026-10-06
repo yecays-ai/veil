@@ -18,6 +18,16 @@ test("pacing clamps short and long text and counts Unicode characters", () => {
   assert.equal(bubbleDelayMs("a".repeat(1000)), 2400);
 });
 
+test("default timing keeps the current formula and global multiplier safely changes it", () => {
+  assert.equal(bubbleDelayMs("short"), 600);
+  assert.equal(bubbleDelayMs("a".repeat(50)), Math.min(2400, Math.max(600, 450 + 50 * 15)));
+  assert.equal(bubbleDelayMs("a".repeat(50), 2), 2400);
+  assert.equal(bubbleDelayMs("a".repeat(50), 0.5), 600);
+  assert.equal(bubbleDelayMs("a".repeat(70), Number.NaN), bubbleDelayMs("a".repeat(70)));
+  assert.equal(bubbleDelayMs("a".repeat(70), 100), 2400);
+  assert.equal(bubbleDelayMs("a".repeat(70), -100), 750);
+});
+
 test("three bubbles reveal in order, using upcoming length and first latency credit", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const queue = new BubbleRevealQueue();

@@ -44,6 +44,49 @@ test("chat sessions, messages and session-linked settings remain available in th
   assert.deepEqual(reloaded.messages.map((message) => message.content), ["hello"]);
 });
 
+test("global profile settings persist timing and Here & There enable state", async () => {
+  const factory = new IDBFactory();
+  const storage = new ChatStorage(() => factory);
+  await storage.updateBubbleDelayScale(1.5);
+  await storage.updateHereThereEnabled(false, 1_000_000);
+  const reloaded = await new ChatStorage(() => factory).readGlobalProfileSettings();
+  assert.equal(reloaded.bubbleDelayScale, 1.5);
+  assert.equal(reloaded.hereThereEnabled, false);
+  assert.equal(reloaded.nextCommentAt, null);
+});
+
+test("Here & There keeps one persisted future schedule and atomically claims an opportunity", async () => {
+  const factory = new IDBFactory();
+  const first = new ChatStorage(() => factory), second = new ChatStorage(() => factory);
+  const now = 50_000_000;
+  const scheduled = await first.ensureHereThereSchedule(now, () => 0.25);
+  assert.equal(scheduled.nextCommentAt, now + 2 * 60 * 60 * 1000);
+  const reloaded = await second.ensureHereThereSchedule(now + 5_000, () => 0.99);
+  assert.equal(reloaded.nextCommentAt, scheduled.nextCommentAt);
+  assert.equal(await first.claimHereThereOpportunity(scheduled.nextCommentAt! - 1, () => 0), false);
+  const claims = await Promise.all([
+    first.claimHereThereOpportunity(scheduled.nextCommentAt!, () => 0.5),
+    second.claimHereThereOpportunity(scheduled.nextCommentAt!, () => 0.5),
+  ]);
+  assert.equal(claims.filter(Boolean).length, 1);
+  const next = await first.readGlobalProfileSettings();
+  assert(next.nextCommentAt! > scheduled.nextCommentAt!);
+  assert(next.nextCommentAt! - scheduled.nextCommentAt! >= 60 * 60 * 1000);
+  assert(next.nextCommentAt! - scheduled.nextCommentAt! < 5 * 60 * 60 * 1000);
+});
+
+test("disabling Here & There cancels expired schedules and re-enabling starts in the future", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const now = 80_000_000;
+  await storage.ensureHereThereSchedule(now, () => 0);
+  await storage.updateHereThereEnabled(false, now + 10 * 60 * 60 * 1000);
+  assert.equal(await storage.claimHereThereOpportunity(now + 10 * 60 * 60 * 1000, () => 0), false);
+  await storage.updateHereThereEnabled(true, now + 10 * 60 * 60 * 1000, () => 0.75);
+  const settings = await storage.readGlobalProfileSettings();
+  assert.equal(settings.hereThereEnabled, true);
+  assert.equal(settings.nextCommentAt, now + 10 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000);
+});
+
 async function seedHistoryAndWorldBookState(storage: ChatStorage, sessionId: string) {
   await storage.send(sessionId, "old history");
   const batch = await storage.beginReply(sessionId);

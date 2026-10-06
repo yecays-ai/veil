@@ -56,6 +56,16 @@ import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   const { document, ready } = useFoundation();
+  const [bubbleDelayScale, setBubbleDelayScale] = useState(1);
+  useEffect(() => {
+    let active = true;
+    const refresh = () => void chatStorage.readGlobalProfileSettings().then((settings) => {
+      if (active) setBubbleDelayScale(settings.bubbleDelayScale);
+    });
+    refresh();
+    const unsubscribe = chatStorage.subscribe(refresh);
+    return () => { active = false; unsubscribe(); };
+  }, []);
   const { bindings } = useBindings();
   const character = document.characters.find(
     (c) => c.characterId === characterId,
@@ -359,7 +369,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         (content) => persistDraft(content, sessionId, false),
         async () => {
           if (mounted.current && currentSessionId.current === sessionId) {
-            revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now());
+            revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleDelayScale);
             const token = revealToken;
             return chatEngine.requestReply(sessionId, (completed) => {
               if (mounted.current && currentSessionId.current === sessionId)
@@ -386,7 +396,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setGenerating(true);
     nearBottom.current = true;
     const retained = messages.filter((item) => item.order < message.order);
-    const revealToken = revealQueue.begin(sessionId, retained, session.streamOnline === true, performance.now());
+    const revealToken = revealQueue.begin(sessionId, retained, session.streamOnline === true, performance.now(), bubbleDelayScale);
     setError("");
     try {
       await chatEngine.regenerateMessage(message.id, (completed) => {

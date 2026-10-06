@@ -37,6 +37,7 @@ export function ProfileHub() {
       </Link>
       <nav className="social-list" aria-label="Profile">
         <Link className="social-row" href="/profile/details">Profile / Personal Details <span aria-hidden="true">›</span></Link>
+        <Link className="social-row" href="/settings">Settings <span aria-hidden="true">›</span></Link>
       </nav>
     </>}
   </div>;

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { HERE_THERE_COMMENT_REFRESH_MS, HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh,
+import { HERE_THERE_COMMENT_MAX_DELAY_MS, HERE_THERE_COMMENT_MIN_DELAY_MS, HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh,
   ensureHereThereComment, startHereThereCommentAttempt } from "../lib/here-there-comment";
 import { bindHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
@@ -18,7 +18,8 @@ function fixture() {
   let bindings: import("../lib/bindings").BindingDocument = { global: {}, characters: {} };
   foundation.characters = ["a", "b"].map((characterId) => ({ characterId,
     ...normalizeCharacterInput({ name: characterId, location: { label: characterId === "a" ? "New York" : "Tokyo" },
-      timezone: characterId === "a" ? "America/New_York" : "Asia/Tokyo" }) }));
+      timezone: characterId === "a" ? "America/New_York" : "Asia/Tokyo",
+      personality: "dry wit", speakingStyle: "brief and warm" }) }));
   foundation.user.name = "User";
   let theme = normalizeDocument(bindHereThereCharacter(normalizeDocument(null), "here-there-default", "a"));
   let queue = Promise.resolve();
@@ -31,6 +32,7 @@ function fixture() {
     thereWeather: { status: "ready", temperatureC: 16, summary: "Cloudy", icon: "", updatedAt: "now" } as WeatherState };
   const services = { bindings: async () => bindings, foundation: async () => foundation, presets: async () => createPresetDocument(),
     api: async (id: string) => ({ id, apiKey: "test", model: "test", baseUrl: "https://example.test/v1" }),
+    settings: async () => ({ hereThereEnabled: true }), claimOpportunity: async () => true,
     provider: async function* () { yield "Wish you were here."; } as TextProvider };
   return { get bindings() { return bindings; }, set bindings(value) { bindings = value; }, foundation, context, services, commit, theme: () => theme };
 }
@@ -51,17 +53,26 @@ test("Here & There retries a failed generation only on a later mount, and allows
   assert.equal(laterMount.begin("a", true), true);
 });
 
+test("mounted guard rejects the same opportunity but accepts a distinct persisted future opportunity", () => {
+  const mounted = new HereThereCommentAttemptGuard();
+  assert.equal(mounted.begin("a", true, "100"), true);
+  mounted.finish("a", "100");
+  assert.equal(mounted.begin("a", true, "100"), false);
+  assert.equal(mounted.begin("a", true, "200"), true);
+});
+
 test("widget generation failure does not retry on clock rerenders but a fresh Home mount can retry", async () => {
   const value = fixture();
   let calls = 0;
   value.services.provider = async function* () { calls++; throw new Error("temporary provider failure"); };
   const mountedAttempts = new HereThereCommentAttemptGuard();
+  const opportunity = value.context.now.getTime();
   const runWidgetEffect = async (attempts: HereThereCommentAttemptGuard, now: Date) => {
     const widget = value.theme().current.widgets[0];
     const attempt = startHereThereCommentAttempt(
-      () => attempts.begin("a", hereThereCommentNeedsRefresh(widget, now)),
+      () => attempts.begin("a", hereThereCommentNeedsRefresh(widget, now, opportunity), String(opportunity)),
       () => ensureHereThereComment(widget, { ...value.context, now }, value.commit, value.services));
-    if (attempt) await attempt.finally(() => attempts.finish("a"));
+    if (attempt) await attempt.finally(() => attempts.finish("a", String(opportunity)));
   };
 
   await runWidgetEffect(mountedAttempts, value.context.now);
@@ -80,7 +91,7 @@ test("widget generation failure does not retry on clock rerenders but a fresh Ho
   assert.equal(value.theme().current.widgets[0].config.comment?.text, "Peter is back.");
 });
 
-test("widget generation resolves Global then Character defaults and ignores Messages overrides", async () => {
+test("Here & There prompt uses only name, personality, speaking style, local time and weather", async () => {
   const value = fixture();
   const preset = { ...createBuiltinPreset(), id: "character-preset", name: "Character", builtIn: false,
     prompts: createBuiltinPreset().prompts.map((entry) => entry.source === "prompt" && entry.identifier === "base"
@@ -89,19 +100,23 @@ test("widget generation resolves Global then Character defaults and ignores Mess
     defaults: { apiConfigId: "character", presetId: preset.id },
     apps: { messages: { apiConfigId: "messages-only", presetId: "veil-default" } } } } };
   value.services.presets = async () => ({ ...createPresetDocument(), presets: [createBuiltinPreset(), preset] });
+  let promptAssertionError: unknown;
   value.foundation.user.aboutMe = "UNIQUE_USER_PROFILE_SENTINEL";
   value.foundation.characters[0].backstory = "UNIQUE_CHARACTER_PROFILE_SENTINEL";
   value.services.provider = async function* (api, prompt) {
+    try {
     assert.equal(api.id, "character");
     const content = JSON.stringify(prompt);
-    assert.match(content, /CHARACTER_PRESET/);
-    assert.equal(content.split("UNIQUE_USER_PROFILE_SENTINEL").length - 1, 1);
-    assert.equal(content.split("UNIQUE_CHARACTER_PROFILE_SENTINEL").length - 1, 1);
-    assert.match(content, /New York/); assert.match(content, /08:00/);
+    assert.doesNotMatch(content, /CHARACTER_PRESET|UNIQUE_USER_PROFILE_SENTINEL|UNIQUE_CHARACTER_PROFILE_SENTINEL|background|backstory|characterId|history|conversation/i);
+    assert.match(content, /\"name\"|You are a/); assert.match(content, /dry wit/);
+    assert.match(content, /brief and warm/); assert.match(content, /08:00/);
     assert.match(content, /16/); assert.match(content, /Cloudy/); assert.match(content, /unavailable/);
+    assert.equal(prompt.length, 1);
+    } catch (error) { promptAssertionError = error; throw error; }
     yield "Wish you were here.";
   };
   await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit, value.services);
+  assert.equal(promptAssertionError, undefined);
   assert.equal(value.theme().current.widgets[0].config.comment?.text, "Wish you were here.");
 });
 
@@ -116,19 +131,17 @@ test("Home widget completion is tagged separately from chat replies", async () =
   assert.equal(source, "here-there-comment");
 });
 
-test("successful comments persist across reloads and refresh only after three hours", async () => {
+test("successful comments persist across reloads without adding context to the prompt", async () => {
   const value = fixture(); let calls = 0;
   value.services.provider = async function* () { calls++; yield `Remark ${calls}.`; };
   await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit, value.services);
   const saved = value.theme().current.widgets[0].config.comment;
   assert.deepEqual(saved, { characterId: "a", text: "Remark 1.", generatedAt: value.context.now.toISOString() });
   const reloaded = normalizeDocument(JSON.parse(JSON.stringify(value.theme()))).current.widgets[0];
-  const before = { ...value.context, now: new Date(value.context.now.getTime() + HERE_THERE_COMMENT_REFRESH_MS - 1) };
-  assert.equal(hereThereCommentNeedsRefresh(reloaded, before.now), false);
-  await ensureHereThereComment(reloaded, before, value.commit, value.services);
-  assert.equal(calls, 1);
-  const expired = { ...value.context, now: new Date(value.context.now.getTime() + HERE_THERE_COMMENT_REFRESH_MS) };
-  await ensureHereThereComment(reloaded, expired, value.commit, value.services);
+  const nextSchedule = value.context.now.getTime() + 2 * 60 * 60 * 1000;
+  assert.equal(hereThereCommentNeedsRefresh(reloaded, new Date(nextSchedule - 1), nextSchedule), false);
+  assert.equal(hereThereCommentNeedsRefresh(reloaded, new Date(nextSchedule), nextSchedule), true);
+  await ensureHereThereComment(reloaded, { ...value.context, now: new Date(nextSchedule) }, value.commit, value.services);
   assert.equal(calls, 2);
   assert.equal(value.theme().current.widgets[0].config.comment?.text, "Remark 2.");
 });
@@ -138,7 +151,7 @@ test("failed initial generation and refresh write nothing and later eligible cal
     const value = fixture();
     if (existing) await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit, value.services);
     const before = JSON.stringify(value.theme());
-    const context = { ...value.context, now: new Date(value.context.now.getTime() + HERE_THERE_COMMENT_REFRESH_MS) };
+    const context = { ...value.context, now: new Date(value.context.now.getTime() + HERE_THERE_COMMENT_MIN_DELAY_MS) };
     for (const mode of ["failure", "empty", "missing", "disabled"] as const) {
       if (mode === "disabled") value.bindings.global.apiConfigId = null;
       await ensureHereThereComment(value.theme().current.widgets[0], context, value.commit, {
@@ -172,17 +185,32 @@ test("legacy attempt data and mismatched comments are discarded and cannot block
   }
 });
 
-test("loading weather waits for context and the mounted widget guards in-flight and repeated failed attempts", async () => {
+test("loading weather uses an unavailable fallback and the mounted widget guards repeated failed attempts", async () => {
   const value = fixture(); let calls = 0;
-  value.services.provider = async function* () { calls++; yield "Ready."; };
+  let sentPrompt = "";
+  value.services.provider = async function* (_api, messages) { calls++; sentPrompt = JSON.stringify(messages); yield "Ready."; };
   await ensureHereThereComment(value.theme().current.widgets[0], { ...value.context, hereWeather: { status: "loading" } }, value.commit, value.services);
-  assert.equal(calls, 0);
+  assert.equal(calls, 1);
+  assert.match(sentPrompt, /weather: unavailable/);
   const { readFileSync } = await import("node:fs");
   const source = readFileSync("components/widgets/here-there-widget.tsx", "utf8");
   assert.match(source, /new HereThereCommentAttemptGuard\(\)/);
-  assert.match(source, /commentAttempts\.current\.begin\(character\.characterId, hereThereCommentNeedsRefresh/);
-  assert.match(source, /finally\(\(\) => commentAttempts\.current\.finish\(character\.characterId\)\)/);
+  assert.match(source, /commentAttempts\.current\.begin\(characterId,[\s\S]*hereThereCommentNeedsRefresh/);
+  assert.match(source, /finally\(async \(\) =>[\s\S]*commentAttempts\.current\.finish\(characterId, String\(scheduledAt\)\)/);
   assert.doesNotMatch(source, /claimHereThere/);
+});
+
+test("Here & There schedule constants define the intended future opportunity window", () => {
+  assert.equal(HERE_THERE_COMMENT_MIN_DELAY_MS, 60 * 60 * 1000);
+  assert.equal(HERE_THERE_COMMENT_MAX_DELAY_MS, 5 * 60 * 60 * 1000);
+});
+
+test("OFF returns before generation and OFF to ON clears the prior opportunity", async () => {
+  const value = fixture(); let calls = 0;
+  value.services.settings = async () => ({ hereThereEnabled: false });
+  value.services.provider = async function* () { calls++; yield "Should not run."; };
+  await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit, value.services);
+  assert.equal(calls, 0);
 });
 
 test("rebind invalidates old comments and late results cannot overwrite a new binding", async () => {

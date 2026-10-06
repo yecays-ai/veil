@@ -2,8 +2,9 @@ import type { ChatMessage } from "./types";
 
 export const CHAT_TIMESTAMP_GAP_MS = 15 * 60 * 1000;
 
-export function bubbleDelayMs(content: string) {
-  return Math.min(2400, Math.max(600, 450 + Array.from(content).length * 15));
+export function bubbleDelayMs(content: string, scale = 1) {
+  const safeScale = Number.isFinite(scale) ? Math.min(2, Math.max(0.5, scale)) : 1;
+  return Math.min(2400, Math.max(600, Math.round((450 + Array.from(content).length * 15) * safeScale)));
 }
 
 export function shouldShowTimestamp(current: ChatMessage, previous?: ChatMessage) {
@@ -33,6 +34,7 @@ export class BubbleRevealQueue {
   private revision = 0;
   private startedAt = 0;
   private finalizedSeen = false;
+  private delayScale = 1;
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -48,8 +50,9 @@ export class BubbleRevealQueue {
     this.timer = undefined;
     this.publish(emptyState());
   };
-  begin(sessionId: string, messages: readonly ChatMessage[], streaming: boolean, startedAt: number) {
+  begin(sessionId: string, messages: readonly ChatMessage[], streaming: boolean, startedAt: number, delayScale = 1) {
     this.cancel();
+    this.delayScale = Number.isFinite(delayScale) ? Math.min(2, Math.max(0.5, delayScale)) : 1;
     this.startedAt = startedAt;
     this.finalizedSeen = false;
     if (!streaming) this.publish({ ...emptyState(), sessionId, awaiting: true,
@@ -70,10 +73,10 @@ export class BubbleRevealQueue {
       hiddenIds.delete(messages[index].id);
       this.publish({ ...this.state, hiddenIds, pending: hiddenIds.size > 0 });
       if (index + 1 < messages.length)
-        this.timer = setTimeout(() => reveal(index + 1), bubbleDelayMs(messages[index + 1].content));
+        this.timer = setTimeout(() => reveal(index + 1), bubbleDelayMs(messages[index + 1].content, this.delayScale));
       else this.timer = undefined;
     };
-    const firstDelay = Math.max(0, bubbleDelayMs(messages[0].content) - Math.max(0, readyAt - this.startedAt));
+    const firstDelay = Math.max(0, bubbleDelayMs(messages[0].content, this.delayScale) - Math.max(0, readyAt - this.startedAt));
     if (firstDelay === 0) reveal(0);
     else this.timer = setTimeout(() => reveal(0), firstDelay);
   }
