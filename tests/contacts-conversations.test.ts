@@ -21,7 +21,7 @@ test("Contact relations reference Characters without copying profiles and remain
   await storage.transact((current) => addContact(current, "peter", 20));
   const saved = await storage.load();
   assert.equal(saved.contacts.length, 1);
-  assert.deepEqual(Object.keys(saved.contacts[0]).sort(), ["characterId", "createdAt", "id"]);
+  assert.deepEqual(Object.keys(saved.contacts[0]).sort(), ["characterId", "createdAt", "heroBackground", "id", "lastRemarkChange", "remark"]);
   assert.equal(saved.contacts[0].characterId, "peter");
   assert.equal("ensureCharacters" in storage, false);
   assert.equal(removeContact(await storage.load(), "peter").contacts.some((item) => item.characterId === "peter"), false);

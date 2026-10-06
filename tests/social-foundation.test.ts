@@ -71,7 +71,7 @@ test("root pages reuse Foundation and existing Chat without fictional social dat
   const moments = readFileSync("app/moments/page.tsx", "utf8");
   const messages = readFileSync("components/chat/messages-home.tsx", "utf8");
   assert.match(contacts, /useContacts/);
-  assert.match(contacts, /chatStorage\.openSession\(character\.characterId\)/);
+  assert.match(readFileSync("components/contact-info.tsx", "utf8"), /chatStorage\.openSession\(character\.characterId\)/);
   assert.match(profile, /document\.user\.name/);
   assert.match(profile, /href="\/profile\/details"/);
   assert.match(profile, /href="\/profile\/settings"/);

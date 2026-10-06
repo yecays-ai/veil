@@ -11,7 +11,8 @@ import { chatStorage } from "../lib/chat/storage";
 import { contactMatches } from "../lib/contact-search";
 import { RootAppHeader } from "./root-app-header";
 import { useContacts } from "./use-contacts";
-import { addContact } from "../lib/contact-storage";
+import { addContact, contactDisplayName } from "../lib/contact-storage";
+import { ContactInfo } from "./contact-info";
 
 type ContactSelectionMode = "single" | "multi";
 
@@ -37,7 +38,9 @@ export function ContactsHome({ mode, initialSelection = [] }: {
   const [query, setQuery] = useState(""), [selected, setSelected] = useState(initialSelection);
   const [openingId, setOpeningId] = useState(""), [error, setError] = useState("");
   const ids = new Set(contactState.document.contacts.map((item) => item.characterId));
-  const contacts = document.characters.filter((character) => ids.has(character.characterId) && contactMatches(character.name, undefined, query));
+  const contactByCharacter = new Map(contactState.document.contacts.map((item) => [item.characterId, item]));
+  const contacts = document.characters.filter((character) => ids.has(character.characterId)
+    && contactMatches(character.name, contactByCharacter.get(character.characterId)?.remark ?? undefined, query));
   const selectedContacts = [...new Set(selected.filter((id) => ids.has(id)))];
   async function openDirect(characterId: string) {
     if (openingId) return;
@@ -68,7 +71,7 @@ export function ContactsHome({ mode, initialSelection = [] }: {
         {contacts.map((character) => {
           const content = <><span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} />
             <PresenceBadge presence={character.presence} /></span>
-            <span><strong>{character.name}</strong>
+            <span><strong>{contactDisplayName(contactByCharacter.get(character.characterId), character.name)}</strong>
               {character.statusMessage && <small>{character.statusMessage}</small>}</span>
             {mode === "multi" && <span className="contact-selection-mark" aria-hidden="true">
               {selectedContacts.includes(character.characterId) ? <CircleCheck /> : <Circle />}
@@ -151,35 +154,5 @@ export function CreateGroupPage({ characterIds }: { characterIds: string[] }) {
 }
 
 export function ContactProfile({ characterId }: { characterId: string }) {
-  const { document, ready } = useFoundation();
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const character = document.characters.find((item) => item.characterId === characterId);
-  async function message() {
-    if (!character || busy) return;
-    setBusy(true); setError("");
-    try {
-      await chatStorage.openSession(character.characterId);
-      router.push(`/messages/${encodeURIComponent(character.characterId)}`);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Conversation could not be opened.");
-      setBusy(false);
-    }
-  }
-  return <PageShell title={character?.name ?? "Contact"} backHref="/contacts" backLabel="Back to Contacts"
-    bodyClassName="foundation-page contact-profile">
-    {!ready ? <p>Loading contact…</p> : !character ? <p>Contact not found.</p> : <>
-      <div className="profile-hero"><span className="social-avatar social-avatar-large">
-        <Avatar avatar={character.avatar} name={character.name} large />
-        <PresenceBadge presence={character.presence} /></span>
-        <h1>{character.name}</h1>
-        {character.statusMessage && <p>{character.statusMessage}</p>}
-        <button type="button" className="primary-button" disabled={busy} onClick={() => void message()}>Message</button>
-      </div>
-      {character.occupation && <section className="profile-card"><h2>Occupation</h2><p>{character.occupation}</p></section>}
-      {character.location?.label && <section className="profile-card"><h2>Location</h2><p>{character.location.label}</p></section>}
-      {error && <p role="alert">{error}</p>}
-    </>}
-  </PageShell>;
+  return <ContactInfo characterId={characterId} />;
 }
