@@ -8,7 +8,7 @@ import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
 import { sortChatSessions } from "../../lib/chat/session-order";
 import { CONVERSATION_DELETE_WIDTH, conversationSwipeOffset, isHorizontalConversationSwipe,
-  shouldRevealConversationDelete } from "../../lib/chat/swipe-gesture";
+  conversationSwipeReleaseTarget } from "../../lib/chat/swipe-gesture";
 import { ChatAvatar } from "./avatar";
 import { RootAppHeader } from "../root-app-header";
 
@@ -71,7 +71,7 @@ export function MessagesHome() {
     if (!current || current.id !== id) return;
     if (current.horizontal) {
       const offset = conversationSwipeOffset(current.startOffset, event.clientX - current.startX);
-      setOpenRowId(shouldRevealConversationDelete(offset) ? id : null);
+      setOpenRowId(conversationSwipeReleaseTarget(offset) < 0 ? id : null);
       suppressClickFor.current = id;
     } else if (current.startOffset < 0) {
       suppressClickFor.current = id;

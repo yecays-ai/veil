@@ -119,28 +119,29 @@ test("Messages conversation rows keep navigation and expose only a confirmed Del
   assert.doesNotMatch(home, /location\.reload/);
 });
 
-test("horizontal swipe intent gives vertical scrolling priority and clamps the revealed action", async () => {
-  const source = readFileSync("lib/chat/swipe-gesture.ts", "utf8");
-  assert.match(source, /Math\.abs\(deltaX\) > Math\.abs\(deltaY\)/);
-  assert.match(source, /Math\.max\(-CONVERSATION_DELETE_WIDTH, Math\.min\(0/);
-  const { isHorizontalConversationSwipe, conversationSwipeOffset, shouldRevealConversationDelete } =
+test("horizontal swipes preserve vertical scrolling and resist overpull before release settle", async () => {
+  const { isHorizontalConversationSwipe, conversationSwipeOffset, conversationSwipeReleaseTarget } =
     await import("../lib/chat/swipe-gesture");
   assert.equal(isHorizontalConversationSwipe(-22, 35), false);
   assert.equal(isHorizontalConversationSwipe(-22, 5), true);
-  assert.equal(conversationSwipeOffset(0, -300), -84);
+  assert.equal(conversationSwipeOffset(0, -84), -84);
+  const resisted = conversationSwipeOffset(0, -114);
+  assert.ok(resisted < -84 && resisted > -94);
+  assert.ok(conversationSwipeOffset(0, -10000) >= -100);
   assert.equal(conversationSwipeOffset(0, 20), 0);
-  assert.equal(shouldRevealConversationDelete(-50), true);
-  assert.equal(shouldRevealConversationDelete(-30), false);
+  assert.equal(conversationSwipeReleaseTarget(-50), -84);
+  assert.equal(conversationSwipeReleaseTarget(-30), 0);
 });
 
-test("swipe Delete red is confined to the action and the row stays opaque in front", () => {
+test("conversation list restores page-colored rows and subtle dividers while confining Delete red to the action", () => {
   const css = readFileSync("app/messages/chat.css", "utf8");
   const wrapper = css.match(/\.conversation-swipe-row\s*\{([^}]+)\}/)?.[1] ?? "";
   const foreground = css.match(/\.conversation-row\s*\{([^}]+)\}/)?.[1] ?? "";
   const action = css.match(/\.chat-app button\.conversation-delete-action\s*\{([^}]+)\}/)?.[1] ?? "";
   assert.match(wrapper, /background:\s*transparent/);
-  assert.doesNotMatch(wrapper, /#d7464d|border-bottom\s*:/);
-  assert.match(foreground, /background:\s*var\(--theme-surface\)/);
+  assert.match(wrapper, /border-bottom:\s*1px solid color-mix\(in srgb, var\(--theme-text\) 10%, transparent\)/);
+  assert.doesNotMatch(wrapper, /#d7464d/);
+  assert.match(foreground, /background:\s*var\(--theme-background\)/);
   assert.match(foreground, /z-index:\s*2/);
   assert.match(action, /background:\s*#d7464d/);
   assert.match(action, /color:\s*white/);
@@ -152,14 +153,22 @@ test("swipe Delete red is confined to the action and the row stays opaque in fro
   assert.match(readFileSync("components/chat/messages-home.tsx", "utf8"), /aria-hidden=\{!rowOpen\}/);
 });
 
-test("conversation row fills available width and aligns timestamp with a truncating title line", () => {
+test("conversation title and timestamp share a truncating first line above the preview", () => {
   const css = readFileSync("app/messages/chat.css", "utf8");
   const home = readFileSync("components/chat/messages-home.tsx", "utf8");
-  assert.match(css, /\.conversation-row\s*\{[^}]*width:\s*100%/);
   assert.match(css, /\.conversation-title-line\s*\{[^}]*align-items:\s*center/);
   assert.match(css, /\.conversation-title-line strong\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis/);
   assert.match(css, /\.conversation-title-line time\s*\{[^}]*flex:\s*none/);
   assert.match(home, /<span className="conversation-title-line"><strong>\{name\}<\/strong>[\s\S]*?<time dateTime=/);
+  assert.match(home, /<span className="conversation-preview">/);
+  assert.match(css, /\.conversation-preview\s*\{[^}]*text-overflow:\s*ellipsis/);
+  assert.doesNotMatch(css.match(/\.conversation-row\s*\{([^}]+)\}/)?.[1] ?? "", /width:\s*100%|min-width:/);
+});
+
+test("conversation swipe release eases into a light bounce and respects reduced motion", () => {
+  const css = readFileSync("app/messages/chat.css", "utf8");
+  assert.match(css, /\.conversation-row\s*\{[^}]*transition:\s*transform 280ms cubic-bezier\(\.22, \.82, \.35, 1\.06\)/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.conversation-row\s*\{\s*transition:\s*none/);
 });
 
 test("group Conversations remain separate from unique direct Conversations", async () => {

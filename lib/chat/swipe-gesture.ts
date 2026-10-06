@@ -1,6 +1,8 @@
 export const CONVERSATION_DELETE_WIDTH = 84;
 export const CONVERSATION_SWIPE_ACTIVATION = 8;
 export const CONVERSATION_SWIPE_OPEN_THRESHOLD = CONVERSATION_DELETE_WIDTH / 2;
+export const CONVERSATION_SWIPE_MAX_OVERSCROLL = 16;
+export const CONVERSATION_SWIPE_OVERSCROLL_RESISTANCE = 48;
 
 export function isHorizontalConversationSwipe(deltaX: number, deltaY: number): boolean {
   return Math.abs(deltaX) >= CONVERSATION_SWIPE_ACTIVATION &&
@@ -8,9 +10,15 @@ export function isHorizontalConversationSwipe(deltaX: number, deltaY: number): b
 }
 
 export function conversationSwipeOffset(startOffset: number, deltaX: number): number {
-  return Math.max(-CONVERSATION_DELETE_WIDTH, Math.min(0, startOffset + deltaX));
+  const rawOffset = Math.min(0, startOffset + deltaX);
+  const overscroll = Math.max(0, -rawOffset - CONVERSATION_DELETE_WIDTH);
+  if (overscroll === 0) return rawOffset;
+
+  const resistedOverscroll = CONVERSATION_SWIPE_MAX_OVERSCROLL * overscroll /
+    (overscroll + CONVERSATION_SWIPE_OVERSCROLL_RESISTANCE);
+  return -(CONVERSATION_DELETE_WIDTH + resistedOverscroll);
 }
 
-export function shouldRevealConversationDelete(offset: number): boolean {
-  return offset <= -CONVERSATION_SWIPE_OPEN_THRESHOLD;
+export function conversationSwipeReleaseTarget(offset: number): number {
+  return offset <= -CONVERSATION_SWIPE_OPEN_THRESHOLD ? -CONVERSATION_DELETE_WIDTH : 0;
 }

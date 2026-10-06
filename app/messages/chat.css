@@ -59,26 +59,21 @@
 }
 .conversation-swipe-row {
   position: relative;
-  width: 100%;
-  min-width: 0;
   overflow: hidden;
-  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
   background: transparent;
 }
 .conversation-row {
   position: relative;
   z-index: 2;
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 16px 0;
   border: 0;
-  background: var(--theme-surface);
+  background: var(--theme-background);
   touch-action: pan-y;
-  transition: transform 180ms ease-out;
+  transition: transform 280ms cubic-bezier(.22, .82, .35, 1.06);
 }
 .conversation-row.is-dragging {
   transition: none;
@@ -950,6 +945,7 @@
 @media (prefers-reduced-motion: reduce) {
   .chat-context-backdrop, .chat-message-actions { animation: none; }
   .chat-turn[data-active] { transition: none; }
+  .conversation-row { transition: none; }
 }
 .chat-api-settings {
   overflow: auto;
