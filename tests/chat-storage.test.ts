@@ -44,6 +44,81 @@ test("chat sessions, messages and session-linked settings remain available in th
   assert.deepEqual(reloaded.messages.map((message) => message.content), ["hello"]);
 });
 
+async function seedHistoryAndWorldBookState(storage: ChatStorage, sessionId: string) {
+  await storage.send(sessionId, "old history");
+  const batch = await storage.beginReply(sessionId);
+  assert(batch);
+  await storage.finalizeReply(batch.assistant.id, "old reply", {
+    cycle: 3, prefix: [], entries: { "book:entry": { stickyUntil: 5 } },
+  });
+}
+
+test("Clear Conversation History resets messages and WorldBook state but preserves the conversation shell settings", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("peter");
+  const imageId = await storage.saveChatImage(new Blob(["background"], { type: "image/png" }));
+  await storage.updateSessionSettings(session.id, {
+    pinned: true, streamOnline: true, autoReplyOnKeyboardDismiss: true,
+    backgroundImage: imageId, customCSS: ".chat-bubble { opacity: .9; }",
+  });
+  await seedHistoryAndWorldBookState(storage, session.id);
+  assert(await storage.readWorldBookState(session.id));
+
+  assert.equal(await storage.clearSession(session.id), 2);
+  const saved = await storage.readSession(session.id);
+  assert.equal(saved.messages.length, 0);
+  assert.equal(await storage.readWorldBookState(session.id), null);
+  assert.equal(saved.session.nextOrder, 1);
+  assert.equal(saved.session.lastMessageId, undefined);
+  assert.equal(saved.session.lastMessagePreview, "");
+  assert.equal(saved.session.pinned, true);
+  assert.equal(saved.session.streamOnline, true);
+  assert.equal(saved.session.autoReplyOnKeyboardDismiss, true);
+  assert.equal(saved.session.backgroundImage, imageId);
+  assert.match(saved.session.customCSS ?? "", /opacity/);
+  assert(await storage.readChatImage(imageId));
+});
+
+test("Delete Conversation resets history, removes only its session and unused background asset, and permits a fresh direct session", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("peter");
+  const other = await storage.openSession("lan");
+  const imageId = await storage.saveChatImage(new Blob(["background"], { type: "image/png" }));
+  await storage.updateSessionSettings(session.id, { backgroundImage: imageId });
+  await seedHistoryAndWorldBookState(storage, session.id);
+  await storage.send(other.id, "other conversation stays");
+
+  let notified = 0;
+  const unsubscribe = storage.subscribe(() => { notified++; });
+  await storage.deleteSession(session.id);
+  unsubscribe();
+  assert(notified > 0);
+  assert.deepEqual((await storage.listSessions()).map((item) => item.id), [other.id]);
+  assert.equal(await storage.readChatImage(imageId), null);
+  assert.equal(await storage.readWorldBookState(session.id), null);
+  assert.deepEqual((await storage.readSession(other.id)).messages.map((item) => item.content), ["other conversation stays"]);
+
+  const fresh = await storage.openSession("peter");
+  assert.notEqual(fresh.id, session.id);
+  assert.deepEqual((await storage.readSession(fresh.id)).messages, []);
+  assert.equal(await storage.readWorldBookState(fresh.id), null);
+});
+
+test("Clear and Delete refuse an active streaming reply without changing conversation data", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("peter");
+  await storage.send(session.id, "question");
+  const batch = await storage.beginReply(session.id);
+  assert(batch);
+
+  await assert.rejects(storage.clearSession(session.id), /reply is in progress/);
+  await assert.rejects(storage.deleteSession(session.id), /reply is in progress/);
+  const unchanged = await storage.readSession(session.id);
+  assert.equal(unchanged.messages.length, 2);
+  assert.equal(unchanged.messages[1].status, "streaming");
+  assert.equal((await storage.listSessions()).some((item) => item.id === session.id), true);
+});
+
 test("open failures keep the safe user-facing storage error", async () => {
   const storage = new ChatStorage(() => { throw new DOMException("blocked", "SecurityError"); });
   await assert.rejects(storage.listSessions(), /Chat storage is unavailable/);

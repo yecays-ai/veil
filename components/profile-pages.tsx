@@ -191,12 +191,16 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
               isNew ? router.push("/characters") : setEditing(false)
             }
             onSave={async (input) => {
-              await commit((d) =>
+              const saved = await commit((d) =>
                 characterId
                   ? updateCharacter(d, characterId, input as CharacterInput)
                   : createCharacter(d, input as CharacterInput),
               );
-              if (isNew) router.push("/characters");
+              if (isNew) {
+                const created = saved.characters.at(-1);
+                if (!created) throw new Error(C.characters.notFound);
+                router.push(`/characters/${encodeURIComponent(created.characterId)}`);
+              }
               else setEditing(false);
             }}
           />

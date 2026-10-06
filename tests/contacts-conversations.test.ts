@@ -4,6 +4,10 @@ import { readFileSync } from "node:fs";
 import { IDBFactory } from "fake-indexeddb";
 import { addContact, createContactStorage, removeContact } from "../lib/contact-storage";
 import { ChatStorage } from "../lib/chat/storage";
+import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
+import { createCharacter } from "../lib/foundation";
+import { normalizeCharacterInput } from "../lib/foundation-types";
+import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
 
 function memory() {
   const values = new Map<string, string>();
@@ -100,6 +104,35 @@ test("Messages popover, search and filters use the flatter pill treatment", () =
   assert.match(contacts, /aria-label="Add Contact"/);
 });
 
+test("Messages conversation rows keep navigation and expose only a confirmed Delete swipe action", () => {
+  const home = readFileSync("components/chat/messages-home.tsx", "utf8");
+  assert.match(home, /<div className="conversation-swipe-row"[^>]*data-conversation-row=\{session\.id\}/);
+  assert.match(home, /className="conversation-delete-action"[\s\S]*?>Delete<\/button>/);
+  assert.match(home, /href=\{group \? `\/messages\/group/);
+  assert.match(home, /onPointerDown=\{\(event\) => beginSwipe/);
+  assert.match(home, /onPointerMove=\{\(event\) => moveSwipe/);
+  assert.match(home, /onPointerUp=\{\(event\) => finishSwipe/);
+  assert.match(home, /Delete Conversation\?/);
+  assert.match(home, /onClick=\{\(\) => setDeleteTarget\(null\)\}>Cancel/);
+  assert.match(home, /onClick=\{\(\) => void confirmDeleteConversation\(\)\}>\{deleteBusy \? "Deleting…" : "Delete"\}/);
+  assert.match(home, /chatStorage\.subscribe\(\(\) => void load\(\)\)/);
+  assert.doesNotMatch(home, /location\.reload/);
+});
+
+test("horizontal swipe intent gives vertical scrolling priority and clamps the revealed action", async () => {
+  const source = readFileSync("lib/chat/swipe-gesture.ts", "utf8");
+  assert.match(source, /Math\.abs\(deltaX\) > Math\.abs\(deltaY\)/);
+  assert.match(source, /Math\.max\(-CONVERSATION_DELETE_WIDTH, Math\.min\(0/);
+  const { isHorizontalConversationSwipe, conversationSwipeOffset, shouldRevealConversationDelete } =
+    await import("../lib/chat/swipe-gesture");
+  assert.equal(isHorizontalConversationSwipe(-22, 35), false);
+  assert.equal(isHorizontalConversationSwipe(-22, 5), true);
+  assert.equal(conversationSwipeOffset(0, -300), -84);
+  assert.equal(conversationSwipeOffset(0, 20), 0);
+  assert.equal(shouldRevealConversationDelete(-50), true);
+  assert.equal(shouldRevealConversationDelete(-30), false);
+});
+
 test("group Conversations remain separate from unique direct Conversations", async () => {
   const chat = new ChatStorage(() => new IDBFactory());
   const group = await chat.createGroupSession(["peter", "ghost", "peter"], "Friends");
@@ -109,4 +142,37 @@ test("group Conversations remain separate from unique direct Conversations", asy
   assert.notEqual(direct.id, group.id);
   assert.equal((await chat.openSession("peter")).id, direct.id);
   assert.equal((await chat.listSessions()).length, 2);
+});
+
+test("deleting direct and group Conversations leaves Contacts and Characters intact", async () => {
+  const factory = new IDBFactory();
+  const chat = new ChatStorage(() => factory);
+  const backend = memory(), contacts = createContactStorage(() => backend.storage);
+  const foundation = createIndexedDBFoundationStorage(new IndexedDBDocumentStorage(() => factory));
+  const savedFoundation = await foundation.transact((current) => {
+    const peter = createCharacter(current, normalizeCharacterInput({ name: "Peter" }));
+    return createCharacter(peter, normalizeCharacterInput({ name: "Lan" }));
+  });
+  const [peter, lan] = savedFoundation.characters;
+  await contacts.transact((current) => addContact(addContact(current, peter.characterId, 10), lan.characterId, 11));
+
+  const direct = await chat.openSession(peter.characterId);
+  await chat.send(direct.id, "private history");
+  await chat.deleteSession(direct.id);
+  assert.deepEqual((await contacts.load()).contacts.map((item) => item.characterId), [peter.characterId, lan.characterId]);
+  assert.deepEqual((await foundation.load()).characters.map((item) => item.name), ["Peter", "Lan"]);
+  assert.notEqual((await chat.openSession(peter.characterId)).id, direct.id);
+
+  const group = await chat.createGroupSession([peter.characterId, lan.characterId], "Friends");
+  await chat.send(group.id, "group history");
+  const batch = await chat.beginReply(group.id);
+  assert(batch);
+  await chat.finalizeReply(batch.assistant.id, "group reply", {
+    cycle: 1, prefix: [], entries: { "group:entry": { stickyUntil: 2 } },
+  });
+  await chat.deleteSession(group.id);
+  assert.equal((await chat.listSessions()).some((item) => item.id === group.id), false);
+  assert.equal(await chat.readWorldBookState(group.id), null);
+  assert.deepEqual((await contacts.load()).contacts.map((item) => item.characterId), [peter.characterId, lan.characterId]);
+  assert.deepEqual((await foundation.load()).characters.map((item) => item.name), ["Peter", "Lan"]);
 });

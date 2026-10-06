@@ -60,6 +60,23 @@ async function deleteUnusedChatImage(tx: IDBTransaction, id: string | undefined)
   await request(tx.objectStore("assets").delete(id));
 }
 
+// Conversation history-derived persistence must be keyed by sessionId and
+// cleared here so both Clear and Delete remove the same history scope. Keep
+// container settings on the ChatSession; currently this scope is messages and
+// WorldBook activation state.
+async function resetConversationHistory(tx: IDBTransaction, session: ChatSession) {
+  const table = tx.objectStore("messages");
+  const messages: ChatMessage[] = await request(table.index("sessionId").getAll(session.id));
+  if (messages.some((message) => message.status === "streaming"))
+    throw new Error("A reply is in progress. Stop it before clearing this conversation.");
+  for (const message of messages) await request(table.delete(message.id));
+  await request(tx.objectStore("worldBookStates").delete(session.id));
+  const resetSession: ChatSession = { ...session, updatedAt: Date.now(), nextOrder: 1,
+    lastMessageId: undefined, lastMessagePreview: "" };
+  await request(tx.objectStore("sessions").put(resetSession));
+  return { session: resetSession, deletedCount: messages.length };
+}
+
 async function commitWorldBookState(tx: IDBTransaction, sessionId: string, state: WorldBookActivationState) {
   const current: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(sessionId));
   const prefix = historyFingerprint(current);
@@ -438,13 +455,18 @@ export class ChatStorage {
       const sessions = tx.objectStore("sessions");
       const session: ChatSession | undefined = await request(sessions.get(sessionId));
       if (!session) throw new Error("Conversation not found.");
-      const table = tx.objectStore("messages");
-      const messages: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
-      for (const message of messages) await request(table.delete(message.id));
-      await request(tx.objectStore("worldBookStates").delete(sessionId));
-      await request(sessions.put({ ...session, updatedAt: Date.now(), nextOrder: 1,
-        lastMessageId: undefined, lastMessagePreview: "" }));
-      return messages.length;
+      return (await resetConversationHistory(tx, session)).deletedCount;
+    });
+  }
+
+  deleteSession(sessionId: string): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const { session: resetSession } = await resetConversationHistory(tx, session);
+      await request(sessions.delete(resetSession.id));
+      await deleteUnusedChatImage(tx, session.backgroundImage);
     });
   }
 

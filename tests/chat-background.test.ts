@@ -96,3 +96,25 @@ test("background image replacement retains assets still referenced by other conv
   await storage.updateSessionSettings(lan.id, { backgroundImage: null });
   assert.equal(await storage.readChatImage(shared), null);
 });
+
+test("deleting a conversation retains a background asset used by another conversation or globally", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const peter = await storage.openSession("peter");
+  const lan = await storage.openSession("lan");
+  const shared = await storage.saveChatImage(new Blob(["shared"], { type: "image/png" }));
+  await storage.updateSessionSettings(peter.id, { backgroundImage: shared });
+  await storage.updateSessionSettings(lan.id, { backgroundImage: shared });
+  await storage.deleteSession(peter.id);
+  assert(await storage.readChatImage(shared));
+  await storage.updateSessionSettings(lan.id, { backgroundImage: null });
+  assert.equal(await storage.readChatImage(shared), null);
+
+  const globalOnly = await storage.saveChatImage(new Blob(["global"], { type: "image/png" }));
+  await storage.updateGlobalChatBackground(globalOnly);
+  const replacement = await storage.openSession("peter");
+  const privateImage = await storage.saveChatImage(new Blob(["private"], { type: "image/png" }));
+  await storage.updateSessionSettings(replacement.id, { backgroundImage: privateImage });
+  await storage.deleteSession(replacement.id);
+  assert(await storage.readChatImage(globalOnly));
+  assert.equal(await storage.readChatImage(privateImage), null);
+});

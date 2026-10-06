@@ -57,13 +57,39 @@
 .conversation-list {
   margin-top: 24px;
 }
+.conversation-swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
+  background: #d7464d;
+}
 .conversation-row {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 16px 0;
-  border-bottom: 1px solid
-    color-mix(in srgb, var(--theme-text) 10%, transparent);
+  border: 0;
+  background: var(--theme-background);
+  touch-action: pan-y;
+  transition: transform 180ms ease-out;
+}
+.conversation-row.is-dragging {
+  transition: none;
+}
+.conversation-delete-action {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 0;
+  width: 84px;
+  border: 0;
+  border-radius: 0;
+  background: #d7464d;
+  color: white;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
 }
 .chat-avatar {
   flex: none;

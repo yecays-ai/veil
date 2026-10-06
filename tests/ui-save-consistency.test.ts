@@ -55,16 +55,18 @@ test("Regex inline rule rows use one unlabeled control and preserve enable persi
   assert.match(css, /\.regex-inline-summary > \.veil-switch/);
 });
 
-test("Character, Text API and Regex Rule saves finish at a result view only after persistence", () => {
+test("Character creation opens its detail page after persistence and editing stays on detail", () => {
   const character = read("components/profile-pages.tsx");
+  const profileForm = read("components/profile-form.tsx");
+  assert.match(character, /const saved = await commit\(\(d\) =>[\s\S]*if \(isNew\) \{[\s\S]*const created = saved\.characters\.at\(-1\)[\s\S]*router\.push\(`\/characters\/\$\{encodeURIComponent\(created\.characterId\)\}`\)[\s\S]*else setEditing\(false\)/);
+  assert.match(profileForm, /catch \(e\) \{[\s\S]*setNotice\(e instanceof Error/);
+});
+
+test("Text API and Regex Rule saves finish at a result view only after persistence", () => {
   const api = read("components/settings/text-api-settings.tsx");
   const apiModal = read("components/settings/text-api-settings.tsx");
   const regexRule = read("components/settings/regex/regex-rule-editor.tsx");
   const regexHook = read("components/settings/regex/use-regex.ts");
-  const profileForm = read("components/profile-form.tsx");
-
-  assert.match(character, /await commit\(\(d\) =>[\s\S]*if \(isNew\) router\.push\("\/characters"\);[\s\S]*else setEditing\(false\)/);
-  assert.match(profileForm, /catch \(e\) \{[\s\S]*setNotice\(e instanceof Error/);
   assert.match(api, /saveApiConfig\(next\)[\s\S]*setConfigs\(await browserApiConfigStorage\.listApiConfigs\(\)\)[\s\S]*setDraft\(null\)/);
   assert.match(apiModal, /catch \(err\)[\s\S]*setError\([\s\S]*finally \{[\s\S]*setBusy\(""\)/);
   assert.match(regexRule, /await change\([\s\S]*router\.push\(back\)/);
