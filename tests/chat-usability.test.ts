@@ -5,7 +5,8 @@ import { ChatStorage } from "../lib/chat/storage";
 import { sortChatSessions } from "../lib/chat/session-order";
 import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
-import { createTransientFeedback, KeyboardCloseDetector, sendThenRequestReply, visibleReplyText } from "../lib/chat/usability";
+import { createTransientFeedback, hasPendingUserContent, KeyboardCloseDetector, sendThenRequestReply,
+  shouldRequestAutoReply, visibleReplyText } from "../lib/chat/usability";
 
 test("toast dismisses after 1.8s, repeats restart and cleanup prevents stale updates", (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
@@ -101,4 +102,18 @@ test("keyboard detector requires focused real opening, fires once and ignores to
   assert.equal(detector.measure(844, 600, 0, false), false);
   detector.reset(390, 844);
   assert.equal(detector.measure(390, 844, 0, false), false);
+});
+
+test("keyboard auto reply requires one real close, the setting and an unclaimed pending User message", () => {
+  const detector = new KeyboardCloseDetector(390, 844);
+  const pending = { id: "pending", sessionId: "s", role: "user" as const, status: "sent" as const,
+    content: "hello", createdAt: 1, order: 1 };
+  assert.equal(detector.measure(390, 500, 344, true), false);
+  const closed = detector.measure(390, 844, 0, false);
+  assert.equal(shouldRequestAutoReply(closed, true, [pending]), true);
+  assert.equal(shouldRequestAutoReply(detector.measure(390, 844, 0, false), true, [pending]), false);
+  assert.equal(shouldRequestAutoReply(true, false, [pending]), false);
+  assert.equal(hasPendingUserContent([{ ...pending, requestedBy: "reply" }]), false);
+  assert.equal(shouldRequestAutoReply(true, true, [{ ...pending, requestedBy: "reply" }]), false);
+  assert.equal(shouldRequestAutoReply(true, true, []), false);
 });

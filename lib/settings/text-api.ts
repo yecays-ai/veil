@@ -4,6 +4,8 @@ import type { ApiConfigStorage } from "../api-config-storage";
 import { completionUrl, validateApiConfig } from "../chat/provider";
 import type { BindingDocument } from "../bindings";
 import { withoutApiConfigBinding } from "../bindings";
+import { createCompletionRequestContext, logCompletionStart, logCompletionUsage, parseCompletionUsage,
+  type CompletionUsage } from "../chat/request-diagnostics";
 
 export async function deleteApiConfigAndBindings(
   id: string, storage: ApiConfigStorage, bindings: Pick<BindingStorage, "transact">,
@@ -78,26 +80,28 @@ export async function testTextApiConnection(
   signal?: AbortSignal,
 ): Promise<void> {
   validateApiConfig(config);
-  const data = await apiRequest(
-    config,
-    completionUrl(config.baseUrl),
-    {
-      method: "POST",
-      body: JSON.stringify({
-        model: config.model.trim(),
-        stream: false,
-        messages: [{ role: "user", content: "Reply with OK only." }],
-        max_tokens: 64,
-      }),
-    },
-    signal,
-  );
-  if (data?.error || !Array.isArray(data?.choices) || !data.choices.length)
-    throw new Error(
-      "The API returned no completion. Check the selected model.",
+  const messages = [{ role: "user" as const, content: "Reply with OK only." }];
+  const request = createCompletionRequestContext("test-connection");
+  let usage: CompletionUsage | null = null;
+  logCompletionStart(request, config.model.trim(), messages, false);
+  try {
+    const data = await apiRequest(
+      config,
+      completionUrl(config.baseUrl),
+      {
+        method: "POST",
+        body: JSON.stringify({ model: config.model.trim(), stream: false, messages, max_tokens: 64 }),
+      },
+      signal,
     );
-  // A valid completion with reasoning/length finish is still connectivity proof;
-  // the small cap intentionally bounds cost rather than validating reply quality.
+    usage = parseCompletionUsage(data);
+    if (data?.error || !Array.isArray(data?.choices) || !data.choices.length)
+      throw new Error("The API returned no completion. Check the selected model.");
+    // A valid completion with reasoning/length finish is still connectivity proof;
+    // the small cap intentionally bounds cost rather than validating reply quality.
+  } finally {
+    logCompletionUsage(request, usage);
+  }
 }
 export async function fetchTextApiModels(
   config: ApiConfig,

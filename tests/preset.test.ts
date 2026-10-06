@@ -96,7 +96,7 @@ test("promptOrder controls runtime order, disabled entries are skipped, and mark
   assert(!JSON.stringify(preset).includes("Updated User"));
 });
 
-test("Memory emits no empty turn, Response Directive obeys order, and pending is always last once", () => {
+test("stable Preset sections precede Recent History while pending remains last once", () => {
   const document = foundation(), preset = createBuiltinPreset();
   assert(preset.promptOrder.findIndex((entry) => entry.identifier === "history") <
     preset.promptOrder.findIndex((entry) => entry.identifier === "response-directive"));
@@ -109,8 +109,8 @@ test("Memory emits no empty turn, Response Directive obeys order, and pending is
     [pending, pending], undefined, preset);
   assert.equal(prompt.messages.at(-1)?.content, "NEW MESSAGE");
   assert.equal(prompt.messages.filter((turn) => turn.content === "NEW MESSAGE").length, 1);
-  assert(prompt.messages.findIndex((turn) => turn.content.endsWith("\nOLD REPLY")) <
-    prompt.messages.findIndex((turn) => turn.content.includes("AFTER HISTORY")));
+  assert(prompt.messages.findIndex((turn) => turn.content.includes("AFTER HISTORY")) <
+    prompt.messages.findIndex((turn) => turn.content.endsWith("\nOLD REPLY")));
   assert(!prompt.sections.some((section) => section.identifier === "memory"));
   const directiveOrder = preset.promptOrder.find((entry) =>
     entry.identifier === "response-directive")!;

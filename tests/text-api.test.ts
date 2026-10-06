@@ -125,7 +125,9 @@ test("Test Connection success/failure is independent of saving, capped and crede
   const store = new ApiConfigStorage(() => new IDBFactory());
   await store.saveApiConfig(config);
   try {
+    let connectionRequests = 0;
     globalThis.fetch = async (url, init) => {
+      connectionRequests++;
       assert.equal(url, "https://api.example/v1/chat/completions");
       const body = JSON.parse(String(init?.body));
       assert.equal(body.stream, false);
@@ -134,6 +136,7 @@ test("Test Connection success/failure is independent of saving, capped and crede
       return Response.json({ choices: [{ message: { content: "OK" } }] });
     };
     await testTextApiConnection({ ...config, model: "unsaved" });
+    assert.equal(connectionRequests, 1);
     assert.deepEqual(await store.getApiConfig(DEFAULT_API_CONFIG_ID), config);
     globalThis.fetch = async () =>
       Response.json({ error: { message: config.apiKey } }, { status: 401 });

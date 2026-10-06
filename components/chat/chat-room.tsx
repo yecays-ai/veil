@@ -345,7 +345,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         );
     }
   }
-  async function reply() {
+  async function reply(source: "manual-reply" | "keyboard-auto-reply" = "manual-reply") {
     if (!session || session.characterId !== characterId || replyLock.current || sendingLock.current ||
       chatEngine.isGenerating(session.id) || loadError) return;
     const sessionId = session.id;
@@ -364,7 +364,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             return chatEngine.requestReply(sessionId, (completed) => {
               if (mounted.current && currentSessionId.current === sessionId)
                 revealQueue.complete(sessionId, completed, performance.now(), token);
-            });
+            }, source);
           }
         });
     } catch (e) {
@@ -409,7 +409,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     enabled: session?.autoReplyOnKeyboardDismiss === true,
     blocked: generating || !!revealState?.pending || sending || multiSelect || !!activeMessage || !!editingMessage ||
       chatInfoOpen || confirmClear || !!confirmDelete,
-    onReply: reply,
+    onReply: () => reply("keyboard-auto-reply"),
   });
   async function updateSetting(patch: {
     streamOnline?: boolean;

@@ -15,6 +15,11 @@ export function createTransientFeedback(update: (text: string) => void) {
 export const hasPendingUserContent = (messages: readonly ChatMessage[]) =>
   messages.some((message) => message.role === "user" && message.status === "sent" && !message.requestedBy);
 
+export function shouldRequestAutoReply(keyboardClosed: boolean, enabled: boolean,
+  messages: readonly ChatMessage[]): boolean {
+  return keyboardClosed && enabled && hasPendingUserContent(messages);
+}
+
 export function visibleReplyText(message: ChatMessage, streaming: boolean) {
   return message.role === "assistant" && message.status === "streaming" && !streaming
     ? "" : message.content;

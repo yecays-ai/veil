@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, type RefObject } from "react";
-import { KeyboardCloseDetector, hasPendingUserContent } from "../../lib/chat/usability";
+import { KeyboardCloseDetector, shouldRequestAutoReply } from "../../lib/chat/usability";
 import { chatStorage } from "../../lib/chat/storage";
 import { chatEngine } from "../../lib/chat/engine";
 
@@ -35,7 +35,7 @@ export function useKeyboardDismissAutoReply(
         if (!allowed()) return;
         try {
           const stored = await chatStorage.readSession(sessionId);
-          if (allowed() && stored.session.autoReplyOnKeyboardDismiss && hasPendingUserContent(stored.messages))
+          if (allowed() && shouldRequestAutoReply(true, stored.session.autoReplyOnKeyboardDismiss, stored.messages))
             await current.current.onReply();
         } catch { /* The normal chat loader/reply path reports storage errors. */ }
       }, 1000);

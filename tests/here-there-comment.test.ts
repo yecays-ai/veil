@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { HERE_THERE_COMMENT_REFRESH_MS, hereThereCommentNeedsRefresh, ensureHereThereComment } from "../lib/here-there-comment";
+import { HERE_THERE_COMMENT_REFRESH_MS, HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh,
+  ensureHereThereComment } from "../lib/here-there-comment";
 import { bindHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { normalizeDocument, type ThemeDocument } from "../lib/theme-types";
@@ -34,6 +35,22 @@ function fixture() {
   return { get bindings() { return bindings; }, set bindings(value) { bindings = value; }, foundation, context, services, commit, theme: () => theme };
 }
 
+test("Here & There retries a failed generation only on a later mount, and allows interval refresh after success", () => {
+  const mounted = new HereThereCommentAttemptGuard();
+  assert.equal(mounted.begin("a", true), true);
+  mounted.finish("a");
+  // Clock/weather rerenders in this mount cannot turn the failure into a retry loop.
+  assert.equal(mounted.begin("a", true), false);
+  assert.equal(mounted.begin("a", true), false);
+
+  const laterMount = new HereThereCommentAttemptGuard();
+  assert.equal(laterMount.begin("a", true), true);
+  laterMount.finish("a");
+  // Once success is visible, the guard resets; a later stale interval can refresh.
+  assert.equal(laterMount.begin("a", false), false);
+  assert.equal(laterMount.begin("a", true), true);
+});
+
 test("widget generation resolves Global then Character defaults and ignores Messages overrides", async () => {
   const value = fixture();
   const preset = { ...createBuiltinPreset(), id: "character-preset", name: "Character", builtIn: false,
@@ -43,16 +60,31 @@ test("widget generation resolves Global then Character defaults and ignores Mess
     defaults: { apiConfigId: "character", presetId: preset.id },
     apps: { messages: { apiConfigId: "messages-only", presetId: "veil-default" } } } } };
   value.services.presets = async () => ({ ...createPresetDocument(), presets: [createBuiltinPreset(), preset] });
+  value.foundation.user.aboutMe = "UNIQUE_USER_PROFILE_SENTINEL";
+  value.foundation.characters[0].backstory = "UNIQUE_CHARACTER_PROFILE_SENTINEL";
   value.services.provider = async function* (api, prompt) {
     assert.equal(api.id, "character");
     const content = JSON.stringify(prompt);
     assert.match(content, /CHARACTER_PRESET/);
+    assert.equal(content.split("UNIQUE_USER_PROFILE_SENTINEL").length - 1, 1);
+    assert.equal(content.split("UNIQUE_CHARACTER_PROFILE_SENTINEL").length - 1, 1);
     assert.match(content, /New York/); assert.match(content, /08:00/);
     assert.match(content, /16/); assert.match(content, /Cloudy/); assert.match(content, /unavailable/);
     yield "Wish you were here.";
   };
   await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit, value.services);
   assert.equal(value.theme().current.widgets[0].config.comment?.text, "Wish you were here.");
+});
+
+test("Home widget completion is tagged separately from chat replies", async () => {
+  const value = fixture();
+  let source = "";
+  value.services.provider = async function* (_api, _prompt, _signal, _generation, request) {
+    source = request?.source ?? "";
+    yield "A small remark.";
+  };
+  await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit, value.services);
+  assert.equal(source, "here-there-comment");
 });
 
 test("successful comments persist across reloads and refresh only after three hours", async () => {
@@ -111,17 +143,17 @@ test("legacy attempt data and mismatched comments are discarded and cannot block
   }
 });
 
-test("loading weather waits for context and the mounted widget uses only an in-memory concurrency guard", async () => {
+test("loading weather waits for context and the mounted widget guards in-flight and repeated failed attempts", async () => {
   const value = fixture(); let calls = 0;
   value.services.provider = async function* () { calls++; yield "Ready."; };
   await ensureHereThereComment(value.theme().current.widgets[0], { ...value.context, hereWeather: { status: "loading" } }, value.commit, value.services);
   assert.equal(calls, 0);
   const { readFileSync } = await import("node:fs");
   const source = readFileSync("components/widgets/here-there-widget.tsx", "utf8");
-  assert.match(source, /commentGenerating = useRef\(false\)/);
-  assert.match(source, /commentGenerating\.current \|\| !hereThereCommentNeedsRefresh/);
-  assert.match(source, /finally\(\(\) => \{ commentGenerating\.current = false; \}\)/);
-  assert.doesNotMatch(source, /commentAttempts|claimHereThere/);
+  assert.match(source, /new HereThereCommentAttemptGuard\(\)/);
+  assert.match(source, /commentAttempts\.current\.begin\(character\.characterId, hereThereCommentNeedsRefresh/);
+  assert.match(source, /finally\(\(\) => commentAttempts\.current\.finish\(character\.characterId\)\)/);
+  assert.doesNotMatch(source, /claimHereThere/);
 });
 
 test("rebind invalidates old comments and late results cannot overwrite a new binding", async () => {
