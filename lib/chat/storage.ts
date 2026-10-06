@@ -1,8 +1,4 @@
 import {
-  DEFAULT_API_CONFIG_ID,
-  normalizeApiConfig,
-  type NamedApiConfig,
-  type ApiConfig,
   type ChatMessage,
   type ChatBackgroundSettings,
   type ChatImageAsset,
@@ -14,15 +10,13 @@ import { sameBackupChat } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
-import { normalizeChatFormatting, type ChatFormattingSettings } from "./formatting";
 import { normalizeBackgroundBlur } from "./types";
 
-export const CHAT_DATABASE_NAME = "veil-chat-v1";
-export const CHAT_DATABASE_VERSION = 5;
+export const CHAT_DATABASE_NAME = "veil-chat-v2";
+export const CHAT_DATABASE_VERSION = 1;
 const CONVERSATION_STORES = ["sessions", "messages"];
-const STORES = [...CONVERSATION_STORES, "apiConfigs", "chatSettings", "assets", "worldBookStates"];
+const STORES = [...CONVERSATION_STORES, "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
-const CHAT_FORMATTING_SETTINGS_ID = "chat-formatting";
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
 function logOpenFailure(stage: string, error: unknown) {
@@ -97,23 +91,12 @@ function storeForUpgrade(
     : db.createObjectStore(name, { keyPath: "id" });
 }
 
-function ensureV1Schema(db: IDBDatabase, transaction: IDBTransaction) {
-  const sessions = storeForUpgrade(db, transaction, "sessions");
-  if (!sessions.indexNames.contains("characterId"))
-    sessions.createIndex("characterId", "characterId", { unique: true });
-
+function ensureCurrentSchema(db: IDBDatabase, transaction: IDBTransaction) {
+  storeForUpgrade(db, transaction, "sessions");
   const messages = storeForUpgrade(db, transaction, "messages");
-  if (!messages.indexNames.contains("sessionId"))
-    messages.createIndex("sessionId", "sessionId");
-
-  storeForUpgrade(db, transaction, "apiConfigs");
-}
-
-function ensureV2Schema(db: IDBDatabase, transaction: IDBTransaction) {
+  messages.createIndex("sessionId", "sessionId");
   storeForUpgrade(db, transaction, "chatSettings");
   storeForUpgrade(db, transaction, "assets");
-}
-function ensureV3Schema(db: IDBDatabase, transaction: IDBTransaction) {
   storeForUpgrade(db, transaction, "worldBookStates");
 }
 
@@ -160,36 +143,12 @@ export class ChatStorage {
         catch (error) { logOpenFailure("open", error); unavailable(); return; }
         let stage = "open";
         let blocked = false;
-        req.onupgradeneeded = (event) => {
+        req.onupgradeneeded = () => {
           stage = "upgrade";
           try {
-            // Each numbered migration must remain safe when a later version opens
-            // a database that already has this version's stores and indexes.
-            if (event.oldVersion < 1) {
-              const transaction = req.transaction;
-              if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
-              ensureV1Schema(req.result, transaction);
-            }
-            if (event.oldVersion < 2) {
-              const transaction = req.transaction;
-              if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
-              ensureV2Schema(req.result, transaction);
-            }
-            if (event.oldVersion < 3) {
-              const transaction = req.transaction;
-              if (!transaction) throw new Error("Chat storage upgrade is unavailable.");
-              ensureV3Schema(req.result, transaction);
-            }
-            if (event.oldVersion < 4) {
-              stage = "upgrade-v4";
-              const sessions = req.transaction!.objectStore("sessions");
-              if (sessions.indexNames.contains("characterId")) sessions.deleteIndex("characterId");
-            }
-            if (event.oldVersion < 5) {
-              stage = "upgrade-v5";
-              const sessions = req.transaction!.objectStore("sessions");
-              if (sessions.indexNames.contains("characterId")) sessions.deleteIndex("characterId");
-            }
+            const transaction = req.transaction;
+            if (!transaction) throw new Error("Chat storage setup is unavailable.");
+            ensureCurrentSchema(req.result, transaction);
           } catch (error) {
             logOpenFailure(stage, error);
             req.transaction?.abort();
@@ -301,8 +260,6 @@ export class ChatStorage {
     return this.transaction("readonly", conversationBackup, CONVERSATION_STORES);
   }
   async importBackup(backup: BackupChat): Promise<void> {
-    // This transaction deliberately excludes apiConfigs: provider credentials
-    // are neither preflighted nor restored from a backup.
     return this.transaction("readwrite", async (tx) => {
       const sessions = tx.objectStore("sessions");
       const messages = tx.objectStore("messages");
@@ -458,19 +415,6 @@ export class ChatStorage {
       );
       return { ...settings, id: CHAT_BACKGROUND_SETTINGS_ID,
         blur: normalizeBackgroundBlur(settings?.blur) };
-    });
-  }
-
-  readLegacyChatFormatting(): Promise<ChatFormattingSettings | null> {
-    return this.transaction("readonly", async (tx) => {
-      const saved = await request(tx.objectStore("chatSettings").get(CHAT_FORMATTING_SETTINGS_ID));
-      return saved ? normalizeChatFormatting(saved) : null;
-    });
-  }
-
-  deleteLegacyChatFormatting(): Promise<void> {
-    return this.transaction("readwrite", async (tx) => {
-      await request(tx.objectStore("chatSettings").delete(CHAT_FORMATTING_SETTINGS_ID));
     });
   }
 
@@ -780,35 +724,6 @@ export class ChatStorage {
       }));
       if (worldBookState) await commitWorldBookState(tx, existing.sessionId, worldBookState);
       return completed;
-    });
-  }
-  getApiConfig(id = DEFAULT_API_CONFIG_ID): Promise<ApiConfig | undefined> {
-    return this.transaction("readonly", async (tx) => {
-      const config: ApiConfig | undefined = await request(
-        tx.objectStore("apiConfigs").get(id),
-      );
-      return config ? normalizeApiConfig(config) : undefined;
-    });
-  }
-  listApiConfigs(): Promise<NamedApiConfig[]> {
-    return this.transaction("readonly", async (tx) => {
-      const configs: ApiConfig[] = await request(
-        tx.objectStore("apiConfigs").getAll(),
-      );
-      return configs.map(normalizeApiConfig);
-    });
-  }
-  // Callers that also manage Foundation bindings use deleteApiConfigAndBindings.
-  deleteApiConfig(id: string): Promise<void> {
-    return this.transaction("readwrite", async (tx) => {
-      await request(tx.objectStore("apiConfigs").delete(id));
-    });
-  }
-  saveApiConfig(config: ApiConfig): Promise<void> {
-    return this.transaction("readwrite", async (tx) => {
-      await request(
-        tx.objectStore("apiConfigs").put(normalizeApiConfig(config)),
-      );
     });
   }
 }

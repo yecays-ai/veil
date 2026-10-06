@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
-import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { createBuiltinPreset, createPresetDocument, validatePresetDocument } from "../lib/preset";
 import { normalizeWorldBook } from "../lib/worldbook";
@@ -14,7 +14,6 @@ async function setup(entries: object[]) {
   document.runtime.timeAware = false;
   document.characters = [{ characterId: "p", ...normalizeCharacterInput({ name: "Peter" }) }];
   const session = await storage.openSession("p");
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "key", model: "test" });
   const books = { version: 1 as const, books: [normalizeWorldBook({ name: "Lore", entries })] };
   return { storage, document, session, books };
 }

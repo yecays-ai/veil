@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import type { ChatMessage } from "../lib/chat/types";
 
@@ -17,7 +17,6 @@ async function setup() {
   await storage.importBackup({ version: 1, messages, sessions: [{ id: "s", characterId: "a",
     updatedAt: 6, nextOrder: 7, remark: null, autoReplyOnKeyboardDismiss: false,
     lastMessageId: "5", lastMessagePreview: "future D" }] });
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   const document = defaultFoundation();
   document.runtime.timeAware = false;
   document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];

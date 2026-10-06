@@ -7,6 +7,7 @@ import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-ty
 import { normalizeDocument, type ThemeDocument } from "../lib/theme-types";
 import { createBuiltinPreset, createPresetDocument } from "../lib/preset";
 import { ChatStorage } from "../lib/chat/storage";
+import { ApiConfigStorage } from "../lib/api-config-storage";
 import type { TextProvider } from "../lib/chat/provider";
 import type { WeatherState } from "../lib/participant-config";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
@@ -140,12 +141,14 @@ test("rebind invalidates old comments and late results cannot overwrite a new bi
 });
 
 test("non-chat generation leaves sessions, messages and WorldBook activation state untouched", async () => {
-  const value = fixture(); const storage = new ChatStorage(() => new IDBFactory());
-  await storage.saveApiConfig(await value.services.api("chat-default"));
+  const value = fixture(); const factory = new IDBFactory();
+  const storage = new ChatStorage(() => factory);
+  const api = new ApiConfigStorage(() => factory);
+  await api.saveApiConfig((await value.services.api("chat-default"))!);
   const session = await storage.openSession("a"); await storage.send(session.id, "existing");
   const before = await storage.exportBackup(); const world = await storage.readWorldBookState(session.id);
   await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit,
-    { ...value.services, api: (id) => storage.getApiConfig(id) });
+    { ...value.services, api: (id) => api.getApiConfig(id) });
   assert.deepEqual(await storage.exportBackup(), before);
   assert.deepEqual(await storage.readWorldBookState(session.id), world);
 });

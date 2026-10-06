@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { assembleChatPrompt } from "../lib/chat/prompt";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
-import { DEFAULT_API_CONFIG_ID, type ChatMessage, type PromptTurn } from "../lib/chat/types";
+import type { ChatMessage, PromptTurn } from "../lib/chat/types";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import {
   CHAT_OUTPUT_FORMAT,
@@ -158,8 +158,6 @@ test("Memory emits no empty turn, Response Directive obeys order, and pending is
 test("the next Request Reply loads edited Response Directive without changing two-stage semantics", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("a");
-  await storage.saveApiConfig({ id: DEFAULT_API_CONFIG_ID, baseUrl: "https://example.test/v1",
-    apiKey: "private", model: "model" });
   let preset = copyPreset(createPresetDocument());
   preset.activePresetId = preset.presets.at(-1)!.id;
   const prompts: PromptTurn[][] = [];

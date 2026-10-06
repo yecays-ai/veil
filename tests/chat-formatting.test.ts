@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { IDBFactory } from "fake-indexeddb";
-import { CHAT_DATABASE_VERSION, ChatStorage } from "../lib/chat/storage";
 import { applyRegex } from "../lib/regex-engine";
 import { DEFAULT_REGEX_GROUP_ID, DEFAULT_RULE_IDS, defaultRegexGroup } from "../lib/regex-defaults";
 import { browserRegexStorage } from "../lib/regex-storage";
@@ -40,34 +38,16 @@ test("default display rules use the Regex pipeline and dynamic escaped names", (
   assert.equal(show("Peter: Hey."), "Peter: Hey.");
 });
 
-test("legacy Chat Formatting flags migrate once and edited default rules survive reload", async () => {
-  const factory = new IDBFactory();
+test("current default rules initialize once and edits survive reload", async () => {
   const values = new Map<string, string>();
-  const storage = new ChatStorage(() => factory);
-  await storage.openSession("peter");
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const request = factory.open("veil-chat-v1", CHAT_DATABASE_VERSION);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  const transaction = db.transaction("chatSettings", "readwrite");
-  transaction.objectStore("chatSettings").put({ id: "chat-formatting", hideActions: false,
-    hideSpeakerName: true, hideQuotesAroundReplies: false, cleanFormattingArtifacts: true });
-  await new Promise<void>((resolve, reject) => {
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error);
-  });
-  db.close();
-  Object.assign(globalThis, { window: { indexedDB: factory, localStorage: {
+  Object.assign(globalThis, { window: { localStorage: {
     getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); },
   } } });
   const first = await browserRegexStorage.load();
   const defaults = first.groups[0];
   assert.equal(defaults.id, DEFAULT_REGEX_GROUP_ID);
-  assert.equal(defaults.rules.find((rule) => rule.id === DEFAULT_RULE_IDS.hideActions)?.enabled, false);
-  assert.equal(defaults.rules.find((rule) => rule.id === DEFAULT_RULE_IDS.hideQuotesAroundReplies)?.enabled, false);
-  assert.equal(await storage.readLegacyChatFormatting(), null);
+  assert(defaults.rules.every((rule) => rule.enabled));
   await browserRegexStorage.transact((current) => ({ ...current, groups: current.groups.map((group) =>
     group.id === DEFAULT_REGEX_GROUP_ID ? { ...group, rules: group.rules.map((rule) =>
       rule.id === DEFAULT_RULE_IDS.hideSpeakerName ? { ...rule, find: "custom", enabled: false } : rule) } : group) }));

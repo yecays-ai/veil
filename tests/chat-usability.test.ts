@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { createTransientFeedback, KeyboardCloseDetector, sendThenRequestReply, visibleReplyText } from "../lib/chat/usability";
 
@@ -44,7 +44,6 @@ test("session toggles default OFF, persist independently and survive conversatio
 test("direct reply awaits persisted Send and generates once with the new message in history", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("a");
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   const foundation = defaultFoundation();
   foundation.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
   let calls = 0;

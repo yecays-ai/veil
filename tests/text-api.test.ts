@@ -2,8 +2,9 @@ import type { BindingDocument } from "../lib/bindings";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { CHAT_DATABASE_NAME, ChatStorage } from "../lib/chat/storage";
-import { DEFAULT_API_CONFIG_ID, type NamedApiConfig } from "../lib/chat/types";
+import { ChatStorage } from "../lib/chat/storage";
+import { ApiConfigStorage } from "../lib/api-config-storage";
+import { DEFAULT_API_CONFIG_ID, type NamedApiConfig } from "../lib/api-config";
 import {
   defaultFoundation,
   normalizeCharacterInput,
@@ -25,53 +26,9 @@ const config: NamedApiConfig = {
   model: "chat",
 };
 
-test("legacy default config is readable without rewriting or losing its ID/key", async () => {
-  const factory = new IDBFactory();
-  const store = new ChatStorage(() => factory);
-  await store.listSessions();
-  const db = await new Promise<IDBDatabase>((resolve, reject) => {
-    const req = factory.open(CHAT_DATABASE_NAME);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-  const legacy = {
-    id: DEFAULT_API_CONFIG_ID,
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
-    model: config.model,
-  };
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction("apiConfigs", "readwrite");
-    tx.objectStore("apiConfigs").put(legacy);
-    tx.oncomplete = () => resolve();
-    tx.onabort = () => reject(tx.error);
-  });
-  const reloaded = new ChatStorage(() => factory);
-  assert.deepEqual(await reloaded.getApiConfig(), {
-    ...legacy,
-    name: "Imported Text API",
-    provider: "Custom",
-  });
-  assert.equal((await reloaded.listApiConfigs()).length, 1);
-  const raw = await new Promise((resolve, reject) => {
-    const req = db
-      .transaction("apiConfigs")
-      .objectStore("apiConfigs")
-      .get(DEFAULT_API_CONFIG_ID);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
-  assert.deepEqual(
-    raw,
-    legacy,
-    "read compatibility must not rewrite existing private records",
-  );
-  db.close();
-});
-
 test("named config CRUD preserves multiple stable resources and independent credentials", async () => {
   const factory = new IDBFactory(),
-    store = new ChatStorage(() => factory);
+    store = new ApiConfigStorage(() => factory);
   const second = {
     ...config,
     id: "second",
@@ -83,17 +40,19 @@ test("named config CRUD preserves multiple stable resources and independent cred
   await store.saveApiConfig(second);
   await store.saveApiConfig({ ...config, name: "Renamed" });
   assert.equal((await store.listApiConfigs()).length, 2);
-  assert.equal((await store.getApiConfig())?.name, "Renamed");
+  assert.equal((await store.getApiConfig(DEFAULT_API_CONFIG_ID))?.name, "Renamed");
   assert.deepEqual(await store.getApiConfig("second"), second);
   await store.deleteApiConfig(DEFAULT_API_CONFIG_ID);
-  assert.equal(await store.getApiConfig(), undefined);
-  assert.deepEqual(await new ChatStorage(() => factory).listApiConfigs(), [
+  assert.equal(await store.getApiConfig(DEFAULT_API_CONFIG_ID), undefined);
+  assert.deepEqual(await new ApiConfigStorage(() => factory).listApiConfigs(), [
     second,
   ]);
 });
 
 test("deletion retains references and chat fails closed instead of picking a different provider", async () => {
-  const store = new ChatStorage(() => new IDBFactory());
+  const factory = new IDBFactory();
+  const store = new ChatStorage(() => factory);
+  const api = new ApiConfigStorage(() => factory);
   const document = testFoundation();
   document.characters = [
     { characterId: "a", ...normalizeCharacterInput({ name: "A" }) },
@@ -108,10 +67,11 @@ test("deletion retains references and chat fails closed instead of picking a dif
     },
   };
   assert.equal(apiConfigReferences(bindings, config.id).length, 2);
-  await store.saveApiConfig(config);
-  await store.saveApiConfig({ ...config, id: "second" });
+  await api.saveApiConfig(config);
+  await api.saveApiConfig({ ...config, id: "second" });
   const session = await store.openSession("a");
   let calls = 0;
+  apiLoader = (id) => api.getApiConfig(id);
   const engine = createChatEngine(
     store,
     async () => document,
@@ -124,7 +84,7 @@ test("deletion retains references and chat fails closed instead of picking a dif
   await engine.send(session.id, "First");
   await engine.requestReply(session.id);
   assert.equal(calls, 1);
-  await store.deleteApiConfig(config.id);
+  await api.deleteApiConfig(config.id);
   assert.equal(
     resolveBindings(bindings, "a", "messages").apiConfigId,
     config.id,
@@ -147,7 +107,7 @@ test("deletion retains references and chat fails closed instead of picking a dif
 
 test("Test Connection success/failure is independent of saving, capped and credential-safe", async () => {
   const original = globalThis.fetch;
-  const store = new ChatStorage(() => new IDBFactory());
+  const store = new ApiConfigStorage(() => new IDBFactory());
   await store.saveApiConfig(config);
   try {
     globalThis.fetch = async (url, init) => {
@@ -159,7 +119,7 @@ test("Test Connection success/failure is independent of saving, capped and crede
       return Response.json({ choices: [{ message: { content: "OK" } }] });
     };
     await testTextApiConnection({ ...config, model: "unsaved" });
-    assert.deepEqual(await store.getApiConfig(), config);
+    assert.deepEqual(await store.getApiConfig(DEFAULT_API_CONFIG_ID), config);
     globalThis.fetch = async () =>
       Response.json({ error: { message: config.apiKey } }, { status: 401 });
     await assert.rejects(
@@ -175,7 +135,7 @@ test("Test Connection success/failure is independent of saving, capped and crede
     await assert.rejects(testTextApiConnection(config), /Could not reach/);
     globalThis.fetch = async () => Response.json({ choices: [] });
     await assert.rejects(testTextApiConnection(config), /no completion/);
-    assert.deepEqual(await store.getApiConfig(), config);
+    assert.deepEqual(await store.getApiConfig(DEFAULT_API_CONFIG_ID), config);
   } finally {
     globalThis.fetch = original;
   }
@@ -183,7 +143,7 @@ test("Test Connection success/failure is independent of saving, capped and crede
 
 test("Fetch Models endpoint normalization, selection candidates and failures never change saved data", async () => {
   const original = globalThis.fetch;
-  const store = new ChatStorage(() => new IDBFactory());
+  const store = new ApiConfigStorage(() => new IDBFactory());
   await store.saveApiConfig(config);
   assert.equal(
     modelsUrl("https://api.example/v1/chat/completions/"),
@@ -215,12 +175,17 @@ test("Fetch Models endpoint normalization, selection candidates and failures nev
     await assert.rejects(fetchTextApiModels(config), /Enter a model manually/);
     globalThis.fetch = async () => new Response("not json");
     await assert.rejects(fetchTextApiModels(config), /invalid JSON/);
-    assert.deepEqual(await store.getApiConfig(), config);
+    assert.deepEqual(await store.getApiConfig(DEFAULT_API_CONFIG_ID), config);
   } finally {
     globalThis.fetch = original;
   }
 });
 
 let bindings: BindingDocument = { global: {}, characters: {} };
+let apiLoader: (id: string) => Promise<NamedApiConfig | undefined> = async () => undefined;
 function testFoundation() { bindings = { global: {}, characters: {} }; return defaultFoundation(); }
-function createChatEngine(...args: Parameters<typeof baseChatEngine>) { args[7] = async () => bindings; return baseChatEngine(...args); }
+function createChatEngine(...args: Parameters<typeof baseChatEngine>) {
+  args[7] = async () => bindings;
+  args[9] = apiLoader;
+  return baseChatEngine(...args);
+}

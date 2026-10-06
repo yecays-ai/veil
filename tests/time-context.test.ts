@@ -5,7 +5,7 @@ import { buildTimeContext, historyTimestamp } from "../lib/chat/time-context";
 import { defaultFoundation, normalizeFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { createFoundationStorage } from "../lib/foundation-storage";
 import { assembleChatPrompt } from "../lib/chat/prompt";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
 import { createBuiltinPreset, createPresetDocument } from "../lib/preset";
 import type { ChatMessage, PromptTurn } from "../lib/chat/types";
@@ -76,7 +76,6 @@ test("every generation re-reads runtime setting and clock, OFF removes current c
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
   const session = await storage.openSession("a");
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   const document = foundation();
   let now = instant;
   const prompts: PromptTurn[][] = [];
@@ -100,7 +99,6 @@ test("Chat runtime includes User and Character weather as separate time-context 
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
   const session = await storage.openSession("a");
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   const document = foundation();
   document.user.location = { label: "Chengdu", coordinates: { latitude: 30.67, longitude: 104.06 } };
   document.characters[0].location = { label: "New York", coordinates: { latitude: 40.71, longitude: -74.01 } };
@@ -132,7 +130,6 @@ test("weather lookup failure is omitted and does not prevent Chat generation", a
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
   const session = await storage.openSession("a");
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   const document = foundation();
   document.user.location = { label: "Chengdu", coordinates: null };
   document.characters[0].location = { label: "New York", coordinates: null };

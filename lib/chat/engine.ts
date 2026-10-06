@@ -1,6 +1,8 @@
 import { resolveBindings } from "../bindings";
 import type { BindingDocument } from "../bindings";
 import { browserBindingStorage } from "../binding-storage";
+import { browserApiConfigStorage } from "../api-config-storage";
+import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "../api-config";
 import { browserFoundationStorage } from "../foundation-storage";
 import type { FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
@@ -12,7 +14,7 @@ import {
   type TextProvider,
 } from "./provider";
 import { ChatStorage, chatStorage } from "./storage";
-import { DEFAULT_API_CONFIG_ID, type ChatMessage } from "./types";
+import type { ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, type WorldBookDocument } from "../worldbook";
@@ -48,6 +50,7 @@ export function createChatEngine(
   bindings: () => Promise<BindingDocument> = () => typeof window === "undefined"
     ? Promise.resolve({ global: {}, characters: {} }) : browserBindingStorage.load(),
   weatherLoader: WeatherLoader = (target) => loadWeatherState(target),
+  apiConfig: (id: string) => Promise<ApiConfig | undefined> = (id) => browserApiConfigStorage.getApiConfig(id),
 ) {
   const active = new Map<string, AbortController>();
   async function prepareGeneration(characterId: string) {
@@ -57,7 +60,7 @@ export function createChatEngine(
     const binding = resolveBindings(await bindings(), character.characterId, "messages");
     if (binding.apiConfigId === null)
       throw new Error("The Messages API binding is disabled for this Character.");
-    const config = await storage.getApiConfig(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID);
+    const config = await apiConfig(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID);
     if (!config)
       throw new Error("The selected Text API is missing. Choose a saved config in Settings → Text API.");
     validateApiConfig(config);

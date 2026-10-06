@@ -6,7 +6,7 @@ import { buildDisplayedPrompts, copyPreset, deletePreset, deletePrompt, exportPr
   newPreset, promptEnabled, savePrompt, setActivePreset, setPromptEnabled, updatePreset } from "../lib/preset-library";
 import { createPresetStorage } from "../lib/preset-storage";
 import { assembleChatPrompt } from "../lib/chat/prompt";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import type { GenerationParameters } from "../lib/preset";
@@ -273,7 +273,6 @@ test("Chat re-reads active library choice next generation without altering exist
   const foundation = defaultFoundation();
   foundation.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
   const session = await chat.openSession("a");
-  await chat.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   const captured: { prompt: string; generation?: GenerationParameters }[] = [];
   const engine = createChatEngine(chat, async () => foundation, async function* (_config, prompt, _signal, generation) {
     captured.push({ prompt: JSON.stringify(prompt), generation }); yield "reply";

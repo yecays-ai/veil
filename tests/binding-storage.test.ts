@@ -3,13 +3,14 @@ import test from "node:test";
 import { BINDING_STORAGE_KEY, createBindingStorage } from "../lib/binding-storage";
 import { createFoundationStorage } from "../lib/foundation-storage";
 import { defaultFoundation, normalizeCharacterInput, normalizeFoundation } from "../lib/foundation-types";
-import { exportBackupV1 } from "../lib/backup/export";
-import { restoreBackupV1 } from "../lib/backup/import";
-import { validateBackupV1 } from "../lib/backup/validate";
+import { exportBackup } from "../lib/backup/export";
+import { restoreBackup } from "../lib/backup/import";
 import { normalizeDocument, type ThemeDocument } from "../lib/theme-types";
 import { createPresetStorage } from "../lib/preset-storage";
 import { ChatStorage } from "../lib/chat/storage";
 import { IDBFactory } from "fake-indexeddb";
+import { createRegexStorage } from "../lib/regex-storage";
+import { createWorldBookStorage } from "../lib/worldbook-storage";
 
 function fixture() {
   const values = new Map<string, string>();
@@ -61,7 +62,7 @@ test("independent bindings win over residual legacy data without resetting profi
   assert.deepEqual(await createFoundationStorage(() => value.backend).load(), expected);
 });
 
-test("backup independently round-trips bindings, accepts legacy embedded bindings and rolls back failures", async () => {
+test("current backup independently round-trips bindings and rolls back failures", async () => {
   const original = fixture();
   const themeStorage = (backend: typeof original.backend) => ({
     load: async () => normalizeDocument(JSON.parse(backend.getItem("test.theme") ?? "null")),
@@ -79,22 +80,19 @@ test("backup independently round-trips bindings, accepts legacy embedded binding
   const sources = (backend: typeof original.backend) => ({
     foundation: createFoundationStorage(() => backend), bindings: createBindingStorage(() => backend),
     theme: themeStorage(backend), preset: createPresetStorage(() => backend),
+    regex: createRegexStorage(() => backend), worldBooks: createWorldBookStorage(() => backend),
     chat: new ChatStorage(() => new IDBFactory()),
   });
   const source = sources(original.backend);
-  const exported = await exportBackupV1(source);
+  const exported = await exportBackup(source);
   assert.deepEqual(exported.backup.bindings, original.bindings);
   assert.equal(Object.hasOwn(exported.backup.foundation, "bindings"), false);
-  const legacy = { ...exported.backup,
-    foundation: { ...exported.backup.foundation, bindings: original.bindings } };
-  delete legacy.bindings;
-  assert.deepEqual(validateBackupV1(legacy).bindings, original.bindings);
   const target = fixture(); target.values.clear(); const restored = sources(target.backend);
-  await restoreBackupV1(exported.backup, restored);
+  await restoreBackup(exported.backup, restored);
   assert.deepEqual(await restored.bindings.load(), original.bindings);
   await restored.bindings.save({ global: { presetId: null }, characters: {} });
   const before = await restored.bindings.readRaw();
-  await assert.rejects(restoreBackupV1(exported.backup, { ...restored,
+  await assert.rejects(restoreBackup(exported.backup, { ...restored,
     chat: { exportBackup: () => restored.chat.exportBackup(), replaceBackup: async () => { throw new Error("chat failure"); } } }, true), /chat failure/);
   assert.equal(await restored.bindings.readRaw(), before);
 });

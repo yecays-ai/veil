@@ -7,9 +7,10 @@ import { migrateLegacyWidgetCharacters } from "../lib/legacy-widget-character";
 import { normalizeDocument } from "../lib/theme-types";
 import { browserThemeStorage } from "../lib/theme-storage";
 import { resolveHereThereCharacter } from "../lib/here-there-binding";
-import { exportBackupV2 } from "../lib/backup/export";
-import { parseBackup } from "../lib/backup/import";
+import { exportBackup } from "../lib/backup/export";
 import { createPresetDocument } from "../lib/preset";
+import { defaultRegexGroup } from "../lib/regex-defaults";
+import { emptyWorldBookDocument } from "../lib/worldbook";
 
 function characters() {
   let foundation = createCharacter(defaultFoundation(), normalizeCharacterInput({ name: "A" }));
@@ -78,20 +79,17 @@ test("Theme loading persists legacy widget binding so later Foundation changes c
   }
 });
 
-test("old backup selection imports safely and new exports omit it", async () => {
+test("current backup exports no global active Character", async () => {
   const foundation = characters();
-  const { backup } = await exportBackupV2({
+  const { backup } = await exportBackup({
     foundation: { load: async () => foundation }, theme: { load: async () => normalizeDocument(null) },
+    bindings: { load: async () => ({ global: {}, characters: {} }) },
     preset: { load: async () => createPresetDocument() },
+    regex: { load: async () => ({ version: 1, groups: [defaultRegexGroup()] }) },
+    worldBooks: { load: async () => emptyWorldBookDocument() },
     chat: { exportBackup: async () => ({ version: 1, sessions: [], messages: [] }) },
   });
   assert(!Object.hasOwn(backup.foundation, "selectedCharacterId"));
-  const old = { ...backup, foundation: { ...backup.foundation,
-    selectedCharacterId: foundation.characters[1].characterId } };
-  const imported = parseBackup(JSON.stringify(old));
-  assert.deepEqual(imported.foundation, foundation);
-  assert.equal(imported.theme.current.widgets[0].config.characterId, foundation.characters[1].characterId);
-  assert(!Object.hasOwn(imported.foundation, "selectedCharacterId"));
 });
 
 test("Character UI and widget runtime contain no global active controls or implicit selection", () => {

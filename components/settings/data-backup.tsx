@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { exportBackupV2 } from "../../lib/backup/export";
+import { exportBackup } from "../../lib/backup/export";
 import { parseBackup, restoreBackup, requiresOverwriteRestore, isOverwriteConfirmationValid } from "../../lib/backup/import";
 import { BACKUP_MAX_BYTES, type Backup } from "../../lib/backup/types";
 import { PageShell } from "../page-shell";
@@ -38,7 +38,7 @@ export function DataBackupSettings() {
     } finally { setBusy(false); }
   }
   async function download() {
-    const { json } = await exportBackupV2();
+    const { json } = await exportBackup();
     const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
     const anchor = document.createElement("a");
     anchor.href = url;

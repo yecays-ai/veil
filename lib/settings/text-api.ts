@@ -1,12 +1,12 @@
 import type { BindingStorage } from "../binding-storage";
-import type { ApiConfig } from "../chat/types";
+import type { ApiConfig } from "../api-config";
+import type { ApiConfigStorage } from "../api-config-storage";
 import { completionUrl, validateApiConfig } from "../chat/provider";
 import type { BindingDocument } from "../bindings";
 import { withoutApiConfigBinding } from "../bindings";
-import type { ChatStorage } from "../chat/storage";
 
 export async function deleteApiConfigAndBindings(
-  id: string, storage: ChatStorage, bindings: Pick<BindingStorage, "transact">,
+  id: string, storage: ApiConfigStorage, bindings: Pick<BindingStorage, "transact">,
 ): Promise<void> {
   const previous = await storage.getApiConfig(id);
   if (!previous) return;

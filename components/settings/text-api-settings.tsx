@@ -5,11 +5,11 @@ import { BottomSheet, ConfirmDialog } from "./ui/modal";
 import { Input, Select } from "./ui/form";
 import { Alert } from "./ui/feedback";
 import { useEffect, useState } from "react";
-import { chatStorage } from "../../lib/chat/storage";
+import { browserApiConfigStorage } from "../../lib/api-config-storage";
 import {
   DEFAULT_API_CONFIG_ID,
   type NamedApiConfig,
-} from "../../lib/chat/types";
+} from "../../lib/api-config";
 import { validateApiConfig } from "../../lib/chat/provider";
 import {
   apiConfigReferences,
@@ -32,7 +32,7 @@ export function TextApiSettings() {
   const [discarding, setDiscarding] = useState(false);
   useEffect(() => {
     let active = true;
-    chatStorage
+    browserApiConfigStorage
       .listApiConfigs()
       .then((value) => {
         if (active) {
@@ -119,8 +119,8 @@ export function TextApiSettings() {
         apiKey: draft.apiKey.trim(),
         model: draft.model.trim(),
       };
-      await chatStorage.saveApiConfig(next);
-      setConfigs(await chatStorage.listApiConfigs());
+      await browserApiConfigStorage.saveApiConfig(next);
+      setConfigs(await browserApiConfigStorage.listApiConfigs());
       setDraft(next);
       setConnection("");
       setNotice("Saved. Connection has not been tested.");
@@ -348,8 +348,8 @@ export function TextApiSettings() {
                 }}
                 onConfirm={() =>
                   void run("Deleting…", async () => {
-                    await deleteApiConfigAndBindings(draft.id, chatStorage, { transact: commit });
-                    setConfigs(await chatStorage.listApiConfigs());
+                    await deleteApiConfigAndBindings(draft.id, browserApiConfigStorage, { transact: commit });
+                    setConfigs(await browserApiConfigStorage.listApiConfigs());
                     edit(null);
                   })
                 }

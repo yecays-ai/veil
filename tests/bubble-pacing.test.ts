@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { BubbleRevealQueue, bubbleDelayMs, groupVisibleMessages, hiddenForReveal } from "../lib/chat/bubble-pacing";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
-import { DEFAULT_API_CONFIG_ID, type ChatMessage } from "../lib/chat/types";
+import type { ChatMessage } from "../lib/chat/types";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 
 const message = (id: string, content = "short", createdAt = 0): ChatMessage => ({
@@ -120,7 +120,6 @@ test("finalization notification reveals real persisted IDs once, preserving requ
   const factory = new IDBFactory();
   const document = defaultFoundation();
   document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
-  await storage.saveApiConfig({ id: DEFAULT_API_CONFIG_ID, baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   const session = await storage.openSession("a");
   const user = await storage.send(session.id, "hello");
   let calls = 0;
@@ -149,7 +148,6 @@ test("Stop and provider error never notify finalized split bubbles", async () =>
     const storage = new ChatStorage(() => factory);
     const document = defaultFoundation();
     document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
-    await storage.saveApiConfig({ id: DEFAULT_API_CONFIG_ID, baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
     const session = await storage.openSession("a");
     await storage.send(session.id, "hello");
     const engine = createChatEngine(storage, async () => document, async function* () {

@@ -5,12 +5,12 @@ import type { FoundationDocument } from "./foundation-types";
 import { presetForBinding, type PresetDocument } from "./preset";
 import { assembleChatPrompt } from "./chat/prompt";
 import { validateApiConfig, openAITextProvider, type TextProvider } from "./chat/provider";
-import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "./chat/types";
+import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "./api-config";
+import { browserApiConfigStorage } from "./api-config-storage";
 import { localTime, resolveTimezone, type ParticipantConfig, type WeatherState } from "./participant-config";
 import type { ThemeDocument } from "./theme-types";
 import { browserFoundationStorage } from "./foundation-storage";
 import { browserPresetStorage } from "./preset-storage";
-import { chatStorage } from "./chat/storage";
 import { sanitizeHistoryTimestamps } from "./chat/timestamp-sanitizer";
 import type { WidgetInstance } from "./widget-types";
 
@@ -31,7 +31,7 @@ type Commit = (update: (theme: ThemeDocument) => ThemeDocument) => Promise<void>
 type Dependencies = { foundation: () => Promise<FoundationDocument>; presets: () => Promise<PresetDocument>;
   api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider; bindings: () => Promise<BindingDocument> };
 const dependencies: Dependencies = { foundation: () => browserFoundationStorage.load(),
-  presets: () => browserPresetStorage.load(), api: (id) => chatStorage.getApiConfig(id), provider: openAITextProvider,
+  presets: () => browserPresetStorage.load(), api: (id) => browserApiConfigStorage.getApiConfig(id), provider: openAITextProvider,
   bindings: () => browserBindingStorage.load() };
 
 function facts(profile: ParticipantConfig, weather: WeatherState, now: Date) {

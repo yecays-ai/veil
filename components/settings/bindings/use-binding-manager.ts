@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useFoundation } from "../../foundation-provider";
 import { cleanStaleBindings, setBindingField,
   type BindingScope, type BindingSlot, type ManagedBindingField } from "../../../lib/bindings";
-import { chatStorage } from "../../../lib/chat/storage";
+import { browserApiConfigStorage } from "../../../lib/api-config-storage";
 import { browserPresetStorage } from "../../../lib/preset-storage";
 import { browserWorldBookStorage } from "../../../lib/worldbook-storage";
 import { browserRegexStorage } from "../../../lib/regex-storage";
@@ -30,7 +30,7 @@ export function useBindingManager() {
     let active = true;
     void (async () => {
       const [api, preset, worldBooks, regex] = await Promise.all([
-        chatStorage.listApiConfigs(), browserPresetStorage.load(),
+        browserApiConfigStorage.listApiConfigs(), browserPresetStorage.load(),
         browserWorldBookStorage.load(), browserRegexStorage.load(),
       ]);
       const available = {

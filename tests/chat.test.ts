@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { CHAT_DATABASE_NAME, ChatStorage } from "../lib/chat/storage";
-import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "./chat-engine-fixture";
 import { assembleChatPrompt, emptyMemorySlot } from "../lib/chat/prompt";
 import {
   completionUrl,
@@ -11,10 +11,10 @@ import {
   type TextProvider,
 } from "../lib/chat/provider";
 import {
-  DEFAULT_API_CONFIG_ID,
   type ChatMessage,
   type PromptTurn,
 } from "../lib/chat/types";
+import { DEFAULT_API_CONFIG_ID } from "../lib/api-config";
 import {
   defaultFoundation,
   normalizeCharacterInput,
@@ -123,7 +123,6 @@ test("Character sessions are unique, reused across clients, and preserve default
 test("Send persists separate bubbles without generating; Request Reply consumes the batch once", async () => {
   const { storage, factory } = create();
   const session = await storage.openSession("a");
-  await storage.saveApiConfig(config);
   let calls = 0;
   let prompt: PromptTurn[] = [];
   const provider: TextProvider = async function* (_config, messages) {
@@ -189,7 +188,6 @@ test("atomic reservation across clients cannot claim the same pending batch twic
 test("one streamed generation finalizes atomically as ordered assistant bubbles and history uses only parts", async () => {
   const { storage } = create();
   const session = await storage.openSession("a");
-  await storage.saveApiConfig(config);
   await storage.send(session.id, "first question");
   let release!: () => void, started!: () => void;
   const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -270,7 +268,6 @@ test("stored transforms cannot persist blank-line placeholders or empty assistan
 test("literal Blank separator artifacts are split away before stored Regex and persistence", async () => {
   const { storage } = create();
   const session = await storage.openSession("a");
-  await storage.saveApiConfig(config);
   const raw = "First paragraph\n\nBlank\n\nSecond paragraph\n\nBlank\n\nThird paragraph";
   const defaults = withDefaultRegexGroup([]);
   assert(defaults[0].rules.every((rule) => rule.mode === "display"));
@@ -423,7 +420,6 @@ test("context window is bounded and pending, edited or deleted content is never 
 test("engine loads authoritative message records rather than cached edited/deleted content", async () => {
   const { storage, factory } = create();
   const session = await storage.openSession("a");
-  await storage.saveApiConfig(config);
   const first = await storage.send(session.id, "old text");
   const removed = await storage.send(session.id, "deleted text");
   await editDatabase(factory, (table) => {
@@ -478,7 +474,6 @@ test("failed/empty hydration cannot overwrite valid stored chat records", async 
 test("stop preserves streamed content and keeps the claimed batch consumed; new Send remains pending", async () => {
   const { storage } = create();
   const session = await storage.openSession("a");
-  await storage.saveApiConfig(config);
   await storage.send(session.id, "first");
   let streamed!: () => void;
   const started = new Promise<void>((resolve) => {
@@ -522,7 +517,7 @@ test("API errors are visible, reserved batches are not retried, and missing conf
   const { storage } = create();
   const session = await storage.openSession("a");
   await storage.send(session.id, "hello");
-  let calls = 0;
+  let calls = 0, available = false;
   const engine = createChatEngine(
     storage,
     async () => foundation(),
@@ -530,7 +525,8 @@ test("API errors are visible, reserved batches are not retried, and missing conf
       calls++;
       yield "first part\n\nsecond part";
       throw new Error("API request failed (HTTP 401).");
-    },
+    }, undefined, undefined, undefined, undefined, undefined, undefined,
+    async (id) => id === config.id && available ? config : undefined,
   );
   await assert.rejects(
     () => engine.requestReply(session.id),
@@ -540,7 +536,7 @@ test("API errors are visible, reserved batches are not retried, and missing conf
     (await storage.readSession(session.id)).messages[0].requestedBy,
     undefined,
   );
-  await storage.saveApiConfig(config);
+  available = true;
   assert.equal((await engine.requestReply(session.id))?.status, "error");
   assert.equal((await storage.readSession(session.id)).messages.filter(
     (message) => message.role === "assistant").length, 1);
@@ -552,11 +548,9 @@ test("API errors are visible, reserved batches are not retried, and missing conf
 });
 
 test("API configuration is local/separate, respects binding precedence, and never enters theme/profile/prompt exports", async () => {
-  const { storage, factory } = create();
+  const { storage } = create();
   const session = await storage.openSession("a");
-  await storage.saveApiConfig(config);
   const bound = { ...config, id: "character-api", model: "bound-model" };
-  await storage.saveApiConfig(bound);
   const document = foundation();
   bindings.characters.a = {
     defaults: { apiConfigId: bound.id },
@@ -570,13 +564,12 @@ test("API configuration is local/separate, respects binding precedence, and neve
       model = config.model;
       assert(!JSON.stringify(prompt).includes(config.apiKey));
       yield "ok";
-    },
+    }, undefined, undefined, undefined, undefined, undefined, undefined,
+    async (id) => id === bound.id ? bound : id === config.id ? config : undefined,
   );
   await engine.send(session.id, "hello");
   await engine.requestReply(session.id);
   assert.equal(model, bound.model);
-  const api = await new ChatStorage(() => factory).getApiConfig();
-  assert.equal(api?.apiKey, config.apiKey);
   const unrelated = JSON.stringify([
     document,
     defaultSnapshot(),

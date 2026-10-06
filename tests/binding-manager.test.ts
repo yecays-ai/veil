@@ -6,6 +6,8 @@ import { APP_REGISTRY, bindingCapableApps } from "../lib/app-registry";
 import { cleanStaleBindings, resolveBindings, setBindingField,
   withoutApiConfigBinding, withoutPresetBinding, type BindingDocument } from "../lib/bindings";
 import { ChatStorage } from "../lib/chat/storage";
+import { ApiConfigStorage } from "../lib/api-config-storage";
+import type { ApiConfig } from "../lib/api-config";
 import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { createBuiltinPreset, createPresetDocument, presetForBinding } from "../lib/preset";
@@ -69,8 +71,11 @@ test("stale IDs are cleaned without materializing inheritance or exposing Defaul
 });
 
 test("Preset binding chooses per-app, per-character and active fallback in real generation", async () => {
-  const chat = new ChatStorage(() => new IDBFactory());
-  await chat.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
+  const factory = new IDBFactory();
+  const chat = new ChatStorage(() => factory);
+  const api = new ApiConfigStorage(() => factory);
+  await api.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
+  apiLoader = (id) => api.getApiConfig(id);
   const presetA = { ...createBuiltinPreset(), id: "preset-a", name: "A", builtIn: false,
     prompts: createBuiltinPreset().prompts.map((entry) => entry.identifier === "base" && entry.source === "prompt"
       ? { ...entry, content: "PRESET_A_ONLY" } : entry) };
@@ -125,14 +130,14 @@ test("Preset and Text API deletion remove dangling IDs without switching a clear
   const afterPreset = (await foundation.load());
   assert.equal(afterPreset.global.presetId, undefined);
   assert.equal(afterPreset.characters.p.apps.messages?.presetId, undefined);
-  const chat = new ChatStorage(() => new IDBFactory());
-  await chat.saveApiConfig({ id: "api-a", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
-  await deleteApiConfigAndBindings("api-a", chat, foundation);
+  const api = new ApiConfigStorage(() => new IDBFactory());
+  await api.saveApiConfig({ id: "api-a", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
+  await deleteApiConfigAndBindings("api-a", api, foundation);
   const afterApi = (await foundation.load());
   assert.equal(afterApi.global.apiConfigId, null);
   assert.equal(afterApi.characters.p.defaults.apiConfigId, null);
   assert.equal(afterApi.characters.p.apps.messages?.apiConfigId, null);
-  assert.equal(await chat.getApiConfig("api-a"), undefined);
+  assert.equal(await api.getApiConfig("api-a"), undefined);
   assert.deepEqual(withoutApiConfigBinding({ global: { apiConfigId: "other" }, characters: {} }, "api-a").global,
     { apiConfigId: "other" });
   assert.deepEqual(withoutPresetBinding({ global: { presetId: "other" }, characters: {} }, "custom").global,
@@ -150,12 +155,17 @@ test("failed cross-store cleanup restores a deleted Preset or Text API", async (
   const failing = { transact: async () => { throw new Error("Foundation unavailable"); } };
   await assert.rejects(() => deletePresetAndBindings("custom", presets, failing), /Foundation unavailable/);
   assert((await presets.load()).presets.some((preset) => preset.id === "custom"));
-  const chat = new ChatStorage(() => new IDBFactory());
-  await chat.saveApiConfig({ id: "api-a", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
-  await assert.rejects(() => deleteApiConfigAndBindings("api-a", chat, failing), /Foundation unavailable/);
-  assert(await chat.getApiConfig("api-a"));
+  const api = new ApiConfigStorage(() => new IDBFactory());
+  await api.saveApiConfig({ id: "api-a", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
+  await assert.rejects(() => deleteApiConfigAndBindings("api-a", api, failing), /Foundation unavailable/);
+  assert(await api.getApiConfig("api-a"));
 });
 
 let bindings: BindingDocument = { global: {}, characters: {} };
+let apiLoader: (id: string) => Promise<ApiConfig | undefined> = async () => undefined;
 function testFoundation() { bindings = { global: {}, characters: {} }; return defaultFoundation(); }
-function createChatEngine(...args: Parameters<typeof baseChatEngine>) { args[7] = async () => bindings; return baseChatEngine(...args); }
+function createChatEngine(...args: Parameters<typeof baseChatEngine>) {
+  args[7] = async () => bindings;
+  args[9] = apiLoader;
+  return baseChatEngine(...args);
+}

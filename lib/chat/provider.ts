@@ -1,4 +1,5 @@
-import type { ApiConfig, PromptTurn } from "./types";
+import type { ApiConfig } from "../api-config";
+import type { PromptTurn } from "./types";
 import type { GenerationParameters } from "../preset";
 
 export function completionUrl(baseUrl: string): string {

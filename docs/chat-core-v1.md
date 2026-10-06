@@ -22,14 +22,16 @@ keyboard dismissal and must not turn Send into generation.
 
 ## Storage and boundaries
 
-`lib/chat/storage.ts` uses native IndexedDB (`veil-chat-v1`, version 1):
+`lib/chat/storage.ts` uses native IndexedDB (`veil-chat-v2`, version 1):
 
-- `sessions`: deterministic session ID, unique Character index, display summary,
+- `sessions`: deterministic session ID, display summary,
   optional remark and a monotonic `nextOrder` counter.
 - `messages`: individual records keyed by message ID, indexed by session; role,
   text, status, creation time, stable order and optional batch/error metadata.
-- `apiConfigs`: isolated local provider settings. Credentials are never stored in
-  Foundation bindings, themes, messages, exports, URL parameters or logs.
+
+Text API resources and credentials live in the separate `veil-api-config-v1`
+database. They are never stored in bindings, themes, messages, backups, URL
+parameters or logs.
 
 Every mutation is an atomic record operation, not a cache/snapshot replacement.
 Loads are read-only. Empty/failed hydration has no path to clear existing data.
@@ -45,7 +47,7 @@ The application does not reset persisted drafts merely because a page loaded.
 
 Open **Settings → Text API**. Create a named config,
 enter Base URL, API Key and Model, save, then explicitly choose **Use as default**.
-Existing `chat-default` credentials remain usable without re-entry. The Base URL
+The Base URL
 may end at the provider API root (`https://provider.example/v1`) or the full
 `/chat/completions` path. Requests use the OpenAI-compatible streaming text format;
 JSON completion responses are also accepted. No provider is hardcoded.
@@ -90,13 +92,11 @@ exercise the production build against a local OpenAI-compatible streaming server
 at 320px, 390px and desktop Phone Shell sizes, including Stop, errors, reopen and
 blocked storage. External paid providers require the user's own configuration.
 
-Text API resources retain stable IDs and live in the existing private `apiConfigs`
-store. Legacy records receive a name/provider on read; credentials and IDs are
-unchanged, and hydration does not rewrite storage. Saving is separate from testing.
+Text API resources retain stable IDs and live in the private independent API Config
+storage. Saving is separate from testing.
 Test Connection sends a tiny, capped non-streaming text request; Fetch Models uses
 `/models`, with manual model entry always available. Both operate on the editor
 fields without saving them. No provider error bodies or generated previews are shown.
-Deleting a config retains its binding IDs deliberately, so affected chats fail closed
-instead of inheriting another provider. Selecting a global default is explicit and
-preserves Character/app overrides. The former `/messages/settings` redirects to
-Settings; there is only one credential-management UI.
+Deleting a config through Settings also clears its Binding references. Selecting a
+global default is explicit and preserves Character/app overrides. The former
+`/messages/settings` redirects to Settings; there is only one credential-management UI.

@@ -10,7 +10,7 @@ import { createRegexStorage, deleteRegexGroupAndBindings } from "../lib/regex-st
 import { resolveBindings } from "../lib/bindings";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { ChatStorage } from "../lib/chat/storage";
-import { createChatEngine as baseChatEngine } from "../lib/chat/engine";
+import { createChatEngine as baseChatEngine } from "./chat-engine-fixture";
 import { assembleChatPrompt } from "../lib/chat/prompt";
 import { evaluateWorldBooks } from "../lib/worldbook-activation";
 import { normalizeWorldBook } from "../lib/worldbook";
@@ -120,7 +120,6 @@ async function chatSetup() {
   foundation.runtime.timeAware = false;
   foundation.characters = [{ characterId: "p", ...normalizeCharacterInput({ name: "Peter" }) }];
   const session = await storage.openSession("p");
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "key", model: "test" });
   return { storage, foundation, session };
 }
 

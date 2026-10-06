@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { sanitizeHistoryTimestamps } from "../lib/chat/timestamp-sanitizer";
-import { createChatEngine } from "../lib/chat/engine";
+import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 
@@ -38,7 +38,6 @@ test("every possible split within metadata is withheld until ordinary body text 
 async function setup() {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("a");
-  await storage.saveApiConfig({ id: "chat-default", baseUrl: "https://example.test/v1", apiKey: "test", model: "test" });
   await storage.send(session.id, "hello");
   const document = defaultFoundation();
   document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];

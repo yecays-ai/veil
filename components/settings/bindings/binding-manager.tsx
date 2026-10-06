@@ -7,7 +7,7 @@ import { Alert } from "../ui/feedback";
 import { APP_REGISTRY, bindingCapableApps, isAppId, type AppBindingCapability, type AppId } from "../../../lib/app-registry";
 import { resolveBindings, type BindingScope, type BindingSlot,
   type ManagedBindingField } from "../../../lib/bindings";
-import { DEFAULT_API_CONFIG_ID } from "../../../lib/chat/types";
+import { DEFAULT_API_CONFIG_ID } from "../../../lib/api-config";
 import { BUILTIN_PRESET_ID } from "../../../lib/preset";
 import { useBindingManager, type BindingResources } from "./use-binding-manager";
 

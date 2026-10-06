@@ -2,8 +2,7 @@ import type { BindingStorage } from "./binding-storage";
 import type { StringStorage } from "./foundation-storage";
 import { withoutRegexBinding } from "./bindings";
 import { emptyRegexDocument, validateRegexDocument, type RegexDocument } from "./regex";
-import { DEFAULT_REGEX_GROUP_ID, DEFAULT_RULE_IDS, withDefaultRegexGroup } from "./regex-defaults";
-import { chatStorage } from "./chat/storage";
+import { DEFAULT_REGEX_GROUP_ID, withDefaultRegexGroup } from "./regex-defaults";
 
 const KEY = "veil.regex.v1";
 export interface RegexStorage {
@@ -56,26 +55,15 @@ async function ensureBrowserDefaults() {
   if (!initializing) initializing = (async () => {
     const current = await rawBrowserRegexStorage.load();
     if (current.groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID)) return;
-    const legacy = await chatStorage.readLegacyChatFormatting();
     const addDefaults = (document: RegexDocument): RegexDocument => {
       if (document.groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID)) return document;
-      const groups = withDefaultRegexGroup(document.groups);
-      if (legacy) {
-        const defaults = groups[0];
-        defaults.rules = defaults.rules.map((rule) => {
-          const key = (Object.keys(DEFAULT_RULE_IDS) as (keyof typeof DEFAULT_RULE_IDS)[])
-            .find((item) => DEFAULT_RULE_IDS[item] === rule.id);
-          return key ? { ...rule, enabled: legacy[key] } : rule;
-        });
-      }
-      return { ...document, groups };
+      return { ...document, groups: withDefaultRegexGroup(document.groups) };
     };
     try { await rawBrowserRegexStorage.transact(addDefaults); }
     catch (reason) {
       if (!(await rawBrowserRegexStorage.load()).groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID))
         throw reason;
     }
-    if (legacy) await chatStorage.deleteLegacyChatFormatting();
   })().finally(() => { initializing = undefined; });
   await initializing;
 }
