@@ -19,22 +19,88 @@ test("Contact relations reference Characters without copying profiles and remain
   assert.equal(saved.contacts.length, 1);
   assert.deepEqual(Object.keys(saved.contacts[0]).sort(), ["characterId", "createdAt", "id"]);
   assert.equal(saved.contacts[0].characterId, "peter");
-  assert.equal((await storage.ensureCharacters(["peter", "ghost", "ghost"])).contacts.length, 2);
+  assert.equal("ensureCharacters" in storage, false);
   assert.equal(removeContact(await storage.load(), "peter").contacts.some((item) => item.characterId === "peter"), false);
 });
 
-test("existing direct sessions migrate idempotently to contacts without changing chat history", async () => {
+test("adding a Contact never creates a Conversation and existing chats do not create Contacts", async () => {
   const chat = new ChatStorage(() => new IDBFactory());
-  const direct = await chat.openSession("peter"); await chat.send(direct.id, "Old message");
   const backend = memory(), contacts = createContactStorage(() => backend.storage);
-  const sessionIds = (await chat.listSessions()).filter((item) => item.type !== "group").map((item) => item.characterId);
-  await contacts.ensureCharacters(sessionIds); await contacts.ensureCharacters(sessionIds);
+  await contacts.transact((current) => addContact(current, "peter", 10));
+  assert.equal((await chat.listSessions()).length, 0);
   assert.deepEqual((await contacts.load()).contacts.map((item) => item.characterId), ["peter"]);
-  assert.equal((await chat.openSession("peter")).id, direct.id);
-  assert.equal((await chat.readSession(direct.id)).messages[0].content, "Old message");
+
+  const direct = await chat.openSession("ghost");
+  await chat.send(direct.id, "Existing chat");
+  assert.deepEqual((await contacts.load()).contacts.map((item) => item.characterId), ["peter"]);
+  assert.equal((await chat.openSession("ghost")).id, direct.id);
+  assert.equal((await chat.readSession(direct.id)).messages[0].content, "Existing chat");
+  await chat.clearSession(direct.id);
+  assert.deepEqual((await contacts.load()).contacts.map((item) => item.characterId), ["peter"]);
 });
 
-test("groups reference Contact Characters and never replace the unique direct chat", async () => {
+test("New Message single-select opens or creates the one direct Conversation", async () => {
+  const chat = new ChatStorage(() => new IDBFactory());
+  const first = await chat.openSession("peter");
+  const second = await chat.openSession("peter");
+  assert.equal(first.id, second.id);
+  assert.equal((await chat.listSessions()).length, 1);
+  const source = readFileSync("components/contacts-pages.tsx", "utf8");
+  assert.match(source, /if \(mode === "single"\) return <button[\s\S]*?openDirect\(character\.characterId\)/);
+  assert.match(source, /async function openDirect\(characterId: string\)[\s\S]*?chatStorage\.openSession\(characterId\)/);
+  assert.match(source, /router\.push\(`\/messages\/\$\{encodeURIComponent\(characterId\)\}`\)/);
+});
+
+test("group multi-select continues to Create Group and creates a group Conversation", async () => {
+  const chat = new ChatStorage(() => new IDBFactory());
+  const group = await chat.createGroupSession(["peter", "lan"], "Friends");
+  assert.equal(group.type, "group");
+  assert.deepEqual(group.participantIds, ["peter", "lan"]);
+  assert.equal((await chat.listSessions()).length, 1);
+  const source = readFileSync("components/contacts-pages.tsx", "utf8");
+  assert.match(source, /mode === "multi"[\s\S]*?aria-pressed/);
+  assert.match(source, /selectedContacts\.length < 2[\s\S]*?Next/);
+  assert.match(source, /chatStorage\.createGroupSession\(members\.map/);
+  assert.match(source, /\/messages\/group\//);
+});
+
+test("normal Contacts still opens Contact Profile and Add Contact creates only the relation", () => {
+  const contacts = readFileSync("components/contacts-pages.tsx", "utf8");
+  const normal = contacts.match(/return <Link className="social-row"[\s\S]*?ContactProfile/)?.[0] ?? contacts;
+  const add = contacts.match(/export function AddContactPage\(\)[\s\S]*?export function CreateGroupPage/)?.[0] ?? "";
+  assert.match(normal, /\/contacts\//);
+  assert.match(contacts, /export function ContactProfile/);
+  assert.match(add, /addContact\(current, character\.characterId\)/);
+  assert.doesNotMatch(add, /chatStorage\.openSession|createGroupSession/);
+});
+
+test("Messages menu has only its two actions and uses the shared Contacts routes", () => {
+  const chats = readFileSync("components/chat/messages-home.tsx", "utf8");
+  const hook = readFileSync("components/use-contacts.ts", "utf8");
+  const contactStorage = readFileSync("lib/contact-storage.ts", "utf8");
+  assert.match(chats, /New Message/); assert.match(chats, /New Group/);
+  assert.match(chats, /\/contacts\?mode=single/); assert.match(chats, /\/contacts\?mode=multi/);
+  assert.doesNotMatch(chats, /Add Friend|Add Contact|chat-sheet|contact-picker-list|contactCharacters/);
+  assert.doesNotMatch(hook, /chatStorage|ensureCharacters/);
+  assert.doesNotMatch(contactStorage, /ensureCharacters/);
+  assert.match(readFileSync("app/contacts/create-group/page.tsx", "utf8"), /CreateGroupPage/);
+});
+
+test("Messages popover, search and filters use the flatter pill treatment", () => {
+  const chats = readFileSync("components/chat/messages-home.tsx", "utf8");
+  const chatCss = readFileSync("app/messages/chat.css", "utf8");
+  const contacts = readFileSync("components/contacts-pages.tsx", "utf8");
+  assert.match(chats, /role="menuitem"/);
+  assert.doesNotMatch(chats, /Add Friend|Add Contact|chat-sheet|contact-picker-list/);
+  assert.match(chatCss, /\.chat-app \.chat-action-popover button[^}]+border: 0/);
+  assert.match(chatCss, /\.chat-app \.chat-action-popover button \+ button[^}]+border-top/);
+  assert.match(chatCss, /\.chat-app \.messages-filters button[^}]+border-radius: 999px/);
+  assert.match(chatCss, /\.chat-app \.messages-search:focus-within/);
+  assert.doesNotMatch(chatCss, /\.chat-sheet|\.contact-picker-list|\.picker-check|\.group-create-footer/);
+  assert.match(contacts, /aria-label="Add Contact"/);
+});
+
+test("group Conversations remain separate from unique direct Conversations", async () => {
   const chat = new ChatStorage(() => new IDBFactory());
   const group = await chat.createGroupSession(["peter", "ghost", "peter"], "Friends");
   assert.equal(group.type, "group");
@@ -43,17 +109,4 @@ test("groups reference Contact Characters and never replace the unique direct ch
   assert.notEqual(direct.id, group.id);
   assert.equal((await chat.openSession("peter")).id, direct.id);
   assert.equal((await chat.listSessions()).length, 2);
-});
-
-test("Chats and Contacts expose the required mobile navigation and creation entries", () => {
-  const chats = readFileSync("components/chat/messages-home.tsx", "utf8");
-  const chatCss = readFileSync("app/messages/chat.css", "utf8");
-  const contacts = readFileSync("components/contacts-pages.tsx", "utf8");
-  assert.match(chats, /New Message/); assert.match(chats, /New Group/); assert.match(chats, /Add Friend/);
-  assert.match(chats, /session\.type === "group"/); assert.match(chats, /RootAppHeader/);
-  assert.match(chats, /chat-action-popover/); assert.match(chats, /CirclePlus/);
-  assert.match(chatCss, /\.chat-action-layer[^}]+background: transparent/);
-  assert.doesNotMatch(chatCss.match(/\.chat-action-layer[^}]+}/)?.[0] ?? "", /backdrop-filter/);
-  assert.match(contacts, /useContacts/); assert.match(contacts, /href="\/contacts\/add"/);
-  assert.match(contacts, /backHref="\/contacts"/);
 });

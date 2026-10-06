@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
+import { Circle, CircleCheck, Plus } from "lucide-react";
 import { useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { Avatar } from "./profile-view";
@@ -13,45 +13,140 @@ import { RootAppHeader } from "./root-app-header";
 import { useContacts } from "./use-contacts";
 import { addContact } from "../lib/contact-storage";
 
-export function ContactsHome() {
+type ContactSelectionMode = "single" | "multi";
+
+function contactsSelectionHref(mode: ContactSelectionMode, characterIds: readonly string[] = []) {
+  const params = new URLSearchParams({ mode });
+  characterIds.forEach((id) => params.append("contact", id));
+  return `/contacts?${params.toString()}`;
+}
+
+function createGroupHref(characterIds: readonly string[]) {
+  const params = new URLSearchParams();
+  characterIds.forEach((id) => params.append("contact", id));
+  return `/contacts/create-group?${params.toString()}`;
+}
+
+export function ContactsHome({ mode, initialSelection = [] }: {
+  mode?: ContactSelectionMode;
+  initialSelection?: string[];
+}) {
   const { document, ready } = useFoundation();
-  const contactState = useContacts(document.characters.map((item) => item.characterId));
-  const [query, setQuery] = useState("");
+  const router = useRouter();
+  const contactState = useContacts();
+  const [query, setQuery] = useState(""), [selected, setSelected] = useState(initialSelection);
+  const [openingId, setOpeningId] = useState(""), [error, setError] = useState("");
   const ids = new Set(contactState.document.contacts.map((item) => item.characterId));
   const contacts = document.characters.filter((character) => ids.has(character.characterId) && contactMatches(character.name, undefined, query));
+  const selectedContacts = [...new Set(selected.filter((id) => ids.has(id)))];
+  async function openDirect(characterId: string) {
+    if (openingId) return;
+    setOpeningId(characterId); setError("");
+    try {
+      await chatStorage.openSession(characterId);
+      router.push(`/messages/${encodeURIComponent(characterId)}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Conversation could not be opened.");
+      setOpeningId("");
+    }
+  }
+  function toggleSelected(characterId: string) {
+    setSelected((current) => current.includes(characterId)
+      ? current.filter((id) => id !== characterId) : [...current, characterId]);
+  }
+  const title = mode === "single" ? "New Message" : mode === "multi" ? "New Group" : "Contacts";
   return <div className="social-root">
-    <RootAppHeader title="Contacts" rightAction={<Link className="social-add" href="/contacts/add" aria-label="Add Friend"><Plus /></Link>} />
+    <RootAppHeader title={title} backHref={mode ? "/messages" : "/"}
+      backLabel={mode ? "Back to Messages" : "Back to Home"}
+      rightAction={!mode && <Link className="social-add" href="/contacts/add" aria-label="Add Contact" title="Add Contact"><Plus /></Link>} />
     <input className="social-search" type="search" aria-label="Search contacts"
       placeholder="Search contacts..." value={query} onChange={(event) => setQuery(event.target.value)} />
-    {!ready || !contactState.ready ? <p>Loading contacts…</p> : contactState.document.contacts.length === 0 ? <p>No contacts yet.</p>
+    {error && <p role="alert">{error}</p>}
+    {!ready || !contactState.ready ? <p>Loading contacts…</p> : contactState.error ? <p role="alert">{contactState.error}</p>
+      : contactState.document.contacts.length === 0 ? <p>No contacts yet.</p>
       : contacts.length === 0 ? <p>No matching contacts.</p> : <div className="social-list">
-        {contacts.map((character) => <Link className="social-row" key={character.characterId}
-          href={`/contacts/${encodeURIComponent(character.characterId)}`}>
-          <span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} />
+        {contacts.map((character) => {
+          const content = <><span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} />
             <PresenceBadge presence={character.presence} /></span>
-          <span><strong>{character.name}</strong>
-            {character.statusMessage && <small>{character.statusMessage}</small>}</span>
-        </Link>)}
+            <span><strong>{character.name}</strong>
+              {character.statusMessage && <small>{character.statusMessage}</small>}</span>
+            {mode === "multi" && <span className="contact-selection-mark" aria-hidden="true">
+              {selectedContacts.includes(character.characterId) ? <CircleCheck /> : <Circle />}
+            </span>}
+          </>;
+          if (mode === "single") return <button className="social-row contact-select-row" type="button" key={character.characterId}
+            disabled={!!openingId} onClick={() => void openDirect(character.characterId)}>{content}</button>;
+          if (mode === "multi") return <button className="social-row contact-select-row" type="button" key={character.characterId}
+            aria-pressed={selectedContacts.includes(character.characterId)} onClick={() => toggleSelected(character.characterId)}>{content}</button>;
+          return <Link className="social-row" key={character.characterId}
+            href={`/contacts/${encodeURIComponent(character.characterId)}`}>{content}</Link>;
+        })}
       </div>}
+    {mode === "multi" && <div className="contact-selection-footer">
+      <span>{selectedContacts.length} selected</span>
+      <button type="button" disabled={selectedContacts.length < 2}
+        onClick={() => router.push(createGroupHref(selectedContacts))}>Next</button>
+    </div>}
   </div>;
 }
 
-export function AddFriendPage() {
+export function AddContactPage() {
   const { document, ready } = useFoundation();
-  const contactState = useContacts(document.characters.map((item) => item.characterId));
+  const contactState = useContacts();
   const [query, setQuery] = useState(""), [notice, setNotice] = useState("");
   const ids = new Set(contactState.document.contacts.map((item) => item.characterId));
   const rows = document.characters.filter((character) => contactMatches(character.name, undefined, query));
-  return <PageShell title="Add Friend" backHref="/contacts" backLabel="Back to Contacts" bodyClassName="foundation-page add-friend-page">
+  return <PageShell title="Add Contact" backHref="/contacts" backLabel="Back to Contacts" bodyClassName="foundation-page add-contact-page">
     <input className="social-search" type="search" aria-label="Search Characters" placeholder="Search Characters..." value={query} onChange={(event) => setQuery(event.target.value)} />
     {notice && <p role="status">{notice}</p>}
-    {!ready || !contactState.ready ? <p>Loading Characters…</p> : rows.length === 0 ? <p>No Characters available.</p> : <div className="social-list">
+    {!ready || !contactState.ready ? <p>Loading Characters…</p> : contactState.error ? <p role="alert">{contactState.error}</p>
+      : rows.length === 0 ? <p>No Characters available.</p> : <div className="social-list">
       {rows.map((character) => { const added = ids.has(character.characterId); return <div className="social-row" key={character.characterId}>
         <span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} /></span>
         <span><strong>{character.name}</strong></span>
-        <button type="button" disabled={added} onClick={() => void contactState.commit((current) => addContact(current, character.characterId)).then(() => setNotice(`${character.name} added.`))}>{added ? "Added" : "+ Add"}</button>
+        <button type="button" disabled={added} onClick={() => void contactState.commit((current) => addContact(current, character.characterId)).then(() => setNotice(`${character.name} added to Contacts.`))}>{added ? "Added" : "Add Contact"}</button>
       </div>; })}
     </div>}
+  </PageShell>;
+}
+
+export function CreateGroupPage({ characterIds }: { characterIds: string[] }) {
+  const { document, ready } = useFoundation();
+  const router = useRouter();
+  const contactState = useContacts();
+  const [name, setName] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const contacts = new Set(characterIds);
+  const memberContactIds = new Set(contactState.document.contacts.map((contact) => contact.characterId));
+  const members = document.characters.filter((character) =>
+    contacts.has(character.characterId) && memberContactIds.has(character.characterId));
+  const backHref = contactsSelectionHref("multi", members.map((character) => character.characterId));
+  async function create() {
+    if (busy || members.length < 2 || !name.trim()) return;
+    setBusy(true); setError("");
+    try {
+      const session = await chatStorage.createGroupSession(members.map((character) => character.characterId), name);
+      router.push(`/messages/group/${encodeURIComponent(session.id)}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Group could not be created.");
+      setBusy(false);
+    }
+  }
+  return <PageShell title="Create Group" backHref={backHref} backLabel="Back to Contacts"
+    bodyClassName="foundation-page create-group-page">
+    {!ready || !contactState.ready ? <p>Loading contacts…</p> : contactState.error ? <p role="alert">{contactState.error}</p> : <>
+      <p>{members.length} contacts selected</p>
+      <div className="social-list">{members.map((character) => <div className="social-row" key={character.characterId}>
+        <span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} /></span>
+        <span><strong>{character.name}</strong></span>
+      </div>)}</div>
+      <label className="group-name-field"><span>Group name</span>
+        <input value={name} onChange={(event) => setName(event.currentTarget.value)} maxLength={100} />
+      </label>
+      {error && <p role="alert">{error}</p>}
+      <button className="primary-button" type="button" disabled={busy || members.length < 2 || !name.trim()} onClick={() => void create()}>
+        {busy ? "Creating…" : "Create Group"}
+      </button>
+    </>}
   </PageShell>;
 }
 

@@ -4,7 +4,8 @@ import test from "node:test";
 
 test("four root Apps share the existing Home back affordance", () => {
   const header = readFileSync("components/root-app-header.tsx", "utf8");
-  assert.match(header, /href="\/" aria-label="Back to Home"/);
+  assert.match(header, /backHref = "\/", backLabel = "Back to Home"/);
+  assert.match(header, /href=\{backHref\} aria-label=\{backLabel\}/);
   assert.match(header, /className="app-page-back"/);
   assert.match(header, /<Chevron \/>/);
   for (const file of ["components/chat/messages-home.tsx", "components/contacts-pages.tsx",

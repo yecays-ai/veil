@@ -1,2 +1,2 @@
-import { AddFriendPage } from "../../../components/contacts-pages";
-export default function Page() { return <AddFriendPage />; }
+import { AddContactPage } from "../../../components/contacts-pages";
+export default function Page() { return <AddContactPage />; }

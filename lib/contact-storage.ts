@@ -45,8 +45,6 @@ export function createContactStorage(getStorage: () => StringStorage) {
     queue = operation.then(() => {}, () => {});
     return operation;
   };
-  return { load, transact,
-    ensureCharacters: (ids: readonly string[]) => transact((current) =>
-      ids.reduce((next, id) => addContact(next, id, 0), current)) };
+  return { load, transact };
 }
 export const browserContactStorage = createContactStorage(() => window.localStorage);

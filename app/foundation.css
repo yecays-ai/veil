@@ -13,14 +13,29 @@
 .root-app-header > .app-page-back { flex: none; }
 .social-add { width: 44px; height: 44px; display: grid; place-items: center; color: inherit; }
 .social-add svg { width: 25px; height: 25px; }
-.social-search { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 0;
-  border-radius: 12px; background: color-mix(in srgb, var(--theme-text) 8%, var(--theme-surface));
-  color: var(--theme-text); font: inherit; font-size: 16px; }
+.social-search { width: 100%; min-height: 48px; box-sizing: border-box; padding: 0 17px; border: 0;
+  border-radius: 999px; background: color-mix(in srgb, var(--theme-text) 8%, var(--theme-surface));
+  color: var(--theme-text); font: inherit; font-size: 16px; appearance: none; outline: none; }
+.social-search:focus-visible { outline: none; box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 10%, transparent); }
 .social-list { margin-top: 20px; }
 .social-row { display: flex; align-items: center; gap: 14px; min-height: 64px;
   border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent); }
 .social-row > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
 .social-row > button { margin-left: auto; }
+.social-root button.social-row { width: 100%; padding: 0; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--theme-text) 10%, transparent);
+  border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.social-root button.social-row:active { background: color-mix(in srgb, var(--theme-text) 4%, transparent); }
+.contact-selection-mark { margin-left: auto; display: grid; place-items: center; color: var(--theme-accent); }
+.contact-selection-mark svg { width: 23px; height: 23px; }
+.contact-selection-footer { position: sticky; bottom: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin: 12px -20px calc(-24px - var(--app-safe-bottom)); padding: 12px max(20px, var(--app-safe-right)) calc(12px + var(--app-safe-bottom)) max(20px, var(--app-safe-left));
+  background: color-mix(in srgb, var(--theme-background) 92%, transparent); backdrop-filter: blur(12px); }
+.contact-selection-footer span { opacity: .65; font-size: .85em; }
+.contact-selection-footer button { min-width: 88px; min-height: 42px; border: 0; border-radius: 999px;
+  background: var(--theme-accent); color: var(--theme-surface); font: inherit; font-weight: 600; }
+.contact-selection-footer button:disabled { opacity: .38; }
+.group-name-field { display: grid; gap: 8px; margin: 18px 0; }
 .social-row small { opacity: .6; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .social-avatar { position: relative; flex: none; display: inline-flex; }
 .social-avatar .person-avatar { border-radius: 50%; }
