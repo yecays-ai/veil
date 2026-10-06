@@ -475,11 +475,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         >
           <ChevronLeft aria-hidden="true" />
         </Link>
-        <div className="chat-contact-summary page-title" aria-label={`${session?.remark || character.name} contact details`}>
+        <Link href={`/contacts/${encodeURIComponent(character.characterId)}`}
+          className="chat-contact-summary page-title" aria-label={`Open Contact Info for ${session?.remark || character.name}`}>
           <ChatAvatar profile={character} />
           <strong>{session?.remark || character.name}</strong>
           <ChevronRight aria-hidden="true" />
-        </div>
+        </Link>
         <button type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
           title="Conversation settings"
           onClick={() => setChatInfoOpen(true)}><Ellipsis aria-hidden="true" /></button>

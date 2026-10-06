@@ -25,6 +25,7 @@ export function ContactInfo({ characterId }: { characterId: string }) {
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [imageReading, setImageReading] = useState(false);
   const imageRequest = useRef(0);
+  const backgroundInput = useRef<HTMLInputElement>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   useEffect(() => () => { imageRequest.current++; }, []);
 
@@ -77,6 +78,16 @@ export function ContactInfo({ characterId }: { characterId: string }) {
   return <div className="contact-info">
     <header className={`contact-info-hero${heroBackground ? " has-background" : ""}`}
       style={heroBackground ? { backgroundImage: `url(${JSON.stringify(heroBackground)})` } : undefined}>
+      {draft && <>
+        <button type="button" className="contact-hero-background-trigger" aria-label="Change Hero Background"
+          onClick={() => backgroundInput.current?.click()} />
+        <input ref={backgroundInput} className="contact-hero-background-input" type="file" accept="image/*"
+          disabled={busy || imageReading}
+          aria-label="Choose Hero Background image" onChange={(event) => {
+            const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
+            if (file) void chooseBackground(file);
+          }} />
+      </>}
       <nav className="contact-hero-nav" aria-label="Contact Info">
         <Link className="contact-back" href="/contacts" aria-label="Back to Contacts"><ChevronLeft /></Link>
         {draft ? <div className="contact-edit-actions">
@@ -88,23 +99,15 @@ export function ContactInfo({ characterId }: { characterId: string }) {
       </nav>
       <div className="contact-hero-identity">
         <Avatar avatar={character.avatar} name={character.name} large />
-        <h1>{name}</h1>
+        {draft ? <input className="contact-hero-name-input" aria-label="Contact name" value={draft.remark}
+          maxLength={100} disabled={busy} placeholder={character.name}
+          onChange={(event) => setDraft({ ...draft, remark: event.currentTarget.value })} /> : <h1>{name}</h1>}
         <span className="contact-presence"><PresenceBadge presence={character.presence} />{presenceLabel(character.presence)}</span>
         {character.statusMessage && <p className="contact-status">{character.statusMessage}</p>}
       </div>
-      {draft && <div className="contact-editor">
-        <label>Contact Remark<input aria-label="Contact Remark" value={draft.remark} maxLength={100} disabled={busy}
-          placeholder={character.name} onChange={(event) => setDraft({ ...draft, remark: event.currentTarget.value })} /></label>
-        <div className="contact-background-actions">
-          <label className="contact-background-choose">{imageReading ? "Opening image…" : draft.heroBackground ? "Change Background" : "Choose Background"}
-            <input type="file" accept="image/*" hidden disabled={busy || imageReading} onChange={(event) => {
-              const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
-              if (file) void chooseBackground(file);
-            }} />
-          </label>
-          {draft.heroBackground && <button type="button" disabled={busy} onClick={() => setDraft({ ...draft, heroBackground: null })}>Remove Background</button>}
-        </div>
-      </div>}
+      {draft?.heroBackground && <button type="button" className="contact-background-remove" disabled={busy}
+        onClick={() => setDraft({ ...draft, heroBackground: null })}>Remove Background</button>}
+      {imageReading && <span className="contact-background-reading" role="status">Opening image…</span>}
     </header>
     <div className="contact-info-body">
       <nav className="contact-quick-actions" aria-label="Quick Actions">
@@ -147,7 +150,7 @@ function DeleteContactDialog({ busy, error, onCancel, onConfirm }: {
     <h2 id="delete-contact-title">Delete Contact?</h2>
     <p>This removes the Contact relationship. The Character, conversation and chat history will remain.</p>
     {error && <p role="alert">{error}</p>}
-    <div><button type="button" disabled={busy} onClick={onCancel} autoFocus>Cancel</button>
+    <div><button type="button" disabled={busy} onClick={onCancel}>Cancel</button>
       <button type="button" className="contact-delete" disabled={busy} onClick={onConfirm}>{busy ? "Deleting…" : "Delete Contact"}</button></div>
   </dialog>;
 }

@@ -271,6 +271,9 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
 }
 .chat-contact-summary .chat-avatar {
   width: 40px;

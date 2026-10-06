@@ -13,7 +13,7 @@ export const UI_COPY = {
   deviceTimezoneValue: (zone: string) => `Device timezone: ${zone}`,
   deviceTimezoneUnavailable: "Device timezone unavailable.",
   useDeviceTimezone: "Use device timezone",
-  genderSuggestions: ["Female", "Male", "Non-binary", "Prefer not to say"],
+  genderSuggestions: ["Male", "Female", "Non-binary", "Prefer not to say"],
   editUniverse: "Edit Universe",
   fit: "Fit view",
   pan: "Pan relationship canvas",
