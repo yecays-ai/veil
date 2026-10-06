@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Image as ImageIcon } from "lucide-react";
+import { ChevronRight, Image as ImageIcon } from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { ImageCropDialog } from "../image-crop-dialog";
 import { Switch } from "./ui/switch";
@@ -19,6 +19,8 @@ export function GlobalProfileSettings() {
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [backgroundExpanded, setBackgroundExpanded] = useState(false);
+  const [timingExpanded, setTimingExpanded] = useState(false);
   useEffect(() => {
     let active = true;
     const refresh = async () => {
@@ -80,66 +82,79 @@ export function GlobalProfileSettings() {
   }
 
   return <>
-    <section className="global-profile-section">
-      <h2 className="settings-section-label">Global Chat Background</h2>
-      <div className="global-background-card">
-        <div className="global-background-preview" aria-label="Global chat background preview">
-          {preview ? <div aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(preview)})`,
-            filter: `blur(${normalizeBackgroundBlur(background.blur)}px)` }} /> : <ImageIcon aria-hidden="true" />}
+    <div className="global-profile-settings-list">
+      <section className="chat-info-group profile-chat-settings-group" aria-label="Profile chat settings">
+        <div className="global-profile-disclosure global-chat-disclosure-panel">
+        <button type="button" className="chat-session-setting chat-info-row global-profile-disclosure-row" aria-expanded={backgroundExpanded}
+          onClick={() => setBackgroundExpanded((expanded) => !expanded)}>
+          <span>Global Chat Background</span>
+          <ChevronRight size={19} aria-hidden="true" />
+        </button>
+        {backgroundExpanded && <div className="global-profile-disclosure-content">
+          <div className="global-background-card">
+            <div className="global-background-preview" aria-label="Global chat background preview">
+              {preview ? <div aria-hidden="true" style={{ backgroundImage: `url(${JSON.stringify(preview)})`,
+                filter: `blur(${normalizeBackgroundBlur(background.blur)}px)` }} /> : <ImageIcon aria-hidden="true" />}
+            </div>
+            <div className="global-background-actions">
+              <label className="settings-button">Choose Global Background
+                <input hidden type="file" accept="image/*" disabled={!ready || busy} onChange={(event) => {
+                  const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
+                  if (file) void readImage(file).then(setCropSource).catch((reason) => setError(reason instanceof Error ? reason.message : "Image could not be opened."));
+                }} />
+              </label>
+              {background.globalChatBackgroundImage && <button className="settings-button" disabled={busy}
+                onClick={() => void clearGlobalBackground()}>Clear Global Background</button>}
+            </div>
+            <label className="global-background-blur">Global blur ({normalizeBackgroundBlur(background.blur)}px)
+              <input type="range" min="0" max="20" step="1" disabled={busy}
+                value={normalizeBackgroundBlur(background.blur)} onChange={(event) => {
+                  const blur = Number(event.currentTarget.value);
+                  setBackground((current) => ({ ...current, blur }));
+                  void chatStorage.updateGlobalChatBackgroundBlur(blur).catch((reason) => setError(reason instanceof Error ? reason.message : "Blur could not be saved."));
+                }} />
+            </label>
+            <small>Conversations use this background unless they have their own override.</small>
+          </div>
+        </div>}
         </div>
-        <div className="global-background-actions">
-          <label className="settings-button">Choose Global Background
-            <input hidden type="file" accept="image/*" disabled={!ready || busy} onChange={(event) => {
-              const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
-              if (file) void readImage(file).then(setCropSource).catch((reason) => setError(reason instanceof Error ? reason.message : "Image could not be opened."));
-            }} />
-          </label>
-          {background.globalChatBackgroundImage && <button className="settings-button" disabled={busy}
-            onClick={() => void clearGlobalBackground()}>Clear Global Background</button>}
+
+        <div className="global-profile-disclosure global-chat-disclosure-panel">
+        <button type="button" className="chat-session-setting chat-info-row global-profile-disclosure-row" aria-expanded={timingExpanded}
+          onClick={() => setTimingExpanded((expanded) => !expanded)}>
+          <span>Message Bubble Timing</span>
+          <ChevronRight size={19} aria-hidden="true" />
+        </button>
+        {timingExpanded && <div className="global-profile-disclosure-content">
+          <div className="global-timing-fields">
+            {([{ tier: "shortMs", label: "1–60 characters" }, { tier: "mediumMs", label: "61–200 characters" },
+              { tier: "longMs", label: "200+ characters" }] as const).map(({ tier, label }) => {
+              const delayMs = settings?.bubbleTiming[tier] ?? DEFAULT_BUBBLE_TIMING[tier];
+              return <label className="global-timing-row" key={tier}><span>{label}</span>
+                <span className="global-timing-value"><input key={delayMs} className="settings-input" aria-label={`${label} seconds`}
+                  type="number" inputMode="decimal" min="0.001" max="60" step="any" defaultValue={delayMs / 1000}
+                  disabled={!settings || busy} onBlur={(event) => void saveBubbleTiming(tier, event.currentTarget.value)}
+                  onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /> seconds</span>
+              </label>;
+            })}
+          </div>
+        </div>}
         </div>
-        <label className="global-background-blur">Global blur ({normalizeBackgroundBlur(background.blur)}px)
-          <input type="range" min="0" max="20" step="1" disabled={busy}
-            value={normalizeBackgroundBlur(background.blur)} onChange={(event) => {
-              const blur = Number(event.currentTarget.value);
-              setBackground((current) => ({ ...current, blur }));
-              void chatStorage.updateGlobalChatBackgroundBlur(blur).catch((reason) => setError(reason instanceof Error ? reason.message : "Blur could not be saved."));
+
+        <label className="chat-session-setting chat-info-toggle global-here-there-toggle">
+          <strong>Here &amp; There Comments</strong>
+          <Switch checked={settings?.hereThereEnabled ?? true} disabled={!settings || busy}
+            onChange={async (enabled) => {
+              setBusy(true); setError("");
+              try {
+                await chatStorage.updateHereThereEnabled(enabled);
+                setSettings(await chatStorage.readGlobalProfileSettings());
+              } catch (reason) { setError(reason instanceof Error ? reason.message : "Setting could not be saved."); }
+              finally { setBusy(false); }
             }} />
         </label>
-        <small>Conversations use this background unless they have their own override.</small>
-      </div>
-    </section>
-
-    <section className="global-profile-section">
-      <h2 className="settings-section-label">Message Bubble Timing</h2>
-      <div className="global-timing-fields">
-        {([{ tier: "shortMs", label: "1–60 characters" }, { tier: "mediumMs", label: "61–200 characters" },
-          { tier: "longMs", label: "200+ characters" }] as const).map(({ tier, label }) => {
-          const delayMs = settings?.bubbleTiming[tier] ?? DEFAULT_BUBBLE_TIMING[tier];
-          return <label className="global-timing-row" key={tier}><span>{label}</span>
-            <span className="global-timing-value"><input key={delayMs} className="settings-input" aria-label={`${label} seconds`}
-              type="number" inputMode="decimal" min="0.001" max="60" step="any" defaultValue={delayMs / 1000}
-              disabled={!settings || busy} onBlur={(event) => void saveBubbleTiming(tier, event.currentTarget.value)}
-              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /> seconds</span>
-          </label>;
-        })}
-      </div>
-    </section>
-
-    <section className="global-profile-section">
-      <h2 className="settings-section-label">Here &amp; There Comments</h2>
-      <label className="settings-runtime-toggle">
-        <span><strong>Here &amp; There Comments</strong><small>Allow occasional short Character remarks about the local time and weather.</small></span>
-        <Switch checked={settings?.hereThereEnabled ?? true} disabled={!settings || busy}
-          onChange={async (enabled) => {
-            setBusy(true); setError("");
-            try {
-              await chatStorage.updateHereThereEnabled(enabled);
-              setSettings(await chatStorage.readGlobalProfileSettings());
-            } catch (reason) { setError(reason instanceof Error ? reason.message : "Setting could not be saved."); }
-            finally { setBusy(false); }
-          }} />
-      </label>
-    </section>
+      </section>
+    </div>
     {error && <p className="settings-alert" role="alert">{error}</p>}
     {cropSource && <ImageCropDialog source={cropSource} shape="portrait" title="Adjust chat background"
       onSave={saveCrop} onCancel={() => setCropSource(null)} />}

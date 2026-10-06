@@ -15,7 +15,9 @@ test("Profile Settings has its own route and only mounts the three Chat Settings
   const chatSettings = readFileSync("components/settings/global-profile-settings.tsx", "utf8");
   for (const section of ["Global Chat Background", "Message Bubble Timing", "Here &amp; There Comments"])
     assert.match(chatSettings, new RegExp(section));
-  assert.equal((chatSettings.match(/className="global-profile-section"/g) ?? []).length, 3);
+  assert.match(chatSettings, /className="chat-info-group profile-chat-settings-group"/);
+  assert.equal((chatSettings.match(/className="chat-session-setting chat-info-row global-profile-disclosure-row"/g) ?? []).length, 2);
+  assert.equal((chatSettings.match(/className="chat-session-setting chat-info-toggle global-here-there-toggle"/g) ?? []).length, 1);
 });
 
 test("system Settings keeps Runtime and Creator configuration without Profile Chat Settings", () => {

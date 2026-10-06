@@ -19,20 +19,108 @@
 .settings-runtime-toggle > .veil-switch { flex: none; }
 .global-profile-section { margin: 0 0 24px; }
 .global-profile-section .settings-runtime-toggle { margin-bottom: 0; }
+.profile-chat-settings .global-profile-settings-list { display: block; }
+.profile-chat-settings .profile-chat-settings-group { margin: 0; }
+.profile-chat-settings .global-profile-disclosure { position: relative; min-width: 0; }
+.profile-chat-settings .global-profile-disclosure-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 15px 20px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--theme-text);
+  text-align: left;
+  font-size: 16px;
+  font-weight: 500;
+}
+.profile-chat-settings .global-profile-disclosure-row > span { flex: 1; min-width: 0; }
+.profile-chat-settings .global-profile-disclosure-row > svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  opacity: .45;
+  transition: transform 160ms ease;
+}
+.profile-chat-settings .global-profile-disclosure-row[aria-expanded="true"] > svg { transform: rotate(90deg); }
+.profile-chat-settings .global-profile-disclosure-content {
+  position: relative;
+  padding: 0 20px 16px;
+  border-top: 0;
+}
+.profile-chat-settings .global-profile-disclosure-content::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: color-mix(in srgb, var(--theme-text) 7%, transparent);
+  content: "";
+}
+.profile-chat-settings .global-profile-disclosure-content .global-background-card,
+.profile-chat-settings .global-profile-disclosure-content .global-timing-fields {
+  padding: 14px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.profile-chat-settings .global-chat-disclosure-panel { min-width: 0; }
+.profile-chat-settings .global-chat-disclosure-panel + .global-chat-disclosure-panel::before,
+.profile-chat-settings .global-chat-disclosure-panel + .global-here-there-toggle::before {
+  position: absolute;
+  top: 0;
+  right: 20px;
+  left: 20px;
+  height: 1px;
+  background: color-mix(in srgb, var(--theme-text) 7%, transparent);
+  content: "";
+}
+.profile-chat-settings .global-here-there-toggle {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-height: 64px;
+  padding: 15px 20px;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.profile-chat-settings .global-here-there-toggle > strong { flex: 1; min-width: 0; font: inherit; }
+.profile-chat-settings .global-here-there-toggle > .veil-switch { flex: none; }
+.profile-chat-settings .global-timing-row input {
+  width: 62px;
+  min-height: 36px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 15px !important;
+  flex: none;
+}
 .global-timing-fields {
   display: grid;
-  gap: 8px;
-  padding: 16px;
-  border: 1px solid var(--settings-border);
-  border-radius: 20px;
-  background: var(--theme-surface);
+  gap: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .global-timing-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  min-height: 44px;
+  min-height: 40px;
+  color: color-mix(in srgb, var(--theme-text) 76%, transparent);
+  font-size: 14px;
+  font-weight: 400;
 }
 .global-timing-row > span:first-child { flex: 1; min-width: 0; }
 .global-timing-value { display: flex; align-items: center; gap: 6px; flex: none; font-size: 12px; }
@@ -41,10 +129,10 @@
   display: grid;
   grid-template-columns: 104px minmax(0, 1fr);
   gap: 12px;
-  padding: 16px;
-  border: 1px solid var(--settings-border);
-  border-radius: 20px;
-  background: var(--theme-surface);
+  padding: 14px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .global-background-preview {
   width: 104px;
@@ -340,6 +428,15 @@
 .settings-alert[data-variant="success"] {
   color: #287448;
   background: #28744809;
+}
+@media (max-width: 360px) {
+  .profile-chat-settings .global-profile-disclosure-row { gap: 8px; padding-right: 16px; padding-left: 16px; }
+  .profile-chat-settings .global-profile-disclosure-content { padding-right: 16px; padding-left: 16px; }
+  .profile-chat-settings .global-timing-fields { padding-right: 0; padding-left: 0; }
+  .profile-chat-settings .global-timing-row { gap: 8px; }
+  .profile-chat-settings .global-timing-row > span:first-child { font-size: 13px; }
+  .profile-chat-settings .global-timing-value { gap: 4px; }
+  .profile-chat-settings .global-timing-row input { width: 58px; }
 }
 .settings-modal-dialog {
   width: calc(100% - 32px);

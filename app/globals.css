@@ -238,3 +238,43 @@ a:focus-visible { outline: 3px solid #2563eb; outline-offset: 4px; }
     font-size: 16px !important;
   }
 }
+/* Shared grouped settings rows used by Chat Info and Profile Chat Settings. */
+.chat-info-group {
+  overflow: hidden;
+  border: 0;
+  border-radius: 20px;
+  background: var(--theme-surface);
+}
+.chat-info-group .chat-session-setting {
+  position: relative;
+  width: 100%;
+  min-height: 64px;
+  padding: 15px 20px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit;
+  text-align: left;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.35;
+}
+.chat-info-group .chat-session-setting + .chat-session-setting::before {
+  position: absolute;
+  top: 0;
+  right: 20px;
+  left: 20px;
+  height: 1px;
+  background: color-mix(in srgb, var(--theme-text) 7%, transparent);
+  content: "";
+}
+.chat-info-row > svg { width: 20px; height: 20px; opacity: .45; }
+.chat-info-group .chat-session-setting small {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  opacity: .62;
+}
+.chat-info-toggle { cursor: pointer; }
