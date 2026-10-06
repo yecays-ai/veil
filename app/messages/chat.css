@@ -241,7 +241,7 @@
 .chat-header {
   position: absolute;
   z-index: 20;
-  top: var(--chat-viewport-top, 0px);
+  top: 0;
   right: 0;
   left: 0;
   min-height: calc(var(--chat-safe-top, var(--app-safe-top)) + 62px);
@@ -301,7 +301,7 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: calc(var(--chat-safe-top, var(--app-safe-top)) + var(--chat-viewport-top, 0px) + 74px) max(12px, var(--app-safe-right))
+  padding: calc(var(--chat-safe-top, var(--app-safe-top)) + 74px) max(12px, var(--app-safe-right))
     calc(var(--chat-composer-height, 70px) + var(--chat-keyboard-inset, 0px) + 14px)
     max(12px, var(--app-safe-left));
   scrollbar-width: none;

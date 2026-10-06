@@ -112,8 +112,7 @@ export function MessagesHome() {
     <div className="messages-filters" role="group" aria-label="Conversation type">{(["all", "private", "groups"] as const).map((item) =>
       <button key={item} type="button" aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
     {error && <p role="alert" className="chat-notice">{error}</p>}
-    {!ready || !loaded ? <p className="chat-notice">Loading conversations…</p> : visible.length === 0 ?
-      <p className="chat-notice">{query ? "No matching chats." : filter === "groups" ? "No group chats yet." : "No conversations yet."}</p> :
+    {!ready || !loaded ? <p className="chat-notice">Loading conversations…</p> : visible.length > 0 &&
       <div className="conversation-list">{visible.map((session) => { const group = session.type === "group", character = characters.get(session.characterId);
         const name = group ? session.title ?? "Group" : session.remark || character?.name || "Unknown Contact";
         const rowOpen = openRowId === session.id;

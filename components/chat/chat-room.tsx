@@ -42,7 +42,7 @@ import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
 import { Switch } from "../settings/ui/switch";
 import { SessionCustomCSS } from "./session-custom-css";
-import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
+import { chatKeyboardInset } from "../../lib/chat/viewport";
 import { getMessageActions, messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
 import { MessageFooter } from "./message-footer";
 import { parseQuotedReply, quoteMessage } from "../../lib/chat/quote";
@@ -251,8 +251,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
     setPendingSearchJumpId(null);
   }, [pendingSearchJumpId]);
-  // Preserve the original header safe area across keyboard transitions and
-  // compensate visual viewport panning independently of the composer.
+  // Preserve the original header safe area across keyboard transitions while
+  // keeping keyboard panning confined to the composer and history bottom inset.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
@@ -278,7 +278,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         ).matches;
         const inputFocused = composer.current === globalThis.document.activeElement;
         if (!mobile) {
-          room.style.removeProperty("--chat-viewport-top");
           room.style.removeProperty("--chat-safe-top");
           room.style.removeProperty("--chat-keyboard-inset");
           return;
@@ -289,10 +288,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         } else {
           room.style.removeProperty("--chat-safe-top");
         }
-        room.style.setProperty(
-          "--chat-viewport-top",
-          `${chatHeaderOffset(viewport.offsetTop, window.scrollY)}px`,
-        );
         if (!inputFocused) {
           room.style.removeProperty("--chat-keyboard-inset");
           return;

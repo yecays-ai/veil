@@ -117,6 +117,10 @@ test("Messages conversation rows keep navigation and expose only a confirmed Del
   assert.match(home, /onClick=\{\(\) => void confirmDeleteConversation\(\)\}>\{deleteBusy \? "Deleting…" : "Delete"\}/);
   assert.match(home, /chatStorage\.subscribe\(\(\) => void load\(\)\)/);
   assert.doesNotMatch(home, /location\.reload/);
+  assert.match(home, /visible\.length > 0 &&\s*<div className="conversation-list">/);
+  assert.doesNotMatch(home, /No conversations yet|No group chats yet|No matching chats/);
+  assert.match(home, /session\.lastMessagePreview \|\|/);
+  assert.match(home, /<span className="conversation-preview">/);
 });
 
 test("horizontal swipes preserve vertical scrolling and resist overpull before release settle", async () => {

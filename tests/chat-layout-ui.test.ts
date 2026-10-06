@@ -21,8 +21,10 @@ test("chat header is a glass overlay with the requested lightweight controls", (
   assert.doesNotMatch(room, /Video|>Back</);
   assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*backdrop-filter:\s*blur/);
   assert.doesNotMatch(css, /\.chat-header\s*\{[^}]*(?:border-bottom|linear-gradient)/);
-  assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*top:\s*var\(--chat-viewport-top/);
-  assert.doesNotMatch(room, /--chat-viewport-offset-top|--chat-visual-height/);
+  assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*top:\s*0/);
+  assert.doesNotMatch(room, /chatHeaderOffset|--chat-viewport-offset-top|--chat-visual-height/);
+  assert.doesNotMatch(room, /chat-viewport-top/);
+  assert.doesNotMatch(css, /chat-viewport-top/);
   assert.match(css, /\.chat-history\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(appearance, /\.theme-surface:not\(:has\(\.home-screen\)\) \.theme-home-wallpaper/);
 });
