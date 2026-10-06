@@ -74,7 +74,7 @@ test("root pages reuse Foundation and existing Chat without fictional social dat
   assert.match(contacts, /chatStorage\.openSession\(character\.characterId\)/);
   assert.match(profile, /document\.user\.name/);
   assert.match(profile, /href="\/profile\/details"/);
-  assert.match(profile, /href="\/settings"/);
+  assert.match(profile, /href="\/profile\/settings"/);
   assert.match(messages, /chatStorage\.listSessions/);
   assert.match(messages, /Search chats/);
   assert.match(messages, /RootAppHeader/);

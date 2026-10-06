@@ -1,7 +1,6 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { GlobalProfileSettings } from "../../components/settings/global-profile-settings";
 import { BookOpen, GitBranch, Regex, SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
@@ -12,7 +11,6 @@ export default function Page() {
       backLabel="Back to Home"
     >
       <RuntimeSettings />
-      <GlobalProfileSettings />
       <CardGrid
         label="API configuration"
         items={[
