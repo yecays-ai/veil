@@ -139,8 +139,12 @@ export function MessagesHome() {
               }
             }}>
             {group ? <span className="chat-avatar group-avatar"><Users /></span> : character ? <ChatAvatar profile={character} /> : <span className="chat-avatar">?</span>}
-            <span className="conversation-summary"><strong>{name}</strong><span>{session.lastMessagePreview || (group ? `${session.participantIds?.length ?? 0} members` : "Start a conversation")}</span></span>
-            {!!session.updatedAt && <time dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}
+            <span className="conversation-summary">
+              <span className="conversation-title-line"><strong>{name}</strong>
+                {!!session.updatedAt && <time dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}
+              </span>
+              <span className="conversation-preview">{session.lastMessagePreview || (group ? `${session.participantIds?.length ?? 0} members` : "Start a conversation")}</span>
+            </span>
           </Link>
         </div>;
       })}</div>}

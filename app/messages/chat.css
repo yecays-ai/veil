@@ -59,6 +59,8 @@
 }
 .conversation-swipe-row {
   position: relative;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
   border: 0;
   background: transparent;
@@ -66,6 +68,9 @@
 .conversation-row {
   position: relative;
   z-index: 2;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -119,20 +124,32 @@
   flex-direction: column;
   gap: 6px;
 }
-.conversation-summary > span {
+.conversation-preview {
+  width: 100%;
+  min-width: 0;
   font-size: 0.8em;
   opacity: 0.6;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-.conversation-summary strong {
-  overflow-wrap: anywhere;
+.conversation-title-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
-.conversation-row time {
+.conversation-title-line strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conversation-title-line time {
+  flex: none;
   font-size: 0.65em;
   opacity: 0.5;
-  flex: none;
 }
 .group-avatar svg { width: 22px; height: 22px; opacity: .7; }
 .chat-action-layer { position: absolute; z-index: 90; inset: 0; background: transparent; }

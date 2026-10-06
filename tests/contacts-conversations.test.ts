@@ -152,6 +152,16 @@ test("swipe Delete red is confined to the action and the row stays opaque in fro
   assert.match(readFileSync("components/chat/messages-home.tsx", "utf8"), /aria-hidden=\{!rowOpen\}/);
 });
 
+test("conversation row fills available width and aligns timestamp with a truncating title line", () => {
+  const css = readFileSync("app/messages/chat.css", "utf8");
+  const home = readFileSync("components/chat/messages-home.tsx", "utf8");
+  assert.match(css, /\.conversation-row\s*\{[^}]*width:\s*100%/);
+  assert.match(css, /\.conversation-title-line\s*\{[^}]*align-items:\s*center/);
+  assert.match(css, /\.conversation-title-line strong\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis/);
+  assert.match(css, /\.conversation-title-line time\s*\{[^}]*flex:\s*none/);
+  assert.match(home, /<span className="conversation-title-line"><strong>\{name\}<\/strong>[\s\S]*?<time dateTime=/);
+});
+
 test("group Conversations remain separate from unique direct Conversations", async () => {
   const chat = new ChatStorage(() => new IDBFactory());
   const group = await chat.createGroupSession(["peter", "ghost", "peter"], "Friends");
