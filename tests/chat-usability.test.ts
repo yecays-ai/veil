@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
+import { sortChatSessions } from "../lib/chat/session-order";
 import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { createTransientFeedback, KeyboardCloseDetector, sendThenRequestReply, visibleReplyText } from "../lib/chat/usability";
@@ -35,6 +36,23 @@ test("session toggles default OFF and persist independently", async () => {
   assert.equal(saved.session.streamOnline, true);
   assert.equal(saved.session.autoReplyOnKeyboardDismiss, true);
   assert.equal((await storage.readSession(b.id)).session.streamOnline, false);
+});
+
+test("conversation pin persists and sorts ahead of newer unpinned conversations", async () => {
+  const factory = new IDBFactory();
+  const storage = new ChatStorage(() => factory);
+  const olderPinned = await storage.openSession("pinned");
+  const newest = await storage.openSession("newest");
+  const older = await storage.openSession("older");
+  await storage.updateSessionSettings(olderPinned.id, { pinned: true });
+  const reloaded = new ChatStorage(() => factory);
+  const pinnedSession = (await reloaded.readSession(olderPinned.id)).session;
+  assert.equal(pinnedSession.pinned, true);
+  assert.deepEqual(sortChatSessions([
+    { ...older, updatedAt: 20 },
+    { ...pinnedSession, updatedAt: 10 },
+    { ...newest, updatedAt: 30 },
+  ]).map((session) => session.id), [olderPinned.id, newest.id, older.id]);
 });
 
 test("direct reply awaits persisted Send and generates once with the new message in history", async () => {

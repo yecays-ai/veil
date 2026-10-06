@@ -5,6 +5,7 @@ export type ChatSession = {
   participantIds?: string[];
   title?: string;
   updatedAt: number;
+  pinned?: boolean;
   lastMessageId?: string;
   lastMessagePreview?: string;
   remark: string | null;

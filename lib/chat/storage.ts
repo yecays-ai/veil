@@ -245,7 +245,7 @@ export class ChatStorage {
   }
 
   updateSessionSettings(sessionId: string, patch: {
-    streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean;
+    streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean; pinned?: boolean;
     backgroundImage?: string | null;
     backgroundBlur?: number | null;
     customCSS?: string | null;
@@ -255,7 +255,7 @@ export class ChatStorage {
       const session: ChatSession | undefined = await request(table.get(sessionId));
       if (!session) throw new Error("Conversation not found.");
       const next = { ...session };
-      for (const key of ["streamOnline", "autoReplyOnKeyboardDismiss"] as const)
+      for (const key of ["streamOnline", "autoReplyOnKeyboardDismiss", "pinned"] as const)
         if (patch[key] !== undefined) {
           if (typeof patch[key] !== "boolean") throw new Error("Invalid conversation setting.");
           next[key] = patch[key];

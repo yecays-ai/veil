@@ -392,6 +392,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   async function updateSetting(patch: {
     streamOnline?: boolean;
     autoReplyOnKeyboardDismiss?: boolean;
+    pinned?: boolean;
     backgroundImage?: string | null;
     backgroundBlur?: number | null;
   }) {
@@ -625,6 +626,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         session={session}
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
+        pinned={session?.pinned === true}
         canClear={messages.length > 0 && !generating}
         onBack={() => setChatInfoOpen(false)}
         onUpdate={updateSetting}
@@ -674,8 +676,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       {confirmDelete && <ConfirmDialog title="Delete messages?"
         text={`Delete ${confirmDelete.length} message${confirmDelete.length === 1 ? "" : "s"} from this conversation?`}
         onCancel={() => setConfirmDelete(null)} onConfirm={() => void deleteConfirmed()} />}
-      {confirmClear && <ConfirmDialog title="Clear this conversation?"
-        text={`Delete all ${messages.length} messages from this conversation?`}
+      {confirmClear && <ConfirmDialog title="Clear Chat History?"
+        text={`Delete all ${messages.length} messages from this conversation? The conversation itself will remain.`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
           if (!session) return;
           try { await chatStorage.clearSession(session.id); revealQueue.cancel(); setConfirmClear(false); showFeedback("Conversation cleared"); }
@@ -685,24 +687,28 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
 }
 
-function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, canClear, onBack, onUpdate, onClear }: {
+function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, pinned, canClear, onBack, onUpdate, onClear }: {
   session: ChatSession | null;
   streamOnline: boolean;
   autoReplyOnKeyboardDismiss: boolean;
+  pinned: boolean;
   canClear: boolean;
   onBack: () => void;
   onUpdate: (patch: {
     streamOnline?: boolean;
     autoReplyOnKeyboardDismiss?: boolean;
+    pinned?: boolean;
   }) => Promise<void>;
   onClear: () => void;
 }) {
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [customCSSOpen, setCustomCSSOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   if (backgroundOpen && session)
     return <ChatBackgroundSettings session={session} onBack={() => setBackgroundOpen(false)} />;
   if (customCSSOpen && session)
     return <CustomCSSSettings session={session} onBack={() => setCustomCSSOpen(false)} />;
+  if (searchOpen) return <ChatHistorySearchPlaceholder onBack={() => setSearchOpen(false)} />;
   return <section className="chat-info-screen" aria-label="Chat Info">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
@@ -712,7 +718,18 @@ function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, can
       <span className="chat-info-header-spacer" aria-hidden="true" />
     </header>
     <div className="chat-info-body">
-      <div className="chat-info-settings">
+      <section className="chat-info-group" aria-label="Chat history">
+        <button type="button" className="chat-session-setting chat-info-row"
+          onClick={() => setSearchOpen(true)}>
+          <span>Search Chat History</span><ChevronRight aria-hidden="true" />
+        </button>
+      </section>
+      <section className="chat-info-group" aria-label="Conversation settings">
+        <label className="chat-session-setting chat-info-toggle"><span>Pin Conversation</span>
+          <input className="chat-info-switch" type="checkbox" checked={pinned} disabled={!session}
+            onChange={(event) => void onUpdate({ pinned: event.target.checked })} /></label>
+      </section>
+      <section className="chat-info-group" aria-label="Appearance">
         <button type="button" className="chat-session-setting chat-info-row"
           disabled={!session} onClick={() => setBackgroundOpen(true)}>
           <span>Chat Background<small>{session?.backgroundImage ? "Custom background" : "Following global"}</small></span>
@@ -723,17 +740,35 @@ function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, can
           <span>Custom CSS<small>{session?.customCSS ? "Only this conversation · Set" : "Only this conversation"}</small></span>
           <ChevronRight aria-hidden="true" />
         </button>
+      </section>
+      <section className="chat-info-group" aria-label="Chat behavior">
         <label className="chat-session-setting"><span>Streaming Replies
           <small>Show replies as they are generated.</small></span>
-          <input type="checkbox" checked={streamOnline}
+          <input className="chat-info-switch" type="checkbox" checked={streamOnline} disabled={!session}
             onChange={(event) => void onUpdate({ streamOnline: event.target.checked })} /></label>
-        <label className="chat-session-setting"><span>Reply When Keyboard Closes</span>
-          <input type="checkbox" checked={autoReplyOnKeyboardDismiss}
+        <label className="chat-session-setting chat-info-toggle"><span>Reply When Keyboard Closes</span>
+          <input className="chat-info-switch" type="checkbox" checked={autoReplyOnKeyboardDismiss} disabled={!session}
             onChange={(event) => void onUpdate({ autoReplyOnKeyboardDismiss: event.target.checked })} /></label>
-      </div>
-      <button type="button" className="chat-info-clear chat-danger" disabled={!canClear} onClick={onClear}>
-        Clear Chat
+      </section>
+      <section className="chat-info-group chat-info-danger-group" aria-label="Danger">
+        <button type="button" className="chat-session-setting chat-info-clear chat-danger"
+          disabled={!canClear} onClick={onClear}>Clear Chat History</button>
+      </section>
+    </div>
+  </section>;
+}
+
+function ChatHistorySearchPlaceholder({ onBack }: { onBack: () => void }) {
+  return <section className="chat-info-screen" aria-label="Search Chat History">
+    <header className="chat-info-header">
+      <button type="button" className="chat-info-back" aria-label="Back to Chat Info" onClick={onBack}>
+        <ChevronLeft aria-hidden="true" />
       </button>
+      <h1>Search Chat History</h1>
+      <span className="chat-info-header-spacer" aria-hidden="true" />
+    </header>
+    <div className="chat-info-body">
+      <p className="chat-info-search-unavailable">Search for messages in this conversation will be available here.</p>
     </div>
   </section>;
 }

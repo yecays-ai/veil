@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
+import { sortChatSessions } from "../../lib/chat/session-order";
 import { ChatAvatar } from "./avatar";
 import { RootAppHeader } from "../root-app-header";
 
@@ -17,7 +18,7 @@ export function MessagesHome() {
   const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => { let active = true;
     const load = async () => { try { const rows = await chatStorage.listSessions(); if (active) {
-      setSessions(rows.sort((a, b) => b.updatedAt - a.updatedAt)); setLoaded(true); setError(""); }
+      setSessions(sortChatSessions(rows)); setLoaded(true); setError(""); }
     } catch { if (active) setError("Could not load conversations. Existing messages have not been changed."); } };
     const unsubscribe = chatStorage.subscribe(() => void load()); void load();
     return () => { active = false; unsubscribe(); };
