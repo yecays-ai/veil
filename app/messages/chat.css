@@ -696,6 +696,54 @@
   line-height: 1.5;
   opacity: .65;
 }
+.chat-history-search-field {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 15px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-text) 7%, var(--theme-surface));
+  color: var(--theme-text);
+}
+.chat-history-search-field svg { width: 18px; height: 18px; flex: none; opacity: .48; }
+.chat-history-search-field input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 15px;
+}
+.chat-app .chat-history-search-field:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-accent) 10%, transparent);
+}
+.chat-app .chat-history-search-field input:focus-visible { outline: none; }
+.chat-history-search-results { display: grid; gap: 1px; overflow: hidden; border-radius: 18px; background: var(--theme-surface); }
+.chat-history-search-result {
+  width: 100%;
+  display: grid;
+  gap: 7px;
+  padding: 15px 18px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: var(--theme-surface) !important;
+  color: inherit;
+  text-align: left;
+}
+.chat-history-search-result:active { background: color-mix(in srgb, var(--theme-text) 5%, var(--theme-surface)) !important; }
+.chat-history-search-result-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.chat-history-search-result-heading strong { font-size: 14px; }
+.chat-history-search-result-heading time { flex: none; font-size: 11px; opacity: .55; }
+.chat-history-search-result-text { overflow: hidden; font-size: 13px; line-height: 1.4; opacity: .72;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.chat-turn-search-highlight .chat-bubble { animation: chat-search-highlight 1.7s ease-out both; }
+@keyframes chat-search-highlight {
+  0%, 35% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--theme-accent) 48%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--theme-accent) 0%, transparent); }
+}
 .chat-background-preview {
   aspect-ratio: 16 / 10;
   display: grid;

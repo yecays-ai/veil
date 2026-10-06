@@ -16,6 +16,7 @@ import {
   Quote,
   RotateCcw,
   SendHorizontal,
+  Search,
   Sparkles,
   Square,
   Trash2,
@@ -49,6 +50,7 @@ import { resolveBindings } from "../../lib/bindings";
 import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
+import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/search";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -106,8 +108,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [pendingSearchJumpId, setPendingSearchJumpId] = useState<string | null>(null);
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const history = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
+  const previousSearchJumpId = useRef<string | null>(null);
   const mounted = useRef(true);
   const shell = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -219,6 +224,22 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (nearBottom.current)
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [messages, revealState]);
+  useLayoutEffect(() => {
+    if (!pendingSearchJumpId || previousSearchJumpId.current === pendingSearchJumpId) return;
+    previousSearchJumpId.current = pendingSearchJumpId;
+    const container = history.current;
+    const target = container && Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]"))
+      .find((element) => element.dataset.messageId === pendingSearchJumpId);
+    if (container && target) {
+      nearBottom.current = false;
+      const containerRect = container.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const centeredOffset = targetRect.top - containerRect.top - (container.clientHeight - targetRect.height) / 2;
+      container.scrollTo({ top: container.scrollTop + centeredOffset, behavior: "smooth" });
+      setHighlightedMessageId(pendingSearchJumpId);
+    }
+    setPendingSearchJumpId(null);
+  }, [pendingSearchJumpId]);
   // Preserve the original header safe area across keyboard transitions and
   // compensate visual viewport panning independently of the composer.
   useEffect(() => {
@@ -416,7 +437,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const pending = hasPendingUserContent(messages);
   const selectable = messages.filter((message) => message.status !== "streaming");
   const hidden = (message: ChatMessage) =>
-    (!!revealState && hiddenForReveal(message, revealState)) ||
+    (message.id !== pendingSearchJumpId && !!revealState && hiddenForReveal(message, revealState)) ||
     (generating && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
   const visibleMessages = messages.filter((message) => !hidden(message));
   const groupedMessages = groupVisibleMessages(visibleMessages);
@@ -492,7 +513,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               </time>
             </div>}
           <div
-            className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${groupClass}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}`}
+            className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${groupClass}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}${highlightedMessageId === message.id ? " chat-turn-search-highlight" : ""}`}
             data-message-id={message.id}
             data-consecutive={!isGroupStart ? "" : undefined}
             data-active={activeMessage?.id === message.id ? "" : undefined}
@@ -510,6 +531,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             </div>}
             <div className="chat-message">
               <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown`}
+                onAnimationEnd={() => { if (highlightedMessageId === message.id) setHighlightedMessageId(null); }}
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
                 onContextMenu={() => { nativeSelectionActive.current = true; }}
                 onClick={(e) => openActions(e, message)}>
@@ -624,11 +646,19 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       </form>
       {chatInfoOpen && <ChatInfoScreen
         session={session}
+        messages={messages}
+        characterName={session?.remark || character.name}
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
         pinned={session?.pinned === true}
         canClear={messages.length > 0 && !generating}
         onBack={() => setChatInfoOpen(false)}
+        onJumpToMessage={(messageId) => {
+          nearBottom.current = false;
+          previousSearchJumpId.current = null;
+          setPendingSearchJumpId(messageId);
+          setChatInfoOpen(false);
+        }}
         onUpdate={updateSetting}
         onClear={() => setConfirmClear(true)}
       />}
@@ -687,13 +717,17 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
 }
 
-function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, pinned, canClear, onBack, onUpdate, onClear }: {
+function ChatInfoScreen({ session, messages, characterName, streamOnline, autoReplyOnKeyboardDismiss, pinned,
+  canClear, onBack, onJumpToMessage, onUpdate, onClear }: {
   session: ChatSession | null;
+  messages: ChatMessage[];
+  characterName: string;
   streamOnline: boolean;
   autoReplyOnKeyboardDismiss: boolean;
   pinned: boolean;
   canClear: boolean;
   onBack: () => void;
+  onJumpToMessage: (messageId: string) => void;
   onUpdate: (patch: {
     streamOnline?: boolean;
     autoReplyOnKeyboardDismiss?: boolean;
@@ -708,7 +742,8 @@ function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, pin
     return <ChatBackgroundSettings session={session} onBack={() => setBackgroundOpen(false)} />;
   if (customCSSOpen && session)
     return <CustomCSSSettings session={session} onBack={() => setCustomCSSOpen(false)} />;
-  if (searchOpen) return <ChatHistorySearchPlaceholder onBack={() => setSearchOpen(false)} />;
+  if (searchOpen) return <ChatHistorySearchPage sessionId={session?.id ?? ""} messages={messages}
+    characterName={characterName} onBack={() => setSearchOpen(false)} onJumpToMessage={onJumpToMessage} />;
   return <section className="chat-info-screen" aria-label="Chat Info">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
@@ -758,7 +793,26 @@ function ChatInfoScreen({ session, streamOnline, autoReplyOnKeyboardDismiss, pin
   </section>;
 }
 
-function ChatHistorySearchPlaceholder({ onBack }: { onBack: () => void }) {
+function ChatHistorySearchPage({ sessionId, messages, characterName, onBack, onJumpToMessage }: {
+  sessionId: string;
+  messages: ChatMessage[];
+  characterName: string;
+  onBack: () => void;
+  onJumpToMessage: (messageId: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [searchResult, setSearchResult] = useState<{ query: string; messages: ChatMessage[] } | null>(null);
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (!trimmed || !sessionId) return;
+    const controller = new AbortController();
+    void searchConversationMessages(messages, sessionId, trimmed, controller.signal)
+      .then((matches) => { if (!controller.signal.aborted) setSearchResult({ query: trimmed, messages: matches }); });
+    return () => controller.abort();
+  }, [messages, query, sessionId]);
+  const trimmedQuery = query.trim();
+  const results = searchResult?.query === trimmedQuery ? searchResult.messages : [];
+  const searching = !!trimmedQuery && searchResult?.query !== trimmedQuery;
   return <section className="chat-info-screen" aria-label="Search Chat History">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to Chat Info" onClick={onBack}>
@@ -768,7 +822,26 @@ function ChatHistorySearchPlaceholder({ onBack }: { onBack: () => void }) {
       <span className="chat-info-header-spacer" aria-hidden="true" />
     </header>
     <div className="chat-info-body">
-      <p className="chat-info-search-unavailable">Search for messages in this conversation will be available here.</p>
+      <label className="chat-history-search-field"><Search aria-hidden="true" />
+        <input type="search" aria-label="Search messages in this conversation"
+          placeholder="Search messages" value={query} onChange={(event) => setQuery(event.target.value)} />
+      </label>
+      {!query.trim() ? <p className="chat-info-search-unavailable">Search messages in this conversation.</p> :
+        searching ? <p className="chat-info-search-unavailable" role="status">Searching…</p> : results.length === 0 ?
+          <p className="chat-info-search-unavailable" role="status">No messages found.</p> : <div className="chat-history-search-results">
+            {results.map((message) => <button key={message.id} type="button" className="chat-history-search-result"
+              onClick={() => onJumpToMessage(message.id)}>
+              <span className="chat-history-search-result-heading">
+                <strong>{message.role === "user" ? "Me" : characterName}</strong>
+                <time dateTime={new Date(message.createdAt).toISOString()}>
+                  {new Date(message.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </time>
+              </span>
+              <span className="chat-history-search-result-text">{message.content.trim().slice(0, 220)}</span>
+            </button>)}
+            {results.length === SEARCH_RESULT_LIMIT && <p className="chat-info-search-unavailable">
+              Showing up to {SEARCH_RESULT_LIMIT} most recent matches.</p>}
+          </div>}
     </div>
   </section>;
 }

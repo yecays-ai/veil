@@ -102,7 +102,8 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(room, /className="chat-info-screen"/);
   assert.match(room, /<h1>Chat Info<\/h1>/);
   assert.match(room, /Search Chat History/);
-  assert.match(room, /Search for messages in this conversation will be available here/);
+  assert.match(room, /Search messages in this conversation/);
+  assert.match(room, /placeholder="Search messages"/);
   assert.match(room, /Pin Conversation/);
   assert.match(room, /checked=\{pinned\}/);
   assert.match(room, /Streaming Replies/);
@@ -129,6 +130,22 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   for (const hook of ["chat-bubble-role-assistant", "chat-msg-wrapper", "chat-msg-avatar",
     "chat-scroll-anchored", "chat-input-bar", "chat-input-textarea", "chat-input-actions"])
     assert.match(room, new RegExp(hook));
+});
+
+test("Chat history search returns through Chat Info and jumps by message ID without changing chat data", () => {
+  assert.match(room, /onJumpToMessage=\{\(messageId\) => \{[\s\S]*setPendingSearchJumpId\(messageId\);[\s\S]*setChatInfoOpen\(false\);/);
+  assert.match(room, /querySelectorAll<HTMLElement>\("\[data-message-id\]"\)/);
+  assert.match(room, /element\.dataset\.messageId === pendingSearchJumpId/);
+  assert.match(room, /container\.scrollTo\(\{ top: container\.scrollTop \+ centeredOffset, behavior: "smooth" \}\)/);
+  assert.match(room, /setHighlightedMessageId\(pendingSearchJumpId\)/);
+  assert.match(room, /onAnimationEnd=\{\(\) => \{ if \(highlightedMessageId === message\.id\) setHighlightedMessageId\(null\); \}\}/);
+  assert.match(room, /function ChatHistorySearchPage/);
+  assert.match(room, /searchConversationMessages\(messages, sessionId, trimmed, controller\.signal\)/);
+  assert.match(room, /message\.role === "user" \? "Me" : characterName/);
+  assert.match(room, /onClick=\{\(\) => onJumpToMessage\(message\.id\)\}/);
+  assert.match(room, /message\.id !== pendingSearchJumpId && !!revealState && hiddenForReveal/);
+  assert.match(css, /\.chat-turn-search-highlight \.chat-bubble\s*\{\s*animation: chat-search-highlight 1\.7s/);
+  assert.doesNotMatch(room.slice(room.indexOf("onJumpToMessage={(messageId)"), room.indexOf("onUpdate={updateSetting}")), /chatStorage|chatEngine/);
 });
 
 test("message input focus has no accent outline, ring, or shadow", () => {
