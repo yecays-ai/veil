@@ -49,7 +49,7 @@ test("current default rules initialize once and edits survive reload", async () 
   assert.equal(defaults.id, DEFAULT_REGEX_GROUP_ID);
   assert(defaults.rules.every((rule) => rule.enabled));
   await browserRegexStorage.transact((current) => ({ ...current, groups: current.groups.map((group) =>
-    group.id === DEFAULT_REGEX_GROUP_ID ? { ...group, rules: group.rules.map((rule) =>
+    group.id === DEFAULT_REGEX_GROUP_ID ? { ...group, updatedAt: Date.now(), rules: group.rules.map((rule) =>
       rule.id === DEFAULT_RULE_IDS.hideSpeakerName ? { ...rule, find: "custom", enabled: false } : rule) } : group) }));
   const reloaded = await browserRegexStorage.load();
   assert.equal(reloaded.groups[0].rules.find((rule) => rule.id === DEFAULT_RULE_IDS.hideSpeakerName)?.find, "custom");

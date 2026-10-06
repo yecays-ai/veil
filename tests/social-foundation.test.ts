@@ -18,10 +18,10 @@ test("four root Apps register without generation bindings except Messages", () =
     assert(!("bindingCapabilities" in APP_REGISTRY.find((app) => app.id === id)!));
 });
 
-test("new Dock and exact legacy default migrate while customized Dock survives", () => {
+test("Dock normalization keeps current selections and filters unknown Apps", () => {
   const dock = ["messages", "contacts", "moments", "profile"];
   assert.deepEqual(defaultSnapshot().dockLayout, dock);
-  assert.deepEqual(normalizeSnapshot({ dockLayout: ["messages"] }).dockLayout, dock);
+  assert.deepEqual(normalizeSnapshot({ dockLayout: ["messages"] }).dockLayout, ["messages"]);
   assert.deepEqual(normalizeSnapshot({ dockLayout: ["messages", "settings"] }).dockLayout,
     ["messages", "settings"]);
   assert.deepEqual(normalizeSnapshot({ dockLayout: ["profile"] }).dockLayout, ["profile"]);

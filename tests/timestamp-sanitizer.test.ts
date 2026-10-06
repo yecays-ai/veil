@@ -57,7 +57,7 @@ test("engine stores only sanitized streaming previews and finalized split messag
   assert.deepEqual(previews, ["", "", "Hello", "Hello\n\n", "Hello\n\nWorld"]);
   const saved = await storage.readSession(session.id);
   assert.deepEqual(saved.messages.filter((message) => message.role === "assistant").map((message) => message.content), ["Hello", "World"]);
-  assert.doesNotMatch(JSON.stringify(await storage.exportBackup()), /2026-10-05/);
+  assert.doesNotMatch(JSON.stringify((await storage.readSession(session.id)).messages), /2026-10-05/);
 });
 
 test("timestamp-only reply follows existing empty failure semantics", async () => {

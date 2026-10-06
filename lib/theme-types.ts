@@ -186,9 +186,7 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
     },
     ...normalizeDesktop(raw),
     dockLayout: Array.isArray(raw.dockLayout)
-      ? raw.dockLayout.length === 1 && raw.dockLayout[0] === "messages"
-        ? d.dockLayout
-        : [...new Set(raw.dockLayout.filter(isAppId))].slice(0, DOCK_MAX)
+      ? [...new Set(raw.dockLayout.filter(isAppId))].slice(0, DOCK_MAX)
       : d.dockLayout,
   };
 }

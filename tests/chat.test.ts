@@ -250,15 +250,15 @@ test("multi-bubble finalization updates session order and preview to the last pa
   assert.deepEqual(saved.messages.map((message) => message.content), ["question", "one", "two"]);
 });
 
-test("stored transforms cannot persist blank-line placeholders or empty assistant bubbles", async () => {
+test("stored transforms cannot persist empty assistant bubbles", async () => {
   const { storage } = create();
   const session = await storage.openSession("a");
   await storage.send(session.id, "question");
   const batch = await storage.beginReply(session.id);
   assert(batch);
   const parts = await storage.finalizeReply(batch.assistant.id,
-    "normal reply\n\nremove me\n\nplaceholder\n\nsecond reply", undefined,
-    (part) => part === "remove me" ? "  \n " : part === "placeholder" ? "blank line" : part);
+    "normal reply\n\nremove me\n\nsecond reply", undefined,
+    (part) => part === "remove me" ? "  \n " : part);
   assert.deepEqual(parts.map((message) => message.content), ["normal reply", "second reply"]);
   const saved = await storage.readSession(session.id);
   assert.deepEqual(saved.messages.map((message) => message.content),
@@ -600,10 +600,19 @@ test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and
     "https://provider.example/chat/completions",
   );
   assert.throws(() => completionUrl("https://key:secret@provider.example/v1"));
+  assert.equal(completionUrl("http://localhost:1234/v1"), "http://localhost:1234/v1/chat/completions");
+  assert.equal(completionUrl("http://127.0.0.1:1234/v1"), "http://127.0.0.1:1234/v1/chat/completions");
+  assert.equal(completionUrl("http://[::1]:1234/v1"), "http://[::1]:1234/v1/chat/completions");
+  for (const unsafe of ["http://provider.example/v1", "http://192.168.1.8/v1",
+    "https://provider.example/v1?key=x", "https://provider.example/v1#fragment", "ftp://provider.example"]) {
+    assert.throws(() => completionUrl(unsafe));
+  }
   const originalFetch = globalThis.fetch;
   const payload =
     ': heartbeat\r\ndata: {"choices":[{"delta":{"reasoning_content":"not chat text"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"Héllo"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":" world"},"finish_reason":"stop"}]}\r\n\r\ndata: [DONE]\r\n\r\n';
   globalThis.fetch = async (_url, options) => {
+    assert.equal(options?.credentials, "omit");
+    assert.equal(options?.referrerPolicy, "no-referrer");
     const body = JSON.parse(options!.body as string);
     assert.equal(body.stream, true);
     assert.equal(body.model, config.model);

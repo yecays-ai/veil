@@ -56,18 +56,6 @@ export default function Page() {
           },
         ]}
       />
-      <CardGrid
-        label="Data"
-        items={[
-          {
-            id: "backup",
-            label: "Data & Backup",
-            description: "Download a private copy of your data",
-            href: "/settings/data",
-            icon: "⇩",
-          },
-        ]}
-      />
     </PageShell>
   );
 }

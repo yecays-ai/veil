@@ -16,8 +16,6 @@ import {
   UNIVERSE_ID,
 } from "../lib/foundation-types";
 import { resolveBindings, normalizeBindings } from "../lib/bindings";
-import { createFoundationStorage } from "../lib/foundation-storage";
-import { createBindingStorage } from "../lib/binding-storage";
 
 function pair() {
   let d = createCharacter(defaultFoundation(), {
@@ -144,7 +142,6 @@ test("bindings resolve global → Character → Character×App with explicit cle
     {
       global: {
         apiConfigId: "global",
-        voiceConfigId: "global-voice",
         presetId: "global-preset",
         worldBookIds: ["a"],
         regexIds: ["global"],
@@ -153,7 +150,7 @@ test("bindings resolve global → Character → Character×App with explicit cle
         char: {
           defaults: { apiConfigId: "character", worldBookIds: ["b", "b"] },
           apps: {
-            messages: { apiConfigId: "app", voiceConfigId: null, regexIds: [] },
+            messages: { apiConfigId: "app", regexIds: [] },
             appearance: { presetId: "appearance" },
             oldBusinessApp: { apiConfigId: "old" },
           },
@@ -165,7 +162,6 @@ test("bindings resolve global → Character → Character×App with explicit cle
   );
   assert.deepEqual(resolveBindings(bindings, "char", "messages"), {
     apiConfigId: "app",
-    voiceConfigId: null,
     presetId: "global-preset",
     worldBookIds: ["b"],
     regexIds: [],
@@ -180,51 +176,4 @@ test("bindings resolve global → Character → Character×App with explicit cle
   );
   assert(!JSON.stringify(bindings).includes("oldBusinessApp"));
   assert(!Object.hasOwn(bindings.characters, "deleted"));
-});
-test("storage round-trips, serializes edits and persists binding updates in the same document", async () => {
-  const memory = new Map<string, string>();
-  const backend = {
-    getItem: (k: string) => memory.get(k) ?? null,
-    setItem: (k: string, v: string) => {
-      memory.set(k, v);
-    },
-  };
-  const storage = createFoundationStorage(() => backend);
-  await Promise.all([
-    storage.transact((d) =>
-      saveUser(d, {
-        ...d.user,
-        name: "Persisted User",
-        timezone: "Europe/Paris",
-      }),
-    ),
-    storage.transact((d) =>
-      createCharacter(d, {
-        ...normalizeCharacterInput(null),
-        name: "Persisted Character",
-        timezone: "Asia/Tokyo",
-      }),
-    ),
-  ]);
-  const fresh = createFoundationStorage(() => backend);
-  const d = await fresh.load();
-  assert.equal(d.user.name, "Persisted User");
-  assert.equal(d.user.timezone, "Europe/Paris");
-  assert.equal(d.characters.length, 1);
-  assert.equal(d.characters[0].timezone, "Asia/Tokyo");
-  const bindingStorage = createBindingStorage(() => backend);
-  await bindingStorage.save({ characters: {}, global: { presetId: "preset" } });
-  assert.equal((await bindingStorage.load()).global.presetId, "preset");
-  assert.equal(memory.size, 2);
-  const failing = createFoundationStorage(() => ({
-    ...backend,
-    setItem: () => {
-      throw new Error("quota");
-    },
-  }));
-  await assert.rejects(
-    failing.transact((d) => saveUniverse(d, "Unsaved", "")),
-    /Could not save/,
-  );
-  assert.equal((await fresh.load()).universe.name, "Universe");
 });

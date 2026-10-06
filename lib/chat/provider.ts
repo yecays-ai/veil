@@ -9,15 +9,17 @@ export function completionUrl(baseUrl: string): string {
   } catch {
     throw new Error("Enter a valid API Base URL.");
   }
+  const localDevelopmentHost = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname.toLowerCase());
   if (
     !["https:", "http:"].includes(url.protocol) ||
+    (url.protocol === "http:" && !localDevelopmentHost) ||
     url.username ||
     url.password ||
     url.search ||
     url.hash
   )
     throw new Error(
-      "Use an HTTP(S) Base URL without credentials, query parameters or a fragment.",
+      "Use HTTPS, or HTTP on localhost, without credentials, query parameters or a fragment.",
     );
   const path = url.pathname.replace(/\/+$/, "");
   url.pathname = path.endsWith("/chat/completions")

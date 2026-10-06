@@ -56,37 +56,6 @@ test("built-in Preset is created once, custom edits persist, and initialization 
     entry.identifier === "response-directive")?.source, "prompt");
 });
 
-test("v1 Preset storage adds chat output format once without overwriting user edits", async () => {
-  const memory = memoryStorage();
-  const legacy = { version: 1, activePreset: createBuiltinPreset() };
-  legacy.activePreset.prompts = legacy.activePreset.prompts.filter((entry) =>
-    entry.identifier !== "chat_output_format");
-  legacy.activePreset.promptOrder = legacy.activePreset.promptOrder.filter((entry) =>
-    entry.identifier !== "chat_output_format");
-  const directive = legacy.activePreset.prompts.find((entry) =>
-    entry.identifier === "response-directive")!;
-  assert(directive.source === "prompt");
-  directive.content = "My saved directive";
-  memory.storage.setItem("veil.preset.v1", JSON.stringify(legacy));
-  const store = createPresetStorage(() => memory.storage);
-  const migrated = await store.load();
-  assert.equal(migrated.version, 3);
-  assert.equal(activePreset(migrated).prompts.filter((entry) =>
-    entry.identifier === "chat_output_format").length, 1);
-  assert.equal(activePreset(migrated).prompts.find((entry) =>
-    entry.identifier === "response-directive")?.source, "prompt");
-  assert.equal((activePreset(migrated).prompts.find((entry) =>
-    entry.identifier === "response-directive") as { content: string }).content,
-  "My saved directive");
-  assert(activePreset(migrated).promptOrder.findIndex((entry) =>
-    entry.identifier === "history") < activePreset(migrated).promptOrder.findIndex((entry) =>
-    entry.identifier === "chat_output_format"));
-  assert(activePreset(migrated).promptOrder.findIndex((entry) =>
-    entry.identifier === "chat_output_format") < activePreset(migrated).promptOrder.findIndex((entry) =>
-    entry.identifier === "response-directive"));
-  assert.deepEqual(await store.load(), migrated);
-});
-
 test("default chat output format contains only the text multi-bubble protocol", () => {
   const preset = createBuiltinPreset();
   const format = preset.prompts.find((entry) => entry.identifier === "chat_output_format");
@@ -100,11 +69,10 @@ test("default chat output format contains only the text multi-bubble protocol", 
 test("Preset schema separates ordinary content from runtime markers", () => {
   const preset = createBuiltinPreset();
   const marker = preset.prompts.find((entry) => entry.source === "marker")!;
-  assert.throws(() => validatePresetDocument({ version: 2, activePreset: {
-    ...preset,
+  const invalid = { ...createPresetDocument(), presets: [{ ...preset,
     prompts: preset.prompts.map((entry) => entry === marker
-      ? { ...entry, content: "duplicated snapshot" } : entry),
-  } }), /marker prompt/);
+      ? { ...entry, content: "duplicated snapshot" } : entry) }] };
+  assert.throws(() => validatePresetDocument(invalid), /marker prompt/);
 });
 
 test("promptOrder controls runtime order, disabled entries are skipped, and markers stay live", () => {

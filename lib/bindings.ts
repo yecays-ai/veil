@@ -2,7 +2,6 @@ import { APP_IDS, type AppId } from "./app-registry";
 
 export type BindingSlot = {
   apiConfigId?: string | null;
-  voiceConfigId?: string | null;
   presetId?: string | null;
   worldBookIds?: string[];
   regexIds?: string[];
@@ -16,7 +15,7 @@ export type BindingDocument = {
 };
 export type ManagedBindingField = "apiConfigId" | "presetId" | "worldBookIds" | "regexIds";
 export type BindingScope = { characterId?: string; appId?: AppId };
-const scalarKeys = ["apiConfigId", "voiceConfigId", "presetId"] as const;
+const scalarKeys = ["apiConfigId", "presetId"] as const;
 const listKeys = ["worldBookIds", "regexIds"] as const;
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)

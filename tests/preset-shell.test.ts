@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const presetCss = readFileSync("app/settings/presets/presets.css", "utf8");
@@ -27,14 +27,13 @@ test("Preset wrappers preserve the bounded flex chain and PageShell owns vertica
   assert.match(header, /flex:\s*none/);
 });
 
-test("Settings classifies Presets under Data & Rules and Backup separately under Data", () => {
+test("Settings keeps Presets under Data & Rules and has no Backup entry", () => {
   const page = readFileSync("app/settings/page.tsx", "utf8");
   const sections = [...page.matchAll(/<CardGrid\s+label="([^"]+)"([\s\S]*?)\/>/g)];
   const rules = sections.find((section) => section[1] === "Data & Rules")?.[2] ?? "";
-  const data = sections.find((section) => section[1] === "Data")?.[2] ?? "";
   assert.match(rules, /href:\s*"\/settings\/presets"/);
   assert.doesNotMatch(rules, /Data & Backup|\/settings\/data"/);
-  assert.match(data, /label:\s*"Data & Backup"/);
-  assert.match(data, /href:\s*"\/settings\/data"/);
-  assert.doesNotMatch(data, /\/settings\/presets/);
+  assert.doesNotMatch(page, /Data & Backup|\/settings\/data/);
+  assert.equal(existsSync("lib/backup/types.ts"), false);
+  assert.equal(existsSync("app/settings/data/page.tsx"), false);
 });

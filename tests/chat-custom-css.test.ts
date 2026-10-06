@@ -21,7 +21,7 @@ test("conversation CSS removes unscoped imports and tolerates empty or malformed
   assert.doesNotThrow(() => scopeSessionCSS(".broken { color: red", ".chat-room-wrapper"));
 });
 
-test("custom CSS persists per conversation, clears independently and survives backup", async () => {
+test("custom CSS persists and clears independently per conversation", async () => {
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
   const peter = await storage.openSession("peter");
@@ -32,12 +32,6 @@ test("custom CSS persists per conversation, clears independently and survives ba
   const reloaded = new ChatStorage(() => factory);
   assert.equal((await reloaded.readSession(peter.id)).session.customCSS, css);
   assert.equal((await reloaded.readSession(lan.id)).session.customCSS, undefined);
-  const backup = await reloaded.exportBackup();
-  assert.equal(backup.sessions.find((session) => session.id === peter.id)?.customCSS, css);
-  const restored = new ChatStorage(() => new IDBFactory());
-  await restored.importBackup(backup);
-  assert.equal((await restored.readSession(peter.id)).session.customCSS, css);
-
   await reloaded.updateSessionSettings(peter.id, { customCSS: null });
   assert.equal((await reloaded.readSession(peter.id)).session.customCSS, undefined);
   assert.equal((await reloaded.readSession(lan.id)).session.customCSS, undefined);

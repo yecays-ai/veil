@@ -1,4 +1,4 @@
-import type { StringStorage } from "./foundation-storage";
+import type { StringStorage } from "./storage-types";
 
 export const CONTACT_STORAGE_KEY = "veil.contacts.v1";
 export type Contact = { id: string; characterId: string; createdAt: number };

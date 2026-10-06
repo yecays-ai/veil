@@ -146,9 +146,9 @@ test("non-chat generation leaves sessions, messages and WorldBook activation sta
   const api = new ApiConfigStorage(() => factory);
   await api.saveApiConfig((await value.services.api("chat-default"))!);
   const session = await storage.openSession("a"); await storage.send(session.id, "existing");
-  const before = await storage.exportBackup(); const world = await storage.readWorldBookState(session.id);
+  const before = await storage.readSession(session.id); const world = await storage.readWorldBookState(session.id);
   await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit,
     { ...value.services, api: (id) => api.getApiConfig(id) });
-  assert.deepEqual(await storage.exportBackup(), before);
+  assert.deepEqual(await storage.readSession(session.id), before);
   assert.deepEqual(await storage.readWorldBookState(session.id), world);
 });

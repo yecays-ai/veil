@@ -3,7 +3,8 @@ import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { buildTimeContext, historyTimestamp } from "../lib/chat/time-context";
 import { defaultFoundation, normalizeFoundation, normalizeCharacterInput } from "../lib/foundation-types";
-import { createFoundationStorage } from "../lib/foundation-storage";
+import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
+import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
 import { assembleChatPrompt } from "../lib/chat/prompt";
 import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
@@ -38,14 +39,10 @@ test("timezone authority and missing/invalid fallback are explicit and safe", (c
   assert.equal(buildTimeContext(instant).user.timezone, "Asia/Tokyo");
 });
 
-test("timeAware defaults ON for old documents and persists through existing foundation storage", async () => {
+test("timeAware defaults ON and persists through current Core Foundation storage", async () => {
   assert.equal(defaultFoundation().runtime.timeAware, true);
   assert.equal(normalizeFoundation({ version: 1 }).runtime.timeAware, true);
-  const values = new Map<string, string>();
-  const storage = createFoundationStorage(() => ({
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => { values.set(key, value); },
-  }));
+  const storage = createIndexedDBFoundationStorage(new IndexedDBDocumentStorage(() => new IDBFactory()));
   await storage.transact((document) => ({ ...document, runtime: { timeAware: false } }));
   assert.equal((await storage.load()).runtime.timeAware, false);
 });

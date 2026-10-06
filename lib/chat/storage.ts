@@ -5,8 +5,6 @@ import {
   type ChatSession,
   type ReplyBatch,
 } from "./types";
-import type { BackupChat, BackupMessage, BackupSession } from "../backup/types";
-import { sameBackupChat } from "../backup/equality";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
@@ -14,8 +12,7 @@ import { normalizeBackgroundBlur } from "./types";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
-const CONVERSATION_STORES = ["sessions", "messages"];
-const STORES = [...CONVERSATION_STORES, "chatSettings", "assets", "worldBookStates"];
+const STORES = ["sessions", "messages", "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
@@ -25,60 +22,6 @@ function logOpenFailure(stage: string, error: unknown) {
   const name = error instanceof Error && names.includes(error.name) ? error.name : "Error";
   // Never log the exception object/message: only a fixed stage and error name.
   console.warn(`[Chat storage] ${stage}: ${name}`);
-}
-
-function backupSession(session: ChatSession): BackupSession {
-  return {
-    id: session.id,
-    characterId: session.characterId,
-    ...(session.type ? { type: session.type } : {}),
-    ...(session.participantIds ? { participantIds: session.participantIds } : {}),
-    ...(session.title ? { title: session.title } : {}),
-    updatedAt: session.updatedAt,
-    ...(session.lastMessageId ? { lastMessageId: session.lastMessageId } : {}),
-    ...(session.lastMessagePreview !== undefined
-      ? { lastMessagePreview: session.lastMessagePreview }
-      : {}),
-    remark: session.remark,
-    autoReplyOnKeyboardDismiss: session.autoReplyOnKeyboardDismiss,
-    ...(session.streamOnline !== undefined ? { streamOnline: session.streamOnline } : {}),
-    ...(session.customCSS !== undefined ? { customCSS: session.customCSS } : {}),
-    nextOrder: session.nextOrder,
-  };
-}
-
-function backupMessage(message: ChatMessage): BackupMessage {
-  return {
-    id: message.id,
-    sessionId: message.sessionId,
-    role: message.role,
-    content: message.content,
-    status: message.status,
-    createdAt: message.createdAt,
-    order: message.order,
-    ...(message.requestedBy ? { requestedBy: message.requestedBy } : {}),
-    ...(message.error !== undefined ? { error: message.error } : {}),
-    ...(message.quote ? { quote: { ...message.quote } } : {}),
-  };
-}
-
-async function conversationBackup(tx: IDBTransaction): Promise<BackupChat> {
-  const [sessions, messages] = await Promise.all([
-    request<ChatSession[]>(tx.objectStore("sessions").getAll()),
-    request<ChatMessage[]>(tx.objectStore("messages").getAll()),
-  ]);
-  return {
-    version: 1,
-    sessions: sessions.map(backupSession),
-    messages: messages.map(backupMessage),
-  };
-}
-
-async function addConversationBackup(tx: IDBTransaction, backup: BackupChat) {
-  const sessions = tx.objectStore("sessions"),
-    messages = tx.objectStore("messages");
-  for (const session of backup.sessions) await request(sessions.add(session));
-  for (const message of backup.messages) await request(messages.add(message));
 }
 
 function storeForUpgrade(
@@ -255,34 +198,6 @@ export class ChatStorage {
       return session;
     });
   }
-  async exportBackup(): Promise<BackupChat> {
-    // API configuration and keys are intentionally outside this transaction.
-    return this.transaction("readonly", conversationBackup, CONVERSATION_STORES);
-  }
-  async importBackup(backup: BackupChat): Promise<void> {
-    return this.transaction("readwrite", async (tx) => {
-      const sessions = tx.objectStore("sessions");
-      const messages = tx.objectStore("messages");
-      const [sessionCount, messageCount] = await Promise.all([
-        request(sessions.count()),
-        request(messages.count()),
-      ]);
-      if (sessionCount || messageCount)
-        throw new Error("Chat data is no longer empty. Restore was not applied.");
-      await addConversationBackup(tx, backup);
-    }, CONVERSATION_STORES);
-  }
-  async replaceBackup(expectedCurrent: BackupChat, backup: BackupChat): Promise<void> {
-    // Keep credentials out of both the replacement and its rollback snapshot.
-    return this.transaction("readwrite", async (tx) => {
-      const sessions = tx.objectStore("sessions");
-      const messages = tx.objectStore("messages");
-      if (!sameBackupChat(await conversationBackup(tx), expectedCurrent))
-        throw new Error("Chat data changed while restore was being prepared.");
-      await Promise.all([request(sessions.clear()), request(messages.clear())]);
-      await addConversationBackup(tx, backup);
-    }, CONVERSATION_STORES);
-  }
   openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)
       return Promise.reject(new Error("Character is required."));
@@ -290,8 +205,7 @@ export class ChatStorage {
       const table = tx.objectStore("sessions");
       const sessions: ChatSession[] = await request(table.getAll());
       const existing = sessions.filter((session) => session.type !== "group" && session.characterId === characterId);
-      // Preserve legacy direct chats in place; otherwise reuse the existing private session.
-      const direct = existing.find((session) => session.id === `character:${characterId}`) ?? existing[0];
+      const direct = existing[0];
       if (direct) return direct;
       const session: ChatSession = {
         id: crypto.randomUUID(),
@@ -680,7 +594,7 @@ export class ChatStorage {
   finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
     transformPart: (part: string) => string = (part) => part): Promise<ChatMessage[]> {
     const parts = splitAssistantReply(content).map(transformPart).map((part) => part.trim())
-      .filter((part) => !!part && !/^blank line$/i.test(part));
+      .filter(Boolean);
     if (!parts.length)
       return Promise.reject(new Error("The API returned no reply text."));
     return this.transaction("readwrite", async (tx) => {

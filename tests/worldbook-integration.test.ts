@@ -5,7 +5,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
 import { createChatEngine as baseChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
-import { createBuiltinPreset, createPresetDocument, validatePresetDocument } from "../lib/preset";
+import { createBuiltinPreset, createPresetDocument } from "../lib/preset";
 import { normalizeWorldBook } from "../lib/worldbook";
 
 async function setup(entries: object[]) {
@@ -104,17 +104,6 @@ test("failure before provider start does not advance WorldBook cycles", async ()
     undefined, undefined, async () => books);
   await assert.rejects(engine.requestReply(session.id), /missing/);
   assert.equal(await storage.readWorldBookState(session.id), null);
-});
-
-test("existing official and custom Presets gain World Info markers while retaining prior prompt order", () => {
-  const old = createBuiltinPreset();
-  old.prompts = old.prompts.filter((item) => !item.identifier.startsWith("world-info-"));
-  old.promptOrder = old.promptOrder.filter((item) => !item.identifier.startsWith("world-info-"));
-  const custom = { ...structuredClone(old), id: "custom", name: "Personal", builtIn: false };
-  const document = validatePresetDocument({ version: 3, presets: [old, custom], activePresetId: "custom" });
-  assert.equal(document.presets[0].prompts.filter((item) => item.identifier.startsWith("world-info-")).length, 2);
-  assert.equal(document.presets[1].prompts.filter((item) => item.identifier.startsWith("world-info-")).length, 2);
-  assert.deepEqual(document.presets[1].promptOrder.filter((item) => !item.identifier.startsWith("world-info-")), old.promptOrder);
 });
 
 test("editing and deleting real history invalidate sticky lore, and Clear removes timed state", async () => {

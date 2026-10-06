@@ -7,7 +7,7 @@ import { parseQuotedReply, quoteMessage } from "../lib/chat/quote";
 import { assembleChatPrompt, emptyMemorySlot } from "../lib/chat/prompt";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 
-test("quote targets one split bubble and survives reload, backup, editing and target deletion", async () => {
+test("quote targets one split bubble and survives reload, editing and target deletion", async () => {
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
   const session = await storage.openSession("a");
@@ -20,9 +20,6 @@ test("quote targets one split bubble and survives reload, backup, editing and ta
   await storage.deleteMessages(session.id, [parts[1].id]);
   const saved = await new ChatStorage(() => factory).readSession(session.id);
   assert.deepEqual(saved.messages.at(-1)?.quote, reply.quote);
-  const restored = new ChatStorage(() => new IDBFactory());
-  await restored.importBackup(await storage.exportBackup());
-  assert.deepEqual((await restored.readSession(session.id)).messages.at(-1)?.quote, reply.quote);
   const other = await storage.openSession("b");
   await assert.rejects(storage.send(other.id, "wrong session", first.id), /not found/);
   const plain = await storage.send(session.id, "no quote");

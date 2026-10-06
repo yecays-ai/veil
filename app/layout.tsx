@@ -3,6 +3,7 @@ import { PhoneShell } from "../components/phone-shell";
 import { ThemeProvider } from "../components/theme-provider";
 import { FoundationProvider } from "../components/foundation-provider";
 import { StandaloneMode } from "../components/standalone-mode";
+import { ProductBootstrap } from "../components/product-bootstrap";
 import "./globals.css";
 import "./appearance.css";
 import "./desktop.css";
@@ -37,6 +38,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <StandaloneMode />
+        <ProductBootstrap />
         <main className="app-root">
           <PhoneShell>
             <ThemeProvider>

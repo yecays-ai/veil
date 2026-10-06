@@ -1,17 +1,14 @@
 import type { BindingStorage } from "./binding-storage";
-import type { StringStorage } from "./foundation-storage";
+import type { StringStorage } from "./storage-types";
 import { withoutRegexBinding } from "./bindings";
 import { emptyRegexDocument, validateRegexDocument, type RegexDocument } from "./regex";
-import { DEFAULT_REGEX_GROUP_ID, withDefaultRegexGroup } from "./regex-defaults";
+import { DEFAULT_REGEX_GROUP_ID, defaultRegexGroup, withDefaultRegexGroup } from "./regex-defaults";
 
 const KEY = "veil.regex.v1";
 export interface RegexStorage {
   load(): Promise<RegexDocument>;
   save(document: RegexDocument): Promise<void>;
   transact(update: (current: RegexDocument) => RegexDocument): Promise<RegexDocument>;
-  readRaw(): Promise<string | null>;
-  replaceIfCurrent(expected: string | null, document: RegexDocument): Promise<string>;
-  rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
 }
 export function createRegexStorage(getStorage: () => StringStorage): RegexStorage {
   const load = (): RegexDocument => {
@@ -33,38 +30,31 @@ export function createRegexStorage(getStorage: () => StringStorage): RegexStorag
       getStorage().setItem(KEY, JSON.stringify(next));
       return next;
     },
-    async readRaw() { return getStorage().getItem(KEY); },
-    async replaceIfCurrent(expected, document) {
-      if (getStorage().getItem(KEY) !== expected)
-        throw new Error("Regex data changed while restore was being prepared.");
-      const raw = JSON.stringify(validateRegexDocument(document));
-      getStorage().setItem(KEY, raw);
-      return raw;
-    },
-    async rollbackIfCurrent(expected, previous) {
-      if (getStorage().getItem(KEY) !== expected) return false;
-      if (previous === null) getStorage().removeItem?.(KEY);
-      else getStorage().setItem(KEY, previous);
-      return true;
-    },
   };
 }
 const rawBrowserRegexStorage = createRegexStorage(() => window.localStorage);
+export async function ensureDefaultRegexGroup(storage: RegexStorage) {
+  const current = await storage.load();
+  const builtin = current.groups.find((group) => group.id === DEFAULT_REGEX_GROUP_ID);
+  if (builtin && (builtin.createdAt !== 0 || builtin.updatedAt !== 0)) return;
+  const addOrRefreshDefaults = (document: RegexDocument): RegexDocument => {
+    const existing = document.groups.find((group) => group.id === DEFAULT_REGEX_GROUP_ID);
+    if (existing && (existing.createdAt !== 0 || existing.updatedAt !== 0)) return document;
+    const groups = existing
+      ? document.groups.map((group) => group.id === DEFAULT_REGEX_GROUP_ID ? defaultRegexGroup() : group)
+      : withDefaultRegexGroup(document.groups);
+    return { ...document, groups };
+  };
+  try { await storage.transact(addOrRefreshDefaults); }
+  catch (reason) {
+    const after = (await storage.load()).groups.find((group) => group.id === DEFAULT_REGEX_GROUP_ID);
+    if (!after || (after.createdAt === 0 && after.updatedAt === 0)) throw reason;
+  }
+}
 let initializing: Promise<void> | undefined;
 async function ensureBrowserDefaults() {
-  if (!initializing) initializing = (async () => {
-    const current = await rawBrowserRegexStorage.load();
-    if (current.groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID)) return;
-    const addDefaults = (document: RegexDocument): RegexDocument => {
-      if (document.groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID)) return document;
-      return { ...document, groups: withDefaultRegexGroup(document.groups) };
-    };
-    try { await rawBrowserRegexStorage.transact(addDefaults); }
-    catch (reason) {
-      if (!(await rawBrowserRegexStorage.load()).groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID))
-        throw reason;
-    }
-  })().finally(() => { initializing = undefined; });
+  if (!initializing) initializing = ensureDefaultRegexGroup(rawBrowserRegexStorage)
+    .finally(() => { initializing = undefined; });
   await initializing;
 }
 export const browserRegexStorage = {
@@ -73,15 +63,6 @@ export const browserRegexStorage = {
   async transact(update: (current: RegexDocument) => RegexDocument) {
     await ensureBrowserDefaults();
     return rawBrowserRegexStorage.transact(update);
-  },
-  async readRaw() { await ensureBrowserDefaults(); return rawBrowserRegexStorage.readRaw(); },
-  async replaceIfCurrent(expected: string | null, document: RegexDocument) {
-    await ensureBrowserDefaults();
-    return rawBrowserRegexStorage.replaceIfCurrent(expected, document);
-  },
-  async rollbackIfCurrent(expected: string, previous: string | null) {
-    await ensureBrowserDefaults();
-    return rawBrowserRegexStorage.rollbackIfCurrent(expected, previous);
   },
 };
 

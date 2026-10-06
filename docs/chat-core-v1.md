@@ -24,14 +24,14 @@ keyboard dismissal and must not turn Send into generation.
 
 `lib/chat/storage.ts` uses native IndexedDB (`veil-chat-v2`, version 1):
 
-- `sessions`: deterministic session ID, display summary,
+- `sessions`: independent Conversation ID, display summary,
   optional remark and a monotonic `nextOrder` counter.
 - `messages`: individual records keyed by message ID, indexed by session; role,
   text, status, creation time, stable order and optional batch/error metadata.
 
 Text API resources and credentials live in the separate `veil-api-config-v1`
-database. They are never stored in bindings, themes, messages, backups, URL
-parameters or logs.
+database. They are never stored in bindings, themes, messages, URL parameters
+or logs.
 
 Every mutation is an atomic record operation, not a cache/snapshot replacement.
 Loads are read-only. Empty/failed hydration has no path to clear existing data.

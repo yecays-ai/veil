@@ -1,5 +1,5 @@
 import type { BindingStorage } from "./binding-storage";
-import type { StringStorage } from "./foundation-storage";
+import type { StringStorage } from "./storage-types";
 import { emptyWorldBookDocument, validateWorldBookDocument, type WorldBookDocument } from "./worldbook";
 import { withoutWorldBookBinding } from "./bindings";
 
@@ -8,9 +8,6 @@ export interface WorldBookStorage {
   load(): Promise<WorldBookDocument>;
   save(document: WorldBookDocument): Promise<void>;
   transact(update: (current: WorldBookDocument) => WorldBookDocument): Promise<WorldBookDocument>;
-  readRaw(): Promise<string | null>;
-  replaceIfCurrent(expected: string | null, document: WorldBookDocument): Promise<string>;
-  rollbackIfCurrent(expected: string, previous: string | null): Promise<boolean>;
 }
 export function createWorldBookStorage(getStorage: () => StringStorage): WorldBookStorage {
   const load = (): WorldBookDocument => {
@@ -32,20 +29,6 @@ export function createWorldBookStorage(getStorage: () => StringStorage): WorldBo
         throw new Error("WorldBook data changed while saving. Try again.");
       getStorage().setItem(KEY, JSON.stringify(next));
       return next;
-    },
-    async readRaw() { return getStorage().getItem(KEY); },
-    async replaceIfCurrent(expected, document) {
-      if (getStorage().getItem(KEY) !== expected)
-        throw new Error("WorldBook data changed while restore was being prepared.");
-      const raw = JSON.stringify(validateWorldBookDocument(document));
-      getStorage().setItem(KEY, raw);
-      return raw;
-    },
-    async rollbackIfCurrent(expected, previous) {
-      if (getStorage().getItem(KEY) !== expected) return false;
-      if (previous === null) getStorage().removeItem?.(KEY);
-      else getStorage().setItem(KEY, previous);
-      return true;
     },
   };
 }

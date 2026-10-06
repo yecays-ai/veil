@@ -95,35 +95,6 @@ export function createBuiltinPreset(): Preset {
 export const createPresetDocument = (): PresetDocument =>
   ({ version: 3, presets: [createBuiltinPreset()], activePresetId: BUILTIN_PRESET_ID });
 
-// Existing VEIL Default documents predate the two World Info markers. Upgrade
-// only that exact official shape; a custom Preset keeps its chosen pipeline.
-function previousBuiltinPreset(): Preset {
-  const preset = createBuiltinPreset();
-  const worldMarkers = new Set(["world-info-before", "world-info-after"]);
-  preset.prompts = preset.prompts.filter((entry) => !worldMarkers.has(entry.identifier));
-  preset.promptOrder = preset.promptOrder.filter((entry) => !worldMarkers.has(entry.identifier));
-  return preset;
-}
-
-function withWorldInfoMarkers(preset: Preset): Preset {
-  const updated = structuredClone(preset);
-  for (const [marker, anchor, placeAfter] of [
-    ["world-info-before", "universe", true],
-    ["world-info-after", "relations", true],
-  ] as const) {
-    if (updated.prompts.some((entry) => entry.source === "marker" && entry.marker === marker)) continue;
-    let identifier = marker;
-    if (updated.prompts.some((entry) => entry.identifier === identifier)) identifier += "-runtime";
-    const prompt: MarkerPrompt = { identifier, name: marker === "world-info-before" ? "◇ World Info Before" : "◇ World Info After",
-      role: "system", enabled: true, source: "marker", marker };
-    updated.prompts.push(prompt);
-    const anchorIndex = updated.promptOrder.findIndex((item) => item.identifier === anchor);
-    updated.promptOrder.splice(anchorIndex < 0 ? updated.promptOrder.length : anchorIndex + (placeAfter ? 1 : 0),
-      0, { identifier, enabled: true });
-  }
-  return updated;
-}
-
 export function activePreset(document: PresetDocument): Preset {
   return document.presets.find((preset) => preset.id === document.activePresetId) ?? createBuiltinPreset();
 }
@@ -200,53 +171,16 @@ export function validatePreset(preset: unknown): Preset {
 
 export function validatePresetDocument(value: unknown): PresetDocument {
   if (!object(value)) throw new Error("Preset data has an unsupported format.");
-  if (value.version === 1 || value.version === 2) {
-    if (!exactKeys(value, ["version", "activePreset"])) throw new Error("Preset data has an unsupported format.");
-    const migrated = validatePreset(value.activePreset);
-    const identifiers = new Set(migrated.prompts.map((entry) => entry.identifier));
-    if (value.version === 1 && !identifiers.has("chat_output_format")) {
-      const responsePromptIndex = migrated.prompts.findIndex((entry) =>
-        entry.identifier === "response-directive");
-      migrated.prompts.splice(
-        responsePromptIndex < 0 ? migrated.prompts.length : responsePromptIndex,
-        0,
-        chatOutputPrompt(),
-      );
-      const responseIndex = migrated.promptOrder.findIndex((entry) =>
-        entry.identifier === "response-directive");
-      migrated.promptOrder.splice(
-        responseIndex < 0 ? migrated.promptOrder.length : responseIndex,
-        0,
-        { identifier: "chat_output_format", enabled: true },
-      );
-    }
-    const document = createPresetDocument();
-    if (presetFingerprint(migrated) !== presetFingerprint(createBuiltinPreset()) &&
-        presetFingerprint(migrated) !== presetFingerprint(previousBuiltinPreset())) {
-      // Earlier versions allowed edits to the default. Preserve them as a custom
-      // copy instead of silently discarding them when making the built-in immutable.
-      if (migrated.id === BUILTIN_PRESET_ID) migrated.id = `${BUILTIN_PRESET_ID}-migrated`;
-      migrated.builtIn = false;
-      document.presets.push(withWorldInfoMarkers(migrated));
-      document.activePresetId = migrated.id;
-    }
-    return document;
-  }
   if (value.version !== 3 || !exactKeys(value, ["version", "presets", "activePresetId"]) ||
       !Array.isArray(value.presets) || !text(value.activePresetId))
     throw new Error("Preset library has an unsupported format.");
-  const presets = value.presets.map((item) => {
-    const preset = validatePreset(item);
-    return preset.id === BUILTIN_PRESET_ID &&
-      presetFingerprint(preset) === presetFingerprint(previousBuiltinPreset())
-      ? createBuiltinPreset() : preset.id === BUILTIN_PRESET_ID ? preset : withWorldInfoMarkers(preset);
-  });
+  const presets = value.presets.map(validatePreset);
   const ids = new Set(presets.map((preset) => preset.id));
   if (ids.size !== presets.length || !ids.has(value.activePresetId as string))
     throw new Error("Preset library contains duplicate IDs or an invalid active Preset.");
   const builtin = presets.find((preset) => preset.id === BUILTIN_PRESET_ID);
-  if (!builtin || presetFingerprint(builtin) !== presetFingerprint(createBuiltinPreset()) ||
+  if (!builtin || !builtin.builtIn ||
       presets.some((preset) => preset.builtIn && preset.id !== BUILTIN_PRESET_ID))
-    throw new Error("VEIL Default is read-only and must remain in the library.");
+    throw new Error("VEIL Default is missing or has an invalid identity.");
   return { version: 3, presets, activePresetId: value.activePresetId as string };
 }

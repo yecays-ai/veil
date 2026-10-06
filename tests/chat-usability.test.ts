@@ -24,7 +24,7 @@ test("toast dismisses after 1.8s, repeats restart and cleanup prevents stale upd
   assert.equal(value, "Copied");
 });
 
-test("session toggles default OFF, persist independently and survive conversation backup", async () => {
+test("session toggles default OFF and persist independently", async () => {
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
   const a = await storage.openSession("a"), b = await storage.openSession("b");
@@ -35,10 +35,6 @@ test("session toggles default OFF, persist independently and survive conversatio
   assert.equal(saved.session.streamOnline, true);
   assert.equal(saved.session.autoReplyOnKeyboardDismiss, true);
   assert.equal((await storage.readSession(b.id)).session.streamOnline, false);
-  assert.equal((await storage.exportBackup()).sessions.find((s) => s.id === a.id)?.streamOnline, true);
-  const restored = new ChatStorage(() => new IDBFactory());
-  await restored.importBackup(await storage.exportBackup());
-  assert.equal((await restored.readSession(a.id)).session.streamOnline, true);
 });
 
 test("direct reply awaits persisted Send and generates once with the new message in history", async () => {

@@ -32,7 +32,7 @@ test("named config CRUD preserves multiple stable resources and independent cred
   const second = {
     ...config,
     id: "second",
-    name: "Custom backup",
+    name: "Secondary API",
     model: "other",
     apiKey: "fake-other-key",
   };

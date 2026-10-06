@@ -13,48 +13,18 @@ import type { GenerationParameters } from "../lib/preset";
 
 function memory() {
   const values = new Map<string, string>();
-  return { values, storage: createPresetStorage(() => ({
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => { values.set(key, value); },
-    removeItem: (key) => { values.delete(key); },
-  })) };
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  };
+  return { values, storage: createPresetStorage(() => storage) };
 }
+
 function custom() {
   const document = copyPreset(createPresetDocument(), BUILTIN_PRESET_ID, "Custom", "custom");
   return { document, preset: document.presets[1] };
 }
-
-test("v2 built-in migrates once on the same storage key to the v3 library", async () => {
-  const { values, storage } = memory();
-  values.set("veil.preset.v1", JSON.stringify({ version: 2, activePreset: createBuiltinPreset() }));
-  assert.deepEqual(await storage.load(), createPresetDocument());
-  assert.deepEqual(JSON.parse(values.get("veil.preset.v1")!), createPresetDocument());
-  assert.deepEqual(await storage.load(), createPresetDocument());
-  assert.equal(values.size, 1);
-});
-
-test("v2 custom migration preserves all configuration and active choice", () => {
-  const { preset } = custom();
-  preset.description = "My saved description";
-  preset.generation = { temperature: 0.7, maxTokens: 2048 };
-  preset.prompts[0].enabled = false;
-  preset.promptOrder.reverse();
-  const migrated = validatePresetDocument({ version: 2, activePreset: preset });
-  assert.deepEqual(migrated.presets[0], createBuiltinPreset());
-  assert.deepEqual(activePreset(migrated), preset);
-  assert.equal(migrated.presets.length, 2);
-  assert.deepEqual(validatePresetDocument(migrated), migrated);
-});
-
-test("legacy edited built-in becomes an active custom copy without losing edits", () => {
-  const edited = createBuiltinPreset();
-  edited.name = "My Default";
-  const directive = edited.prompts.find((entry) => entry.identifier === "response-directive")!;
-  assert(directive.source === "prompt"); directive.content = "Saved directive";
-  const migrated = validatePresetDocument({ version: 2, activePreset: edited });
-  assert.deepEqual(migrated.presets[0], createBuiltinPreset());
-  assert.deepEqual(activePreset(migrated), { ...edited, builtIn: false, id: `${BUILTIN_PRESET_ID}-migrated` });
-});
 
 test("invalid library IDs, active choice, fields, and built-in mutations fail closed", () => {
   const { document } = custom();
@@ -64,7 +34,6 @@ test("invalid library IDs, active choice, fields, and built-in mutations fail cl
     { ...document, presets: document.presets.slice(1) },
     { ...document, extra: "unknown" },
     { ...document, presets: document.presets.map((entry) => ({ ...entry, builtIn: true })) },
-    { ...document, presets: document.presets.map((entry) => entry.builtIn ? { ...entry, name: "Renamed" } : entry) },
   ]) assert.throws(() => validatePresetDocument(invalid));
   assert.equal(activePreset({ ...document, activePresetId: "missing" }).id, BUILTIN_PRESET_ID);
 });

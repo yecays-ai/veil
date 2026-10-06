@@ -8,7 +8,6 @@ import { browserThemeStorage } from "../lib/theme-storage";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
 import { loadWeatherState, clearWeatherCache } from "../lib/weather";
 import { localTime, resolveTimezone } from "../lib/participant-config";
-import { migrateLegacyWidgetCharacters } from "../lib/legacy-widget-character";
 
 function foundation() {
   return { ...defaultFoundation(), characters: [
@@ -29,7 +28,7 @@ test("Here & There normalization retains only time flags and a Character ID", ()
     { hour12: false, showSeconds: false });
 });
 
-test("legacy first binding is persisted once and independent widget IDs survive Theme reload", async () => {
+test("explicit widget bindings persist independently across Theme reload", async () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const saved = new Map<string, string>();
   Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
@@ -38,9 +37,8 @@ test("legacy first binding is persisted once and independent widget IDs survive 
   } } });
   try {
     const document = foundation();
-    let theme = normalizeDocument(null);
-    assert.equal(resolveHereThereCharacter(theme.current.widgets[0].config, document), undefined);
-    theme = migrateLegacyWidgetCharacters(theme, { ...document, selectedCharacterId: "a" });
+    let theme = bindHereThereCharacter(normalizeDocument(null), "here-there-default", "a");
+    assert.equal(resolveHereThereCharacter(theme.current.widgets[0].config, document)?.characterId, "a");
     theme.current.widgets.push({ ...theme.current.widgets[0], id: "second", page: 2 });
     theme = bindHereThereCharacter(theme, "second", "b");
     await browserThemeStorage.save(normalizeDocument(theme));
@@ -48,7 +46,6 @@ test("legacy first binding is persisted once and independent widget IDs survive 
     assert.equal(theme.current.widgets[0].config.characterId, "a");
     assert.equal(theme.current.widgets[1].config.characterId, "b");
     assert.equal(resolveHereThereCharacter(theme.current.widgets[0].config, document)?.characterId, "a");
-    assert.deepEqual(migrateLegacyWidgetCharacters(theme, { ...document, selectedCharacterId: "b" }), theme);
     assert.deepEqual(bindHereThereCharacter(theme, "missing-widget", "b"), theme);
   } finally {
     if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
