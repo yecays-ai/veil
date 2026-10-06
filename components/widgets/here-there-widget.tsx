@@ -14,7 +14,8 @@ import {
 import type { WidgetInstance } from "../../lib/widget-types";
 import { useDeviceClock } from "./use-device-clock";
 import { useWeatherState } from "./use-weather";
-import { hereThereCommentNeedsRefresh, ensureHereThereComment } from "../../lib/here-there-comment";
+import { HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh, ensureHereThereComment,
+  startHereThereCommentAttempt } from "../../lib/here-there-comment";
 
 function Weather({ state }: { state: WeatherState }) {
   switch (state.status) {
@@ -86,7 +87,7 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const [inputModality, setInputModality] = useState<"touch" | "keyboard">("keyboard");
   const touchInteraction = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
-  const commentGenerating = useRef(false);
+  const commentAttempts = useRef(new HereThereCommentAttemptGuard());
   useEffect(() => {
     if (inputModality !== "touch") return;
     function keyboardInteraction() {
@@ -123,11 +124,12 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   );
   useEffect(() => {
     if (!foundationReady || !themeReady || !now || !character
-      || hereWeather.status === "loading" || thereWeather.status === "loading"
-      || commentGenerating.current || !hereThereCommentNeedsRefresh(widget, now)) return;
-    commentGenerating.current = true;
-    void ensureHereThereComment(widget, { foundation: document, characterId: character.characterId,
-      now, hereWeather, thereWeather }, commit).finally(() => { commentGenerating.current = false; });
+      || hereWeather.status === "loading" || thereWeather.status === "loading") return;
+    const attempt = startHereThereCommentAttempt(
+      () => commentAttempts.current.begin(character.characterId, hereThereCommentNeedsRefresh(widget, now)),
+      () => ensureHereThereComment(widget, { foundation: document, characterId: character.characterId,
+        now, hereWeather, thereWeather }, commit));
+    if (attempt) void attempt.finally(() => commentAttempts.current.finish(character.characterId));
   }, [foundationReady, themeReady, now, character, widget, widget.id, widget.config.characterId,
     widget.config.comment, document, hereWeather, thereWeather, commit]);
   return (

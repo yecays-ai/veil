@@ -10,6 +10,7 @@ import {
   openAITextProvider,
   type TextProvider,
 } from "../lib/chat/provider";
+import { completionStartSummary, parseCompletionUsage, promptSummary } from "../lib/chat/request-diagnostics";
 import {
   type ChatMessage,
   type PromptTurn,
@@ -124,9 +125,11 @@ test("Send persists separate bubbles without generating; Request Reply consumes 
   const { storage, factory } = create();
   const session = await storage.openSession("a");
   let calls = 0;
+  let source = "";
   let prompt: PromptTurn[] = [];
-  const provider: TextProvider = async function* (_config, messages) {
+  const provider: TextProvider = async function* (_config, messages, _signal, _generation, request) {
     calls++;
+    source = request?.source ?? "";
     prompt = messages;
     yield "Hello ";
     yield "Writer";
@@ -145,8 +148,9 @@ test("Send persists separate bubbles without generating; Request Reply consumes 
     engine.requestReply(session.id),
   ]);
   assert.equal(calls, 1);
+  assert.equal(source, "manual-reply");
   assert.deepEqual(
-    prompt.slice(1),
+    prompt.filter((turn) => turn.role === "user" || turn.role === "assistant"),
     ["first", "second", "third"].map((content) => ({ role: "user", content })),
   );
   assert.equal(await engine.requestReply(session.id), null);
@@ -183,6 +187,19 @@ test("atomic reservation across clients cannot claim the same pending batch twic
   ]);
   assert.equal(batches.filter(Boolean).length, 1);
   assert.equal((await storage.readSession(session.id)).messages.length, 2);
+});
+
+test("two Chat engines in separate tabs can only invoke one completion for the same pending batch", async () => {
+  const { storage, factory } = create();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "one pending message");
+  let calls = 0;
+  const provider: TextProvider = async function* () { calls++; yield "one reply"; };
+  const first = createChatEngine(storage, async () => foundation(), provider);
+  const second = createChatEngine(new ChatStorage(() => factory), async () => foundation(), provider);
+  await Promise.all([first.requestReply(session.id), second.requestReply(session.id)]);
+  assert.equal(calls, 1);
+  assert.equal((await storage.readSession(session.id)).messages.filter((item) => item.role === "assistant").length, 1);
 });
 
 test("one streamed generation finalizes atomically as ordered assistant bubbles and history uses only parts", async () => {
@@ -372,6 +389,60 @@ test("default prompt includes profiles and only direct relations while empty Mem
   );
 });
 
+test("prompt cache order is stable sections, bounded history, runtime facts and pending input", () => {
+  const document = foundation();
+  const history = [
+    { ...message(1, "PRIVATE_HISTORY_BODY"), role: "user" as const, status: "sent" as const },
+    { ...message(2, "private assistant history"), role: "assistant" as const, status: "complete" as const },
+  ];
+  const pending = { ...message(3, "PRIVATE_PENDING_BODY"), role: "user" as const, status: "sent" as const };
+  const prompt = assembleChatPrompt(document, document.characters[0], [...history, pending], [pending]);
+  const stableIndex = prompt.messages.findIndex((turn) => turn.role === "system" && turn.content.includes("Speak as the Character"));
+  const historyIndex = prompt.messages.findIndex((turn) => turn.content.includes("PRIVATE_HISTORY_BODY"));
+  const runtimeIndex = prompt.messages.findIndex((turn) => turn.role === "system" && turn.content.includes("Current time context:"));
+  const pendingIndex = prompt.messages.findIndex((turn) => turn.content.includes("PRIVATE_PENDING_BODY"));
+  assert.ok(stableIndex >= 0 && stableIndex < historyIndex);
+  assert.ok(historyIndex < runtimeIndex && runtimeIndex < pendingIndex);
+  assert.equal(prompt.messages.filter((turn) => turn.content.includes("PRIVATE_PENDING_BODY")).length, 1);
+});
+
+test("development prompt summaries expose section sizes but never prompt bodies or credentials", () => {
+  const document = foundation();
+  const body = "SECRET_CHAT_BODY_SHOULD_NEVER_BE_LOGGED";
+  const pending = { ...message(2, body), role: "user" as const, status: "sent" as const };
+  const prompt = assembleChatPrompt(document, document.characters[0], [message(1, body), pending], [pending]);
+  const request = { requestId: "request-safe-id", source: "manual-reply" as const, sessionId: "character:peter" };
+  const start = completionStartSummary(request, "deepseek-flash", prompt.messages, true, "2026-10-06T00:00:00.000Z");
+  const summary = promptSummary(request, "deepseek-flash", prompt.diagnostics, prompt.messages);
+  const privateApiKey = "PRIVATE_API_KEY";
+  const serialized = JSON.stringify({ start, summary });
+  assert(!serialized.includes(body));
+  assert(!serialized.includes(privateApiKey));
+  assert(!serialized.includes("character:peter"));
+  assert.equal(start.source, "manual-reply");
+  assert.equal(start.stream, true);
+  assert.equal(summary.totalMessageCount, prompt.messages.length);
+  assert(summary.sections.some((section) => section.identifier === "history"));
+  assert(summary.sections.some((section) => section.identifier === "runtime" && section.role === "system"));
+  assert(summary.sections.some((section) => section.identifier === "pending" && section.role === "user"));
+});
+
+test("completion usage parser supports DeepSeek cache fields, partial usage and absent usage", () => {
+  assert.deepEqual(parseCompletionUsage({ usage: {
+    prompt_tokens: 120, completion_tokens: 8, total_tokens: 128,
+    prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 80,
+  } }), {
+    prompt_tokens: 120, completion_tokens: 8, total_tokens: 128,
+    prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 80,
+  });
+  assert.deepEqual(parseCompletionUsage({ usage: { prompt_tokens: 5, prompt_tokens_details: { cached_tokens: 2 } } }), {
+    prompt_tokens: 5, completion_tokens: null, total_tokens: null,
+    prompt_cache_hit_tokens: 2, prompt_cache_miss_tokens: null,
+  });
+  assert.equal(parseCompletionUsage({ choices: [] }), null);
+  assert.equal(parseCompletionUsage({ usage: null }), null);
+});
+
 test("context window is bounded and pending, edited or deleted content is never duplicated/stale", () => {
   const document = foundation();
   const history = Array.from({ length: 70 }, (_, i) => message(i));
@@ -410,7 +481,7 @@ test("context window is bounded and pending, edited or deleted content is never 
     [{ ...pending[0], content: "edited" }],
     pending,
   );
-  assert.deepEqual(updated.messages.slice(1), [
+  assert.deepEqual(updated.messages.filter((turn) => turn.role === "user" || turn.role === "assistant"), [
     { role: "user", content: "edited" },
   ]);
   assert(!JSON.stringify(updated).includes("pending one"));
@@ -436,7 +507,8 @@ test("engine loads authoritative message records rather than cached edited/delet
     },
   );
   await engine.requestReply(session.id);
-  assert.deepEqual(prompt.slice(1), [{ role: "user", content: "new text" }]);
+  assert.deepEqual(prompt.filter((turn) => turn.role === "user" || turn.role === "assistant"),
+    [{ role: "user", content: "new text" }]);
 });
 
 test("failed/empty hydration cannot overwrite valid stored chat records", async () => {
@@ -609,7 +681,7 @@ test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and
   }
   const originalFetch = globalThis.fetch;
   const payload =
-    ': heartbeat\r\ndata: {"choices":[{"delta":{"reasoning_content":"not chat text"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"Héllo"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":" world"},"finish_reason":"stop"}]}\r\n\r\ndata: [DONE]\r\n\r\n';
+    ': heartbeat\r\ndata: {"choices":[{"delta":{"reasoning_content":"not chat text"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":"Héllo"}}]}\r\n\r\ndata: {"choices":[{"delta":{"content":" world"},"finish_reason":"stop"}],"usage":{"prompt_tokens":19,"completion_tokens":2,"total_tokens":21,"prompt_tokens_details":{"cached_tokens":7},"prompt_cache_hit_tokens":7,"prompt_cache_miss_tokens":12}}\r\n\r\ndata: [DONE]\r\n\r\n';
   globalThis.fetch = async (_url, options) => {
     assert.equal(options?.credentials, "omit");
     assert.equal(options?.referrerPolicy, "no-referrer");
@@ -632,13 +704,32 @@ test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and
   };
   try {
     let reply = "";
-    for await (const text of openAITextProvider(
-      config,
-      [{ role: "user", content: "hello" }],
-      new AbortController().signal,
-    ))
-      reply += text;
+    const originalInfo = console.info;
+    const originalNodeEnv = process.env.NODE_ENV;
+    const logs: { label: unknown; data: unknown }[] = [];
+    Object.assign(process.env, { NODE_ENV: "development" });
+    console.info = ((label: unknown, data: unknown) => { logs.push({ label, data }); }) as typeof console.info;
+    try {
+      for await (const text of openAITextProvider(
+        config,
+        [{ role: "user", content: "hello" }],
+        new AbortController().signal,
+        undefined,
+        { requestId: "usage-stream", source: "manual-reply", sessionId: "character:a" },
+      )) reply += text;
+    } finally {
+      console.info = originalInfo;
+      if (originalNodeEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV");
+      else Object.assign(process.env, { NODE_ENV: originalNodeEnv });
+    }
     assert.equal(reply, "Héllo world");
+    const usageLog = logs.find((entry) => entry.label === "[VEIL completion:usage]")?.data as Record<string, unknown>;
+    assert.deepEqual(usageLog, { requestId: "usage-stream", source: "manual-reply", prompt_tokens: 19,
+      completion_tokens: 2, total_tokens: 21, prompt_cache_hit_tokens: 7, prompt_cache_miss_tokens: 12 });
+    const startLog = logs.find((entry) => entry.label === "[VEIL completion:start]")?.data as Record<string, unknown>;
+    assert.equal(startLog.messageCount, 1);
+    assert.equal(startLog.totalCharacters, "hello".length);
+    assert.equal(startLog.sessionIdHash === "character:a", false);
     let configuredBody: Record<string, unknown> = {};
     globalThis.fetch = async (_url, options) => {
       configuredBody = JSON.parse(String(options?.body));
@@ -687,6 +778,21 @@ test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and
       ))
         void text;
     }, /ended unexpectedly/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("completed SSE response without usage still returns its reply", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(
+    'data: {"choices":[{"delta":{"content":"hello"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+    { headers: { "Content-Type": "text/event-stream" } },
+  );
+  try {
+    let reply = "";
+    for await (const text of openAITextProvider(config, [], new AbortController().signal)) reply += text;
+    assert.equal(reply, "hello");
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -30,8 +30,9 @@ test("regenerate truncates target and all future messages, then stores normal mu
   const { factory, storage, session, document, target, user } = await setup();
   let calls = 0;
   let finalized: readonly ChatMessage[] = [];
-  const engine = createChatEngine(storage, async () => document, async function* (_config, prompt) {
+  const engine = createChatEngine(storage, async () => document, async function* (_config, prompt, _signal, _generation, request) {
     calls++;
+    assert.equal(request?.source, "regenerate");
     const text = prompt.map((turn) => turn.content).join("\n");
     assert.match(text, /User 1/);
     assert.match(text, /Assistant A/);

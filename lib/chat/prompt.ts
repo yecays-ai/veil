@@ -10,6 +10,7 @@ import type { RegexGroup } from "../regex";
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
 export type PromptSection = { identifier: string; content: string };
+export type PromptDiagnosticSection = { identifier: string; role: PromptTurn["role"]; characterLength: number };
 export type PromptRuntimeContext = {
   foundation: FoundationDocument;
   character: Character;
@@ -100,33 +101,46 @@ export function assembleChatPrompt(
   worldInfo?: WorldBookActivation,
   regexGroups: readonly RegexGroup[] = [],
   weather?: RuntimeWeatherContext,
-): { sections: PromptSection[]; messages: PromptTurn[] } {
+): { sections: PromptSection[]; messages: PromptTurn[]; diagnostics: PromptDiagnosticSection[] } {
   const time = foundation.runtime?.timeAware !== false
     ? buildTimeContext(now, foundation.user.timezone, character.timezone, undefined, weather) : undefined;
   const context = { foundation, character, currentMessages, pending, memory, time, worldInfo, regexGroups };
   const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
-  const sections: PromptSection[] = [], messages: PromptTurn[] = [];
+  const sections: PromptSection[] = [], diagnostics: PromptDiagnosticSection[] = [], messages: PromptTurn[] = [];
+  let historyTurns: PromptTurn[] = [];
+  let historyDiagnostics: PromptDiagnosticSection[] = [];
   let timeInjected = false;
   const injectTime = () => {
     if (!time || timeInjected) return;
     timeInjected = true;
-    append(messages, { role: "system", content: time.content });
+    messages.push({ role: "system", content: time.content });
+    diagnostics.push({ identifier: "runtime", role: "system", characterLength: time.content.length });
   };
   for (const ordered of preset.promptOrder) {
     const entry = prompts.get(ordered.identifier);
     if (!ordered.enabled || !entry?.enabled) continue;
-    if ((entry.source === "marker" && entry.marker === "history") || entry.role !== "system")
-      injectTime();
     const resolved = entry.source === "prompt" ? entry.content
       : resolvePresetMarker(entry.marker, context);
     if (Array.isArray(resolved)) {
-      for (const turn of resolved) messages.push(turn);
+      const entries = resolved.map((turn) =>
+        ({ identifier: entry.identifier, role: turn.role, characterLength: turn.content.length }));
+      if (entry.source === "marker" && entry.marker === "history") {
+        historyTurns = resolved;
+        historyDiagnostics = entries;
+      } else {
+        messages.push(...resolved);
+        diagnostics.push(...entries);
+      }
     } else if (resolved?.trim()) {
       sections.push({ identifier: entry.identifier, content: resolved });
       append(messages, { role: entry.role,
         content: entry.role === "system" ? `[${entry.identifier}]\n${resolved}` : resolved });
+      diagnostics.push({ identifier: entry.identifier, role: entry.role, characterLength: resolved.length });
     }
   }
+  // Keep stable Preset context cacheable, then add history, runtime facts and pending input.
+  messages.push(...historyTurns);
+  diagnostics.push(...historyDiagnostics);
   // Runtime facts remain present even when a custom Preset omits History.
   injectTime();
   // Pending input is request ownership, not configurable Preset content.
@@ -136,5 +150,7 @@ export function assembleChatPrompt(
     .sort((a, b) => a.order - b.order)
     .map((message) => ({ role: message.role, content: promptContent(message, context) }));
   messages.push(...pendingTurns);
-  return { sections, messages };
+  for (const turn of pendingTurns)
+    diagnostics.push({ identifier: "pending", role: turn.role, characterLength: turn.content.length });
+  return { sections, messages, diagnostics };
 }

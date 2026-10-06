@@ -25,6 +25,7 @@ import { emptyRegexDocument, resolveRegexGroups, type RegexDocument } from "../r
 import { applyRegex } from "../regex-engine";
 import { loadWeatherState } from "../weather";
 import type { Coordinates, WeatherState } from "../participant-config";
+import { createCompletionRequestContext, logPromptSummary, type CompletionSource } from "./request-diagnostics";
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
@@ -67,7 +68,8 @@ export function createChatEngine(
     const preset = presetForBinding(await presets(), binding.presetId);
     return { document, character, config, preset, binding };
   }
-  async function generateReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, regenerateId?: string): Promise<ChatMessage | null> {
+  async function generateReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void,
+    regenerateId?: string, source: CompletionSource = "manual-reply"): Promise<ChatMessage | null> {
     if (active.has(sessionId)) return null;
     const controller = new AbortController();
     active.set(sessionId, controller);
@@ -117,12 +119,15 @@ export function createChatEngine(
         regexGroups,
         weather,
       );
+      const request = createCompletionRequestContext(source, sessionId);
+      logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages);
       providerStarted = true;
       for await (const text of provider(
         config,
         prompt.messages,
         controller.signal,
         preset.generation,
+        request,
       )) {
         controller.signal.throwIfAborted();
         rawContent += text;
@@ -171,12 +176,12 @@ export function createChatEngine(
     },
     isGenerating: (sessionId: string) => active.has(sessionId),
     stop: (sessionId: string) => active.get(sessionId)?.abort(),
-    requestReply: (sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void) =>
-      generateReply(sessionId, onFinalized),
+    requestReply: (sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void,
+      source: CompletionSource = "manual-reply") => generateReply(sessionId, onFinalized, undefined, source),
     async regenerateMessage(messageId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, expectedSessionId?: string): Promise<ChatMessage | null> {
       const sessionId = expectedSessionId ?? await storage.regenerationSessionId(messageId);
       if (active.has(sessionId)) throw new Error("A reply is already in progress.");
-      return generateReply(sessionId, onFinalized, messageId);
+      return generateReply(sessionId, onFinalized, messageId, "regenerate");
     },
   };
 }

@@ -12,10 +12,36 @@ import type { ThemeDocument } from "./theme-types";
 import { browserFoundationStorage } from "./foundation-storage";
 import { browserPresetStorage } from "./preset-storage";
 import { sanitizeHistoryTimestamps } from "./chat/timestamp-sanitizer";
+import { createCompletionRequestContext, logPromptSummary } from "./chat/request-diagnostics";
 import type { WidgetInstance } from "./widget-types";
 
 // Global behavior default; a future Settings control can supply this value.
 export const HERE_THERE_COMMENT_REFRESH_MS = 3 * 60 * 60 * 1000;
+
+export class HereThereCommentAttemptGuard {
+  private readonly attempted = new Set<string>();
+  private readonly inFlight = new Set<string>();
+
+  begin(characterId: string, needsRefresh: boolean): boolean {
+    if (!needsRefresh) {
+      this.attempted.delete(characterId);
+      return false;
+    }
+    if (this.attempted.has(characterId) || this.inFlight.has(characterId)) return false;
+    this.attempted.add(characterId);
+    this.inFlight.add(characterId);
+    return true;
+  }
+
+  finish(characterId: string) {
+    this.inFlight.delete(characterId);
+  }
+}
+
+export function startHereThereCommentAttempt(begin: () => boolean,
+  generate: () => Promise<void>): Promise<void> | null {
+  return begin() ? generate() : null;
+}
 
 export function hereThereCommentNeedsRefresh(widget: WidgetInstance, now: Date,
   interval = HERE_THERE_COMMENT_REFRESH_MS): boolean {
@@ -59,12 +85,19 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
     validateApiConfig(api);
     const preset = presetForBinding(await services.presets(), binding.presetId);
     const prompt = assembleChatPrompt(foundation, character, [], [], undefined, preset, context.now);
-    prompt.messages.push({ role: "system", content: `You are ${character.name}. This is a Home widget remark, not a chat reply.\nCharacter profile: ${JSON.stringify(character)}\nUser profile: ${JSON.stringify(foundation.user)}\nHERE: ${JSON.stringify(facts(context.foundation.user, context.hereWeather, context.now))}\nTHERE: ${JSON.stringify(facts(context.foundation.characters.find((item) => item.characterId === context.characterId) ?? character, context.thereWeather, context.now))}\nWrite exactly one short, natural in-character sentence reacting to this context, as a casual remark rather than a weather report. Never invent unavailable weather or temperatures. Output only the remark; no timestamps, headings or multiple messages.` });
-    prompt.messages.push({ role: "user", content: "Make your brief Here & There remark." });
+    const contextInstruction = `You are ${character.name}. This is a Home widget remark, not a chat reply.\nHERE: ${JSON.stringify(facts(context.foundation.user, context.hereWeather, context.now))}\nTHERE: ${JSON.stringify(facts(context.foundation.characters.find((item) => item.characterId === context.characterId) ?? character, context.thereWeather, context.now))}\nWrite exactly one short, natural in-character sentence reacting to this context, as a casual remark rather than a weather report. Never invent unavailable weather or temperatures. Output only the remark; no timestamps, headings or multiple messages.`;
+    prompt.messages.push({ role: "system", content: contextInstruction });
+    const pendingInstruction = "Make your brief Here & There remark.";
+    prompt.messages.push({ role: "user", content: pendingInstruction });
+    prompt.diagnostics.push({ identifier: "here-there-context", role: "system", characterLength: contextInstruction.length },
+      { identifier: "pending", role: "user", characterLength: pendingInstruction.length });
     let text = "";
     const controller = new AbortController();
+    const request = createCompletionRequestContext("here-there-comment");
+    logPromptSummary(request, api.model, prompt.diagnostics, prompt.messages);
     for await (const part of services.provider(api, prompt.messages, controller.signal,
-      { ...preset.generation, maxTokens: Math.min(preset.generation.maxTokens ?? 128, 128) })) text += part;
+      { ...preset.generation, maxTokens: Math.min(preset.generation.maxTokens ?? 128, 128) },
+      request)) text += part;
     text = sanitizeHistoryTimestamps(text).trim();
     if (!text) throw new Error("Empty remark");
     await commit((theme) => ({ ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((current) =>

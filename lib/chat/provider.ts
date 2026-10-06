@@ -1,6 +1,14 @@
 import type { ApiConfig } from "../api-config";
 import type { PromptTurn } from "./types";
 import type { GenerationParameters } from "../preset";
+import {
+  createCompletionRequestContext,
+  logCompletionStart,
+  logCompletionUsage,
+  parseCompletionUsage,
+  type CompletionRequestContext,
+  type CompletionUsage,
+} from "./request-diagnostics";
 
 export function completionUrl(baseUrl: string): string {
   let url: URL;
@@ -37,6 +45,7 @@ export type TextProvider = (
   messages: PromptTurn[],
   signal: AbortSignal,
   generation?: GenerationParameters,
+  request?: CompletionRequestContext,
 ) => AsyncIterable<string>;
 
 function choice(value: unknown): { text: string; finished: boolean } {
@@ -62,94 +71,104 @@ export const openAITextProvider: TextProvider = async function* (
   messages,
   signal,
   generation,
+  request,
 ) {
   validateApiConfig(config);
-  let response: Response;
+  const context = request ?? createCompletionRequestContext("unclassified");
+  let usage: CompletionUsage | null = null;
+  logCompletionStart(context, config.model.trim(), messages, true);
   try {
-    response = await fetch(completionUrl(config.baseUrl), {
-      method: "POST",
-      signal,
-      credentials: "omit",
-      referrerPolicy: "no-referrer",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey.trim()}`,
-      },
-      body: JSON.stringify({
-        model: config.model.trim(),
-        messages,
-        stream: true,
-        ...(generation?.temperature !== undefined
-          ? { temperature: generation.temperature } : {}),
-        ...(generation?.maxTokens !== undefined
-          ? { max_tokens: generation.maxTokens } : {}),
-      }),
-    });
-  } catch {
-    signal.throwIfAborted();
-    throw new Error(
-      "Could not reach the API. Check the Base URL and your provider's browser/CORS support.",
-    );
-  }
-  // Never display/log response bodies: gateways may echo Authorization keys.
-  if (!response.ok)
-    throw new Error(
-      `API request failed (HTTP ${response.status}). Check your API settings.`,
-    );
-  if (response.headers.get("content-type")?.includes("application/json")) {
-    let data: unknown;
+    let response: Response;
     try {
-      data = await response.json();
+      response = await fetch(completionUrl(config.baseUrl), {
+        method: "POST",
+        signal,
+        credentials: "omit",
+        referrerPolicy: "no-referrer",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: config.model.trim(),
+          messages,
+          stream: true,
+          ...(generation?.temperature !== undefined
+            ? { temperature: generation.temperature } : {}),
+          ...(generation?.maxTokens !== undefined
+            ? { max_tokens: generation.maxTokens } : {}),
+        }),
+      });
     } catch {
-      throw new Error("The API returned an invalid reply.");
-    }
-    const result = choice(data);
-    if (result.text) yield result.text;
-    return;
-  }
-  if (!response.body) throw new Error("The API returned no response stream.");
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "",
-    lines: string[] = [],
-    finished = false;
-  function event() {
-    const payload = lines.join("\n");
-    lines = [];
-    if (!payload) return { text: "", done: false };
-    if (payload.trim() === "[DONE]") return { text: "", done: true };
-    let data: unknown;
-    try {
-      data = JSON.parse(payload);
-    } catch {
-      throw new Error("The API returned an invalid stream event.");
-    }
-    const result = choice(data);
-    finished ||= result.finished;
-    return { text: result.text, done: false };
-  }
-  try {
-    while (true) {
       signal.throwIfAborted();
-      const { value, done } = await reader.read();
-      buffer += decoder.decode(value, { stream: !done });
-      if (done) buffer += "\n\n";
-      let newline: number;
-      while ((newline = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, newline).replace(/\r$/, "");
-        buffer = buffer.slice(newline + 1);
-        if (line.startsWith("data:")) lines.push(line.slice(5).trimStart());
-        else if (!line) {
-          const result = event();
-          if (result.text) yield result.text;
-          if (result.done) return;
-        }
-      }
-      if (done) break;
+      throw new Error(
+        "Could not reach the API. Check the Base URL and your provider's browser/CORS support.",
+      );
     }
-    if (!finished) throw new Error("The reply stream ended unexpectedly.");
+    // Never display/log response bodies: gateways may echo Authorization keys.
+    if (!response.ok)
+      throw new Error(
+        `API request failed (HTTP ${response.status}). Check your API settings.`,
+      );
+    if (response.headers.get("content-type")?.includes("application/json")) {
+      let data: unknown;
+    try {
+        data = await response.json();
+      } catch {
+        throw new Error("The API returned an invalid reply.");
+      }
+      usage = parseCompletionUsage(data);
+      const result = choice(data);
+      if (result.text) yield result.text;
+      return;
+    }
+    if (!response.body) throw new Error("The API returned no response stream.");
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "",
+      lines: string[] = [],
+      finished = false;
+    function event() {
+      const payload = lines.join("\n");
+      lines = [];
+      if (!payload) return { text: "", done: false };
+      if (payload.trim() === "[DONE]") return { text: "", done: true };
+      let data: unknown;
+      try {
+        data = JSON.parse(payload);
+      } catch {
+        throw new Error("The API returned an invalid stream event.");
+      }
+      usage = parseCompletionUsage(data) ?? usage;
+      const result = choice(data);
+      finished ||= result.finished;
+      return { text: result.text, done: false };
+    }
+    try {
+      while (true) {
+        signal.throwIfAborted();
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        if (done) buffer += "\n\n";
+        let newline: number;
+        while ((newline = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, newline).replace(/\r$/, "");
+          buffer = buffer.slice(newline + 1);
+          if (line.startsWith("data:")) lines.push(line.slice(5).trimStart());
+          else if (!line) {
+            const result = event();
+            if (result.text) yield result.text;
+            if (result.done) return;
+          }
+        }
+        if (done) break;
+      }
+      if (!finished) throw new Error("The reply stream ended unexpectedly.");
+    } finally {
+      await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
   } finally {
-    await reader.cancel().catch(() => {});
-    reader.releaseLock();
+    logCompletionUsage(context, usage);
   }
 };

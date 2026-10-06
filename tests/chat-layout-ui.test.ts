@@ -167,6 +167,7 @@ test("composer keeps Send and conditional Request Reply as separate icon actions
   assert.match(room, /aria-label="More message options"/);
   assert.match(room, /className="chat-voice-slot"/);
   assert.match(room, /session\?\.autoReplyOnKeyboardDismiss !== true/);
+  assert.match(room, /onReply:\s*\(\)\s*=>\s*reply\("keyboard-auto-reply"\)/);
   assert.match(room, /aria-label="Request Reply"[\s\S]*<Sparkles/);
   assert.match(room, /aria-label="Send"[\s\S]*<SendHorizontal/);
   assert.match(room, /disabled=\{!session \|\| sending \|\| !draft\.trim\(\)/);

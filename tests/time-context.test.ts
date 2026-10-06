@@ -55,7 +55,8 @@ test("runtime time is independent of Preset markers and history timestamps use U
   const prompt = assembleChatPrompt(document, document.characters[0], [message], [], undefined, undefined, instant);
   const timestamped = prompt.messages.find((turn) => turn.role === "assistant")!;
   assert.equal(timestamped.content, "[2026-10-05 00:50 Australia/Sydney]\nold reply");
-  assert(prompt.messages.findIndex((turn) => turn.content.includes("Current time context:")) < prompt.messages.indexOf(timestamped));
+  assert(prompt.messages.indexOf(timestamped) <
+    prompt.messages.findIndex((turn) => turn.content.includes("Current time context:")));
   assert.deepEqual(message, original);
   const preset = createBuiltinPreset();
   preset.promptOrder = [];
@@ -165,8 +166,7 @@ test("runtime owns the timestamp boundary even without output format and with cu
   ];
   const original = structuredClone(history);
   const on = assembleChatPrompt(document, document.characters[0], history, [], undefined, preset, instant);
-  const runtime = on.messages[0];
-  assert.equal(runtime.role, "system");
+  const runtime = on.messages.find((turn) => turn.role === "system" && turn.content.includes("Current time context:"))!;
   assert.match(runtime.content, /\[YYYY-MM-DD HH:mm Timezone\].*VEIL runtime metadata, not message content or Character speech/);
   assert.match(runtime.content, /Use them only to understand when messages occurred\./);
   assert.match(runtime.content, /Never reproduce, quote, imitate, paraphrase, or include these timestamp lines in your reply\./);
@@ -174,12 +174,15 @@ test("runtime owns the timestamp boundary even without output format and with cu
   assert.equal(on.messages.filter((turn) => turn.content.includes("Recent History timestamp boundary:")).length, 1);
   assert.equal(on.messages[1].content, "[2026-10-05 00:49 Australia/Sydney]\nearlier question");
   assert.equal(on.messages[2].content, "[2026-10-05 00:50 Australia/Sydney]\nearlier reply");
+  assert.equal(on.messages[0].role, "system");
+  assert.match(on.messages[0].content, /Custom response directive/);
+  assert.equal(runtime, on.messages[3]);
   assert.deepEqual(on.sections.map((section) => section.identifier), ["response-directive", "character"]);
   document.runtime.timeAware = false;
   const off = assembleChatPrompt(document, document.characters[0], history, [], undefined, preset, instant);
   assert(!JSON.stringify(off).includes("Recent History timestamp boundary:"));
   assert(!JSON.stringify(off).includes("Current time context:"));
-  assert.deepEqual(off.messages.slice(0, 2), history.map(({ role, content }) => ({ role, content })));
+  assert.deepEqual(off.messages.slice(1, 3), history.map(({ role, content }) => ({ role, content })));
   assert.deepEqual(off.sections, on.sections);
   assert.deepEqual(history, original);
   preset.promptOrder = [];
