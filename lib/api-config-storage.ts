@@ -14,13 +14,24 @@ export class ApiConfigStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB) {}
 
   private open(): Promise<IDBDatabase> {
-    if (!this.database) this.database = new Promise((resolve, reject) => {
-      const opening = this.factory().open(API_CONFIG_DATABASE_NAME, API_CONFIG_DATABASE_VERSION);
-      opening.onupgradeneeded = () => opening.result.createObjectStore(STORE, { keyPath: "id" });
-      opening.onsuccess = () => resolve(opening.result);
-      opening.onerror = () => reject(new Error("Text API storage is unavailable."));
-      opening.onblocked = () => reject(new Error("Close other VEIL tabs to open Text API storage."));
-    });
+    if (!this.database) {
+      const opening = new Promise<IDBDatabase>((resolve, reject) => {
+        const request = this.factory().open(API_CONFIG_DATABASE_NAME, API_CONFIG_DATABASE_VERSION);
+        request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "id" });
+        request.onsuccess = () => {
+          const db = request.result;
+          db.onversionchange = () => {
+            db.close();
+            if (this.database === opening) this.database = undefined;
+          };
+          resolve(db);
+        };
+        request.onerror = () => reject(new Error("Text API storage is unavailable."));
+        request.onblocked = () => reject(new Error("Close other VEIL tabs to open Text API storage."));
+      });
+      this.database = opening;
+      void opening.catch(() => { if (this.database === opening) this.database = undefined; });
+    }
     return this.database;
   }
 

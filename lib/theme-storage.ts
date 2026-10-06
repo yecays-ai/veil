@@ -1,5 +1,7 @@
 import { normalizeDocument, type ThemeDocument } from "./theme-types";
 import { encodeStoredImage } from "./image-processing";
+import { browserAppearanceImageStorage, storeThemeImageSource, type AppearanceImageStorage } from "./appearance-image-storage";
+import { themeImageAssetIds } from "./theme-types";
 
 // Replace this adapter when user-isolated cloud storage becomes available.
 export interface ThemeStorage {
@@ -8,27 +10,57 @@ export interface ThemeStorage {
 }
 
 const KEY = "companion-phone.appearance.v1";
-export const browserThemeStorage: ThemeStorage = {
-  async load() {
-    const raw = window.localStorage.getItem(KEY);
-    try {
-      return normalizeDocument(raw ? JSON.parse(raw) : null);
-    } catch {
-      throw new Error(
-        "Saved appearance is invalid. Restore Default to replace it.",
-      );
-    }
-  },
-  async save(document) {
-    try {
-      window.localStorage.setItem(KEY, JSON.stringify(document));
-    } catch {
-      throw new Error(
-        "Could not save appearance. Browser storage may be full or unavailable. Remove a preset or use smaller images.",
-      );
-    }
-  },
-};
+export function createThemeStorage(
+  getStorage: () => Pick<Storage, "getItem" | "setItem">,
+  images: AppearanceImageStorage,
+): ThemeStorage {
+  return {
+    async load() {
+      const storage = getStorage();
+      const raw = storage.getItem(KEY);
+      let document: ThemeDocument;
+      try { document = normalizeDocument(raw ? JSON.parse(raw) : null, false); }
+      catch { throw new Error("Saved appearance is invalid. Restore Default to replace it."); }
+      // Appearance image payloads are deliberately not migrated from the old inline format.
+      // This rewrites only Appearance; other storage documents remain untouched.
+      const canonical = JSON.stringify(document);
+      if (raw !== null && raw !== canonical) {
+        try { storage.setItem(KEY, canonical); }
+        catch { throw new Error("Could not update Appearance storage. Browser storage may be unavailable."); }
+      }
+      try { await images.collect(themeImageAssetIds(document)); } catch { /* Keep valid Appearance data if cleanup is unavailable. */ }
+      return document;
+    },
+    async save(value) {
+      const document = normalizeDocument(value, false);
+      const ids = themeImageAssetIds(document);
+      await images.assertPresent(ids);
+      const storage = getStorage();
+      const previousRaw = storage.getItem(KEY);
+      let previousIds: Set<string> | null = null;
+      try {
+        previousIds = previousRaw === null ? new Set() : themeImageAssetIds(normalizeDocument(JSON.parse(previousRaw), false));
+      } catch { /* Preserve unknown references if the previous document cannot be read. */ }
+      try { storage.setItem(KEY, JSON.stringify(document)); }
+      catch {
+        if (previousIds) try { await images.collect(previousIds); } catch { /* A failed save must not mask its original error. */ }
+        throw new Error("Could not save Appearance. Browser storage may be unavailable.");
+      }
+      try { await images.collect(ids); } catch { /* A valid save must not fail because orphan cleanup failed. */ }
+    },
+  };
+}
+
+export const browserThemeStorage = createThemeStorage(() => window.localStorage, browserAppearanceImageStorage);
+
+export async function persistAppearanceImage(
+  source: string | null,
+  apply: (source: string | null) => Promise<void>,
+  images: AppearanceImageStorage = browserAppearanceImageStorage,
+): Promise<void> {
+  const reference = await storeThemeImageSource(source, images);
+  await apply(reference);
+}
 
 export async function readImage(file: File): Promise<string> {
   const extension = file.name.split(".").at(-1)?.toLowerCase();

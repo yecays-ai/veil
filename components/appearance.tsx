@@ -5,7 +5,8 @@ import { APP_REGISTRY } from "../lib/app-registry";
 import { reverseAppPositions } from "../lib/desktop-layout";
 import { applyPreset, deletePreset, savePreset } from "../lib/theme-presets";
 import { exportTheme, importTheme } from "../lib/theme-package";
-import { readImage } from "../lib/theme-storage";
+import { inlineThemeSnapshotImages, storeThemeSnapshotImages } from "../lib/appearance-image-storage";
+import { persistAppearanceImage, readImage } from "../lib/theme-storage";
 import {
   CSS_VARIABLES,
   defaultSnapshot,
@@ -173,7 +174,7 @@ function ImageEditor({ label, source, cropShape, onApply }: ImageEditorProps) {
 }
 
 export function Appearance() {
-  const { document, ready, commit, updateProfile } = useTheme();
+  const { document, ready, commit, updateProfile, resolveImage } = useTheme();
   const profile = document.current.profile;
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -234,15 +235,11 @@ export function Appearance() {
             <ImageEditor
               label="Wallpaper"
               cropShape="portrait"
-              source={profile.wallpaper.source}
+              source={resolveImage(profile.wallpaper.source)}
               onApply={(source) =>
-                updateProfile((p) => ({
-                  ...p,
-                  wallpaper: {
-                    ...p.wallpaper,
-                    source,
-                  },
-                }))
+                persistAppearanceImage(source, (reference) => updateProfile((p) => ({
+                  ...p, wallpaper: { ...p.wallpaper, source: reference },
+                })))
               }
             />
             <label>
@@ -300,14 +297,14 @@ export function Appearance() {
                 key={app.id}
                 label={`${app.label} icon`}
                 cropShape="square"
-                source={profile.icons[app.id] ?? null}
+                source={resolveImage(profile.icons[app.id] ?? null)}
                 onApply={(source) =>
-                  updateProfile((p) => {
+                  persistAppearanceImage(source, (reference) => updateProfile((p) => {
                     const icons = { ...p.icons };
-                    if (source) icons[app.id] = source;
+                    if (reference) icons[app.id] = reference;
                     else delete icons[app.id];
                     return { ...p, icons };
-                  })
+                  }))
                 }
               />
             ))}
@@ -366,9 +363,11 @@ export function Appearance() {
             <ImageEditor
               label="Dock image"
               cropShape="wide"
-              source={profile.dock.image}
+              source={resolveImage(profile.dock.image)}
               onApply={(image) =>
-                updateProfile((p) => ({ ...p, dock: { ...p.dock, image } }))
+                persistAppearanceImage(image, (reference) => updateProfile((p) => ({
+                  ...p, dock: { ...p.dock, image: reference },
+                })))
               }
             />
             {APP_REGISTRY.map((app) => (
@@ -577,20 +576,16 @@ export function Appearance() {
         </section>
         <section aria-labelledby="system-heading">
           <h2 id="system-heading">System</h2>
-          <button
-            onClick={() => {
-              const blob = new Blob([exportTheme(document.current)], {
-                type: "application/json",
-              });
-              const url = URL.createObjectURL(blob);
-              const anchor = window.document.createElement("a");
-              anchor.href = url;
-              anchor.download = "companion-phone-theme.json";
-              anchor.click();
-              window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-              setNotice("Theme exported.");
-            }}
-          >
+          <button onClick={() => void run(async () => {
+            const snapshot = await inlineThemeSnapshotImages(document.current);
+            const blob = new Blob([exportTheme(snapshot)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const anchor = window.document.createElement("a");
+            anchor.href = url;
+            anchor.download = "companion-phone-theme.json";
+            anchor.click();
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }, "Theme exported.")}>
             Export theme
           </button>
           <label>
@@ -607,7 +602,7 @@ export function Appearance() {
                       throw new Error(
                         "Theme package is too large (maximum 3 MB).",
                       );
-                    const snapshot = importTheme(await file.text());
+                    const snapshot = await storeThemeSnapshotImages(importTheme(await file.text()));
                     await commit((d) => ({ ...d, current: snapshot }));
                     setCss(null);
                   }, "Theme imported.");

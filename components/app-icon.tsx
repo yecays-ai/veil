@@ -19,10 +19,10 @@ export function AppIcon({
   actionLabel?: string;
   disabled?: boolean;
 }) {
-  const { document } = useTheme();
+  const { document, resolveImage } = useTheme();
   const app = APP_REGISTRY.find((app) => app.id === id);
   if (!app) return null;
-  const source = document.current.profile.icons[id];
+  const source = resolveImage(document.current.profile.icons[id] ?? null);
   const content = (
     <>
       <span className="home-icon">

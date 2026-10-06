@@ -37,6 +37,14 @@ export type ThemeDocument = {
   presets: ThemePreset[];
 };
 
+export const THEME_IMAGE_ASSET_PREFIX = "appearance-asset:";
+const validAssetId = /^[a-f0-9]{64}$/;
+export function themeImageAssetId(source: string | null | undefined): string | null {
+  if (!source?.startsWith(THEME_IMAGE_ASSET_PREFIX)) return null;
+  const id = source.slice(THEME_IMAGE_ASSET_PREFIX.length);
+  return validAssetId.test(id) ? id : null;
+}
+
 // Compose theme decoration with desktop data; layout algorithms remain independent.
 export function defaultSnapshot(): ThemeSnapshot {
   return {
@@ -87,9 +95,10 @@ export function color(value: unknown, fallback: string): string {
     : fallback;
 }
 
-export function imageSource(value: unknown): string | null {
+export function imageSource(value: unknown, allowInlineDataUrl = true): string | null {
   if (typeof value !== "string" || value.length > 600_000) return null;
-  if (/^data:image\/(png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(value))
+  if (themeImageAssetId(value)) return value;
+  if (allowInlineDataUrl && /^data:image\/(png|jpeg|webp|gif);base64,[a-z0-9+/=]+$/i.test(value))
     return value;
   try {
     const url = new URL(value);
@@ -140,7 +149,7 @@ export function normalizeOverrides(value: unknown): Record<string, string> {
   return result;
 }
 
-export function normalizeSnapshot(value: unknown): ThemeSnapshot {
+export function normalizeSnapshot(value: unknown, allowInlineDataUrls = true): ThemeSnapshot {
   const raw = record(value),
     p = record(raw.profile),
     d = defaultSnapshot();
@@ -150,7 +159,7 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
     text = record(p.text);
   const icons: ThemeProfile["icons"] = {};
   for (const id of APP_IDS) {
-    const source = imageSource(record(p.icons)[id]);
+    const source = imageSource(record(p.icons)[id], allowInlineDataUrls);
     if (source) icons[id] = source;
   }
   return {
@@ -163,7 +172,7 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
         accent: color(c.accent, d.profile.colors.accent),
       },
       wallpaper: {
-        source: imageSource(w.source),
+        source: imageSource(w.source, allowInlineDataUrls),
         fit: w.fit === "contain" ? "contain" : "cover",
         opacity: number(w.opacity, 1, 0, 1),
         blur: number(w.blur, 0, 0, 20),
@@ -171,7 +180,7 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
       icons,
       dock: {
         background: color(dock.background, d.profile.dock.background),
-        image: imageSource(dock.image),
+        image: imageSource(dock.image, allowInlineDataUrls),
         radius: number(dock.radius, 24, 0, 40),
       },
       text: {
@@ -191,7 +200,7 @@ export function normalizeSnapshot(value: unknown): ThemeSnapshot {
   };
 }
 
-export function normalizeDocument(value: unknown): ThemeDocument {
+export function normalizeDocument(value: unknown, allowInlineDataUrls = true): ThemeDocument {
   const raw = record(value);
   const seen = new Set<string>();
   const presets: ThemePreset[] = [];
@@ -209,8 +218,22 @@ export function normalizeDocument(value: unknown): ThemeDocument {
       presets.push({
         id: p.id.slice(0, 100),
         name: p.name.slice(0, 60),
-        snapshot: normalizeSnapshot(p.snapshot),
+        snapshot: normalizeSnapshot(p.snapshot, allowInlineDataUrls),
       });
     }
-  return { version: 1, current: normalizeSnapshot(raw.current), presets };
+  return { version: 1, current: normalizeSnapshot(raw.current, allowInlineDataUrls), presets };
+}
+
+export function themeImageAssetIds(document: ThemeDocument): Set<string> {
+  const ids = new Set<string>();
+  const collect = (snapshot: ThemeSnapshot) => {
+    const profile = snapshot.profile;
+    for (const source of [profile.wallpaper.source, profile.dock.image, ...Object.values(profile.icons)]) {
+      const id = themeImageAssetId(source);
+      if (id) ids.add(id);
+    }
+  };
+  collect(document.current);
+  document.presets.forEach((preset) => collect(preset.snapshot));
+  return ids;
 }

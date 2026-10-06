@@ -49,6 +49,21 @@ test("named config CRUD preserves multiple stable resources and independent cred
   ]);
 });
 
+test("API Config closes on versionchange, reopens and retains saved credentials", async () => {
+  const factory = new IDBFactory();
+  const store = new ApiConfigStorage(() => factory);
+  await store.saveApiConfig(config);
+  const cached = store as unknown as { database?: Promise<IDBDatabase> };
+  const oldConnection = await cached.database!;
+  oldConnection.onversionchange?.(new Event("versionchange") as IDBVersionChangeEvent);
+  assert.throws(() => oldConnection.transaction("configs"), { name: "InvalidStateError" });
+
+  assert.deepEqual(await store.getApiConfig(config.id), config);
+  const reopened = await cached.database!;
+  assert.notEqual(reopened, oldConnection);
+  assert.deepEqual(await new ApiConfigStorage(() => factory).getApiConfig(config.id), config);
+});
+
 test("deletion retains references and chat fails closed instead of picking a different provider", async () => {
   const factory = new IDBFactory();
   const store = new ChatStorage(() => factory);

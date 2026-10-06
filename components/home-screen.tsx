@@ -17,7 +17,7 @@ import {
 import { UI_COPY as U } from "../lib/ui-copy";
 
 export function HomeScreen() {
-  const { document, ready, commit } = useTheme();
+  const { document, ready, commit, resolveImage } = useTheme();
   const layout = document.current;
   const { profile, iconLayout, dockLayout, widgets, pageCount } = layout;
   const [page, setPage] = useState(1);
@@ -328,8 +328,8 @@ export function HomeScreen() {
           aria-label={U.home.dock}
           style={{
             borderRadius: profile.dock.radius,
-            backgroundImage: profile.dock.image
-              ? `url(${JSON.stringify(profile.dock.image)})`
+            backgroundImage: resolveImage(profile.dock.image)
+              ? `url(${JSON.stringify(resolveImage(profile.dock.image))})`
               : undefined,
           }}
         >
