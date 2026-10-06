@@ -44,27 +44,40 @@ test("chat sessions, messages and session-linked settings remain available in th
   assert.deepEqual(reloaded.messages.map((message) => message.content), ["hello"]);
 });
 
-test("global profile settings persist canonical character pacing and Here & There enable state", async () => {
+test("global profile settings persist independent timing tiers and reject invalid writes", async () => {
   const factory = new IDBFactory();
   const storage = new ChatStorage(() => factory);
-  assert.equal((await storage.readGlobalProfileSettings()).bubbleDelayMsPerCharacter, 15);
-  await storage.updateBubbleDelayMsPerCharacter(50);
+  assert.deepEqual((await storage.readGlobalProfileSettings()).bubbleTiming, { shortMs: 1200, mediumMs: 2400, longMs: 3600 });
+  await Promise.all([storage.updateBubbleTiming({ shortMs: 1500 }), storage.updateBubbleTiming({ longMs: 5000 })]);
   await storage.updateHereThereEnabled(false, 1_000_000);
   const reloaded = await new ChatStorage(() => factory).readGlobalProfileSettings();
-  assert.equal(reloaded.bubbleDelayMsPerCharacter, 50);
+  assert.deepEqual(reloaded.bubbleTiming, { shortMs: 1500, mediumMs: 2400, longMs: 5000 });
   assert.equal(reloaded.hereThereEnabled, false);
   assert.equal(reloaded.nextCommentAt, null);
-  await assert.rejects(storage.updateBubbleDelayMsPerCharacter(0), /Invalid bubble timing/);
-  await assert.rejects(storage.updateBubbleDelayMsPerCharacter(Number.NaN), /Invalid bubble timing/);
+  for (const value of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 60001])
+    await assert.rejects(storage.updateBubbleTiming({ mediumMs: value }), /Invalid bubble timing/);
   const db = await database(factory);
   const raw = await new Promise<Record<string, unknown>>((resolve, reject) => {
     const request = db.transaction("chatSettings").objectStore("chatSettings").get("global-profile-settings");
     request.onsuccess = () => resolve(request.result as Record<string, unknown>);
     request.onerror = () => reject(request.error);
   });
-  assert.equal(raw.bubbleDelayMsPerCharacter, 50);
+  assert.deepEqual(raw.bubbleTiming, { shortMs: 1500, mediumMs: 2400, longMs: 5000 });
   assert.equal(Object.hasOwn(raw, "bubbleDelayScale"), false);
   db.close();
+});
+
+test("portable timing backup restores all three values atomically", async () => {
+  const original = new ChatStorage(() => new IDBFactory());
+  await original.updateBubbleTiming({ shortMs: 900, mediumMs: 2500, longMs: 5000 });
+  const serialized = await original.exportBubbleTiming();
+  const factory = new IDBFactory();
+  const restored = new ChatStorage(() => factory);
+  await restored.restoreBubbleTiming(serialized);
+  assert.deepEqual((await new ChatStorage(() => factory).readGlobalProfileSettings()).bubbleTiming,
+    { shortMs: 900, mediumMs: 2500, longMs: 5000 });
+  await assert.rejects(restored.restoreBubbleTiming(JSON.stringify({ bubbleTiming: { shortMs: 1, mediumMs: 0, longMs: 2 } })));
+  assert.deepEqual((await restored.readGlobalProfileSettings()).bubbleTiming, { shortMs: 900, mediumMs: 2500, longMs: 5000 });
 });
 
 test("Here & There keeps one persisted future schedule and atomically claims an opportunity", async () => {

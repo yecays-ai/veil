@@ -1,23 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Image as ImageIcon } from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { ImageCropDialog } from "../image-crop-dialog";
 import { Switch } from "./ui/switch";
 import { chatStorage } from "../../lib/chat/storage";
-import { bubbleDelayMsPerCharacterFromInput } from "../../lib/chat/bubble-pacing";
 import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "../../lib/chat/background";
 import { readImage } from "../../lib/theme-storage";
-import { normalizeBackgroundBlur, normalizeBubbleDelayMsPerCharacter, type ChatBackgroundSettings,
+import { normalizeBackgroundBlur, isValidBubbleTimingDelay, DEFAULT_BUBBLE_TIMING, type BubbleTiming, type ChatBackgroundSettings,
   type GlobalProfileSettings } from "../../lib/chat/types";
 
 export function GlobalProfileSettings() {
   const { ready } = useFoundation();
   const [settings, setSettings] = useState<GlobalProfileSettings | null>(null);
-  const [timingCharacters, setTimingCharacters] = useState("20");
-  const [timingSeconds, setTimingSeconds] = useState("0.3");
-  const timingInitialized = useRef(false);
   const [background, setBackground] = useState<ChatBackgroundSettings>({ id: "chat-background" });
   const [preview, setPreview] = useState<string | null>(null);
   const [cropSource, setCropSource] = useState<string | null>(null);
@@ -29,11 +25,6 @@ export function GlobalProfileSettings() {
       const [profile, chat] = await Promise.all([chatStorage.readGlobalProfileSettings(), chatStorage.readChatBackgroundSettings()]);
       if (active) {
         setSettings(profile); setBackground(chat);
-        if (!timingInitialized.current) {
-          const seconds = 20 * normalizeBubbleDelayMsPerCharacter(profile.bubbleDelayMsPerCharacter) / 1000;
-          setTimingSeconds(Number(seconds.toPrecision(8)).toString());
-          timingInitialized.current = true;
-        }
       }
     };
     void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : "Settings could not be loaded."));
@@ -73,21 +64,19 @@ export function GlobalProfileSettings() {
     finally { setBusy(false); }
   }
 
-  async function saveBubbleTiming() {
-    const characters = Number(timingCharacters);
-    const seconds = Number(timingSeconds);
-    const bubbleDelayMsPerCharacter = bubbleDelayMsPerCharacterFromInput(characters, seconds);
-    if (bubbleDelayMsPerCharacter === null) {
-      setError("Enter a positive whole number of characters and a positive number of seconds.");
+  async function saveBubbleTiming(tier: keyof BubbleTiming, raw: string) {
+    const delayMs = Number(raw) * 1000;
+    if (!isValidBubbleTimingDelay(delayMs)) {
+      setError("Use a delay greater than 0 and at most 60 seconds.");
       return;
     }
-    setBusy(true); setError("");
+    setError("");
     try {
-      await chatStorage.updateBubbleDelayMsPerCharacter(bubbleDelayMsPerCharacter);
+      await chatStorage.updateBubbleTiming({ [tier]: delayMs });
       setSettings(await chatStorage.readGlobalProfileSettings());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Timing could not be saved.");
-    } finally { setBusy(false); }
+    }
   }
 
   return <>
@@ -123,17 +112,16 @@ export function GlobalProfileSettings() {
     <section className="global-profile-section">
       <h2 className="settings-section-label">Message Bubble Timing</h2>
       <div className="global-timing-fields">
-        <label className="global-timing-row"><span>Characters</span>
-          <input className="settings-input" aria-label="Characters" type="number" inputMode="numeric" min="1" step="1"
-            value={timingCharacters} disabled={!settings || busy} onChange={(event) => setTimingCharacters(event.currentTarget.value)} />
-        </label>
-        <label className="global-timing-row"><span>Seconds</span>
-          <input className="settings-input" aria-label="Seconds" type="number" inputMode="decimal" min="0.001" step="any"
-            value={timingSeconds} disabled={!settings || busy} onChange={(event) => setTimingSeconds(event.currentTarget.value)} />
-        </label>
-        <small>Set how many seconds the selected number of characters take to appear. Default: 20 characters in 0.3 seconds.</small>
-        <button className="settings-button global-timing-save" type="button" disabled={!settings || busy}
-          onClick={() => void saveBubbleTiming()}>{busy ? "Saving…" : "Save Timing"}</button>
+        {([{ tier: "shortMs", label: "1–60 characters" }, { tier: "mediumMs", label: "61–200 characters" },
+          { tier: "longMs", label: "200+ characters" }] as const).map(({ tier, label }) => {
+          const delayMs = settings?.bubbleTiming[tier] ?? DEFAULT_BUBBLE_TIMING[tier];
+          return <label className="global-timing-row" key={tier}><span>{label}</span>
+            <span className="global-timing-value"><input key={delayMs} className="settings-input" aria-label={`${label} seconds`}
+              type="number" inputMode="decimal" min="0.001" max="60" step="any" defaultValue={delayMs / 1000}
+              disabled={!settings || busy} onBlur={(event) => void saveBubbleTiming(tier, event.currentTarget.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} /> seconds</span>
+          </label>;
+        })}
       </div>
     </section>
 

@@ -1,18 +1,12 @@
 import type { ChatMessage } from "./types";
-import { DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER, normalizeBubbleDelayMsPerCharacter } from "./types";
+import { DEFAULT_BUBBLE_TIMING, normalizeBubbleTiming, type BubbleTiming } from "./types";
 
 export const CHAT_TIMESTAMP_GAP_MS = 15 * 60 * 1000;
 
-export function bubbleDelayMsPerCharacterFromInput(characters: number, seconds: number): number | null {
-  if (!Number.isInteger(characters) || characters <= 0 || !Number.isFinite(seconds) || seconds <= 0)
-    return null;
-  const value = seconds * 1000 / characters;
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
-
-export function bubbleDelayMs(content: string, msPerCharacter = DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER) {
-  const pacing = normalizeBubbleDelayMsPerCharacter(msPerCharacter);
-  return Math.min(2400, Math.max(600, Math.round(450 + Array.from(content).length * pacing)));
+export function bubbleDelayMs(content: string, timing: BubbleTiming = DEFAULT_BUBBLE_TIMING) {
+  const safe = normalizeBubbleTiming(timing);
+  const length = Array.from(content).length;
+  return length <= 60 ? safe.shortMs : length <= 200 ? safe.mediumMs : safe.longMs;
 }
 
 export function shouldShowTimestamp(current: ChatMessage, previous?: ChatMessage) {
@@ -42,7 +36,7 @@ export class BubbleRevealQueue {
   private revision = 0;
   private startedAt = 0;
   private finalizedSeen = false;
-  private msPerCharacter = DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER;
+  private timing: BubbleTiming = { ...DEFAULT_BUBBLE_TIMING };
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -59,9 +53,9 @@ export class BubbleRevealQueue {
     this.publish(emptyState());
   };
   begin(sessionId: string, messages: readonly ChatMessage[], streaming: boolean, startedAt: number,
-    msPerCharacter = DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER) {
+    timing: BubbleTiming = DEFAULT_BUBBLE_TIMING) {
     this.cancel();
-    this.msPerCharacter = normalizeBubbleDelayMsPerCharacter(msPerCharacter);
+    this.timing = normalizeBubbleTiming(timing);
     this.startedAt = startedAt;
     this.finalizedSeen = false;
     if (!streaming) this.publish({ ...emptyState(), sessionId, awaiting: true,
@@ -82,10 +76,10 @@ export class BubbleRevealQueue {
       hiddenIds.delete(messages[index].id);
       this.publish({ ...this.state, hiddenIds, pending: hiddenIds.size > 0 });
       if (index + 1 < messages.length)
-        this.timer = setTimeout(() => reveal(index + 1), bubbleDelayMs(messages[index + 1].content, this.msPerCharacter));
+        this.timer = setTimeout(() => reveal(index + 1), bubbleDelayMs(messages[index + 1].content, this.timing));
       else this.timer = undefined;
     };
-    const firstDelay = Math.max(0, bubbleDelayMs(messages[0].content, this.msPerCharacter) - Math.max(0, readyAt - this.startedAt));
+    const firstDelay = Math.max(0, bubbleDelayMs(messages[0].content, this.timing) - Math.max(0, readyAt - this.startedAt));
     if (firstDelay === 0) reveal(0);
     else this.timer = setTimeout(() => reveal(0), firstDelay);
   }

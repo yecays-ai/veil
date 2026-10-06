@@ -5,7 +5,9 @@ import {
   type ChatSession,
   type ReplyBatch,
   type GlobalProfileSettings,
-  normalizeBubbleDelayMsPerCharacter,
+  type BubbleTiming,
+  isValidBubbleTimingDelay,
+  normalizeBubbleTiming,
 } from "./types";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
@@ -364,24 +366,42 @@ export class ChatStorage {
       const saved: Partial<GlobalProfileSettings> | undefined = await request(
         tx.objectStore("chatSettings").get(GLOBAL_PROFILE_SETTINGS_ID));
       return { id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(saved?.bubbleDelayMsPerCharacter),
+        bubbleTiming: normalizeBubbleTiming(saved?.bubbleTiming),
         hereThereEnabled: saved?.hereThereEnabled !== false,
         nextCommentAt: typeof saved?.nextCommentAt === "number" && Number.isFinite(saved.nextCommentAt)
           ? saved.nextCommentAt : null };
     }, ["chatSettings"]);
   }
 
-  updateBubbleDelayMsPerCharacter(value: number): Promise<void> {
-    if (!Number.isFinite(value) || value <= 0) return Promise.reject(new Error("Invalid bubble timing."));
+  updateBubbleTiming(patch: Partial<BubbleTiming>): Promise<void> {
+    const keys = Object.keys(patch);
+    if (!keys.length || keys.some((key) => !["shortMs", "mediumMs", "longMs"].includes(key)
+      || !isValidBubbleTimingDelay(patch[key as keyof BubbleTiming])))
+      return Promise.reject(new Error("Invalid bubble timing. Use a value greater than 0 and at most 60 seconds."));
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
       await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(value),
+        bubbleTiming: { ...normalizeBubbleTiming(current?.bubbleTiming), ...patch },
         hereThereEnabled: current?.hereThereEnabled !== false,
         nextCommentAt: typeof current?.nextCommentAt === "number" && Number.isFinite(current.nextCommentAt)
           ? current.nextCommentAt : null }));
     }, ["chatSettings"]);
+  }
+
+  async exportBubbleTiming(): Promise<string> {
+    const { bubbleTiming } = await this.readGlobalProfileSettings();
+    return JSON.stringify({ bubbleTiming });
+  }
+
+  async restoreBubbleTiming(serialized: string): Promise<void> {
+    const value: unknown = JSON.parse(serialized);
+    const timing = value && typeof value === "object" ? (value as { bubbleTiming?: unknown }).bubbleTiming : undefined;
+    if (!timing || typeof timing !== "object") throw new Error("Invalid bubble timing backup.");
+    const saved = timing as BubbleTiming;
+    if (![saved.shortMs, saved.mediumMs, saved.longMs].every(isValidBubbleTimingDelay))
+      throw new Error("Invalid bubble timing backup.");
+    await this.updateBubbleTiming({ shortMs: saved.shortMs, mediumMs: saved.mediumMs, longMs: saved.longMs });
   }
 
   async ensureHereThereSchedule(now = Date.now(), random = Math.random): Promise<GlobalProfileSettings> {
@@ -393,7 +413,7 @@ export class ChatStorage {
       const valid = typeof nextCommentAt === "number" && Number.isFinite(nextCommentAt);
       const next = !enabled ? null : valid ? nextCommentAt! : now + randomDelay(random);
       const saved = { id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(current?.bubbleDelayMsPerCharacter),
+        bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
         hereThereEnabled: enabled, nextCommentAt: next };
       if (!valid || !current) await request(table.put(saved));
       return { ...saved, id: GLOBAL_PROFILE_SETTINGS_ID };
@@ -405,7 +425,7 @@ export class ChatStorage {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
       await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(current?.bubbleDelayMsPerCharacter),
+        bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
         hereThereEnabled: enabled,
         nextCommentAt: enabled ? now + randomDelay(random) : null }));
     }, ["chatSettings"]);
@@ -418,7 +438,7 @@ export class ChatStorage {
       if (current?.hereThereEnabled === false || typeof current?.nextCommentAt !== "number"
         || !Number.isFinite(current.nextCommentAt) || current.nextCommentAt > now) return false;
       await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleDelayMsPerCharacter: normalizeBubbleDelayMsPerCharacter(current.bubbleDelayMsPerCharacter),
+        bubbleTiming: normalizeBubbleTiming(current.bubbleTiming),
         hereThereEnabled: true, nextCommentAt: now + randomDelay(random) }));
       return true;
     }, ["chatSettings"]);

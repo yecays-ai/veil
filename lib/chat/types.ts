@@ -25,15 +25,24 @@ export type ChatBackgroundSettings = {
 
 export type GlobalProfileSettings = {
   id: "global-profile-settings";
-  bubbleDelayMsPerCharacter: number;
+  bubbleTiming: BubbleTiming;
   hereThereEnabled: boolean;
   nextCommentAt: number | null;
 };
 
-export const DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER = 15;
-export function normalizeBubbleDelayMsPerCharacter(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0
-    ? value : DEFAULT_BUBBLE_DELAY_MS_PER_CHARACTER;
+export type BubbleTiming = { shortMs: number; mediumMs: number; longMs: number };
+export const DEFAULT_BUBBLE_TIMING: Readonly<BubbleTiming> = { shortMs: 1200, mediumMs: 2400, longMs: 3600 };
+export const MAX_BUBBLE_TIMING_MS = 60_000;
+export function isValidBubbleTimingDelay(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= MAX_BUBBLE_TIMING_MS;
+}
+export function normalizeBubbleTiming(value: unknown): BubbleTiming {
+  const saved = value && typeof value === "object" ? value as Partial<BubbleTiming> : {};
+  return {
+    shortMs: isValidBubbleTimingDelay(saved.shortMs) ? saved.shortMs : DEFAULT_BUBBLE_TIMING.shortMs,
+    mediumMs: isValidBubbleTimingDelay(saved.mediumMs) ? saved.mediumMs : DEFAULT_BUBBLE_TIMING.mediumMs,
+    longMs: isValidBubbleTimingDelay(saved.longMs) ? saved.longMs : DEFAULT_BUBBLE_TIMING.longMs,
+  };
 }
 
 export function normalizeBackgroundBlur(value: unknown): number {
