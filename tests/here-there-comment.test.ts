@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { HERE_THERE_COMMENT_REFRESH_MS, HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh,
-  ensureHereThereComment } from "../lib/here-there-comment";
+  ensureHereThereComment, startHereThereCommentAttempt } from "../lib/here-there-comment";
 import { bindHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { normalizeDocument, type ThemeDocument } from "../lib/theme-types";
@@ -49,6 +49,35 @@ test("Here & There retries a failed generation only on a later mount, and allows
   // Once success is visible, the guard resets; a later stale interval can refresh.
   assert.equal(laterMount.begin("a", false), false);
   assert.equal(laterMount.begin("a", true), true);
+});
+
+test("widget generation failure does not retry on clock rerenders but a fresh Home mount can retry", async () => {
+  const value = fixture();
+  let calls = 0;
+  value.services.provider = async function* () { calls++; throw new Error("temporary provider failure"); };
+  const mountedAttempts = new HereThereCommentAttemptGuard();
+  const runWidgetEffect = async (attempts: HereThereCommentAttemptGuard, now: Date) => {
+    const widget = value.theme().current.widgets[0];
+    const attempt = startHereThereCommentAttempt(
+      () => attempts.begin("a", hereThereCommentNeedsRefresh(widget, now)),
+      () => ensureHereThereComment(widget, { ...value.context, now }, value.commit, value.services));
+    if (attempt) await attempt.finally(() => attempts.finish("a"));
+  };
+
+  await runWidgetEffect(mountedAttempts, value.context.now);
+  assert.equal(calls, 1);
+  assert.equal(value.theme().current.widgets[0].config.comment, undefined);
+
+  const nextClockTick = new Date(value.context.now.getTime() + 1000);
+  await runWidgetEffect(mountedAttempts, nextClockTick);
+  await runWidgetEffect(mountedAttempts, new Date(nextClockTick.getTime() + 1000));
+  assert.equal(calls, 1);
+
+  value.services.provider = async function* () { calls++; yield "Peter is back."; };
+  const freshHomeMount = new HereThereCommentAttemptGuard();
+  await runWidgetEffect(freshHomeMount, new Date(nextClockTick.getTime() + 1000));
+  assert.equal(calls, 2);
+  assert.equal(value.theme().current.widgets[0].config.comment?.text, "Peter is back.");
 });
 
 test("widget generation resolves Global then Character defaults and ignores Messages overrides", async () => {

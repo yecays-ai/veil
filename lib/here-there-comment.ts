@@ -38,6 +38,11 @@ export class HereThereCommentAttemptGuard {
   }
 }
 
+export function startHereThereCommentAttempt(begin: () => boolean,
+  generate: () => Promise<void>): Promise<void> | null {
+  return begin() ? generate() : null;
+}
+
 export function hereThereCommentNeedsRefresh(widget: WidgetInstance, now: Date,
   interval = HERE_THERE_COMMENT_REFRESH_MS): boolean {
   const comment = widget.config.comment;
