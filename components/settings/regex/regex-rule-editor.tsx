@@ -10,6 +10,7 @@ import { regexPatternError, testRegexRule } from "../../../lib/regex-engine";
 import { downloadRegex } from "./files";
 import { useRegex } from "./use-regex";
 import { DEFAULT_REGEX_GROUP_ID } from "../../../lib/regex-defaults";
+import { Switch } from "../ui/switch";
 
 const modes: { value: RegexMode; label: string; description: string }[] = [
   { value: "stored", label: "Stored", description: "Changes the saved message." },
@@ -27,7 +28,7 @@ export function RegexRuleEditor({ groupId, ruleId }: { groupId: string; ruleId: 
   return <Editor key={ruleId} saved={saved} groupId={groupId} library={library} />;
 }
 function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string; library: ReturnType<typeof useRegex> }) {
-  const { error, notice, busy, run, change, setNotice } = library;
+  const { error, busy, run, change } = library;
   const [draft, setDraft] = useState(saved);
   const [testInput, setTestInput] = useState("");
   const router = useRouter();
@@ -45,9 +46,9 @@ function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string
       await change((current) => ({ ...current, groups: current.groups.map((group) => group.id !== groupId ? group : {
         ...group, updatedAt: Date.now(), rules: group.rules.map((rule) => rule.id === saved.id ? draft : rule),
       }) }));
-      setNotice("Saved.");
+      router.push(back);
     })}>Save</button>}>
-    {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
+    {error && <Alert variant="danger">{error}</Alert>}
     <section className="regex-section"><h2>Rule</h2><div className="settings-editor">
       <label>Name<Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
       <label>Find<textarea className="settings-input" rows={3} value={draft.find}
@@ -63,8 +64,8 @@ function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string
           onChange={() => setDraft({ ...draft, mode: mode.value })} />
         <span><strong>{mode.label}</strong><small>{mode.description}</small></span>
       </label>)}</fieldset>
-      <label className="regex-check"><input type="checkbox" checked={draft.enabled}
-        onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />Enabled</label>
+      <label className="regex-check"><span>Enabled</span><Switch checked={draft.enabled}
+        onChange={(enabled) => setDraft({ ...draft, enabled })} /></label>
     </div></section>
     <section className="regex-section"><h2>Test Rule</h2><div className="settings-editor">
       <label>Test Input<textarea className="settings-input" rows={4} value={testInput}

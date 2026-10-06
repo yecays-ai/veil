@@ -16,7 +16,7 @@
 .settings-runtime-toggle > span { flex: 1; min-width: 0; }
 .settings-runtime-toggle strong { font-size: 16px; }
 .settings-runtime-toggle small { display: block; margin-top: 8px; font-size: 13px; line-height: 1.5; opacity: .6; }
-.settings-runtime-toggle input { flex: none; width: 22px; height: 22px; }
+.settings-runtime-toggle > .veil-switch { flex: none; }
 .settings-app .app-page-body {
   padding: 24px max(18px, var(--app-safe-right))
     max(24px, var(--app-safe-bottom)) max(18px, var(--app-safe-left));
@@ -34,7 +34,7 @@
   opacity: 0.45;
   cursor: default;
 }
-.settings-app :is(button, input, select, a):focus-visible {
+.settings-app :is(button, input, select, a):not(.veil-switch-input):focus-visible {
   outline: 2px solid var(--theme-accent);
   outline-offset: 3px;
 }

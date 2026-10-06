@@ -121,9 +121,9 @@ export function TextApiSettings() {
       };
       await browserApiConfigStorage.saveApiConfig(next);
       setConfigs(await browserApiConfigStorage.listApiConfigs());
-      setDraft(next);
+      setDraft(null);
       setConnection("");
-      setNotice("Saved. Connection has not been tested.");
+      setNotice("");
     });
   }
   const feedback = (

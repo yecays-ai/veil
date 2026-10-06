@@ -11,8 +11,11 @@ test("Regex has one Settings entry and inline Default/Custom Rules", () => {
   assert.match(settings, /label: "Regex"/);
   assert.match(list, /<h2>Default Rules<\/h2>/);
   assert.match(list, /<h2>Custom Rules<\/h2>/);
-  for (const label of ["Name", "Find", "Replace", "Applies To", "Mode", "Enabled"])
+  for (const label of ["Name", "Find", "Replace", "Applies To", "Mode"])
     assert.match(row, new RegExp(label));
+  assert.match(row, /<Switch aria-label=\{`Enable \$\{rule\.name \|\| "rule"\}`\}/);
+  assert.doesNotMatch(row, /<input type="checkbox" checked=\{rule\.enabled\}/);
+  assert.doesNotMatch(row, />Enabled<\/label>/);
   assert.match(row, /aria-expanded=\{open\}/);
 });
 

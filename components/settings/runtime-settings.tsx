@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useFoundation } from "../foundation-provider";
+import { Switch } from "./ui/switch";
 
 export function RuntimeSettings() {
   const { document, ready, commit } = useFoundation();
@@ -11,9 +12,8 @@ export function RuntimeSettings() {
     <label className="settings-runtime-toggle">
       <span><strong>Real-Time Awareness</strong>
         <small>Give characters awareness of the current date, time, and local time differences.</small></span>
-      <input type="checkbox" checked={document.runtime.timeAware} disabled={!ready || saving}
-        onChange={async (event) => {
-          const timeAware = event.target.checked;
+      <Switch checked={document.runtime.timeAware} disabled={!ready || saving}
+        onChange={async (timeAware) => {
           setSaving(true); setError("");
           try { await commit((current) => ({ ...current, runtime: { ...current.runtime, timeAware } })); }
           catch (reason) { setError(reason instanceof Error ? reason.message : "Setting could not be saved."); }

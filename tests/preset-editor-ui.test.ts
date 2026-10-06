@@ -42,8 +42,8 @@ test("markers explain runtime content without exposing a fake textarea", () => {
 });
 
 test("inline controls synchronize enable and order while built-in controls stay disabled", () => {
-  assert.match(detail, /checked=\{enabled\}/);
-  assert.match(detail, /togglePrompt\(entry\.identifier, event\.target\.checked\)/);
+  assert.match(detail, /<Switch aria-label=\{`Enable Prompt \$\{entry\.name\}`\} checked=\{enabled\}/);
+  assert.match(detail, /togglePrompt\(entry\.identifier, nextEnabled\)/);
   assert.match(detail, /prompts: current\.prompts\.map/);
   assert.match(detail, /promptOrder: current\.promptOrder\.map/);
   assert.match(detail, /setDraft\(movePrompt\(draft, entry\.identifier, -1\)\)/);

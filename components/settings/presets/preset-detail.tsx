@@ -11,6 +11,7 @@ import { presetFingerprint, type Preset, type PresetPrompt } from "../../../lib/
 import { buildDisplayedPrompts, copyPreset, deletePrompt, exportPreset, movePrompt,
   promptEnabled, setActivePreset, updatePreset } from "../../../lib/preset-library";
 import { usePresetLibrary } from "./use-preset-library";
+import { Switch } from "../ui/switch";
 
 export function PresetDetail({ presetId }: { presetId: string }) {
   const library = usePresetLibrary();
@@ -24,7 +25,7 @@ export function PresetDetail({ presetId }: { presetId: string }) {
 function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<typeof usePresetLibrary> }) {
   const { document, error, notice, busy, run, change, remove, setNotice } = library;
   const [draft, setDraft] = useState(() => structuredClone(saved));
-  const [baseline, setBaseline] = useState(saved);
+  const [baseline] = useState(saved);
   const [deleting, setDeleting] = useState(false);
   const [deletingPrompt, setDeletingPrompt] = useState<string>();
   const [editingPromptId, setEditingPromptId] = useState<string>();
@@ -66,9 +67,8 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
     if (dirty && (event.target as HTMLElement).closest("a") && !window.confirm("Discard unsaved changes?")) event.preventDefault();
   }}><PageShell className="settings-app preset-manager" title={draft.name} backHref="/settings/presets" backLabel="Back to Presets" overlay={overlay}
     rightAction={!readOnly && <button className="settings-header-action" disabled={!dirty || busy} onClick={() => void run(async () => {
-      const next = await change((current) => updatePreset(current, draft, baseline));
-      const stored = next.presets.find((preset) => preset.id === saved.id)!;
-      setDraft(structuredClone(stored)); setBaseline(stored); setNotice("Saved.");
+      await change((current) => updatePreset(current, draft, baseline));
+      router.push("/settings/presets");
     })}>Save</button>}>
     <div className="settings-action-row preset-actions">
       <button className="settings-button" disabled={busy || dirty} onClick={() => void run(async () => {
@@ -114,8 +114,8 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
               <ChevronDown size={17} aria-hidden="true" /><span className="preset-copy"><strong>{entry.name}</strong>
                 <small>{entry.source === "marker" ? `Marker · ${entry.marker}` : entry.role}</small></span>
             </button>
-            <input type="checkbox" aria-label={`Enable Prompt ${entry.name}`} checked={enabled} disabled={readOnly || busy}
-              onChange={(event) => togglePrompt(entry.identifier, event.target.checked)} />
+            <Switch aria-label={`Enable Prompt ${entry.name}`} checked={enabled} disabled={readOnly || busy}
+              onChange={(nextEnabled) => togglePrompt(entry.identifier, nextEnabled)} />
           </div>
           {expanded && <div className="preset-prompt-editor" id={`prompt-${entry.identifier}`}>
             {entry.source === "prompt" ? <fieldset disabled={readOnly || busy} className="settings-editor">

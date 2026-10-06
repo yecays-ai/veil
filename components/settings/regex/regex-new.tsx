@@ -8,6 +8,7 @@ import { Input } from "../ui/form";
 import { canSaveRegexGroup, newRegexDraft, newRegexRule, type RegexMode, type RegexRole, type RegexRule } from "../../../lib/regex";
 import { regexPatternError, testRegexGroups, testRegexRule } from "../../../lib/regex-engine";
 import { useRegex } from "./use-regex";
+import { Switch } from "../ui/switch";
 
 export function RegexNew() {
   const { document, error, busy, run, change } = useRegex();
@@ -53,8 +54,8 @@ export function RegexNew() {
           <span><strong>{stage === "stored" ? "Stored" : stage === "prompt" ? "Prompt Only" : "Display Only"}</strong>
             <small>{stage === "stored" ? "Changes the saved message." : stage === "prompt" ? "Only changes what the AI receives." : "Only changes what you see."}</small></span>
         </label>)}</fieldset>
-        <label className="regex-check"><input type="checkbox" checked={editing.enabled}
-          onChange={(event) => setEditing({ ...editing, enabled: event.target.checked })} />Enabled</label>
+        <label className="regex-check"><span>Enabled</span><Switch checked={editing.enabled}
+          onChange={(enabled) => setEditing({ ...editing, enabled })} /></label>
       </div></section>
       <section className="regex-section"><h2>Test Rule</h2><div className="settings-editor">
         <label>Test Input<textarea className="settings-input" rows={4} value={ruleTest} onChange={(event) => setRuleTest(event.target.value)} /></label>
@@ -67,14 +68,14 @@ export function RegexNew() {
   return <PageShell className="settings-app regex-manager" title="New Regex" backHref="/settings/regex" backLabel="Cancel new Regex Group"
     rightAction={<button className="settings-header-action" disabled={!document || busy || !canSaveRegexGroup(draft)} onClick={() => void run(async () => {
       await change((current) => ({ ...current, groups: [...current.groups, { ...draft, name: draft.name.trim(), updatedAt: Date.now() }] }));
-      router.replace(`/settings/regex/${draft.id}`);
+      router.replace("/settings/regex");
     })}>Save</button>}>
     {error && <Alert variant="danger">{error}</Alert>}
     <section className="regex-section"><h2>Regex Group</h2><div className="settings-editor">
       <label>Name *<Input required maxLength={200} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
       <label>Description<textarea className="settings-input" rows={3} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
-      <label className="regex-check"><input type="checkbox" checked={draft.enabled}
-        onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />Enabled</label>
+      <label className="regex-check"><span>Enabled</span><Switch checked={draft.enabled}
+        onChange={(enabled) => setDraft({ ...draft, enabled })} /></label>
     </div></section>
     <section className="regex-section"><div className="regex-section-heading"><h2>Rules</h2>
       <button className="settings-button" onClick={() => setEditing(newRegexRule())}><Plus size={17} />Add Rule</button></div>

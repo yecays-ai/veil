@@ -117,7 +117,10 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(css, /\.chat-info-body\s*\{[^}]*overflow-y:\s*auto/);
   assert.match(css, /\.chat-info-group\s*\{[^}]*border:\s*0;[^}]*border-radius:\s*20px/);
   assert.match(css, /\.chat-info-group \.chat-session-setting \+ \.chat-session-setting::before\s*\{[^}]*left:\s*20px/);
-  assert.match(css, /input\.chat-info-switch:checked\s*\{\s*background:\s*var\(--theme-accent\);/);
+  assert.match(room, /<Switch checked=\{pinned\}/);
+  assert.match(room, /<Switch checked=\{streamOnline\}/);
+  assert.match(room, /<Switch checked=\{autoReplyOnKeyboardDismiss\}/);
+  assert.match(globalCss, /\.veil-switch-input:checked \+ \.veil-switch-track \{ background: var\(--theme-accent\); \}/);
   assert.match(css, /\.chat-app button\.chat-info-clear\s*\{[^}]*color:\s*#c9363e/);
   assert.match(room, /<span>Chat Background/);
   assert.match(room, /<ChatBackgroundSettings session=\{session\}/);

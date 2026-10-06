@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import { useRef } from "react";
-import { useRouter } from "next/navigation";
 import { ChevronRight, Plus, Upload } from "lucide-react";
 import { PageShell } from "../../page-shell";
 import { Alert } from "../ui/feedback";
@@ -11,13 +10,11 @@ import { usePresetLibrary } from "./use-preset-library";
 export function PresetList() {
   const { document, error, notice, busy, run, change, setNotice } = usePresetLibrary();
   const file = useRef<HTMLInputElement>(null);
-  const router = useRouter();
   return <PageShell className="settings-app preset-manager" title="Presets" backHref="/settings" backLabel="Back to Settings">
     <div className="settings-action-row preset-actions">
       <button className="settings-button" disabled={!document || busy} onClick={() => file.current?.click()}><Upload size={17} />Import Preset</button>
       <button className="settings-button" disabled={!document || busy} onClick={() => void run(async () => {
-        const next = await change(newPreset);
-        router.push(`/settings/presets/${encodeURIComponent(next.presets.at(-1)!.id)}`);
+        await change(newPreset);
       })}><Plus size={17} />New Preset</button>
     </div>
     <input ref={file} type="file" accept=".json,application/json" hidden onChange={(event) => {

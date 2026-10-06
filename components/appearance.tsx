@@ -208,7 +208,7 @@ export function Appearance() {
       <fieldset className="appearance-controls" disabled={!ready || busy}>
         <section aria-labelledby="appearance-heading">
           <h2 id="appearance-heading">Appearance</h2>
-          <details open>
+          <details>
             <summary>主题色</summary>
             {Object.entries(profile.colors).map(([key, value]) => (
               <label key={key}>
@@ -230,7 +230,7 @@ export function Appearance() {
               </label>
             ))}
           </details>
-          <details open>
+          <details>
             <summary>壁纸</summary>
             <ImageEditor
               label="Wallpaper"
@@ -290,7 +290,7 @@ export function Appearance() {
               </label>
             ))}
           </details>
-          <details open>
+          <details>
             <summary>图标</summary>
             {APP_REGISTRY.map((app) => (
               <ImageEditor

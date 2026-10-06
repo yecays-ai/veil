@@ -17,5 +17,5 @@
 .worldbook-manager .settings-editor > .worldbook-check { display: flex; align-items: center; gap: 10px; min-height: 44px; }
 .worldbook-manager textarea { font: inherit; line-height: 1.5; resize: vertical; }
 .worldbook-manager .worldbook-content { min-height: 220px; }
-.worldbook-manager input[type="checkbox"] { width: 21px; height: 21px; accent-color: var(--theme-accent); }
+.worldbook-manager input[type="checkbox"]:not(.veil-switch-input) { width: 21px; height: 21px; accent-color: var(--theme-accent); }
 .worldbook-manager .worldbook-count { display: block; margin: 18px 0; font-size: 13px; opacity: .65; }

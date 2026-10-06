@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import type { RegexMode, RegexRole, RegexRule } from "../../../lib/regex";
 import { regexPatternError } from "../../../lib/regex-engine";
 import { Input } from "../ui/form";
+import { Switch } from "../ui/switch";
 
 export function RegexInlineRule({ rule, busy, initiallyOpen = false, onSave }: {
   rule: RegexRule;
@@ -15,13 +16,14 @@ export function RegexInlineRule({ rule, busy, initiallyOpen = false, onSave }: {
   const [draft, setDraft] = useState(rule);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
-  const save = async (next: RegexRule, syncDraft = true) => {
+  const save = async (next: RegexRule, syncDraft = true, closeAfterSave = false) => {
     setSaving(true);
     setError("");
     try {
       await onSave(next);
       if (syncDraft) setDraft(next);
       else setDraft((current) => ({ ...current, enabled: next.enabled }));
+      if (closeAfterSave) setOpen(false);
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Rule could not be saved."); }
     finally { setSaving(false); }
@@ -34,10 +36,10 @@ export function RegexInlineRule({ rule, busy, initiallyOpen = false, onSave }: {
       <button type="button" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} ${rule.name}`}
         onClick={() => setOpen(!open)}>{open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</button>
       <button type="button" className="regex-inline-title" onClick={() => setOpen(!open)}>
-        <strong>{rule.name}</strong><small>{rule.mode} · {rule.appliesTo.join(", ")}</small>
+        <strong>{rule.name}</strong><small>{rule.mode === "display" ? "Display" : rule.mode === "prompt" ? "Prompt Only" : "Stored"} · {rule.appliesTo.map((role) => role === "assistant" ? "Assistant" : "User").join(" + ")}</small>
       </button>
-      <label><input type="checkbox" checked={rule.enabled} disabled={busy || saving}
-        onChange={(event) => void save({ ...rule, enabled: event.target.checked }, false)} />Enabled</label>
+      <Switch aria-label={`Enable ${rule.name || "rule"}`} checked={rule.enabled} disabled={busy || saving}
+        onChange={(enabled) => void save({ ...rule, enabled }, false)} />
     </div>
     {open && <div className="settings-editor regex-inline-editor">
       <label>Name<Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
@@ -56,10 +58,8 @@ export function RegexInlineRule({ rule, busy, initiallyOpen = false, onSave }: {
         onChange={(event) => setDraft({ ...draft, mode: event.target.value as RegexMode })}>
         {modes.map((mode) => <option key={mode} value={mode}>{mode}</option>)}
       </select></label>
-      <label className="regex-check"><input type="checkbox" checked={draft.enabled}
-        onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />Enabled</label>
       <button type="button" className="settings-button" disabled={busy || saving || !!invalid || !draft.appliesTo.length || !draft.name.trim()}
-        onClick={() => void save(draft)}>Save Rule</button>
+        onClick={() => void save(draft, true, true)}>Save Rule</button>
       {error && <small role="alert">{error}</small>}
     </div>}
   </article>;

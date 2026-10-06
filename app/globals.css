@@ -134,6 +134,54 @@ h1 { margin: 24px 0 32px; font-size: 28px; letter-spacing: -0.7px; }
 a { color: inherit; text-decoration: none; }
 a:focus-visible { outline: 3px solid #2563eb; outline-offset: 4px; }
 
+.veil-switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 48px;
+  height: 29px;
+  vertical-align: middle;
+}
+.veil-switch-input {
+  position: absolute;
+  z-index: 1;
+  inset: -7px -4px;
+  width: calc(100% + 8px) !important;
+  height: calc(100% + 14px) !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  opacity: 0;
+  cursor: pointer;
+}
+.veil-switch-track {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--theme-text) 17%, var(--theme-surface));
+  transition: background-color 150ms ease;
+}
+.veil-switch-thumb {
+  display: block;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  transition: transform 150ms ease;
+}
+.veil-switch-input:checked + .veil-switch-track { background: var(--theme-accent); }
+.veil-switch-input:checked + .veil-switch-track .veil-switch-thumb { transform: translateX(19px); }
+.veil-switch-input:disabled { cursor: default; }
+.veil-switch-input:disabled + .veil-switch-track { opacity: .45; }
+.veil-switch-input:focus-visible + .veil-switch-track { outline: 2px solid var(--theme-accent); outline-offset: 3px; }
+.veil-switch-input:focus-visible { outline: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .veil-switch-track, .veil-switch-thumb { transition: none; }
+}
+
 .app-link {
   display: flex;
   align-items: center;

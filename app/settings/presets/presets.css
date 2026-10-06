@@ -20,7 +20,7 @@
 .preset-manager .preset-rows { list-style: none; padding: 0; margin: 0; border: 1px solid var(--settings-border); border-radius: 16px; background: var(--theme-surface); }
 .preset-manager .preset-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; min-height: 64px; }
 .preset-manager .preset-row + .preset-row { border-top: 1px solid var(--settings-border); }
-.preset-manager input[type="checkbox"] { flex: none; width: 22px; height: 22px; accent-color: var(--theme-accent); }
+.preset-manager input[type="checkbox"]:not(.veil-switch-input) { flex: none; width: 22px; height: 22px; accent-color: var(--theme-accent); }
 .preset-manager .preset-order-button { display: grid; place-items: center; min-width: 40px; min-height: 44px; padding: 0; border: 0; background: transparent; }
 .preset-manager .preset-toggle { display: flex; align-items: center; justify-content: space-between; min-height: 44px; }
 .preset-manager .preset-prompt-content { min-height: 260px; }

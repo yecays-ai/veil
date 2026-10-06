@@ -8,6 +8,7 @@ import { Input, Select } from "../ui/form";
 import { importWorldBookEntry, normalizeWorldBookEntry, type WorldBookEntry } from "../../../lib/worldbook";
 import { downloadWorldBook } from "./files";
 import { useWorldBooks } from "./use-worldbooks";
+import { Switch } from "../ui/switch";
 
 export function WorldBookEntryEditor({ bookId, entryId }: { bookId: string; entryId: string }) {
   const library = useWorldBooks();
@@ -44,17 +45,17 @@ function Editor({ bookId, entryId, saved, library }: {
       <label>Name / Comment<Input value={draft.name} onChange={(event) => patch({ name: event.target.value })} /></label>
       <label>Content<textarea className="settings-input worldbook-content" rows={10} value={draft.content}
         onChange={(event) => patch({ content: event.target.value })} /></label>
-      <label className="worldbook-check"><input type="checkbox" checked={draft.enabled}
-        onChange={(event) => patch({ enabled: event.target.checked })} />Enabled</label>
-      <label className="worldbook-check"><input type="checkbox" checked={draft.constant}
-        onChange={(event) => patch({ constant: event.target.checked })} />Always activate</label>
+      <label className="worldbook-check"><span>Enabled</span><Switch checked={draft.enabled}
+        onChange={(enabled) => patch({ enabled })} /></label>
+      <label className="worldbook-check"><span>Always activate</span><Switch checked={draft.constant}
+        onChange={(constant) => patch({ constant })} /></label>
       <label>Keywords (one per line)<textarea className="settings-input" rows={4} value={draft.keywords.join("\n")}
         onChange={(event) => patch({ keywords: event.target.value.split("\n").map((item) => item.trim()).filter(Boolean) })} /></label>
       <label>Match Mode<Select value={draft.matchMode} onChange={(event) => patch({ matchMode: event.target.value as WorldBookEntry["matchMode"] })}>
         <option value="literal">Literal keywords</option><option value="regex">Regex keyword matching</option>
       </Select></label>
-      <label className="worldbook-check"><input type="checkbox" checked={draft.caseSensitive}
-        onChange={(event) => patch({ caseSensitive: event.target.checked })} />Case sensitive</label>
+      <label className="worldbook-check"><span>Case sensitive</span><Switch checked={draft.caseSensitive}
+        onChange={(caseSensitive) => patch({ caseSensitive })} /></label>
       <label>Position<Select value={draft.position} onChange={(event) => patch({ position: event.target.value as WorldBookEntry["position"] })}>
         <option value="before">Before</option><option value="after">After</option>
       </Select></label>

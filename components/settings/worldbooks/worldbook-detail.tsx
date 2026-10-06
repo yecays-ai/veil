@@ -9,6 +9,7 @@ import { Input } from "../ui/form";
 import { importWorldBookEntry, type WorldBook } from "../../../lib/worldbook";
 import { downloadWorldBook } from "./files";
 import { useWorldBooks } from "./use-worldbooks";
+import { Switch } from "../ui/switch";
 
 export function WorldBookDetail({ bookId }: { bookId: string }) {
   const library = useWorldBooks();
@@ -31,16 +32,15 @@ function Detail({ saved, library }: { saved: WorldBook; library: ReturnType<type
       const name = draft.name.trim();
       await change((current) => ({ ...current, books: current.books.map((book) => book.id === saved.id
         ? { ...book, name, description: draft.description, enabled: draft.enabled } : book) }));
-      setDraft((current) => ({ ...current, name }));
-      setNotice("Saved.");
+      router.push("/settings/worldbooks");
     })}>Save</button>}>
     {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
     <section className="worldbook-section"><h2>WorldBook</h2><div className="settings-editor">
       <label>Name<Input value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
       <label>Description<textarea className="settings-input" rows={3} value={draft.description}
         onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>
-      <label className="worldbook-check"><input type="checkbox" checked={draft.enabled}
-        onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} />Enabled</label>
+      <label className="worldbook-check"><span>Enabled</span><Switch checked={draft.enabled}
+        onChange={(enabled) => setDraft({ ...draft, enabled })} /></label>
     </div></section>
     <div className="settings-action-row worldbook-actions">
       <button className="settings-button" disabled={busy || dirty} onClick={() => file.current?.click()}><Upload size={17} />Import Entry</button>
@@ -64,11 +64,11 @@ function Detail({ saved, library }: { saved: WorldBook; library: ReturnType<type
           <ChevronRight size={18} aria-hidden="true" />
         </Link>
         <div className="worldbook-row-actions">
-          <label><input type="checkbox" checked={entry.enabled} disabled={busy || dirty} onChange={(event) => void run(async () => {
+          <Switch checked={entry.enabled} disabled={busy || dirty} aria-label={`Enable ${entry.name || "entry"}`} onChange={(enabled) => void run(async () => {
             await change((current) => ({ ...current, books: current.books.map((book) => book.id !== saved.id ? book : {
-              ...book, entries: book.entries.map((item) => item.id === entry.id ? { ...item, enabled: event.target.checked } : item),
+              ...book, entries: book.entries.map((item) => item.id === entry.id ? { ...item, enabled } : item),
             }) }));
-          })} />Enabled</label>
+          })} />
           <button aria-label={`Move ${entry.name} up`} disabled={busy || dirty || index === 0} onClick={() => void run(async () => {
             await change((current) => ({ ...current, books: current.books.map((book) => {
               if (book.id !== saved.id) return book;

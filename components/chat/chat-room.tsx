@@ -40,6 +40,7 @@ import { useBubbleReveal } from "./use-bubble-reveal";
 import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
+import { Switch } from "../settings/ui/switch";
 import { SessionCustomCSS } from "./session-custom-css";
 import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
 import { getMessageActions, messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
@@ -761,8 +762,8 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
       </section>
       <section className="chat-info-group" aria-label="Conversation settings">
         <label className="chat-session-setting chat-info-toggle"><span>Pin Conversation</span>
-          <input className="chat-info-switch" type="checkbox" checked={pinned} disabled={!session}
-            onChange={(event) => void onUpdate({ pinned: event.target.checked })} /></label>
+          <Switch checked={pinned} disabled={!session}
+            onChange={(checked) => void onUpdate({ pinned: checked })} /></label>
       </section>
       <section className="chat-info-group" aria-label="Appearance">
         <button type="button" className="chat-session-setting chat-info-row"
@@ -779,11 +780,11 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
       <section className="chat-info-group" aria-label="Chat behavior">
         <label className="chat-session-setting"><span>Streaming Replies
           <small>Show replies as they are generated.</small></span>
-          <input className="chat-info-switch" type="checkbox" checked={streamOnline} disabled={!session}
-            onChange={(event) => void onUpdate({ streamOnline: event.target.checked })} /></label>
+          <Switch checked={streamOnline} disabled={!session}
+            onChange={(checked) => void onUpdate({ streamOnline: checked })} /></label>
         <label className="chat-session-setting chat-info-toggle"><span>Reply When Keyboard Closes</span>
-          <input className="chat-info-switch" type="checkbox" checked={autoReplyOnKeyboardDismiss} disabled={!session}
-            onChange={(event) => void onUpdate({ autoReplyOnKeyboardDismiss: event.target.checked })} /></label>
+          <Switch checked={autoReplyOnKeyboardDismiss} disabled={!session}
+            onChange={(checked) => void onUpdate({ autoReplyOnKeyboardDismiss: checked })} /></label>
       </section>
       <section className="chat-info-group chat-info-danger-group" aria-label="Danger">
         <button type="button" className="chat-session-setting chat-info-clear chat-danger"
