@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, MessageCircle, Phone, Video, UserRound, Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { useContacts } from "./use-contacts";
 import { Avatar } from "./profile-view";
@@ -12,9 +12,10 @@ import { ImageCropDialog } from "./image-crop-dialog";
 import { readImage } from "../lib/theme-storage";
 import { chatStorage } from "../lib/chat/storage";
 import { contactDisplayName, removeContact, updateContact } from "../lib/contact-storage";
+import { contactReturnTarget, type ContactReturnSource } from "../lib/contact-navigation";
 import "../app/contacts/contact-info.css";
 
-export function ContactInfo({ characterId }: { characterId: string }) {
+export function ContactInfo({ characterId, returnSource }: { characterId: string; returnSource?: ContactReturnSource }) {
   const { document, ready } = useFoundation();
   const contacts = useContacts();
   const router = useRouter();
@@ -27,6 +28,7 @@ export function ContactInfo({ characterId }: { characterId: string }) {
   const imageRequest = useRef(0);
   const backgroundInput = useRef<HTMLInputElement>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const backHref = contactReturnTarget(characterId, returnSource);
   useEffect(() => () => { imageRequest.current++; }, []);
 
   function cancelEdit() {
@@ -64,12 +66,12 @@ export function ContactInfo({ characterId }: { characterId: string }) {
     setBusy(true); setError("");
     try {
       await contacts.commit((current) => removeContact(current, characterId));
-      router.push("/contacts");
+      router.push(backHref);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Contact could not be deleted."); setBusy(false); }
   }
 
   if (!ready || !contacts.ready || !character || !contact || contacts.error) return <div className="contact-info contact-info-unavailable">
-    <Link href="/contacts" aria-label="Back to Contacts"><ChevronLeft /> Back</Link>
+    <Link href={backHref} aria-label="Back to Contacts"><ChevronLeft /> Back</Link>
     <p role={contacts.error ? "alert" : undefined}>{!ready || !contacts.ready ? "Loading contact…" : contacts.error || "Contact not found."}</p>
   </div>;
   const heroBackground = draft ? draft.heroBackground : contact.heroBackground;
@@ -89,7 +91,7 @@ export function ContactInfo({ characterId }: { characterId: string }) {
           }} />
       </>}
       <nav className="contact-hero-nav" aria-label="Contact Info">
-        <Link className="contact-back" href="/contacts" aria-label="Back to Contacts"><ChevronLeft /></Link>
+        <Link className="contact-back" href={backHref} aria-label="Back to Contacts"><ChevronLeft /></Link>
         {draft ? <div className="contact-edit-actions">
           <button type="button" disabled={busy} onClick={cancelEdit}>Cancel</button>
           <button type="button" disabled={busy || imageReading || !!cropSource} onClick={() => void save()}>Save</button>
@@ -144,8 +146,12 @@ function DeleteContactDialog({ busy, error, onCancel, onConfirm }: {
   busy: boolean; error: string; onCancel: () => void; onConfirm: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { ref.current?.showModal(); }, []);
-  return <dialog ref={ref} className="contact-delete-dialog" aria-labelledby="delete-contact-title"
+  useLayoutEffect(() => {
+    const dialog = ref.current;
+    dialog?.showModal();
+    dialog?.focus({ preventScroll: true });
+  }, []);
+  return <dialog ref={ref} tabIndex={-1} className="contact-delete-dialog" aria-labelledby="delete-contact-title"
     onCancel={(event) => { event.preventDefault(); onCancel(); }}>
     <h2 id="delete-contact-title">Delete Contact?</h2>
     <p>This removes the Contact relationship. The Character, conversation and chat history will remain.</p>

@@ -8,6 +8,7 @@ import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
 import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
 import { createCharacter } from "../lib/foundation";
 import { normalizeCharacterInput } from "../lib/foundation-types";
+import { contactReturnTarget } from "../lib/contact-navigation";
 
 const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aJ1sAAAAASUVORK5CYII=";
 function backend() {
@@ -28,6 +29,22 @@ test("Contact remark normalizes, falls back to Character name and keeps structur
   assert.equal(contactDisplayName(document.contacts[0], "Peter"), "Peter");
   assert.equal(contactRemarkContext(document.contacts[0]), null);
   assert.equal(document.contacts[0].lastRemarkChange?.fromRemark, "Simba");
+});
+
+test("Contact display helper applies the current remark only to direct contact identity", () => {
+  const contact = addContact(normalizeContacts(null), "peter", 100).contacts[0];
+  const renamed = updateContact({ version: 1, contacts: [contact] }, "peter", { remark: " Simba ", heroBackground: null }).contacts[0];
+  assert.equal(contactDisplayName(renamed, "Peter Parker"), "Simba");
+  assert.equal(contactDisplayName({ ...renamed, remark: "  " }, "Peter Parker"), "Peter Parker");
+  assert.equal(contactDisplayName(undefined, "Peter Parker"), "Peter Parker");
+});
+
+test("Contact Info return targets permit only Contacts or the matching direct chat", () => {
+  assert.equal(contactReturnTarget("peter", undefined), "/contacts");
+  assert.equal(contactReturnTarget("peter", "direct"), "/messages/peter");
+  assert.equal(contactReturnTarget("peter parker", "direct"), "/messages/peter%20parker");
+  assert.equal(contactReturnTarget("", "direct"), "/contacts");
+  assert.equal(contactReturnTarget("peter", "external"), "/contacts");
 });
 
 test("Contact changes preserve Foundation, unique chat, history and both chat backgrounds with zero network calls", async (t) => {
@@ -105,15 +122,23 @@ test("Contact Info route structure has real actions and honest placeholders with
   assert.match(info, /This removes the Contact relationship\. The Character, conversation and chat history will remain\./);
   assert.match(info, /className="contact-danger-area"/);
   assert.match(info, /className="contact-delete-dialog"/);
+  assert.match(info, /useLayoutEffect\(\(\) => \{[\s\S]*?showModal\(\);[\s\S]*?focus\(\{ preventScroll: true \}\)/);
+  assert.match(info, /<dialog ref=\{ref\} tabIndex=\{-1\}/);
   assert.match(info, /character\.presence/);
   assert.doesNotMatch(info, /occupation|location\.label|lastActive|Last active|\/characters\/|requestReply|chat\/provider|PageShell|primary-button/);
   const social = readFileSync("components/character-social-profile.tsx", "utf8");
   assert.doesNotMatch(social, /\/characters\/|personality|backstory|speakingStyle/);
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
-  assert.match(room, /<Link href=\{`\/contacts\/\$\{encodeURIComponent\(character\.characterId\)\}`\}[\s\S]*?className="chat-contact-summary page-title"/);
+  assert.match(room, /contactDisplayName\(contact, character\.name\)/);
+  assert.match(room, /<Link href=\{`\/contacts\/\$\{encodeURIComponent\(character\.characterId\)\}\?from=direct`\}[\s\S]*?className="chat-contact-summary page-title"/);
+  const messages = readFileSync("components/chat/messages-home.tsx", "utf8");
+  assert.match(messages, /group \? session\.title \?\? "Group" : character[\s\S]*?contactDisplayName\(contactByCharacter/);
+  assert.doesNotMatch(messages, /group \? session\.title \?\? "Group" : session\.remark/);
+  assert.doesNotMatch(room, /session\?\.remark \|\| character\.name/);
   const css = readFileSync("app/contacts/contact-info.css", "utf8");
   assert.match(css, /\.contact-danger-area button:first-child::after\s*\{[^}]*right:\s*18px;[^}]*left:\s*18px/);
   assert.match(css, /\.contact-danger-area\s*\{[^}]*border-radius:\s*16px;[^}]*background:\s*var\(--theme-surface\)/);
   assert.match(css, /\.contact-delete-dialog button\s*\{[^}]*border-radius:\s*12px/);
+  assert.match(css, /\.contact-delete-dialog:focus\s*\{\s*outline:\s*none/);
   assert.match(readFileSync("lib/ui-copy.ts", "utf8"), /genderSuggestions: \["Male", "Female", "Non-binary", "Prefer not to say"\]/);
 });

@@ -13,6 +13,7 @@ import { RootAppHeader } from "./root-app-header";
 import { useContacts } from "./use-contacts";
 import { addContact, contactDisplayName } from "../lib/contact-storage";
 import { ContactInfo } from "./contact-info";
+import type { ContactReturnSource } from "../lib/contact-navigation";
 
 type ContactSelectionMode = "single" | "multi";
 
@@ -153,6 +154,6 @@ export function CreateGroupPage({ characterIds }: { characterIds: string[] }) {
   </PageShell>;
 }
 
-export function ContactProfile({ characterId }: { characterId: string }) {
-  return <ContactInfo characterId={characterId} />;
+export function ContactProfile({ characterId, returnSource }: { characterId: string; returnSource?: ContactReturnSource }) {
+  return <ContactInfo characterId={characterId} returnSource={returnSource} />;
 }

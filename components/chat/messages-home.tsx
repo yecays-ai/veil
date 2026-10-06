@@ -11,10 +11,13 @@ import { CONVERSATION_DELETE_WIDTH, conversationDeleteMotion, conversationSwipeO
   conversationSwipeReleaseTarget } from "../../lib/chat/swipe-gesture";
 import { ChatAvatar } from "./avatar";
 import { RootAppHeader } from "../root-app-header";
+import { useContacts } from "../use-contacts";
+import { contactDisplayName } from "../../lib/contact-storage";
 
 type Filter = "all" | "private" | "groups";
 export function MessagesHome() {
   const router = useRouter(), { document, ready } = useFoundation();
+  const contacts = useContacts();
   const [sessions, setSessions] = useState<ChatSession[]>([]), [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(""), [query, setQuery] = useState(""), [filter, setFilter] = useState<Filter>("all");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -37,6 +40,7 @@ export function MessagesHome() {
     window.addEventListener("keydown", close); return () => window.removeEventListener("keydown", close);
   }, [menuOpen]);
   const characters = new Map(document.characters.map((item) => [item.characterId, item]));
+  const contactByCharacter = new Map(contacts.document.contacts.map((item) => [item.characterId, item]));
   function onListPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (!openRowId) return;
     const row = (event.target as HTMLElement).closest<HTMLElement>("[data-conversation-row]");
@@ -96,7 +100,9 @@ export function MessagesHome() {
   const visible = sessions.filter((session) => {
     const group = session.type === "group";
     if ((filter === "groups" && !group) || (filter === "private" && group)) return false;
-    const name = group ? session.title ?? "Group" : session.remark || characters.get(session.characterId)?.name || "Unknown Contact";
+    const character = characters.get(session.characterId);
+    const name = group ? session.title ?? "Group" : character
+      ? contactDisplayName(contactByCharacter.get(character.characterId), character.name) : "Unknown Contact";
     return name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
   });
   const actionMenu = menuOpen && <div className="chat-action-layer" onMouseDown={(event) => {
@@ -114,7 +120,8 @@ export function MessagesHome() {
     {error && <p role="alert" className="chat-notice">{error}</p>}
     {!ready || !loaded ? <p className="chat-notice">Loading conversations…</p> : visible.length > 0 &&
       <div className="conversation-list">{visible.map((session) => { const group = session.type === "group", character = characters.get(session.characterId);
-        const name = group ? session.title ?? "Group" : session.remark || character?.name || "Unknown Contact";
+        const name = group ? session.title ?? "Group" : character
+          ? contactDisplayName(contactByCharacter.get(character.characterId), character.name) : "Unknown Contact";
         const rowOpen = openRowId === session.id;
         const offset = draggingRowId === session.id ? dragOffset : rowOpen ? -CONVERSATION_DELETE_WIDTH : 0;
         const deleteMotion = conversationDeleteMotion(offset);

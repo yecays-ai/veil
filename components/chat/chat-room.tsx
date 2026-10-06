@@ -52,10 +52,13 @@ import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
 import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/search";
+import { useContacts } from "../use-contacts";
+import { contactDisplayName } from "../../lib/contact-storage";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   const { document, ready } = useFoundation();
+  const contacts = useContacts();
   const [bubbleTiming, setBubbleTiming] = useState(DEFAULT_BUBBLE_TIMING);
   useEffect(() => {
     let active = true;
@@ -70,6 +73,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
+  const contact = contacts.document.contacts.find((item) => item.characterId === characterId);
+  const contactName = character ? contactDisplayName(contact, character.name) : "";
   const [regexGroups, setRegexGroups] = useState<RegexGroup[]>([]);
   const regexIds = resolveBindings(bindings, characterId, "messages").regexIds;
   const regexKey = regexIds?.join("\u0000") ?? "*";
@@ -475,10 +480,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         >
           <ChevronLeft aria-hidden="true" />
         </Link>
-        <Link href={`/contacts/${encodeURIComponent(character.characterId)}`}
-          className="chat-contact-summary page-title" aria-label={`Open Contact Info for ${session?.remark || character.name}`}>
+        <Link href={`/contacts/${encodeURIComponent(character.characterId)}?from=direct`}
+          className="chat-contact-summary page-title" aria-label={`Open Contact Info for ${contactName}`}>
           <ChatAvatar profile={character} />
-          <strong>{session?.remark || character.name}</strong>
+          <strong>{contactName}</strong>
           <ChevronRight aria-hidden="true" />
         </Link>
         <button type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
@@ -654,7 +659,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       {chatInfoOpen && <ChatInfoScreen
         session={session}
         messages={messages}
-        characterName={session?.remark || character.name}
+        characterName={contactName}
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
         pinned={session?.pinned === true}
