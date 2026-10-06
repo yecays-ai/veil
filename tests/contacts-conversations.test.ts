@@ -107,7 +107,7 @@ test("Messages popover, search and filters use the flatter pill treatment", () =
 test("Messages conversation rows keep navigation and expose only a confirmed Delete swipe action", () => {
   const home = readFileSync("components/chat/messages-home.tsx", "utf8");
   assert.match(home, /<div className="conversation-swipe-row"[^>]*data-conversation-row=\{session\.id\}/);
-  assert.match(home, /className="conversation-delete-action"[\s\S]*?>Delete<\/button>/);
+  assert.match(home, /className=\{`conversation-delete-action[\s\S]*?<span className="conversation-delete-label"[\s\S]*?>Delete<\/span>[\s\S]*?<\/button>/);
   assert.match(home, /href=\{group \? `\/messages\/group/);
   assert.match(home, /onPointerDown=\{\(event\) => beginSwipe/);
   assert.match(home, /onPointerMove=\{\(event\) => moveSwipe/);
@@ -120,17 +120,27 @@ test("Messages conversation rows keep navigation and expose only a confirmed Del
 });
 
 test("horizontal swipes preserve vertical scrolling and resist overpull before release settle", async () => {
-  const { isHorizontalConversationSwipe, conversationSwipeOffset, conversationSwipeReleaseTarget } =
+  const { isHorizontalConversationSwipe, conversationSwipeOffset, conversationSwipeReleaseTarget, conversationDeleteMotion } =
     await import("../lib/chat/swipe-gesture");
   assert.equal(isHorizontalConversationSwipe(-22, 35), false);
   assert.equal(isHorizontalConversationSwipe(-22, 5), true);
   assert.equal(conversationSwipeOffset(0, -84), -84);
   const resisted = conversationSwipeOffset(0, -114);
   assert.ok(resisted < -84 && resisted > -94);
-  assert.ok(conversationSwipeOffset(0, -10000) >= -100);
+  const extremeOffset = conversationSwipeOffset(0, -10000);
+  assert.ok(extremeOffset < -84 && extremeOffset > -100);
   assert.equal(conversationSwipeOffset(0, 20), 0);
   assert.equal(conversationSwipeReleaseTarget(-50), -84);
   assert.equal(conversationSwipeReleaseTarget(-30), 0);
+  assert.equal(conversationSwipeReleaseTarget(-84), -84);
+  assert.equal(conversationSwipeReleaseTarget(0), 0);
+
+  assert.deepEqual(conversationDeleteMotion(0), { translateX: 84, width: 84, labelOffsetX: 0 });
+  assert.deepEqual(conversationDeleteMotion(-42), { translateX: 42, width: 84, labelOffsetX: 0 });
+  assert.deepEqual(conversationDeleteMotion(-84), { translateX: 0, width: 84, labelOffsetX: 0 });
+  const stretchedAction = conversationDeleteMotion(resisted);
+  assert.ok(stretchedAction.width > 84 && stretchedAction.width <= 100);
+  assert.ok(stretchedAction.labelOffsetX > 0 && stretchedAction.labelOffsetX <= 8);
 });
 
 test("conversation list restores page-colored rows and subtle dividers while confining Delete red to the action", () => {
@@ -139,7 +149,7 @@ test("conversation list restores page-colored rows and subtle dividers while con
   const foreground = css.match(/\.conversation-row\s*\{([^}]+)\}/)?.[1] ?? "";
   const action = css.match(/\.chat-app button\.conversation-delete-action\s*\{([^}]+)\}/)?.[1] ?? "";
   assert.match(wrapper, /background:\s*transparent/);
-  assert.match(wrapper, /border-bottom:\s*1px solid color-mix\(in srgb, var\(--theme-text\) 10%, transparent\)/);
+  assert.match(wrapper, /border-bottom:\s*1px solid color-mix\(in srgb, var\(--theme-text\) 2%, transparent\)/);
   assert.doesNotMatch(wrapper, /#d7464d/);
   assert.match(foreground, /background:\s*var\(--theme-background\)/);
   assert.match(foreground, /z-index:\s*2/);
@@ -150,7 +160,11 @@ test("conversation list restores page-colored rows and subtle dividers while con
   assert.match(action, /outline:\s*0/);
   assert.match(action, /place-items:\s*center/);
   assert.match(action, /width:\s*84px/);
-  assert.match(readFileSync("components/chat/messages-home.tsx", "utf8"), /aria-hidden=\{!rowOpen\}/);
+  const home = readFileSync("components/chat/messages-home.tsx", "utf8");
+  assert.match(home, /aria-hidden=\{!rowOpen\}/);
+  assert.match(home, /const deleteMotion = conversationDeleteMotion\(offset\)/);
+  assert.match(home, /style=\{\{ width: `\$\{deleteMotion\.width\}px`, transform: `translateX\(\$\{deleteMotion\.translateX\}px\)` \}\}/);
+  assert.match(home, /conversation-delete-label" style=\{\{ transform: `translateX\(\$\{deleteMotion\.labelOffsetX\}px\)` \}\}/);
 });
 
 test("conversation title and timestamp share a truncating first line above the preview", () => {
@@ -162,13 +176,18 @@ test("conversation title and timestamp share a truncating first line above the p
   assert.match(home, /<span className="conversation-title-line"><strong>\{name\}<\/strong>[\s\S]*?<time dateTime=/);
   assert.match(home, /<span className="conversation-preview">/);
   assert.match(css, /\.conversation-preview\s*\{[^}]*text-overflow:\s*ellipsis/);
+  assert.match(css, /\.conversation-summary\s*\{[^}]*padding-right:\s*14px/);
+  assert.doesNotMatch(css.match(/\.conversation-title-line time\s*\{([^}]+)\}/)?.[1] ?? "", /margin/);
   assert.doesNotMatch(css.match(/\.conversation-row\s*\{([^}]+)\}/)?.[1] ?? "", /width:\s*100%|min-width:/);
 });
 
-test("conversation swipe release eases into a light bounce and respects reduced motion", () => {
+test("foreground and Delete release together with a light bounce and respect reduced motion", () => {
   const css = readFileSync("app/messages/chat.css", "utf8");
   assert.match(css, /\.conversation-row\s*\{[^}]*transition:\s*transform 280ms cubic-bezier\(\.22, \.82, \.35, 1\.06\)/);
-  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.conversation-row\s*\{\s*transition:\s*none/);
+  assert.match(css, /\.chat-app button\.conversation-delete-action\s*\{[^}]*transition:\s*transform 280ms cubic-bezier\(\.22, \.82, \.35, 1\.06\),\s*width 280ms cubic-bezier\(\.22, \.82, \.35, 1\.06\)/);
+  assert.match(css, /\.conversation-delete-label\s*\{[^}]*transition:\s*transform 280ms cubic-bezier\(\.22, \.82, \.35, 1\.06\)/);
+  assert.match(css, /\.chat-app button\.conversation-delete-action\.is-dragging,[\s\S]*?transition:\s*none/);
+  assert.match(css, /@media\s*\(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.conversation-row, \.chat-app button\.conversation-delete-action,[\s\S]*?\.conversation-delete-label\s*\{\s*transition:\s*none/);
 });
 
 test("group Conversations remain separate from unique direct Conversations", async () => {

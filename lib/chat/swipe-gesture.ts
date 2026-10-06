@@ -19,6 +19,20 @@ export function conversationSwipeOffset(startOffset: number, deltaX: number): nu
   return -(CONVERSATION_DELETE_WIDTH + resistedOverscroll);
 }
 
+export function conversationDeleteMotion(offset: number): {
+  translateX: number;
+  width: number;
+  labelOffsetX: number;
+} {
+  const revealProgress = Math.min(1, Math.max(0, -offset / CONVERSATION_DELETE_WIDTH));
+  const overscroll = Math.max(0, -offset - CONVERSATION_DELETE_WIDTH);
+  return {
+    translateX: (1 - revealProgress) * CONVERSATION_DELETE_WIDTH,
+    width: CONVERSATION_DELETE_WIDTH + overscroll,
+    labelOffsetX: overscroll / 2,
+  };
+}
+
 export function conversationSwipeReleaseTarget(offset: number): number {
   return offset <= -CONVERSATION_SWIPE_OPEN_THRESHOLD ? -CONVERSATION_DELETE_WIDTH : 0;
 }

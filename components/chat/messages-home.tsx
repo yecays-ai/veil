@@ -7,7 +7,7 @@ import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
 import { sortChatSessions } from "../../lib/chat/session-order";
-import { CONVERSATION_DELETE_WIDTH, conversationSwipeOffset, isHorizontalConversationSwipe,
+import { CONVERSATION_DELETE_WIDTH, conversationDeleteMotion, conversationSwipeOffset, isHorizontalConversationSwipe,
   conversationSwipeReleaseTarget } from "../../lib/chat/swipe-gesture";
 import { ChatAvatar } from "./avatar";
 import { RootAppHeader } from "../root-app-header";
@@ -118,10 +118,15 @@ export function MessagesHome() {
         const name = group ? session.title ?? "Group" : session.remark || character?.name || "Unknown Contact";
         const rowOpen = openRowId === session.id;
         const offset = draggingRowId === session.id ? dragOffset : rowOpen ? -CONVERSATION_DELETE_WIDTH : 0;
+        const deleteMotion = conversationDeleteMotion(offset);
         return <div className="conversation-swipe-row" key={session.id} data-conversation-row={session.id}>
-          <button className="conversation-delete-action" type="button" aria-label={`Delete ${name} conversation`}
+          <button className={`conversation-delete-action${draggingRowId === session.id ? " is-dragging" : ""}`}
+            style={{ width: `${deleteMotion.width}px`, transform: `translateX(${deleteMotion.translateX}px)` }}
+            type="button" aria-label={`Delete ${name} conversation`}
             aria-hidden={!rowOpen} tabIndex={rowOpen ? 0 : -1}
-            onClick={() => { setDeleteError(""); setOpenRowId(null); setDeleteTarget(session); }}>Delete</button>
+            onClick={() => { setDeleteError(""); setOpenRowId(null); setDeleteTarget(session); }}>
+            <span className="conversation-delete-label" style={{ transform: `translateX(${deleteMotion.labelOffsetX}px)` }}>Delete</span>
+          </button>
           <Link className={`conversation-row${draggingRowId === session.id ? " is-dragging" : ""}`}
             style={{ transform: `translateX(${offset}px)` }} data-testid={`conversation-link-${session.id}`}
             href={group ? `/messages/group/${encodeURIComponent(session.id)}` : `/messages/${encodeURIComponent(session.characterId)}`}
