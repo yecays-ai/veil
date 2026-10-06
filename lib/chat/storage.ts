@@ -221,7 +221,7 @@ export class ChatStorage {
     if (!name) return Promise.reject(new Error("Group name is required."));
     return this.transaction("readwrite", async (tx) => {
       const session: ChatSession = { id: crypto.randomUUID(), characterId: members[0], type: "group",
-        participantIds: members, title: name, updatedAt: 0, remark: null,
+        participantIds: members, title: name, updatedAt: 0,
         autoReplyOnKeyboardDismiss: false, streamOnline: false, nextOrder: 1 };
       await request(tx.objectStore("sessions").add(session));
       return session;
@@ -240,7 +240,6 @@ export class ChatStorage {
         id: crypto.randomUUID(),
         characterId,
         updatedAt: 0,
-        remark: null,
         autoReplyOnKeyboardDismiss: false,
         streamOnline: false,
         nextOrder: 1,

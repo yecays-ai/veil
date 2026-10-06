@@ -116,7 +116,6 @@ test("Character sessions are unique, reused across clients, and preserve default
   assert.equal(one.id, two.id);
   assert.equal(one.characterId, "a");
   assert.equal(one.autoReplyOnKeyboardDismiss, false);
-  assert.equal(one.remark, null);
   assert.notEqual((await storage.openSession("b")).id, one.id);
   assert.equal((await storage.listSessions()).length, 2);
 });

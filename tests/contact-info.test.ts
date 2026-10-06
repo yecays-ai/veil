@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { addContact, normalizeContacts, updateContact, removeContact, contactDisplayName, contactRemarkContext, createContactStorage } from "../lib/contact-storage";
+import { addContact, normalizeContacts, updateContact, removeContact, contactDisplayName, createContactStorage } from "../lib/contact-storage";
 import { ChatStorage } from "../lib/chat/storage";
 import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
 import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
@@ -21,13 +21,11 @@ test("Contact remark normalizes, falls back to Character name and keeps structur
   assert.equal(contactDisplayName(document.contacts[0], "Peter"), "Peter");
   document = updateContact(document, "peter", { remark: " Simba ", heroBackground: null }, 200);
   assert.equal(contactDisplayName(document.contacts[0], "Peter"), "Simba");
-  assert.equal(contactRemarkContext(document.contacts[0]), 'The user\'s current contact remark for you is "Simba".');
   assert.deepEqual(document.contacts[0].lastRemarkChange, { type: "remark-changed", fromRemark: null, toRemark: "Simba", createdAt: 200 });
   document = updateContact(document, "peter", { remark: "Simba", heroBackground: image }, 300);
   assert.equal(document.contacts[0].lastRemarkChange?.createdAt, 200);
   document = updateContact(document, "peter", { remark: "  ", heroBackground: null }, 400);
   assert.equal(contactDisplayName(document.contacts[0], "Peter"), "Peter");
-  assert.equal(contactRemarkContext(document.contacts[0]), null);
   assert.equal(document.contacts[0].lastRemarkChange?.fromRemark, "Simba");
 });
 

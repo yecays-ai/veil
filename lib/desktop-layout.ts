@@ -172,13 +172,9 @@ export function normalizeDesktop(value: unknown): DesktopLayout {
     ? raw.iconLayout
     : defaults.iconLayout;
   for (const value of icons) {
-    const candidate = record(value),
-      id = typeof value === "string" ? value : candidate.id;
+    const candidate = record(value), id = candidate.id;
     if (!isAppId(id) || seen.has(id)) continue;
-    const preferred =
-      typeof value === "string"
-        ? { page: 1, row: 1, col: 3 }
-        : position(candidate);
+    const preferred = position(candidate);
     const pos = firstSpace(occupied, "1x1", preferred);
     if (!pos) continue;
     reserve(occupied, pos, "1x1");

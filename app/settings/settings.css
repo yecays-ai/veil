@@ -17,8 +17,6 @@
 .settings-runtime-toggle strong { font-size: 16px; }
 .settings-runtime-toggle small { display: block; margin-top: 8px; font-size: 13px; line-height: 1.5; opacity: .6; }
 .settings-runtime-toggle > .veil-switch { flex: none; }
-.global-profile-section { margin: 0 0 24px; }
-.global-profile-section .settings-runtime-toggle { margin-bottom: 0; }
 .profile-chat-settings .global-profile-settings-list { display: block; }
 .profile-chat-settings .profile-chat-settings-group { margin: 0; }
 .profile-chat-settings .global-profile-disclosure { position: relative; min-width: 0; }

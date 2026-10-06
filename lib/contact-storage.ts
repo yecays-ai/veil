@@ -15,10 +15,6 @@ export function isContactHeroBackground(value: unknown): value is string {
 export function contactDisplayName(contact: Pick<Contact, "remark"> | undefined, characterName: string): string {
   return normalizeContactRemark(contact?.remark) ?? characterName;
 }
-export function contactRemarkContext(contact: Contact): string | null {
-  return contact.remark ? `The user's current contact remark for you is ${JSON.stringify(contact.remark)}.` : null;
-}
-
 function validId(value: unknown) {
   return typeof value === "string" && !!value.trim() && value.length <= 100 &&
     !["__proto__", "constructor", "prototype"].includes(value);

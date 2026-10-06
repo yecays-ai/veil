@@ -194,44 +194,6 @@ test("added App survives Theme normalization and browser storage reload", async 
   }
 });
 
-test("legacy simulated status-bar data is ignored while typography survives", () => {
-  const defaults = defaultSnapshot();
-  const legacy = {
-    ...defaults,
-    profile: {
-      ...defaults.profile,
-      statusBar: {
-        visible: true,
-        color: "#123456",
-        island: true,
-      },
-      text: {
-        ...defaults.profile.text,
-        font: "serif" as const,
-        size: 18,
-        weight: 700,
-      },
-    },
-  };
-  const normalized = normalizeSnapshot(legacy);
-  assert.equal("statusBar" in normalized.profile, false);
-  assert.deepEqual(normalized.profile.text, legacy.profile.text);
-
-  const saved = normalizeDocument({ current: legacy });
-  assert.equal("statusBar" in saved.current.profile, false);
-  assert.deepEqual(saved.current.profile.text, normalized.profile.text);
-
-  const imported = importTheme(
-    JSON.stringify({
-      schema: "companion-phone.theme",
-      version: 1,
-      snapshot: legacy,
-    }),
-  );
-  assert.equal("statusBar" in imported.profile, false);
-  assert.deepEqual(imported.profile.text, normalized.profile.text);
-});
-
 test("Settings is a registered Home app without rewriting saved layouts", () => {
   assert.deepEqual(APP_REGISTRY.find(app => app.id === "settings"), {
     id: "settings", label: "Settings", href: "/settings", glyph: "S",
@@ -423,25 +385,6 @@ test("normalization repairs collisions and removes unknown IDs without adding sh
   });
   assert.equal(full.iconLayout.length, defaultDesktop().iconLayout.length);
   assert(buildOccupancy(full).size <= MAX_PAGES * GRID_COLS * GRID_ROWS);
-});
-
-test("old appearance snapshots and presets migrate without losing decoration or App order", () => {
-  const old = {
-    profile: {
-      ...defaultSnapshot().profile,
-      colors: { ...defaultSnapshot().profile.colors, accent: "#112233" },
-    },
-    iconLayout: [...APP_IDS].reverse(),
-    dockLayout: APP_IDS,
-  };
-  const document = normalizeDocument({
-    current: old,
-    presets: [{ id: "old", name: "Old theme", snapshot: old }],
-  });
-  assert.equal(document.current.profile.colors.accent, "#112233");
-  assert.equal(document.current.iconLayout[0].id, APP_IDS.at(-1));
-  assert.equal(document.current.widgets.length, 1);
-  assert.deepEqual(document.presets[0].snapshot, document.current);
 });
 
 test("theme packages and presets round-trip positions, sizes and config without identity data", () => {

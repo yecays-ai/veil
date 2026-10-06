@@ -8,7 +8,6 @@ export type ChatSession = {
   pinned?: boolean;
   lastMessageId?: string;
   lastMessagePreview?: string;
-  remark: string | null;
   autoReplyOnKeyboardDismiss: boolean;
   streamOnline?: boolean;
   backgroundImage?: string;

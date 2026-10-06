@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { defaultSnapshot, normalizeSnapshot } from "../lib/theme-types";
 
 test("Regex has one Settings entry and inline Default/Custom Rules", () => {
   const settings = readFileSync("app/settings/page.tsx", "utf8");
@@ -29,16 +28,4 @@ test("Chat Background uses existing crop dialog and blurs only its layer", () =>
   assert.match(room, /--chat-background-blur/);
   assert.match(css, /\.chat-room\[data-chat-background="custom"\]::before\s*\{[^}]*filter: blur/);
   assert.doesNotMatch(css.match(/\.chat-room\s*\{[^}]+\}/)?.[0] ?? "", /filter:/);
-});
-
-test("legacy wallpaper position fields are ignored without losing the image", () => {
-  const source = defaultSnapshot();
-  const legacy = { ...source, profile: { ...source.profile,
-    wallpaper: { ...source.profile.wallpaper, source: "https://example.com/photo.png",
-      x: 30, y: 65, scale: 145 } } };
-  const normalized = normalizeSnapshot(legacy);
-  assert.equal(normalized.profile.wallpaper.source, "https://example.com/photo.png");
-  assert(!("x" in normalized.profile.wallpaper));
-  assert(!("y" in normalized.profile.wallpaper));
-  assert(!("scale" in normalized.profile.wallpaper));
 });

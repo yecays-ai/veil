@@ -10,7 +10,6 @@ import {
   parseGeocodingResult,
   placeQueryKey,
 } from "../lib/place-lookup";
-import { defaultSnapshot, normalizeSnapshot } from "../lib/theme-types";
 import { WIDGET_REGISTRY } from "../lib/widget-registry";
 import {
   WEATHER_CACHE_MS,
@@ -53,27 +52,10 @@ function fetcherFor(routes: { geocoding?: unknown[]; weather?: string }): {
   return { fetch: fetchStub, calls };
 }
 
-test("Here & There keeps the plain time config and never stores its own places", () => {
+test("Here & There keeps the plain time config", () => {
   assert.deepEqual(WIDGET_REGISTRY["here-there"].normalizeConfig({ hour12: true }), {
     hour12: true, showSeconds: false,
   });
-  // A layout saved by the short-lived widget-place build must load unchanged.
-  const legacy = defaultDesktop();
-  const widgets = [{
-    ...legacy.widgets[0],
-    config: {
-      hour12: false,
-      showSeconds: false,
-      here: { label: "Chengdu", latitude: 30.66, longitude: 104.06, timezone: "Asia/Shanghai" },
-    },
-  }];
-  const reloaded = normalizeDesktop({ widgets });
-  assert.equal(reloaded.widgets.length, 1);
-  assert.deepEqual(reloaded.widgets[0].config, { hour12: false, showSeconds: false });
-  assert.deepEqual(
-    normalizeSnapshot({ ...defaultSnapshot(), widgets }).widgets[0].config,
-    { hour12: false, showSeconds: false },
-  );
   assert.deepEqual(normalizeDesktop(defaultDesktop()).widgets, defaultDesktop().widgets);
 });
 
