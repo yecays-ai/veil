@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { chatStorage } from "../../lib/chat/storage";
+import { affectsChatSession, chatStorage } from "../../lib/chat/storage";
 import { chatEngine } from "../../lib/chat/engine";
 import type { ChatMessage, ChatSession } from "../../lib/chat/types";
 
@@ -36,8 +36,8 @@ export function useChatSession(characterId: string, enabled: boolean) {
       .then(async (opened) => {
         sessionId = opened.id;
         if (!active) return;
-        unsubscribe = chatStorage.subscribe(() => {
-          void refresh();
+        unsubscribe = chatStorage.subscribe((change) => {
+          if (affectsChatSession(change, opened.id)) void refresh();
         });
         await refresh();
       })

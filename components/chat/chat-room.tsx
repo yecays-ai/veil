@@ -66,7 +66,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       if (active) setBubbleTiming(settings.bubbleTiming);
     });
     refresh();
-    const unsubscribe = chatStorage.subscribe(refresh);
+    const unsubscribe = chatStorage.subscribe((change) => {
+      if (change.domain === "global-profile") refresh();
+    });
     return () => { active = false; unsubscribe(); };
   }, []);
   const { bindings } = useBindings();

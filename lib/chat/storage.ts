@@ -28,6 +28,21 @@ function randomDelay(random: () => number) {
 }
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
+export type ChatStorageChange =
+  | { domain: "session"; sessionId: string; backgroundChanged?: boolean }
+  | { domain: "messages" | "worldbook-state"; sessionId: string }
+  | { domain: "chat-background" | "global-profile" | "asset" };
+type ChangeFor<T> = ChatStorageChange | readonly ChatStorageChange[] |
+  ((result: T) => ChatStorageChange | readonly ChatStorageChange[] | null) | null;
+
+export function affectsChatSession(change: ChatStorageChange, sessionId: string) {
+  return (change.domain === "session" || change.domain === "messages") && change.sessionId === sessionId;
+}
+export function affectsChatBackground(change: ChatStorageChange, sessionId: string) {
+  return change.domain === "chat-background" ||
+    (change.domain === "session" && change.sessionId === sessionId && change.backgroundChanged === true);
+}
+
 function logOpenFailure(stage: string, error: unknown) {
   const names = ["AbortError", "ConstraintError", "DataError", "InvalidAccessError", "InvalidStateError",
     "NotFoundError", "QuotaExceededError", "SecurityError", "TransactionInactiveError", "UnknownError", "VersionError"];
@@ -101,7 +116,7 @@ async function commitWorldBookState(tx: IDBTransaction, sessionId: string, state
 // every mutation re-reads authoritative records inside an atomic transaction.
 export class ChatStorage {
   private database?: Promise<IDBDatabase>;
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(change: ChatStorageChange) => void>();
   private channel?: BroadcastChannel;
   constructor(private factory: () => IDBFactory = () => window.indexedDB) {}
 
@@ -159,6 +174,7 @@ export class ChatStorage {
     mode: IDBTransactionMode,
     run: (tx: IDBTransaction) => Promise<T>,
     stores: string[] = STORES,
+    change: ChangeFor<T> = null,
   ): Promise<T> {
     const db = await this.open();
     const tx = db.transaction(stores, mode);
@@ -174,7 +190,10 @@ export class ChatStorage {
     try {
       const result = await run(tx);
       await done;
-      if (mode === "readwrite") this.notify();
+      if (mode === "readwrite") {
+        const changes = typeof change === "function" ? change(result) : change;
+        if (changes) for (const event of Array.isArray(changes) ? changes : [changes]) this.notify(event);
+      }
       return result;
     } catch (error) {
       try {
@@ -187,21 +206,31 @@ export class ChatStorage {
     }
   }
 
-  private notify() {
+  private dispatch(change: ChatStorageChange) {
     // Observer failures must not turn an already committed write into a failed restore.
     this.listeners.forEach((listener) => {
-      try { listener(); } catch { /* Persistence has already succeeded. */ }
+      try { listener(change); } catch { /* Persistence has already succeeded. */ }
     });
-    try { this.channel?.postMessage("changed"); } catch { /* A closed observer channel. */ }
   }
-  subscribe(listener: () => void) {
+  private notify(change: ChatStorageChange) {
+    this.dispatch(change);
+    try { this.channel?.postMessage(change); } catch { /* A closed observer channel. */ }
+  }
+  subscribe(listener: (change: ChatStorageChange) => void) {
     if (
       !this.channel &&
       typeof window !== "undefined" &&
       typeof BroadcastChannel !== "undefined"
     ) {
       this.channel = new BroadcastChannel(CHAT_DATABASE_NAME);
-      this.channel.onmessage = () => this.listeners.forEach((fn) => fn());
+      this.channel.onmessage = (message: MessageEvent<ChatStorageChange>) => {
+        const change = message.data;
+        if (!change || typeof change !== "object" || typeof change.domain !== "string") return;
+        if (change.domain === "session" || change.domain === "messages" || change.domain === "worldbook-state") {
+          if (typeof change.sessionId !== "string") return;
+        } else if (change.domain !== "chat-background" && change.domain !== "global-profile" && change.domain !== "asset") return;
+        this.dispatch(change);
+      };
     }
     this.listeners.add(listener);
     return () => {
@@ -225,11 +254,12 @@ export class ChatStorage {
         autoReplyOnKeyboardDismiss: false, streamOnline: false, nextOrder: 1 };
       await request(tx.objectStore("sessions").add(session));
       return session;
-    });
+    }, STORES, (session) => ({ domain: "session", sessionId: session.id }));
   }
   openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)
       return Promise.reject(new Error("Character is required."));
+    let created = false;
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
       const sessions: ChatSession[] = await request(table.getAll());
@@ -245,8 +275,9 @@ export class ChatStorage {
         nextOrder: 1,
       };
       await request(table.add(session));
+      created = true;
       return session;
-    });
+    }, STORES, (session) => created ? { domain: "session", sessionId: session.id } : null);
   }
   readSession(
     sessionId: string,
@@ -317,7 +348,8 @@ export class ChatStorage {
       await request(table.put(next));
       if (session.backgroundImage !== next.backgroundImage)
         await deleteUnusedChatImage(tx, session.backgroundImage);
-    });
+    }, STORES, { domain: "session", sessionId,
+      backgroundChanged: patch.backgroundImage !== undefined || patch.backgroundBlur !== undefined });
   }
 
   saveChatImage(blob: Blob): Promise<string> {
@@ -333,7 +365,7 @@ export class ChatStorage {
       };
       await request(tx.objectStore("assets").add(asset));
       return asset.id;
-    });
+    }, STORES, { domain: "asset" });
   }
 
   readChatImage(id: string): Promise<Blob | null> {
@@ -347,7 +379,7 @@ export class ChatStorage {
   }
 
   deleteChatImageIfUnused(id: string): Promise<void> {
-    return this.transaction("readwrite", (tx) => deleteUnusedChatImage(tx, id));
+    return this.transaction("readwrite", (tx) => deleteUnusedChatImage(tx, id), STORES, { domain: "asset" });
   }
 
   readChatBackgroundSettings(): Promise<ChatBackgroundSettings> {
@@ -385,7 +417,7 @@ export class ChatStorage {
         hereThereEnabled: current?.hereThereEnabled !== false,
         nextCommentAt: typeof current?.nextCommentAt === "number" && Number.isFinite(current.nextCommentAt)
           ? current.nextCommentAt : null }));
-    }, ["chatSettings"]);
+    }, ["chatSettings"], { domain: "global-profile" });
   }
 
   async exportBubbleTiming(): Promise<string> {
@@ -404,6 +436,7 @@ export class ChatStorage {
   }
 
   async ensureHereThereSchedule(now = Date.now(), random = Math.random): Promise<GlobalProfileSettings> {
+    let scheduled = false;
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
@@ -414,9 +447,12 @@ export class ChatStorage {
       const saved = { id: GLOBAL_PROFILE_SETTINGS_ID,
         bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
         hereThereEnabled: enabled, nextCommentAt: next };
-      if (!valid || !current) await request(table.put(saved));
+      if (!valid || !current) {
+        await request(table.put(saved));
+        scheduled = true;
+      }
       return { ...saved, id: GLOBAL_PROFILE_SETTINGS_ID };
-    }, ["chatSettings"]);
+    }, ["chatSettings"], () => scheduled ? { domain: "global-profile" } : null);
   }
 
   updateHereThereEnabled(enabled: boolean, now = Date.now(), random = Math.random): Promise<void> {
@@ -427,7 +463,7 @@ export class ChatStorage {
         bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
         hereThereEnabled: enabled,
         nextCommentAt: enabled ? now + randomDelay(random) : null }));
-    }, ["chatSettings"]);
+    }, ["chatSettings"], { domain: "global-profile" });
   }
 
   claimHereThereOpportunity(now = Date.now(), random = Math.random): Promise<boolean> {
@@ -440,7 +476,7 @@ export class ChatStorage {
         bubbleTiming: normalizeBubbleTiming(current.bubbleTiming),
         hereThereEnabled: true, nextCommentAt: now + randomDelay(random) }));
       return true;
-    }, ["chatSettings"]);
+    }, ["chatSettings"], (claimed) => claimed ? { domain: "global-profile" } : null);
   }
 
   updateGlobalChatBackground(backgroundImage: string | null): Promise<void> {
@@ -461,7 +497,7 @@ export class ChatStorage {
       await request(tx.objectStore("chatSettings").put(settings));
       if (current?.globalChatBackgroundImage !== settings.globalChatBackgroundImage)
         await deleteUnusedChatImage(tx, current?.globalChatBackgroundImage);
-    });
+    }, STORES, { domain: "chat-background" });
   }
 
   updateGlobalChatBackgroundBlur(blur: number): Promise<void> {
@@ -471,7 +507,7 @@ export class ChatStorage {
       const table = tx.objectStore("chatSettings");
       const current: ChatBackgroundSettings | undefined = await request(table.get(CHAT_BACKGROUND_SETTINGS_ID));
       await request(table.put({ ...current, id: CHAT_BACKGROUND_SETTINGS_ID, blur }));
-    });
+    }, STORES, { domain: "chat-background" });
   }
 
   editMessage(id: string, content: string): Promise<ChatMessage> {
@@ -493,7 +529,7 @@ export class ChatStorage {
         await request(sessions.put({ ...session, updatedAt: Date.now(),
           lastMessagePreview: trimmed.slice(0, 120) }));
       return next;
-    });
+    }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }));
   }
 
   regenerationSessionId(id: string): Promise<string> {
@@ -541,7 +577,7 @@ export class ChatStorage {
         nextOrder: remaining.length + 1, lastMessageId: last?.id,
         lastMessagePreview: last?.content.slice(0, 120) || "" }));
       return deleting.length;
-    });
+    }, STORES, (count) => count ? { domain: "messages", sessionId } : null);
   }
 
   clearSession(sessionId: string): Promise<number> {
@@ -550,7 +586,7 @@ export class ChatStorage {
       const session: ChatSession | undefined = await request(sessions.get(sessionId));
       if (!session) throw new Error("Conversation not found.");
       return (await resetConversationHistory(tx, session)).deletedCount;
-    });
+    }, STORES, [{ domain: "messages", sessionId }, { domain: "worldbook-state", sessionId }]);
   }
 
   deleteSession(sessionId: string): Promise<void> {
@@ -561,7 +597,7 @@ export class ChatStorage {
       const { session: resetSession } = await resetConversationHistory(tx, session);
       await request(sessions.delete(resetSession.id));
       await deleteUnusedChatImage(tx, session.backgroundImage);
-    });
+    }, STORES, [{ domain: "session", sessionId }, { domain: "worldbook-state", sessionId }]);
   }
 
   private async append(
@@ -610,7 +646,7 @@ export class ChatStorage {
       };
       await this.append(tx, session, message);
       return message;
-    });
+    }, STORES, { domain: "messages", sessionId });
   }
 
   beginReply(sessionId: string, regenerateId?: string): Promise<ReplyBatch | null> {
@@ -669,7 +705,7 @@ export class ChatStorage {
       };
       const nextSession = await this.append(tx, session, assistant);
       return { session: nextSession, messages, pending: regenerateId === undefined ? pending : [], assistant };
-    });
+    }, STORES, (batch) => batch ? { domain: "messages", sessionId } : null);
   }
   updateReply(
     id: string,
@@ -705,7 +741,11 @@ export class ChatStorage {
       if (worldBookState && (next.status === "error" || next.status === "cancelled"))
         await commitWorldBookState(tx, next.sessionId, worldBookState);
       return next;
-    });
+    }, STORES, (message) => [
+      { domain: "messages", sessionId: message.sessionId },
+      ...(worldBookState && (message.status === "error" || message.status === "cancelled")
+        ? [{ domain: "worldbook-state" as const, sessionId: message.sessionId }] : []),
+    ]);
   }
   finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
     transformPart: (part: string) => string = (part) => part): Promise<ChatMessage[]> {
@@ -754,7 +794,8 @@ export class ChatStorage {
       }));
       if (worldBookState) await commitWorldBookState(tx, existing.sessionId, worldBookState);
       return completed;
-    });
+    }, STORES, (messages) => [{ domain: "messages", sessionId: messages[0].sessionId },
+      ...(worldBookState ? [{ domain: "worldbook-state" as const, sessionId: messages[0].sessionId }] : [])]);
   }
 }
 export const chatStorage = new ChatStorage();

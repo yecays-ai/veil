@@ -23,14 +23,20 @@ export function GlobalProfileSettings() {
   const [timingExpanded, setTimingExpanded] = useState(false);
   useEffect(() => {
     let active = true;
-    const refresh = async () => {
-      const [profile, chat] = await Promise.all([chatStorage.readGlobalProfileSettings(), chatStorage.readChatBackgroundSettings()]);
-      if (active) {
-        setSettings(profile); setBackground(chat);
-      }
+    const refreshProfile = async () => {
+      const profile = await chatStorage.readGlobalProfileSettings();
+      if (active) setSettings(profile);
     };
-    void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : "Settings could not be loaded."));
-    const unsubscribe = chatStorage.subscribe(() => void refresh().catch(() => {}));
+    const refreshBackground = async () => {
+      const chat = await chatStorage.readChatBackgroundSettings();
+      if (active) setBackground(chat);
+    };
+    void Promise.all([refreshProfile(), refreshBackground()])
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "Settings could not be loaded."));
+    const unsubscribe = chatStorage.subscribe((change) => {
+      if (change.domain === "global-profile") void refreshProfile().catch(() => {});
+      if (change.domain === "chat-background") void refreshBackground().catch(() => {});
+    });
     return () => { active = false; unsubscribe(); };
   }, []);
   useEffect(() => {
