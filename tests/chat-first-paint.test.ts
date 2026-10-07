@@ -9,6 +9,7 @@ import { chatLoadingNotice } from "../lib/chat/loading-notice";
 import { ChatStorage } from "../lib/chat/storage";
 import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
 import { regressionContract } from "./regression-contract";
+import { browserRegexStorage } from "../lib/regex-storage";
 
 regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
   "direct chat has no full-page fallback and still awaits and keys the current route identity", () => {
@@ -26,6 +27,8 @@ regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
     assert.match(pending, new RegExp(`ref=\\{${ref}\\}`));
   assert.match(pending, /<textarea[^>]*[\s\S]*?disabled placeholder="Message…"/);
   assert.match(room, /aria-busy=\{!session && !loadError\}/);
+    assert.match(readFileSync("components/chat/use-chat-background.ts", "utf8"), /if \(!sessionId\) return/);
+    assert.match(room, /if \(!bindingsReady\) return/);
 });
 
 regressionContract("chat.first-paint-notice", "render-lifecycle",
@@ -125,18 +128,73 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   ] });
   const originalLoad = browserFoundationStorage.load;
   const originalRead = chatStorage.readSession;
+  const originalBackgroundRead = chatStorage.readChatBackgroundSettings;
+  const originalProfileRead = chatStorage.readGlobalProfileSettings;
+  const originalImageRead = chatStorage.readChatImage;
+  const originalSubscribe = chatStorage.subscribe;
+  const originalRegexLoad = browserRegexStorage.load;
+  const originalCreateObjectURL = URL.createObjectURL;
+  const originalRevokeObjectURL = URL.revokeObjectURL;
   let releaseDestination!: () => void;
   const destinationPending = new Promise<void>((resolve) => { releaseDestination = resolve; });
-  let destinationReads = 0;
+  let releaseSecondary!: () => void;
+  const secondaryPending = new Promise<void>((resolve) => { releaseSecondary = resolve; });
+  let releasePeterAsset!: () => void;
+  const peterAssetPending = new Promise<void>((resolve) => { releasePeterAsset = resolve; });
+  let holdBackgroundRefreshes = false;
+  const backgroundResponses: Array<(settings: Awaited<ReturnType<typeof chatStorage.readChatBackgroundSettings>>) => void> = [];
+  let finishPeterAsset!: () => void;
+  const peterAssetFinished = new Promise<void>((resolve) => { finishPeterAsset = resolve; });
+  let destinationReads = 0, backgroundReads = 0, profileReads = 0, regexReads = 0;
+  let activeChatSubscriptions = 0;
+  const imageReads: string[] = [], createdUrls: string[] = [], revokedUrls: string[] = [];
   const container = dom.window.document.getElementById("root")!;
   const root = createRoot(container);
   try {
     browserFoundationStorage.load = async () => foundation;
+    chatStorage.readChatBackgroundSettings = async () => {
+      backgroundReads++;
+      if (holdBackgroundRefreshes)
+        return new Promise((resolve) => backgroundResponses.push(resolve));
+      await secondaryPending;
+      return originalBackgroundRead.call(chatStorage);
+    };
+    chatStorage.readGlobalProfileSettings = async () => {
+      profileReads++;
+      await secondaryPending;
+      return originalProfileRead.call(chatStorage);
+    };
+    browserRegexStorage.load = async () => {
+      regexReads++;
+      await secondaryPending;
+      return originalRegexLoad.call(browserRegexStorage);
+    };
+    chatStorage.subscribe = (listener) => {
+      activeChatSubscriptions++;
+      const unsubscribe = originalSubscribe.call(chatStorage, listener);
+      return () => { activeChatSubscriptions--; unsubscribe(); };
+    };
     for (const id of ["peter", "pep"]) {
       const session = await chatStorage.openSession(id);
       await chatStorage.send(session.id, `${id} history`);
     }
+    const peter = await chatStorage.openSession("peter");
     const destination = await chatStorage.openSession("pep");
+    const peterAssetId = await chatStorage.saveChatImage(new Blob(["peter wallpaper"], { type: "image/png" }));
+    const pepAssetId = await chatStorage.saveChatImage(new Blob(["pep wallpaper"], { type: "image/png" }));
+    await chatStorage.updateSessionSettings(peter.id, { backgroundImage: peterAssetId });
+    await chatStorage.updateSessionSettings(destination.id, { backgroundImage: pepAssetId });
+    chatStorage.readChatImage = async (id) => {
+      imageReads.push(id);
+      if (id === peterAssetId) { await peterAssetPending; finishPeterAsset(); }
+      return originalImageRead.call(chatStorage, id);
+    };
+    URL.createObjectURL = (() => {
+      const url = `blob:chat-lifecycle-${createdUrls.length + 1}`;
+      createdUrls.push(url);
+      return url;
+    }) as typeof URL.createObjectURL;
+    URL.revokeObjectURL = ((url) => { revokedUrls.push(url); }) as typeof URL.revokeObjectURL;
     chatStorage.readSession = async (id) => {
       if (id === destination.id) { destinationReads++; await destinationPending; }
       return originalRead.call(chatStorage, id);
@@ -159,11 +217,16 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     };
     await act(async () => { root.render(createElement(Navigation)); });
     await waitFor(() => container.textContent?.includes("peter history") === true);
+    await waitFor(() => imageReads.includes(peterAssetId) && regexReads === 1);
+    assert.deepEqual([backgroundReads, profileReads, regexReads], [1, 1, 1]);
+    assert.equal(activeChatSubscriptions, 3, "the validated session, background, and global timing owner each subscribe once");
     const composer = () => container.querySelector<HTMLTextAreaElement>("#chat-input")!;
     assert.equal(composer().disabled, false);
 
     await act(async () => { container.querySelector("button")!.click(); });
-    await waitFor(() => destinationReads === 1);
+    await waitFor(() => destinationReads === 1 && profileReads === 2 && regexReads === 2);
+    assert.equal(backgroundReads, 1, "background settings are not read while the destination session is unavailable");
+    assert.equal(activeChatSubscriptions, 2, "pending navigation keeps only the destination session and global timing subscriptions");
     assert.equal(container.querySelector(".chat-contact-summary strong")?.textContent, "Pep");
     assert.ok(container.querySelector(".chat-room .chat-header"));
     const history = container.querySelector<HTMLElement>('[aria-label="Conversation history"]')!;
@@ -176,22 +239,65 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.ok(container.querySelector(".chat-composer"));
     assert.doesNotMatch(container.textContent ?? "", /peter history|pep history|Loading/);
 
-    await act(async () => { releaseDestination(); });
+    await act(async () => { releaseDestination(); releaseSecondary(); });
     await waitFor(() => container.textContent?.includes("pep history") === true);
+    await waitFor(() => imageReads.includes(pepAssetId) && container.querySelector<HTMLElement>(".chat-room")?.dataset.chatBackground === "custom");
+    assert.equal(backgroundReads, 2);
     assert.equal(container.querySelector('[aria-label="Conversation history"]'), history);
     assert.equal(history.getAttribute("aria-busy"), "false");
     assert.equal(composer().disabled, false);
     assert.doesNotMatch(container.textContent ?? "", /peter history/);
     assert.equal(destinationReads, 1);
+    assert.equal(activeChatSubscriptions, 3);
+
+    const readsBeforeBackgroundChange = backgroundReads;
+    await act(async () => { await chatStorage.updateSessionSettings(destination.id, { backgroundBlur: 3 }); });
+    await waitFor(() => backgroundReads === readsBeforeBackgroundChange + 1);
+    await act(async () => { await chatStorage.updateSessionSettings(peter.id, { streamOnline: true }); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(backgroundReads, readsBeforeBackgroundChange + 1,
+      "background refreshes on its own session's scoped change, not another setting change");
+
+    await act(async () => { await chatStorage.updateSessionSettings(destination.id, { backgroundBlur: null }); });
+    holdBackgroundRefreshes = true;
+    await act(async () => { await chatStorage.updateGlobalChatBackgroundBlur(4); });
+    await waitFor(() => backgroundResponses.length === 1);
+    await act(async () => { await chatStorage.updateGlobalChatBackgroundBlur(8); });
+    await waitFor(() => backgroundResponses.length === 2);
+    backgroundResponses[1]({ id: "chat-background", blur: 8 });
+    await waitFor(() => container.querySelector<HTMLElement>(".chat-room")?.style.getPropertyValue("--chat-background-blur") === "8px");
+    backgroundResponses[0]({ id: "chat-background", blur: 2 });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    assert.equal(container.querySelector<HTMLElement>(".chat-room")?.style.getPropertyValue("--chat-background-blur"), "8px",
+      "a late scoped read cannot restore an older background setting");
+    holdBackgroundRefreshes = false;
+
+    releasePeterAsset();
+    await peterAssetFinished;
+    assert.deepEqual(createdUrls, ["blob:chat-lifecycle-1"], "a late asset from the unmounted route never creates an object URL");
   } finally {
     releaseDestination();
+    releaseSecondary();
+    releasePeterAsset();
     await act(async () => { root.unmount(); });
+    const subscriptionsAtUnmount = activeChatSubscriptions;
+    const revokedAtUnmount = [...revokedUrls];
     chatStorage.readSession = originalRead;
+    chatStorage.readChatBackgroundSettings = originalBackgroundRead;
+    chatStorage.readGlobalProfileSettings = originalProfileRead;
+    chatStorage.readChatImage = originalImageRead;
+    chatStorage.subscribe = originalSubscribe;
     browserFoundationStorage.load = originalLoad;
+    browserRegexStorage.load = originalRegexLoad;
+    URL.createObjectURL = originalCreateObjectURL;
+    URL.revokeObjectURL = originalRevokeObjectURL;
+    if (createdUrls.length) assert.deepEqual(revokedUrls, createdUrls, "mounted chat assets are revoked on unmount");
     dom.window.close();
     for (const [name, descriptor] of saved) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else Reflect.deleteProperty(globalThis, name);
     }
+    assert.equal(subscriptionsAtUnmount, 0, "the ChatRoom releases its session, timing and background subscriptions on unmount");
+    if (createdUrls.length) assert.deepEqual(revokedAtUnmount, createdUrls, "mounted chat assets are revoked on unmount");
   }
 });

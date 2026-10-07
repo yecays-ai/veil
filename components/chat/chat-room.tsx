@@ -63,16 +63,20 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [bubbleTiming, setBubbleTiming] = useState(DEFAULT_BUBBLE_TIMING);
   useEffect(() => {
     let active = true;
-    const refresh = () => void chatStorage.readGlobalProfileSettings().then((settings) => {
-      if (active) setBubbleTiming(settings.bubbleTiming);
-    });
+    let revision = 0;
+    const refresh = () => {
+      const requestRevision = ++revision;
+      void chatStorage.readGlobalProfileSettings().then((settings) => {
+        if (active && requestRevision === revision) setBubbleTiming(settings.bubbleTiming);
+      }).catch(() => {});
+    };
     refresh();
     const unsubscribe = chatStorage.subscribe((change) => {
       if (change.domain === "global-profile") refresh();
     });
-    return () => { active = false; unsubscribe(); };
+    return () => { active = false; revision++; unsubscribe(); };
   }, []);
-  const { bindings } = useBindings();
+  const { bindings, ready: bindingsReady } = useBindings();
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
@@ -82,6 +86,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const regexIds = resolveBindings(bindings, characterId, "messages").regexIds;
   const regexKey = regexIds?.join("\u0000") ?? "*";
   useEffect(() => {
+    if (!bindingsReady) return;
     let active = true;
     const load = () => void browserRegexStorage.load().then((saved) => {
       if (active) setRegexGroups(resolveRegexGroups(saved, regexIds));
@@ -91,7 +96,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     return () => { active = false; window.removeEventListener("storage", load); };
   // The key tracks the resolved ordered IDs without reloading on unrelated renders.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [characterId, regexKey]);
+  }, [bindingsReady, characterId, regexKey]);
   const { session, messages, loadError } = useChatSession(
     characterId,
     ready && !!character,

@@ -2,12 +2,17 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
+import { JSDOM } from "jsdom";
+import { act, createElement } from "react";
+import { useEffect } from "react";
 import { BubbleRevealQueue, bubbleDelayMs, groupVisibleMessages, hiddenForReveal } from "../lib/chat/bubble-pacing";
 import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
 import { DEFAULT_BUBBLE_TIMING } from "../lib/chat/types";
+import { regressionContract } from "./regression-contract";
 import type { ChatMessage } from "../lib/chat/types";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
+import { useBubbleReveal } from "../components/chat/use-bubble-reveal";
 
 const message = (id: string, content = "short", createdAt = 0): ChatMessage => ({
   id, content, createdAt, sessionId: "s", role: "assistant", status: "complete", order: 0,
@@ -82,7 +87,8 @@ test("single bubble reveals immediately when generation already covered its dela
   assert.equal(hiddenForReveal(message("a"), queue.getSnapshot()), false);
 });
 
-test("cancel covers Stop, unmount and switch; stale completion cannot affect new generation", (t) => {
+regressionContract("chat.bubble-timer-unmount-cleanup", "async-race-safety",
+  "cancelling the bubble queue at route cleanup clears its timer and prevents stale completion", (t: import("node:test").TestContext) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const queue = new BubbleRevealQueue();
   const old = queue.begin("s", [], false, 0);
@@ -96,6 +102,57 @@ test("cancel covers Stop, unmount and switch; stale completion cannot affect new
   assert.equal(queue.getSnapshot().awaiting, true);
   queue.settle("s", next);
   assert.equal(queue.getSnapshot().pending, false);
+});
+
+regressionContract("chat.mounted-bubble-timer-route-cleanup", "async-race-safety",
+  "unmounting one route cancels its reveal timer before the next route starts its own", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/messages/peter" });
+  const saved = new Map<string, PropertyDescriptor | undefined>();
+  for (const [name, value] of Object.entries({
+    window: dom.window, document: dom.window.document, navigator: dom.window.navigator,
+    HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true,
+  })) {
+    saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  }
+  const { createRoot } = await import("react-dom/client");
+  const root = createRoot(dom.window.document.getElementById("root")!);
+  const queues = new Map<string, BubbleRevealQueue>();
+  function Probe({ sessionId }: { sessionId: string }) {
+    const { queue } = useBubbleReveal(sessionId, [], false, false);
+    useEffect(() => {
+      const token = queue.begin(sessionId, [], false, Date.now());
+      queue.complete(sessionId, [message("first", "first bubble"), message("second", "second bubble")]
+        .map((item) => ({ ...item, sessionId })), Date.now(), token);
+    }, [queue, sessionId]);
+    queues.set(sessionId, queue);
+    return createElement("div", { "data-session": sessionId,
+      "data-pending": queue.getSnapshot().pending ? "true" : "false" });
+  }
+  try {
+    await act(async () => { root.render(createElement(Probe, { key: "peter", sessionId: "peter" })); });
+    const peter = queues.get("peter")!;
+    assert.equal(peter.getSnapshot().hiddenIds.size, 2);
+    await act(async () => { root.render(createElement(Probe, { key: "pep", sessionId: "pep" })); });
+    const pep = queues.get("pep")!;
+    assert.equal(peter.getSnapshot().pending, false, "the route cleanup cancels the old queue and timer");
+    assert.equal(pep.getSnapshot().hiddenIds.size, 2);
+    await act(async () => { context.mock.timers.tick(1200); });
+    assert.equal(peter.getSnapshot().hiddenIds.size, 0, "the old route never reveals after unmount");
+    assert.equal(pep.getSnapshot().hiddenIds.size, 1, "the current route's independent timer still advances");
+    await act(async () => { root.unmount(); });
+    assert.equal(pep.getSnapshot().pending, false);
+    await act(async () => { context.mock.timers.tick(5000); });
+    assert.equal(pep.getSnapshot().hiddenIds.size, 0, "unmount clears the active route's timer too");
+  } finally {
+    await act(async () => { root.unmount(); });
+    dom.window.close();
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else Reflect.deleteProperty(globalThis, name);
+    }
+  }
 });
 
 test("deleting queued messages and clearing authoritative history cancel pending timers", (t) => {

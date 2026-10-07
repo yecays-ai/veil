@@ -86,23 +86,31 @@ test("scoped BroadcastChannel events refresh matching data in another tab", asyn
     const session = await first.openSession("peter");
     const other = await first.openSession("lan");
     const seen: ChatStorageChange[] = [];
-    let sessionRefreshes = 0, profileRefreshes = 0;
+    let sessionRefreshes = 0, profileRefreshes = 0, backgroundRefreshes = 0;
     const stopFirst = first.subscribe(() => {});
     const stopSecond = second.subscribe((change) => {
       seen.push(change);
       if (affectsChatSession(change, session.id)) sessionRefreshes++;
+      if (affectsChatBackground(change, session.id)) backgroundRefreshes++;
       if (change.domain === "global-profile") profileRefreshes++;
     });
     await first.send(other.id, "unrelated");
     await first.send(session.id, "matching");
     await first.updateBubbleTiming({ mediumMs: 2800 });
+    await first.updateGlobalChatBackgroundBlur(8);
+    await first.updateSessionSettings(session.id, { backgroundBlur: 4 });
+    await first.updateSessionSettings(other.id, { backgroundBlur: 3 });
     assert.deepEqual(seen, [
       { domain: "messages", sessionId: other.id },
       { domain: "messages", sessionId: session.id },
       { domain: "global-profile" },
+      { domain: "chat-background" },
+      { domain: "session", sessionId: session.id, backgroundChanged: true },
+      { domain: "session", sessionId: other.id, backgroundChanged: true },
     ]);
-    assert.equal(sessionRefreshes, 1);
+    assert.equal(sessionRefreshes, 2, "the matching message and its later session background change notify this session");
     assert.equal(profileRefreshes, 1);
+    assert.equal(backgroundRefreshes, 2, "global and matching session background changes cross tabs without refreshing unrelated sessions");
     assert.deepEqual((await second.readSession(session.id)).messages.map((message) => message.content), ["matching"]);
     stopFirst(); stopSecond();
   } finally {
