@@ -134,8 +134,15 @@ jobs:
                 .sort((left, right) => Date.parse(right.submitted_at || "") - Date.parse(left.submitted_at || ""))[0];
               if (!codeRabbitReview || codeRabbitReview.state === "CHANGES_REQUESTED") continue;
 
-              const blockingReview = reviews.some((review) =>
-                review.commit_id === pull.head.sha && review.state === "CHANGES_REQUESTED");
+              const latestReviewsByAuthor = new Map();
+              for (const review of reviews) {
+                if (review.commit_id !== pull.head.sha || !review.user?.login) continue;
+                const previous = latestReviewsByAuthor.get(review.user.login);
+                if (!previous || Date.parse(review.submitted_at || "") > Date.parse(previous.submitted_at || ""))
+                  latestReviewsByAuthor.set(review.user.login, review);
+              }
+              const blockingReview = [...latestReviewsByAuthor.values()]
+                .some((review) => review.state === "CHANGES_REQUESTED");
               if (blockingReview) continue;
 
               let cursor = null;

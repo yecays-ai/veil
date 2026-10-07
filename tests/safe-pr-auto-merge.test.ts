@@ -31,6 +31,8 @@ interface MockOptions {
   codeRabbitState?: string;
   unresolvedThreads?: boolean;
   reviewState?: string;
+  reviewHeadSha?: string;
+  humanReviewState?: string;
   label?: boolean;
 }
 
@@ -47,10 +49,16 @@ function mockGitHub(options: MockOptions = {}) {
         listReviews: async () => ({ data: [
           {
             user: { login: "coderabbitai[bot]" },
-            commit_id: headSha,
+            commit_id: options.reviewHeadSha ?? headSha,
             state: options.reviewState ?? "COMMENTED",
             submitted_at: "2026-10-07T10:00:00Z",
           },
+          ...(options.humanReviewState ? [{
+            user: { login: "reviewer" },
+            commit_id: headSha,
+            state: options.humanReviewState,
+            submitted_at: "2026-10-07T10:00:00Z",
+          }] : []),
         ] }),
         merge: async ({ pull_number }: { pull_number: number }) => { merges.push(pull_number); },
       },
@@ -135,11 +143,23 @@ test("a successful CodeRabbit status without a current-head review cannot auto-m
   assert.deepEqual(merges, []);
 });
 
+test("a CodeRabbit review for an older head cannot authorize auto-merge", async () => {
+  const merges = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", reviewHeadSha: "older-head" });
+  assert.deepEqual(merges, []);
+});
+
 test("a changes-requested review blocks auto-merge even when its threads are resolved", async () => {
   const merges = await run("status", {
     context: "CodeRabbit", state: "success", sha: headSha,
   }, { codeRabbitState: "success", reviewState: "CHANGES_REQUESTED" });
   assert.deepEqual(merges, []);
+
+  const humanRequest = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", humanReviewState: "CHANGES_REQUESTED" });
+  assert.deepEqual(humanRequest, []);
 });
 
 test("clean CodeRabbit review and resolved threads still require successful CI", async () => {
