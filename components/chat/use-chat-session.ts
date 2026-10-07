@@ -1,57 +1,24 @@
 "use client";
-import { useEffect, useState } from "react";
-import { affectsChatSession, chatStorage } from "../../lib/chat/storage";
+import { useEffect, useRef, useState } from "react";
+import { chatStorage } from "../../lib/chat/storage";
 import { chatEngine } from "../../lib/chat/engine";
+import { createChatSessionLifecycle } from "../../lib/chat/session-lifecycle";
 import type { ChatMessage, ChatSession } from "../../lib/chat/types";
 
 export function useChatSession(characterId: string, enabled: boolean) {
-  const [session, setSession] = useState<ChatSession | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [error, setError] = useState("");
+  const [state, setState] = useState<{ characterId: string; session: ChatSession | null; messages: ChatMessage[]; error: string }>({
+    characterId, session: null, messages: [], error: "",
+  });
+  const lifecycle = useRef<ReturnType<typeof createChatSessionLifecycle> | null>(null);
   useEffect(() => {
-    if (!enabled) return;
-    let active = true,
-      revision = 0;
-    let sessionId: string | undefined;
-    let unsubscribe = () => {};
-    async function refresh() {
-      if (!sessionId) return;
-      const current = ++revision;
-      try {
-        const data = await chatStorage.readSession(sessionId);
-        if (active && current === revision) {
-          setSession(data.session);
-          setMessages(data.messages);
-          setError("");
-        }
-      } catch {
-        if (active)
-          setError(
-            "Could not load this conversation. Existing messages have not been changed.",
-          );
-      }
-    }
-    chatStorage
-      .openSession(characterId)
-      .then(async (opened) => {
-        sessionId = opened.id;
-        if (!active) return;
-        unsubscribe = chatStorage.subscribe((change) => {
-          if (affectsChatSession(change, opened.id)) void refresh();
-        });
-        await refresh();
-      })
-      .catch(() => {
-        if (active)
-          setError(
-            "Chat storage is unavailable. Existing messages have not been changed.",
-          );
-      });
-    return () => {
-      active = false;
-      unsubscribe();
-      if (sessionId) chatEngine.stop(sessionId);
-    };
-  }, [characterId, enabled]);
-  return { session, messages, loadError: error };
+    const owner = createChatSessionLifecycle(characterId, chatStorage, (next, error) => {
+      setState({ characterId, session: next?.session ?? null, messages: next?.messages ?? [], error });
+    }, (id) => chatEngine.stop(id));
+    lifecycle.current = owner;
+    owner.mount(false);
+    return () => { owner.unmount(); lifecycle.current = null; };
+  }, [characterId]);
+  useEffect(() => { lifecycle.current?.setEnabled(enabled); }, [characterId, enabled]);
+  const current = enabled && state.characterId === characterId;
+  return { session: current ? state.session : null, messages: current ? state.messages : [], loadError: current ? state.error : "" };
 }

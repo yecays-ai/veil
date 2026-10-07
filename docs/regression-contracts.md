@@ -20,6 +20,17 @@ cleanup with one app-session event pair, and obsolete async success/error
 suppression. App-session window listeners intentionally survive route gaps.
 These are store lifecycle checks, not mounted React/router or iPhone acceptance.
 
+Chat critical-path contracts additionally cover read-only existing-session hydration
+overlapping Foundation, publication and creation only after character validation,
+one authoritative hydration and one cleaned-up subscription per route mount,
+scoped change refreshes, obsolete request suppression, and overlapping known-ID
+session/message requests within one IndexedDB transaction.
+Already validated routes retain the existing openSession/readSession path without
+an additional speculative lookup; early read-only work is for pending Foundation.
+These checks test the lifecycle owner used by the hook with real fake IndexedDB
+and controlled promises; they do
+not claim mounted React/router or device acceptance. No session cache is introduced.
+
 The versioned JSON contract is:
 
 ```json
