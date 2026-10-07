@@ -42,7 +42,7 @@ import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
 import { Switch } from "../settings/ui/switch";
 import { SessionCustomCSS } from "./session-custom-css";
-import { chatKeyboardInset } from "../../lib/chat/viewport";
+import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
 import { getMessageActions, messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
 import { MessageFooter } from "./message-footer";
 import { parseQuotedReply, quoteMessage } from "../../lib/chat/quote";
@@ -285,6 +285,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         ).matches;
         const inputFocused = composer.current === globalThis.document.activeElement;
         if (!mobile) {
+          room.style.removeProperty("--chat-viewport-top");
           room.style.removeProperty("--chat-safe-top");
           room.style.removeProperty("--chat-keyboard-inset");
           return;
@@ -295,6 +296,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         } else {
           room.style.removeProperty("--chat-safe-top");
         }
+        room.style.setProperty(
+          "--chat-viewport-top",
+          `${chatHeaderOffset(viewport.offsetTop, window.scrollY)}px`,
+        );
         if (!inputFocused) {
           room.style.removeProperty("--chat-keyboard-inset");
           return;
