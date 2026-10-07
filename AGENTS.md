@@ -54,4 +54,4 @@ Browser data belongs to the user. Treat Character, User, Universe, chat, appeara
 - Add or update focused behavior tests for changed logic, especially storage, migrations, request counts, cancellation, and data safety.
 - Run the relevant checks. The repository provides `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`.
 - Report what was checked and any environment or device behavior that remains unverified.
-- Keep commits focused and do not merge or publish a release unless explicitly requested.
+- Keep commits focused. Do not call the merge API directly or publish a release unless explicitly requested; normal ready implementation PRs may use the repository's automerge label and Safe PR auto-merge workflow as described above.
