@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { resolveChatBackground } from "../../lib/chat/background";
-import { chatStorage } from "../../lib/chat/storage";
+import { affectsChatBackground, chatStorage } from "../../lib/chat/storage";
 import type { ChatBackgroundSettings, ChatSession } from "../../lib/chat/types";
 
 export function useChatBackground(session: ChatSession | null) {
@@ -15,9 +15,11 @@ export function useChatBackground(session: ChatSession | null) {
       if (active) setSettings(next);
     });
     refresh();
-    const unsubscribe = chatStorage.subscribe(refresh);
+    const unsubscribe = chatStorage.subscribe((change) => {
+      if (affectsChatBackground(change, session?.id ?? "")) refresh();
+    });
     return () => { active = false; unsubscribe(); };
-  }, []);
+  }, [session?.id]);
 
   useEffect(() => {
     const id = resolved.image;

@@ -32,7 +32,9 @@ export function MessagesHome() {
     const load = async () => { try { const rows = await chatStorage.listSessions(); if (active) {
       setSessions(sortChatSessions(rows)); setLoaded(true); setError(""); }
     } catch { if (active) setError("Could not load conversations. Existing messages have not been changed."); } };
-    const unsubscribe = chatStorage.subscribe(() => void load()); void load();
+    const unsubscribe = chatStorage.subscribe((change) => {
+      if (change.domain === "session" || change.domain === "messages") void load();
+    }); void load();
     return () => { active = false; unsubscribe(); };
   }, []);
   useEffect(() => { if (!menuOpen) return; const close = (event: KeyboardEvent) => {

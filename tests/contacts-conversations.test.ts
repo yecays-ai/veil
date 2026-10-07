@@ -136,7 +136,8 @@ test("Messages conversation rows keep navigation and expose only a confirmed Del
   assert.match(home, /Delete Conversation\?/);
   assert.match(home, /onClick=\{\(\) => setDeleteTarget\(null\)\}>Cancel/);
   assert.match(home, /onClick=\{\(\) => void confirmDeleteConversation\(\)\}>\{deleteBusy \? "Deleting…" : "Delete"\}/);
-  assert.match(home, /chatStorage\.subscribe\(\(\) => void load\(\)\)/);
+  assert.match(home, /chatStorage\.subscribe\(\(change\) => \{/);
+  assert.match(home, /change\.domain === "session" \|\| change\.domain === "messages"\) void load\(\)/);
   assert.doesNotMatch(home, /location\.reload/);
   assert.match(home, /visible\.length > 0 &&\s*<div className="conversation-list">/);
   assert.doesNotMatch(home, /No conversations yet|No group chats yet|No matching chats/);

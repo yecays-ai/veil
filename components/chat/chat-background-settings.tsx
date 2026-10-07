@@ -6,7 +6,7 @@ import {
   resolveChatBackgroundImage,
   saveChatImageToIndexedDB,
 } from "../../lib/chat/background";
-import { chatStorage } from "../../lib/chat/storage";
+import { affectsChatBackground, chatStorage } from "../../lib/chat/storage";
 import { readImage } from "../../lib/theme-storage";
 import { ImageCropDialog } from "../image-crop-dialog";
 import { normalizeBackgroundBlur } from "../../lib/chat/types";
@@ -50,9 +50,11 @@ export function ChatBackgroundSettings({ session, onBack }: {
       if (active) setSettings(next);
     });
     refresh();
-    const unsubscribe = chatStorage.subscribe(refresh);
+    const unsubscribe = chatStorage.subscribe((change) => {
+      if (affectsChatBackground(change, session.id)) refresh();
+    });
     return () => { active = false; unsubscribe(); };
-  }, []);
+  }, [session.id]);
   const effectiveId = resolveChatBackgroundImage(session, settings);
   const effectivePreview = useAssetPreview(effectiveId);
 

@@ -102,7 +102,9 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
       } catch { /* Keep generation disabled when settings cannot be read. */ }
     };
     void refresh();
-    const unsubscribe = chatStorage.subscribe(() => void refresh());
+    const unsubscribe = chatStorage.subscribe((change) => {
+      if (change.domain === "global-profile") void refresh();
+    });
     return () => { active = false; unsubscribe(); };
   }, []);
   useEffect(() => {

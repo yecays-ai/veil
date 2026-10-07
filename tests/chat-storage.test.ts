@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { CHAT_DATABASE_NAME, ChatStorage } from "../lib/chat/storage";
+import { CHAT_DATABASE_NAME, ChatStorage, affectsChatBackground, affectsChatSession,
+  type ChatStorageChange } from "../lib/chat/storage";
 
 async function database(factory: IDBFactory) {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -30,6 +31,86 @@ test("concurrent direct opens reuse one conversation for a Character", async () 
   const [one, two] = await Promise.all([first.openSession("peter"), second.openSession("peter")]);
   assert.equal(one.id, two.id);
   assert.equal((await first.listSessions()).length, 1);
+});
+
+test("scoped notifications avoid unrelated session, background and profile reads", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const first = await storage.openSession("peter");
+  const other = await storage.openSession("lan");
+  const events: ChatStorageChange[] = [];
+  let sessionReads = 0, backgroundReads = 0, profileReads = 0;
+  const unsubscribe = storage.subscribe((change) => {
+    events.push(change);
+    if (affectsChatSession(change, first.id)) sessionReads++;
+    if (affectsChatBackground(change, first.id)) backgroundReads++;
+    if (change.domain === "global-profile") profileReads++;
+  });
+  await storage.send(other.id, "other message");
+  assert.deepEqual(events, [{ domain: "messages", sessionId: other.id }]);
+  assert.deepEqual([sessionReads, backgroundReads, profileReads], [0, 0, 0]);
+  await storage.send(first.id, "our message");
+  assert.deepEqual([sessionReads, backgroundReads, profileReads], [1, 0, 0]);
+  await storage.updateBubbleTiming({ shortMs: 1500 });
+  assert.deepEqual([sessionReads, backgroundReads, profileReads], [1, 0, 1]);
+  await storage.updateSessionSettings(other.id, { backgroundBlur: 2 });
+  assert.deepEqual([sessionReads, backgroundReads, profileReads], [1, 0, 1]);
+  await storage.updateSessionSettings(first.id, { backgroundBlur: 3 });
+  assert.deepEqual([sessionReads, backgroundReads, profileReads], [2, 1, 1]);
+  await storage.updateGlobalChatBackgroundBlur(4);
+  assert.deepEqual([sessionReads, backgroundReads, profileReads], [2, 2, 1]);
+  await storage.ensureHereThereSchedule(1_000_000, () => 0);
+  const scheduledReads = profileReads;
+  await storage.ensureHereThereSchedule(1_000_001, () => 0);
+  await storage.claimHereThereOpportunity(1_000_001, () => 0);
+  assert.equal(profileReads, scheduledReads);
+  unsubscribe();
+});
+
+test("scoped BroadcastChannel events refresh matching data in another tab", async () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const originalChannel = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");
+  class TestChannel {
+    static channels = new Set<TestChannel>();
+    onmessage: ((event: MessageEvent<ChatStorageChange>) => void) | null = null;
+    constructor(readonly name: string) { TestChannel.channels.add(this); }
+    postMessage(data: ChatStorageChange) {
+      for (const peer of TestChannel.channels) if (peer !== this && peer.name === this.name)
+        peer.onmessage?.({ data } as MessageEvent<ChatStorageChange>);
+    }
+  }
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  Object.defineProperty(globalThis, "BroadcastChannel", { configurable: true, value: TestChannel });
+  try {
+    const factory = new IDBFactory();
+    const first = new ChatStorage(() => factory), second = new ChatStorage(() => factory);
+    const session = await first.openSession("peter");
+    const other = await first.openSession("lan");
+    const seen: ChatStorageChange[] = [];
+    let sessionRefreshes = 0, profileRefreshes = 0;
+    const stopFirst = first.subscribe(() => {});
+    const stopSecond = second.subscribe((change) => {
+      seen.push(change);
+      if (affectsChatSession(change, session.id)) sessionRefreshes++;
+      if (change.domain === "global-profile") profileRefreshes++;
+    });
+    await first.send(other.id, "unrelated");
+    await first.send(session.id, "matching");
+    await first.updateBubbleTiming({ mediumMs: 2800 });
+    assert.deepEqual(seen, [
+      { domain: "messages", sessionId: other.id },
+      { domain: "messages", sessionId: session.id },
+      { domain: "global-profile" },
+    ]);
+    assert.equal(sessionRefreshes, 1);
+    assert.equal(profileRefreshes, 1);
+    assert.deepEqual((await second.readSession(session.id)).messages.map((message) => message.content), ["matching"]);
+    stopFirst(); stopSecond();
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, "window", originalWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+    if (originalChannel) Object.defineProperty(globalThis, "BroadcastChannel", originalChannel);
+    else Reflect.deleteProperty(globalThis, "BroadcastChannel");
+  }
 });
 
 test("chat sessions, messages and session-linked settings remain available in the current schema", async () => {
