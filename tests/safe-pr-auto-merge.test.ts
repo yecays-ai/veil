@@ -1,1 +1,176 @@
-YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíÛn÷N‹Z–‹­¦ëeŠw¬Õ¥µÁ½ÉÐ…ÍÍ•ÉÐ™É½´€‰¹½‘”é…ÍÍ•ÉÐ½ÍÑÉ¥Ðˆì)¥µÁ½ÉÐìÉ•…‘¥±•Må¹Œô™É½´€‰¹½‘”é™Ìˆì)¥µÁ½ÉÐÑ•ÍÐ™É½´€‰¹½‘”éÑ•ÍÐˆì()½¹ÍÐÝ½É­™±½Ü€ôÉ•…‘¥±•Må¹Œ ˆ¹¥Ñ¡Õˆ½Ý½É­™±½ÝÌ½…ÕÑ¼µµ•É”¹åµ°ˆ°€‰ÕÑ˜àˆ¤ì)½¹ÍÐÍÉ¥ÁÑ5…É­•È€ô€ˆ€€€€€€€€€ÍÉ¥ÁÐèñq¸ˆì)½¹ÍÐÍÉ¥ÁÑMÑ…ÉÐ€ôÝ½É­™±½Ü¹¥¹‘•á=˜¡ÍÉ¥ÁÑ5…É­•È¤ì)…ÍÍ•ÉÐ¹¹½ÑÅÕ…°¡ÍÉ¥ÁÑMÑ…ÉÐ°€´Ä°€‰…ÕÑ¼µµ•É”Ý½É­™±½ÜÍÉ¥ÁÐ¥ÌÁÉ•Í•¹Ðˆ¤ì)½¹ÍÐÍÉ¥ÁÑ1¥¹•Ì€ôÝ½É­™±½Ü¹Í±¥”¡ÍÉ¥ÁÑMÑ…ÉÐ€¬ÍÉ¥ÁÑ5…É­•È¹±•¹Ñ ¤¹ÍÁ±¥Ð ½qÈýq¸¼¤ì)½¹ÍÐÍÉ¥ÁÐèÍÑÉ¥¹mt€ômtì)™½È€¡½¹ÍÐ±¥¹”½˜ÍÉ¥ÁÑ1¥¹•Ì¤ì(€¥˜€¡±¥¹”¹ÑÉ¥´ ¤€˜˜€…±¥¹”¹ÍÑ…ÉÑÍ]¥Ñ  ˆ€€€€€€€€€€€€ˆ¤¤‰É•…¬ì(€ÍÉ¥ÁÐ¹ÁÕÍ ¡±¥¹”¹ÑÉ¥´ ¤€ü±¥¹”¹Í±¥” ÄÈ¤€è€ˆˆ¤ì)ô)½¹ÍÐÍå¹Õ¹Ñ¥½¸€ô=‰©•Ð¹•ÑAÉ½Ñ½ÑåÁ•=˜¡…Íå¹Œ™Õ¹Ñ¥½¸€ ¤íô¤¹½¹ÍÑÉÕÑ½È…Ì¹•Ü€ ¸¸¹…ÉÌèÍÑÉ¥¹mt¤€ôø(€€ ¸¸¹…ÉÌèÕ¹­¹½Ý¹mt¤€ôøAÉ½µ¥Í”ñÙ½¥øì)½¹ÍÐ•á•ÕÑ•]½É­™±½Ü€ô¹•ÜÍå¹Õ¹Ñ¥½¸ ‰¥Ñ¡Õˆˆ°€‰½¹Ñ•áÐˆ°ÍÉ¥ÁÐ¹©½¥¸ ‰q¸ˆ¤¤ì()½¹ÍÐ¡•…‘M¡„€ô€‰¡•…µÍ¡„ˆì)½¹ÍÐÁÕ±°€ôì(€¹Õµ‰•Èè€ÈÐ°(€ÍÑ…Ñ”è€‰½Á•¸ˆ°(€‰…Í”èìÉ•˜è€‰µ…¥¸ˆô°(€‘É…™Ðè™…±Í”°(€¡•…èìÍ¡„è¡•…‘M¡„°É•Á¼èì™Õ±±}¹…µ”è€‰å•…åÌµ…¤½Ù•¥°ˆ°¥è€ÄÐÀÌÄÈÈàÀäôô°(€±…‰•±Ìèmì¹…µ”è€‰…ÕÑ½µ•É”ˆõt°)ôì()¥¹Ñ•É™…”5½­=ÁÑ¥½¹Ìì(€¥½¹±ÕÍ¥½¸üèÍÑÉ¥¹œì(€½‘•I…‰‰¥ÑMÑ…Ñ”üèÍÑÉ¥¹œì(€Õ¹É•Í½±Ù•‘Q¡É•…‘Ìüè‰½½±•…¸ì(€É•Ù¥•ÝMÑ…Ñ”üèÍÑÉ¥¹œì(€É•Ù¥•Ý!•…‘M¡„üèÍÑÉ¥¹œì(€¡Õµ…¹I•Ù¥•ÝMÑ…Ñ”üèÍÑÉ¥¹œì(€±…‰•°üè‰½½±•…¸ì)ô()™Õ¹Ñ¥½¸µ½­¥Ñ!Õˆ¡½ÁÑ¥½¹Ìè5½­=ÁÑ¥½¹Ì€ôíô¤ì(€½¹ÍÐµ•É•Ìè¹Õµ‰•Émt€ômtì(€½¹ÍÐÕÉÉ•¹ÑAÕ±°€ôì(€€€€¸¸¹ÁÕ±°°(€€€±…‰•±Ìè½ÁÑ¥½¹Ì¹±…‰•°€ôôô™…±Í”€ümt€èÁÕ±°¹±…‰•±Ì°(€ôì(€½¹ÍÐ¥Ñ¡Õˆ€ôì(€€€É•ÍÐèì(€€€€€ÁÕ±±Ìèì(€€€€€€€•Ðè…Íå¹Œ€ ¤€ôø€¡ì‘…Ñ„èÕÉÉ•¹ÑAÕ±°ô¤°(€€€€€€€±¥ÍÐè…Íå¹Œ€ ¤€ôø€¡ì‘…Ñ„èmÕÉÉ•¹ÑAÕ±±tô¤°(€€€€€€€±¥ÍÑI•Ù¥•ÝÌè…Íå¹Œ€ ¤€ôø€¡ì‘…Ñ„èl(€€€€€€€€€ì(€€€€€€€€€€€ÕÍ•Èèì±½¥¸è€‰½‘•É…‰‰¥Ñ…¥m‰½Ñtˆô°(€€€€€€€€€€€½µµ¥Ñ}¥è½ÁÑ¥½¹Ì¹É•Ù¥•Ý!•…‘M¡„€üü¡•…‘M¡„°(€€€€€€€€€€€ÍÑ…Ñ”è½ÁÑ¥½¹Ì¹É•Ù¥•ÝMÑ…Ñ”€üü€‰=559Qˆ°(€€€€€€€€€€€ÍÕ‰µ¥ÑÑ•‘}…Ðè€ˆÈÀÈØ´ÄÀ´ÀÝPÄÀèÀÀèÀÁhˆ°(€€€€€€€€€ô°(€€€€€€€€€€¸¸¸¡½ÁÑ¥½¹Ì¹¡Õµ…¹I•Ù¥•ÝMÑ…Ñ”€ümì(€€€€€€€€€€€ÕÍ•Èèì±½¥¸è€‰É•Ù¥•Ý•Èˆô°(€€€€€€€€€€€½µµ¥Ñ}¥è¡•…‘M¡„°(€€€€€€€€€€€ÍÑ…Ñ”è½ÁÑ¥½¹Ì¹¡Õµ…¹I•Ù¥•ÝMÑ…Ñ”°(€€€€€€€€€€€ÍÕ‰µ¥ÑÑ•‘}…Ðè€ˆÈÀÈØ´ÄÀ´ÀÝPÄÀèÀÀèÀÁhˆ°(€€€€€€€€€õt€èmt¤°(€€€€€€€tô¤°(€€€€€€€µ•É”è…Íå¹Œ€¡ìÁÕ±±}¹Õµ‰•ÈôèìÁÕ±±}¹Õµ‰•Èè¹Õµ‰•Èô¤€ôøìµ•É•Ì¹ÁÕÍ ¡ÁÕ±±}¹Õµ‰•È¤ìô°(€€€€€ô°(€€€€€…Ñ¥½¹Ìèì(€€€€€€€±¥ÍÑ]½É­™±½ÝIÕ¹Ìè…Íå¹Œ€ ¤€ôø€¡ì‘…Ñ„èìÝ½É­™±½Ý}ÉÕ¹Ìèmì(€€€€€€€€€½¹±ÕÍ¥½¸è½ÁÑ¥½¹Ì¹¥½¹±ÕÍ¥½¸€üü€‰ÍÕ•ÍÌˆ°(€€€€€€€€€É•…Ñ•‘}…Ðè€ˆÈÀÈØ´ÄÀ´ÀÝPÄÀèÀÀèÀÁhˆ°(€€€€€€€€€ÁÕ±±}É•ÅÕ•ÍÑÌèmì¹Õµ‰•ÈèÁÕ±°¹¹Õµ‰•È°¡•…èìÍ¡„è¡•…‘M¡„ôõt°(€€€€€€€õtôô¤°(€€€€€ô°(€€€€€É•Á½Ìèì(€€€€€€€±¥ÍÑ½µµ¥ÑMÑ…ÑÕÍ•Í½ÉI•˜è…Íå¹Œ€ ¤€ôø€¡ì‘…Ñ„è½ÁÑ¥½¹Ì¹½‘•I…‰‰¥ÑMÑ…Ñ”€ümì(€€€€€€€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°(€€€€€€€€€ÍÑ…Ñ”è½ÁÑ¥½¹Ì¹½‘•I…‰‰¥ÑMÑ…Ñ”°(€€€€€€€€€É•…Ñ•‘}…Ðè€ˆÈÀÈØ´ÄÀ´ÀÝPÄÀèÀÀèÀÁhˆ°(€€€€€€€õt€èmtô¤°(€€€€€€€±¥ÍÑAÕ±±I•ÅÕ•ÍÑÍÍÍ½¥…Ñ•‘]¥Ñ¡½µµ¥Ðè…Íå¹Œ€ ¤€ôø€¡ì‘…Ñ„èmÕÉÉ•¹ÑAÕ±±tô¤°(€€€€€ô°(€€€ô°(€€€Á…¥¹…Ñ”è…Íå¹Œ€¡•¹‘Á½¥¹ÐèÕ¹­¹½Ý¸¤€ôø•¹‘Á½¥¹Ð€ôôô¥Ñ¡Õˆ¹É•ÍÐ¹ÁÕ±±Ì¹±¥ÍÐ(€€€€€€ümÕÉÉ•¹ÑAÕ±±t(€€€€€€èƒn÷¶‰žËkºwµçiqm±…‰•±•‘qt¼¤ì(€…ÍÍ•ÉÐ¹µ…Ñ ¡Ý½É­™±½Ü°€½ÍÑ…ÑÕÌéqÌ©q¸¼¤ì(€…ÍÍ•ÉÐ¹µ…Ñ ¡Ý½É­™±½Ü°€½Í¡•‘Õ±”éqÌ©q¹qÌ¬´É½¸éqÌ¨‰p©p¼Ôp¨p¨p¨p¨ˆ¼¤ì(€…ÍÍ•ÉÐ¹‘½•Í9½Ñ5…Ñ ¡Ý½É­™±½Ü°€½yqÍìÉõÁÕ±±}É•ÅÕ•ÍÑ}É•Ù¥•Ý}Ñ¡É•…è½´¤ì(€…ÍÍ•ÉÐ¹‘½•Í9½Ñ5…Ñ ¡Ý½É­™±½Ü°€½yqÍìÉõÝ½É­™±½Ý}ÉÕ¸è½´¤ì((€½¹ÍÐ¥=¹±ä€ô…Ý…¥ÐÉÕ¸ ‰Í¡•‘Õ±”ˆ°íô°ì½‘•I…‰‰¥ÑMÑ…Ñ”èÕ¹‘•™¥¹•ô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡¥=¹±ä°mt°€‰$…±½¹”µÕÍÐ¹•Ù•Èµ•É”‰•™½É”½‘•I…‰‰¥Ð½µÁ±•Ñ•Ìˆ¤ì((€½¹ÍÐÕ¹±…‰•±•€ô…Ý…¥ÐÉÕ¸ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆ°±…‰•°è™…±Í”ô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡Õ¹±…‰•±•°mt°€‰Ñ¡”•áÁ±¥¥Ð…ÕÑ½µ•É”±…‰•°É•µ…¥¹ÌÉ•ÅÕ¥É•ˆ¤ì)ô¤ì()Ñ•ÍÐ ‰„½µÁ±•Ñ•É•Ù¥•ÜÝ¥Ñ Õ¹É•Í½±Ù•™¥¹‘¥¹Ì…¹¹½Ð…ÕÑ¼µµ•É”ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐµ•É•Ì€ô…Ý…¥ÐÉÕ¸ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Õ¹É•Í½±Ù•‘Q¡É•…‘ÌèÑÉÕ”ô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡µ•É•Ì°mt¤ì)ô¤ì()Ñ•ÍÐ ‰„ÍÕ•ÍÍ™Õ°½‘•I…‰‰¥ÐÍÑ…ÑÕÌÝ¥Ñ¡½ÕÐ„ÕÉÉ•¹Ðµ¡•…É•Ù¥•Ü…¹¹½Ð…ÕÑ¼µµ•É”ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐì¥Ñ¡Õˆ°µ•É•Ìô€ôµ½­¥Ñ!Õˆ¡ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆô¤ì(€¥Ñ¡Õˆ¹É•ÍÐ¹ÁÕ±±Ì¹±¥ÍÑI•Ù¥•ÝÌ€ô…Íå¹Œ€ ¤€ôø€¡ì‘…Ñ„èmtô¤ì(€…Ý…¥Ð•á•ÕÑ•]½É­™±½Ü¡¥Ñ¡Õˆ°½¹Ñ•áÐ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô¤¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡µ•É•Ì°mt¤ì)ô¤ì()Ñ•ÍÐ ‰„½‘•I…‰‰¥ÐÉ•Ù¥•Ü™½È…¸½±‘•È¡•……¹¹½Ð…ÕÑ¡½É¥é”…ÕÑ¼µµ•É”ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐµ•É•Ì€ô…Ý…¥ÐÉÕ¸ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆ°É•Ù¥•Ý!•…‘M¡„è€‰½±‘•Èµ¡•…ˆô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡µ•É•Ì°mt¤ì)ô¤ì()Ñ•ÍÐ ‰„¡…¹•ÌµÉ•ÅÕ•ÍÑ•É•Ù¥•Ü‰±½­Ì…ÕÑ¼µµ•É”•Ù•¸Ý¡•¸¥ÑÌÑ¡É•…‘Ì…É”É•Í½±Ù•ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐµ•É•Ì€ô…Ý…¥ÐÉÕ¸ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆ°É•Ù¥•ÝMÑ…Ñ”è€‰!9M}IEUMQˆô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡µ•É•Ì°mt¤ì((€½¹ÍÐ¡Õµ…¹I•ÅÕ•ÍÐ€ô…Ý…¥ÐÉÕ¸ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆ°¡Õµ…¹I•Ù¥•ÝMÑ…Ñ”è€‰!9M}IEUMQˆô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡¡Õµ…¹I•ÅÕ•ÍÐ°mt¤ì)ô¤ì()Ñ•ÍÐ ‰±•…¸½‘•I…‰‰¥ÐÉ•Ù¥•Ü…¹É•Í½±Ù•Ñ¡É•…‘ÌÍÑ¥±°É•ÅÕ¥É”ÍÕ•ÍÍ™Õ°$ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐ¥…¥±ÕÉ”€ô…Ý…¥ÐÉÕ¸ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆ°¥½¹±ÕÍ¥½¸è€‰™…¥±ÕÉ”ˆô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡¥…¥±ÕÉ”°mt¤ì((€½¹ÍÐµ•É•Ì€ô…Ý…¥ÐÉÕ¸ ‰ÍÑ…ÑÕÌˆ°ì(€€€½¹Ñ•áÐè€‰½‘•I…‰‰¥Ðˆ°ÍÑ…Ñ”è€‰ÍÕ•ÍÌˆ°Í¡„è¡•…‘M¡„°(€ô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡µ•É•Ì°mÁÕ±°¹¹Õµ‰•Ét¤ì)ô¤ì()Ñ•ÍÐ ‰Í¡•‘Õ±•É•¡•¬Ý…¥ÑÌÕ¹Ñ¥°É•Ù¥•Ü™¥¹‘¥¹Ì…É”É•Í½±Ù•ˆ°…Íå¹Œ€ ¤€ôøì(€½¹ÍÐÕ¹É•Í½±Ù•€ô…Ý…¥ÐÉÕ¸ ‰Í¡•‘Õ±”ˆ°íô°ì(€€€½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆ°(€€€Õ¹É•Í½±Ù•‘Q¡É•…‘ÌèÑÉÕ”°(€ô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡Õ¹É•Í½±Ù•°mt¤ì((€½¹ÍÐµ•É•Ì€ô…Ý…¥ÐÉÕ¸ ‰Í¡•‘Õ±”ˆ°íô°ì½‘•I…‰‰¥ÑMÑ…Ñ”è€‰ÍÕ•ÍÌˆô¤ì(€…ÍÍ•ÉÐ¹‘••ÁÅÕ…°¡µ•É•Ì°mÁÕ±°¹¹Õµ‰•Ét¤ì)ô¤ì
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+
+const workflow = readFileSync(".github/workflows/auto-merge.yml", "utf8");
+const scriptMarker = "          script: |\n";
+const scriptStart = workflow.indexOf(scriptMarker);
+assert.notEqual(scriptStart, -1, "auto-merge workflow script is present");
+const scriptLines = workflow.slice(scriptStart + scriptMarker.length).split(/\r?\n/);
+const script: string[] = [];
+for (const line of scriptLines) {
+  if (line.trim() && !line.startsWith("            ")) break;
+  script.push(line.trim() ? line.slice(12) : "");
+}
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (...args: string[]) =>
+  (...args: unknown[]) => Promise<void>;
+const executeWorkflow = new AsyncFunction("github", "context", script.join("\n"));
+
+const headSha = "head-sha";
+const pull = {
+  number: 24,
+  state: "open",
+  base: { ref: "main" },
+  draft: false,
+  head: { sha: headSha, repo: { full_name: "yecays-ai/veil", id: 1403122809 } },
+  labels: [{ name: "automerge" }],
+};
+
+interface MockOptions {
+  ciConclusion?: string;
+  codeRabbitState?: string;
+  unresolvedThreads?: boolean;
+  reviewState?: string;
+  reviewHeadSha?: string;
+  humanReviewState?: string;
+  label?: boolean;
+}
+
+function mockGitHub(options: MockOptions = {}) {
+  const merges: number[] = [];
+  const currentPull = {
+    ...pull,
+    labels: options.label === false ? [] : pull.labels,
+  };
+  const github = {
+    rest: {
+      pulls: {
+        get: async () => ({ data: currentPull }),
+        list: async () => ({ data: [currentPull] }),
+        listReviews: async () => ({ data: [
+          {
+            user: { login: "coderabbitai[bot]" },
+            commit_id: options.reviewHeadSha ?? headSha,
+            state: options.reviewState ?? "COMMENTED",
+            submitted_at: "2026-10-07T10:00:00Z",
+          },
+          ...(options.humanReviewState ? [{
+            user: { login: "reviewer" },
+            commit_id: headSha,
+            state: options.humanReviewState,
+            submitted_at: "2026-10-07T10:00:00Z",
+          }] : []),
+        ] }),
+        merge: async ({ pull_number }: { pull_number: number }) => { merges.push(pull_number); },
+      },
+      actions: {
+        listWorkflowRuns: async () => ({ data: { workflow_runs: [{
+          conclusion: options.ciConclusion ?? "success",
+          created_at: "2026-10-07T10:00:00Z",
+          pull_requests: [{ number: pull.number, head: { sha: headSha } }],
+        }] } }),
+      },
+      repos: {
+        listCommitStatusesForRef: async () => ({ data: options.codeRabbitState ? [{
+          context: "CodeRabbit",
+          state: options.codeRabbitState,
+          created_at: "2026-10-07T10:00:00Z",
+        }] : [] }),
+        listPullRequestsAssociatedWithCommit: async () => ({ data: [currentPull] }),
+      },
+    },
+    paginate: async (endpoint: unknown) => endpoint === github.rest.pulls.list
+      ? [currentPull]
+      : (await github.rest.pulls.listReviews()).data,
+    graphql: async () => ({ repository: { pullRequest: { reviewThreads: {
+      nodes: [{ isResolved: !options.unresolvedThreads }],
+      pageInfo: { hasNextPage: false, endCursor: null },
+    } } } }),
+  };
+  return { github, merges };
+}
+
+function context(eventName: string, payload: Record<string, unknown>) {
+  return { eventName, payload, repo: { owner: "yecays-ai", repo: "veil" } };
+}
+
+async function run(eventName: string, payload: Record<string, unknown>, options: MockOptions = {}) {
+  const { github, merges } = mockGitHub(options);
+  await executeWorkflow(github, context(eventName, payload));
+  return merges;
+}
+
+test("auto-merge stays label gated and has scheduled review-resolution rechecks", async () => {
+  assert.match(workflow, /issues:\s*\n\s+types:\s*\[labeled\]/);
+  assert.match(workflow, /status:\s*\n/);
+  assert.match(workflow, /schedule:\s*\n\s+- cron:\s*"\*\/5 \* \* \* \*"/);
+  assert.doesNotMatch(workflow, /^\s{2}pull_request_review_thread:/m);
+  assert.doesNotMatch(workflow, /^\s{2}workflow_run:/m);
+
+  const ciOnly = await run("schedule", {}, { codeRabbitState: undefined });
+  assert.deepEqual(ciOnly, [], "CI alone must never merge before CodeRabbit completes");
+
+  const unlabeled = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", label: false });
+  assert.deepEqual(unlabeled, [], "the explicit automerge label remains required");
+});
+
+test("a completed review with unresolved findings cannot auto-merge", async () => {
+  const merges = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", unresolvedThreads: true });
+  assert.deepEqual(merges, []);
+});
+
+test("a successful CodeRabbit status without a current-head review cannot auto-merge", async () => {
+  const { github, merges } = mockGitHub({ codeRabbitState: "success" });
+  github.rest.pulls.listReviews = async () => ({ data: [] });
+  await executeWorkflow(github, context("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }));
+  assert.deepEqual(merges, []);
+});
+
+test("a CodeRabbit review for an older head cannot authorize auto-merge", async () => {
+  const merges = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", reviewHeadSha: "older-head" });
+  assert.deepEqual(merges, []);
+});
+
+test("a changes-requested review blocks auto-merge even when its threads are resolved", async () => {
+  const merges = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", reviewState: "CHANGES_REQUESTED" });
+  assert.deepEqual(merges, []);
+
+  const humanRequest = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", humanReviewState: "CHANGES_REQUESTED" });
+  assert.deepEqual(humanRequest, []);
+});
+
+test("clean CodeRabbit review and resolved threads still require successful CI", async () => {
+  const ciFailure = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success", ciConclusion: "failure" });
+  assert.deepEqual(ciFailure, []);
+
+  const merges = await run("status", {
+    context: "CodeRabbit", state: "success", sha: headSha,
+  }, { codeRabbitState: "success" });
+  assert.deepEqual(merges, [pull.number]);
+});
+
+test("scheduled recheck waits until review findings are resolved", async () => {
+  const unresolved = await run("schedule", {}, {
+    codeRabbitState: "success",
+    unresolvedThreads: true,
+  });
+  assert.deepEqual(unresolved, []);
+
+  const merges = await run("schedule", {}, { codeRabbitState: "success" });
+  assert.deepEqual(merges, [pull.number]);
+});
+
