@@ -142,10 +142,11 @@ test("Send persists separate bubbles without generating; Request Reply consumes 
     (await storage.readSession(session.id)).messages.map((m) => m.content),
     ["first", "second", "third"],
   );
-  await Promise.all([
+  const overlapping = await Promise.allSettled([
     engine.requestReply(session.id),
     engine.requestReply(session.id),
   ]);
+  assert.equal(overlapping.filter((result) => result.status === "rejected").length, 1);
   assert.equal(calls, 1);
   assert.equal(source, "manual-reply");
   assert.deepEqual(
@@ -180,11 +181,12 @@ test("atomic reservation across clients cannot claim the same pending batch twic
   const { storage, factory } = create();
   const session = await storage.openSession("a");
   await storage.send(session.id, "pending");
-  const batches = await Promise.all([
+  const batches = await Promise.allSettled([
     storage.beginReply(session.id),
     new ChatStorage(() => factory).beginReply(session.id),
   ]);
-  assert.equal(batches.filter(Boolean).length, 1);
+  assert.equal(batches.filter((result) => result.status === "fulfilled").length, 1);
+  assert.equal(batches.filter((result) => result.status === "rejected").length, 1);
   assert.equal((await storage.readSession(session.id)).messages.length, 2);
 });
 
@@ -196,7 +198,8 @@ test("two Chat engines in separate tabs can only invoke one completion for the s
   const provider: TextProvider = async function* () { calls++; yield "one reply"; };
   const first = createChatEngine(storage, async () => foundation(), provider);
   const second = createChatEngine(new ChatStorage(() => factory), async () => foundation(), provider);
-  await Promise.all([first.requestReply(session.id), second.requestReply(session.id)]);
+  const attempts = await Promise.allSettled([first.requestReply(session.id), second.requestReply(session.id)]);
+  assert.equal(attempts.filter((attempt) => attempt.status === "rejected").length, 1);
   assert.equal(calls, 1);
   assert.equal((await storage.readSession(session.id)).messages.filter((item) => item.role === "assistant").length, 1);
 });
@@ -227,7 +230,7 @@ test("one streamed generation finalizes atomically as ordered assistant bubbles 
   const during = await storage.readSession(session.id);
   assert.equal(during.messages.filter((message) => message.role === "assistant").length, 1);
   assert.equal(during.messages.at(-1)?.status, "streaming");
-  await engine.send(session.id, "sent while streaming");
+  await assert.rejects(engine.send(session.id, "sent while streaming"), /in progress/);
   release();
   await generation;
   assert.equal(calls, 1);
@@ -239,9 +242,10 @@ test("one streamed generation finalizes atomically as ordered assistant bubbles 
     "What language?",
   ]);
   assert.equal(new Set(replies.map((message) => message.id)).size, 3);
-  assert.deepEqual(finalized.messages.map((message) => message.order), [1, 2, 3, 4, 5]);
+  assert.deepEqual(finalized.messages.map((message) => message.order), [1, 2, 3, 4]);
   assert.equal(finalized.messages[0].requestedBy, replies[0].id);
-  assert.equal(finalized.messages.at(-1)?.content, "sent while streaming");
+  assert.equal(finalized.messages.at(-1)?.content, "What language?");
+  await engine.send(session.id, "sent while streaming");
   await engine.requestReply(session.id);
   assert.equal(calls, 2);
   for (const part of replies)
@@ -563,9 +567,10 @@ test("stop preserves streamed content and keeps the claimed batch consumed; new 
   );
   const generating = engine.requestReply(session.id);
   await started;
-  await engine.send(session.id, "next batch");
+  await assert.rejects(engine.send(session.id, "next batch"), /in progress/);
   engine.stop(session.id);
   const stopped = await generating;
+  await engine.send(session.id, "next batch");
   assert.equal(stopped?.status, "cancelled");
   assert.equal(stopped?.content, "first part\n\nsecond part");
   const messages = (await storage.readSession(session.id)).messages;
@@ -584,7 +589,7 @@ test("stop preserves streamed content and keeps the claimed batch consumed; new 
   assert.equal(await next.requestReply(session.id), null);
 });
 
-test("API errors are visible, reserved batches are not retried, and missing config does not consume them", async () => {
+test("missing API config persists a failed attempt and only explicit retry starts the provider", async () => {
   const { storage } = create();
   const session = await storage.openSession("a");
   await storage.send(session.id, "hello");
@@ -599,20 +604,16 @@ test("API errors are visible, reserved batches are not retried, and missing conf
     }, undefined, undefined, undefined, undefined, undefined, undefined,
     async (id) => id === config.id && available ? config : undefined,
   );
-  await assert.rejects(
-    () => engine.requestReply(session.id),
-    /selected Text API is missing/,
-  );
-  assert.equal(
-    (await storage.readSession(session.id)).messages[0].requestedBy,
-    undefined,
-  );
+  const failed = await engine.requestReply(session.id);
+  assert.match(failed?.error ?? "", /selected Text API is missing/);
+  assert.ok((await storage.readSession(session.id)).messages[0].requestedBy);
+  assert.equal(await engine.requestReply(session.id), null);
   available = true;
-  assert.equal((await engine.requestReply(session.id))?.status, "error");
+  assert.equal((await engine.regenerateMessage(failed!.id))?.status, "error");
   assert.equal((await storage.readSession(session.id)).messages.filter(
-    (message) => message.role === "assistant").length, 1);
+    (message) => message.role === "assistant").length, 2);
   assert(
-    (await storage.readSession(session.id)).messages[1].error?.includes("401"),
+    (await storage.readSession(session.id)).messages.at(-1)?.error?.includes("401"),
   );
   assert.equal(await engine.requestReply(session.id), null);
   assert.equal(calls, 1);
@@ -651,10 +652,7 @@ test("API configuration is local/separate, respects binding precedence, and neve
   assert(!unrelated.includes("apiKey"));
   bindings.characters.a.apps.messages = { apiConfigId: null };
   await engine.send(session.id, "new");
-  await assert.rejects(
-    () => engine.requestReply(session.id),
-    /binding is disabled/,
-  );
+  assert.match((await engine.requestReply(session.id))?.error ?? "", /binding is disabled/);
 });
 
 test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and normalizes endpoint paths", async () => {

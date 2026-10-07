@@ -33,7 +33,8 @@ import {
 import { ChatAvatar } from "./avatar";
 import { useChatSession } from "./use-chat-session";
 import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
-import { createTransientFeedback, hasPendingUserContent, sendThenRequestReply, visibleReplyText } from "../../lib/chat/usability";
+import { createTransientFeedback, hasPendingUserContent, visibleReplyText } from "../../lib/chat/usability";
+import { canContinueTurn, canRegenerateTurn } from "../../lib/chat/turns";
 import { groupVisibleMessages, hiddenForReveal } from "../../lib/chat/bubble-pacing";
 import { resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../lib/chat/delivery";
 import { useBubbleReveal } from "./use-bubble-reveal";
@@ -108,6 +109,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useEffect(() => { setQuotingMessage(null); }, [characterId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const generationActive = generating || !!session?.generation;
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
@@ -115,6 +117,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
   currentSessionId.current = session?.characterId === characterId ? session.id : undefined;
+  useEffect(() => {
+    replyLock.current = false; sendingLock.current = false;
+    setGenerating(false); setSending(false); setError("");
+  }, [characterId]);
   const { queue: revealQueue, state: revealState } = useBubbleReveal(
     currentSessionId.current, messages, session?.streamOnline === true, !!loadError,
   );
@@ -352,17 +358,20 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         if (focus) composer.current?.focus();
       }
     } finally {
-      sendingLock.current = false;
-      if (mounted.current) setSending(false);
+      if (mounted.current && currentSessionId.current === sessionId) {
+        sendingLock.current = false;
+        setSending(false);
+      }
     }
   }
   async function send() {
-    if (!session || session.characterId !== characterId || sendingLock.current || !draft.trim() || loadError) return;
+    if (!session || session.characterId !== characterId || generationActive || chatEngine.isGenerating(session.id) || sendingLock.current || !draft.trim() || loadError) return;
+    const sessionId = session.id;
     setError("");
     try {
-      await persistDraft(draft, session.id, true);
+      await persistDraft(draft, sessionId, true);
     } catch (e) {
-      if (mounted.current)
+      if (mounted.current && currentSessionId.current === sessionId)
         setError(
           e instanceof Error ? e.message : "Message could not be saved.",
         );
@@ -370,7 +379,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }
   async function reply(source: "manual-reply" | "keyboard-auto-reply" = "manual-reply") {
     if (!session || session.characterId !== characterId || replyLock.current || sendingLock.current ||
-      chatEngine.isGenerating(session.id) || loadError) return;
+      generationActive || chatEngine.isGenerating(session.id) || loadError) return;
     const sessionId = session.id;
     replyLock.current = true;
     let revealToken: number | undefined;
@@ -378,41 +387,42 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setError("");
     nearBottom.current = true;
     try {
-      await sendThenRequestReply(draft,
-        (content) => persistDraft(content, sessionId, false),
-        async () => {
-          if (mounted.current && currentSessionId.current === sessionId) {
-            revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleTiming);
-            const token = revealToken;
-            return chatEngine.requestReply(sessionId, (completed) => {
-              if (mounted.current && currentSessionId.current === sessionId)
-                revealQueue.complete(sessionId, completed, performance.now(), token);
-            }, source);
-          }
-        });
+      revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleTiming);
+      const token = revealToken, content = draft, quote = quotingMessage;
+      await chatEngine.requestReply(sessionId, (completed) => {
+        if (mounted.current && currentSessionId.current === sessionId)
+          revealQueue.complete(sessionId, completed, performance.now(), token);
+      }, source, { content, quoteMessageId: quote?.id, onSent: () => {
+        if (mounted.current && currentSessionId.current === sessionId) {
+          setDraft((current) => current === content ? "" : current);
+          setQuotingMessage((current) => current?.id === quote?.id ? null : current);
+        }
+      } });
     } catch (e) {
-      if (mounted.current)
+      if (mounted.current && currentSessionId.current === sessionId)
         setError(
           e instanceof Error ? e.message : "Reply could not be requested.",
         );
     } finally {
       revealQueue.settle(sessionId, revealToken);
-      replyLock.current = false;
-      if (mounted.current) setGenerating(false);
+      if (mounted.current && currentSessionId.current === sessionId) {
+        replyLock.current = false;
+        setGenerating(false);
+      }
     }
   }
-  async function regenerate(message: ChatMessage) {
-    if (!session || generating || revealState?.pending || replyLock.current || chatEngine.isGenerating(session.id)) return;
+  async function regenerate(message: ChatMessage, continuing = false) {
+    if (!session || generationActive || sendingLock.current || revealState?.pending || replyLock.current || chatEngine.isGenerating(session.id)) return;
     const sessionId = session.id;
     replyLock.current = true;
     closeActions();
     setGenerating(true);
     nearBottom.current = true;
-    const retained = messages.filter((item) => item.order < message.order);
-    const revealToken = revealQueue.begin(sessionId, retained, session.streamOnline === true, performance.now(), bubbleTiming);
+    const revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleTiming);
     setError("");
     try {
-      await chatEngine.regenerateMessage(message.id, (completed) => {
+      const action = continuing ? chatEngine.continueMessage : chatEngine.regenerateMessage;
+      await action(message.id, (completed) => {
         if (mounted.current && currentSessionId.current === sessionId)
           revealQueue.complete(sessionId, completed, performance.now(), revealToken);
       }, sessionId);
@@ -430,7 +440,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useKeyboardDismissAutoReply(shell, {
     sessionId: session?.characterId === characterId ? session.id : undefined,
     enabled: session?.autoReplyOnKeyboardDismiss === true,
-    blocked: generating || !!revealState?.pending || sending || multiSelect || !!activeMessage || !!editingMessage ||
+    blocked: generationActive || !!revealState?.pending || sending || multiSelect || !!activeMessage || !!editingMessage ||
       chatInfoOpen || confirmClear || !!confirmDelete,
     onReply: () => reply("keyboard-auto-reply"),
   });
@@ -486,11 +496,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const selectable = messages.filter((message) => message.status !== "streaming");
   const hidden = (message: ChatMessage) =>
     (message.id !== pendingSearchJumpId && !!revealState && hiddenForReveal(message, revealState)) ||
-    (generating && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
+    (generationActive && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
   const visibleMessages = messages.filter((message) => !hidden(message));
   const groupedMessages = groupVisibleMessages(visibleMessages);
   const lastVisibleMessageId = groupedMessages.at(-1)?.message.id;
-  const typing = !!revealState?.pending || (generating && session?.streamOnline !== true);
+  const typing = !!revealState?.pending || (generationActive && session?.streamOnline !== true);
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
@@ -584,20 +594,25 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 onClick={(e) => openActions(e, message)}>
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
-                {(parsed.content && (message.role === "user" || message.role === "assistant")
+                {message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
                   ? applyRegex(parsed.content, regexGroups, message.role, "display",
                     { character: character.name, user: document.user.name }) : parsed.content) ||
-                  (message.status === "streaming" && generating ? "…" : "")}
+                  (message.status === "streaming" && generationActive ? "…" : "")}
               </p>
               <MessageFooter messageId={message.id} />
               <span className="chat-message-meta">
-                {message.status === "streaming" && !generating && (
+                {message.status === "streaming" && !generationActive && (
                   <span>Interrupted reply</span>
                 )}
                 {message.status === "cancelled" && <span>Reply stopped</span>}
                 {message.status === "error" && (
                   <span role="alert">{message.error || "Reply failed."}</span>
                 )}
+                {!generationActive && message.role === "assistant" && canRegenerateTurn(messages, message.id) &&
+                  (message.status === "error" || message.status === "cancelled") &&
+                  <button type="button" onClick={() => void regenerate(message, message.attemptMode === "continue")}>Retry</button>}
+                {!generationActive && canContinueTurn(messages, message.id) &&
+                  <button type="button" onClick={() => void regenerate(message, true)}>Continue conversation</button>}
                 {delivery && !typing && message.id === lastVisibleMessageId && <span className="chat-delivery-status">
                   {userMessageDeliveryLabel(delivery)}
                 </span>}
@@ -659,7 +674,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           <span className="chat-voice-slot" aria-hidden="true" />
         </div>
         <div className="chat-composer-actions chat-input-actions">
-          {generating || revealState?.pending ? (
+          {generationActive || revealState?.pending ? (
             <button type="button" className="chat-composer-icon" aria-label="Stop reply" title="Stop reply"
               onClick={() => {
                 revealQueue.cancel();
@@ -686,7 +701,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             aria-label="Send"
             title="Send"
             onPointerDown={(e) => e.preventDefault()}
-            disabled={!session || sending || !draft.trim() || !!loadError}
+            disabled={!session || generationActive || sending || !draft.trim() || !!loadError}
           >
             <SendHorizontal aria-hidden="true" />
           </button>
@@ -699,7 +714,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
         pinned={session?.pinned === true}
-        canClear={messages.length > 0 && !generating}
+        canClear={messages.length > 0 && !generationActive}
         onBack={() => setChatInfoOpen(false)}
         onJumpToMessage={(messageId) => {
           nearBottom.current = false;
@@ -716,9 +731,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
             <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
-            <Action label="Edit" icon={Pencil} onClick={() => { setEditingMessage(activeMessage);
+            <Action label="Edit" icon={Pencil} disabled={generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => { setEditingMessage(activeMessage);
               setEditText(activeMessage.content); closeActions(); }} />
-            <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system"} onClick={() => {
+            <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => {
               setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
             }} />
             <Action label="React" icon={Heart} disabled />
@@ -727,7 +742,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <Action label="Favorite" icon={Bookmark} disabled />
             <Action label="Delete" icon={Trash2} danger onClick={() => { setConfirmDelete([activeMessage.id]); closeActions(); }} />
             <Action label="Regenerate" icon={RotateCcw}
-              disabled={activeMessage.role !== "assistant" || activeMessage.status !== "complete" || generating || !!revealState?.pending}
+              disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || !!revealState?.pending}
               onClick={() => void regenerate(activeMessage)} />
             {getMessageActions(activeMessage).map((action) => <Action key={action.id}
               label={action.label} icon={Plus} onClick={() => {

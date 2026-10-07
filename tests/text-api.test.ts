@@ -105,19 +105,17 @@ test("deletion retains references and chat fails closed instead of picking a dif
     config.id,
   );
   await engine.send(session.id, "Second");
-  await assert.rejects(
-    engine.requestReply(session.id),
-    /selected Text API is missing/,
-  );
+  const failed = await engine.requestReply(session.id);
+  assert.match(failed?.error ?? "", /selected Text API is missing/);
   assert.equal(calls, 1);
   assert.equal(
     (await store.readSession(session.id)).messages.filter(
       (m) => m.role === "user" && !m.requestedBy,
     ).length,
-    1,
+    0,
   );
   bindings.characters.a.apps.messages = { apiConfigId: null };
-  await assert.rejects(engine.requestReply(session.id), /disabled/);
+  assert.match((await engine.regenerateMessage(failed!.id))?.error ?? "", /disabled/);
 });
 
 test("Test Connection success/failure is independent of saving, capped and credential-safe", async () => {

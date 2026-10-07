@@ -5,7 +5,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { sortChatSessions } from "../lib/chat/session-order";
 import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
-import { createTransientFeedback, hasPendingUserContent, KeyboardCloseDetector, sendThenRequestReply,
+import { createTransientFeedback, hasPendingUserContent, KeyboardCloseDetector,
   shouldRequestAutoReply, visibleReplyText } from "../lib/chat/usability";
 
 test("toast dismisses after 1.8s, repeats restart and cleanup prevents stale updates", (context) => {
@@ -67,17 +67,20 @@ test("direct reply awaits persisted Send and generates once with the new message
     assert.equal(prompt.filter((turn) => turn.content === "new draft").length, 1);
     yield "one\n\ntwo";
   });
-  await sendThenRequestReply("new draft", (text) => engine.send(session.id, text), () => engine.requestReply(session.id));
+  await engine.requestReply(session.id, undefined, "manual-reply", { content: "new draft" });
   assert.equal(calls, 1);
   assert.deepEqual((await storage.readSession(session.id)).messages.map((m) => m.content), ["new draft", "one", "two"]);
-  await sendThenRequestReply("", (text) => engine.send(session.id, text), () => engine.requestReply(session.id));
+  await engine.requestReply(session.id);
   assert.equal(calls, 1);
 });
 
 test("failed direct Send never starts generation", async () => {
+  const factory = new IDBFactory(), storage = new ChatStorage(() => factory);
+  const session = await storage.openSession("a"), document = defaultFoundation();
   let requests = 0;
-  await assert.rejects(() => sendThenRequestReply("draft", async () => { throw new Error("save failed"); },
-    async () => { requests++; }));
+  storage.send = async () => { throw new Error("save failed"); };
+  const engine = createChatEngine(storage, async () => document, async function* () { requests++; yield "unexpected"; });
+  assert.match((await engine.requestReply(session.id, undefined, "manual-reply", { content: "draft" }))?.error ?? "", /save failed/);
   assert.equal(requests, 0);
 });
 
