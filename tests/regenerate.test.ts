@@ -1,164 +1,174 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { IDBFactory } from "fake-indexeddb";
+import { IDBFactory, IDBObjectStore } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
 import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
-import type { ChatMessage } from "../lib/chat/types";
+import { canRegenerateTurn } from "../lib/chat/turns";
+import { regressionContract } from "./regression-contract";
 
 async function setup() {
-  const factory = new IDBFactory();
-  const storage = new ChatStorage(() => factory);
-  const session = await storage.openSession("a");
-  const user = await storage.send(session.id, "User 1");
-  const document = defaultFoundation();
-  document.runtime.timeAware = false;
+  const factory = new IDBFactory(), storage = new ChatStorage(() => factory);
+  const session = await storage.openSession("a"), user = await storage.send(session.id, "Question");
+  const document = defaultFoundation(); document.runtime.timeAware = false;
   document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
-  let initialGeneration = 0;
-  const initial = createChatEngine(storage, async () => document, async function* () {
-    yield initialGeneration++ === 0 ? "Assistant A\n\nTarget B\n\nFuture C" : "Future D";
-  });
+  const initial = createChatEngine(storage, async () => document, async function* () { yield "First\n\nSecond\n\nThird"; });
   await initial.requestReply(session.id);
-  const target = (await storage.readSession(session.id)).messages.find((message) => message.content === "Target B")!;
-  await storage.send(session.id, "Future User 2");
-  await initial.requestReply(session.id);
-  const messages = (await storage.readSession(session.id)).messages;
-  return { factory, storage, session, document, user, target, messages };
+  const originals = (await storage.readSession(session.id)).messages.filter((m) => m.role === "assistant");
+  return { factory, storage, session, document, user, originals };
+}
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
 }
 
-test("regenerate truncates target and all future messages, then stores normal multi-bubble output", async () => {
-  const { factory, storage, session, document, target, user } = await setup();
-  let calls = 0;
-  let finalized: readonly ChatMessage[] = [];
-  const engine = createChatEngine(storage, async () => document, async function* (_config, prompt, _signal, _generation, request) {
-    calls++;
-    assert.equal(request?.source, "regenerate");
-    const text = prompt.map((turn) => turn.content).join("\n");
-    assert.match(text, /User 1/);
-    assert.match(text, /Assistant A/);
-    assert.doesNotMatch(text, /Target B|Future C|Future User 2|Future D|replacement message|regenerating one/);
-    const during = await storage.readSession(session.id);
-    assert.deepEqual(during.messages.map((message) => message.content), ["User 1", "Assistant A", ""]);
-    assert.equal(during.messages[2].status, "streaming");
-    yield "B'\n\nC'\n\nD'";
-  });
-  await engine.regenerateMessage(target.id, (messages) => { finalized = messages; });
-  const after = await new ChatStorage(() => factory).readSession(session.id);
-  assert.equal(calls, 1);
-  assert.deepEqual(after.messages.map((message) => message.content), ["User 1", "Assistant A", "B'", "C'", "D'"]);
-  assert.equal(after.messages[0].id, user.id);
-  assert.deepEqual(after.messages.map((message) => message.order), [1, 2, 3, 4, 5]);
-  assert.equal(finalized.length, 3);
-  assert.equal(after.session.nextOrder, 6);
-  assert.equal(after.session.lastMessageId, after.messages[4].id);
-  assert.equal(after.session.lastMessagePreview, "D'");
-});
-
-test("regeneration needs no pending user and new bubble count is independent", async () => {
-  const { storage, session, document, target } = await setup();
-  const engine = createChatEngine(storage, async () => document, async function* () { yield "one"; });
-  await engine.regenerateMessage(target.id);
-  const after = await storage.readSession(session.id);
-  assert.deepEqual(after.messages.map((message) => message.content), ["User 1", "Assistant A", "one"]);
-  assert.equal(await engine.requestReply(session.id), null);
-  assert.equal(after.session.nextOrder, 4);
-});
-
-test("truncation preserves a retained user's association with its retained reply", async () => {
-  const { storage, session, target } = await setup();
-  const batch = await storage.beginReply(session.id, target.id);
-  assert.ok(batch);
-  const after = await storage.readSession(session.id);
-  assert.equal(after.messages[0].requestedBy, (await storage.readSession(session.id)).messages[1].id);
-  assert.equal(after.session.lastMessageId, batch.assistant.id);
-  assert.equal(after.session.nextOrder, 4);
-});
-
-test("provider failure, empty output and Stop never restore the truncated future", async () => {
-  for (const mode of ["error", "empty", "stop"] as const) {
-    const { storage, session, document, target } = await setup();
-    const engine = createChatEngine(storage, async () => document, async function* () {
-      yield mode === "empty" ? "[2026-10-05 13:26 Asia/Shanghai]" : "partial";
-      if (mode === "error") throw new Error("provider failed");
-      if (mode === "stop") engine.stop(session.id);
-    });
-    const result = await engine.regenerateMessage(target.id);
-    assert.equal(result?.status, mode === "stop" ? "cancelled" : "error");
-    const after = await storage.readSession(session.id);
-    assert.deepEqual(after.messages.slice(0, 2).map((message) => message.content), ["User 1", "Assistant A"]);
-    assert.equal(after.messages.length, 3);
-    assert.equal(engine.isGenerating(session.id), false);
-  }
-});
-
-test("regeneration streaming and finalized bubbles use the timestamp sanitizer", async () => {
-  const { storage, session, document, target } = await setup();
-  const previews: string[] = [];
-  const engine = createChatEngine(storage, async () => document, async function* () {
-    for (const chunk of ["[2026-10-", "05 13:26 Asia/", "Shanghai]\nHello", "\n\nWorld"]) {
-      yield chunk;
-      previews.push((await storage.readSession(session.id)).messages.at(-1)!.content);
+regressionContract("chat.regenerate-preserves-original", "async-race-safety",
+  "every latest split bubble replaces the whole turn only after success", async () => {
+    for (const bubble of [0, 1, 2]) {
+      const { factory, storage, session, document, user, originals } = await setup();
+      const ready = deferred(), finish = deferred();
+      const engine = createChatEngine(storage, async () => document, async function* (_config, prompt) {
+        ready.resolve();
+        assert.ok(prompt.some((m) => m.content === user.content));
+        assert.ok(!prompt.some((m) => /First|Second|Third/.test(m.content)));
+        await finish.promise; yield "Replacement\n\nTail";
+      });
+      const pending = engine.regenerateMessage(originals[bubble].id);
+      try {
+        await ready.promise;
+        assert.deepEqual((await storage.readSession(session.id)).messages.filter((m) => originals.some((o) => o.id === m.id)), originals);
+        await assert.rejects(storage.send(session.id, "Later user"), /in progress/);
+      } finally { finish.resolve(); await pending; }
+      const saved = await new ChatStorage(() => factory).readSession(session.id);
+      assert.deepEqual(saved.messages.map((m) => m.content), ["Question", "Replacement", "Tail"]);
+      assert.equal(saved.messages[0].id, user.id);
+      assert.deepEqual(saved.messages.map((m) => m.order), [1, 2, 3]);
+      assert.equal(saved.session.nextOrder, 4);
+      assert.equal(saved.session.lastMessagePreview, "Tail");
+      assert.ok(saved.messages.slice(1).every((m) => m.turnId === originals[0].turnId));
     }
   });
-  await engine.regenerateMessage(target.id);
-  assert.deepEqual(previews, ["", "", "Hello", "Hello\n\nWorld"]);
-  assert.deepEqual((await storage.readSession(session.id)).messages.slice(2).map((message) => message.content), ["Hello", "World"]);
-});
 
-test("user and streaming messages cannot be regeneration targets", async () => {
-  const { storage, session, document, user, target } = await setup();
-  const before = await storage.readSession(session.id);
-  const engine = createChatEngine(storage, async () => document, async function* () { assert.fail("must not generate"); });
-  await assert.rejects(engine.regenerateMessage(user.id), /completed Assistant/);
-  assert.deepEqual(await storage.readSession(session.id), before);
-  await storage.send(session.id, "pending for streaming draft");
-  const batch = await storage.beginReply(session.id);
-  assert.ok(batch);
-  const streamingEngine = createChatEngine(storage, async () => document, async function* () { assert.fail("must not generate"); });
-  await assert.rejects(streamingEngine.regenerateMessage(batch.assistant.id), /completed Assistant/);
-  assert.equal((await storage.readSession(session.id)).messages.some((message) => message.id === target.id), true);
-});
-
-test("regenerate and normal reply protect concurrent generation", async () => {
-  const { storage, session, document, target } = await setup();
-  let release!: () => void;
-  const gate = new Promise<void>((resolve) => { release = resolve; });
-  let started!: () => void;
-  const ready = new Promise<void>((resolve) => { started = resolve; });
-  const engine = createChatEngine(storage, async () => document, async function* () {
-    started(); await gate; yield "new";
+regressionContract("chat.regenerate-failure-retry", "async-race-safety",
+  "failed, empty and stopped replacements preserve originals and remain retryable", async () => {
+    for (const mode of ["failed", "empty", "stopped"] as const) {
+      const { storage, session, document, originals } = await setup();
+      const engine = createChatEngine(storage, async () => document, async function* () {
+        if (mode === "failed") { yield "partial"; throw new Error("offline"); }
+        if (mode === "stopped") { engine.stop(session.id); yield "late"; }
+      });
+      const result = await engine.regenerateMessage(originals[1].id);
+      assert.equal(result?.status, mode === "stopped" ? "cancelled" : "error");
+      assert.deepEqual((await storage.readSession(session.id)).messages.filter((m) => originals.some((o) => o.id === m.id)), originals);
+      assert.ok(canRegenerateTurn((await storage.readSession(session.id)).messages, originals[2].id));
+      const retry = createChatEngine(storage, async () => document, async function* () { yield "Recovered"; });
+      await retry.regenerateMessage(result!.id);
+      assert.deepEqual((await storage.readSession(session.id)).messages.map((m) => m.content), ["Question", "Recovered"]);
+      assert.equal(engine.isGenerating(session.id), false);
+    }
   });
-  const first = engine.regenerateMessage(target.id, undefined, session.id);
-  await ready;
-  await assert.rejects(engine.regenerateMessage(target.id, undefined, session.id), /in progress/);
-  assert.equal(await engine.requestReply(session.id), null);
-  release(); await first;
-  await storage.send(session.id, "new user");
-  const reply = engine.requestReply(session.id);
-  await assert.rejects(engine.regenerateMessage(target.id, undefined, session.id), /in progress/);
-  await reply;
-});
 
-test("immediate Stop cancels before regeneration truncates the timeline", async () => {
-  const { storage, session, document, target } = await setup();
-  const before = await storage.readSession(session.id);
+test("a later User permanently confirms every bubble even if that User is deleted", async () => {
+  const { storage, session, document, originals } = await setup();
+  assert.ok(originals.every((m) => canRegenerateTurn(originals, m.id)));
+  const later = await storage.send(session.id, "Accepted");
   const engine = createChatEngine(storage, async () => document, async function* () { assert.fail("must not generate"); });
-  const request = engine.regenerateMessage(target.id, undefined, session.id);
-  engine.stop(session.id);
-  assert.equal(await request, null);
-  assert.deepEqual(await storage.readSession(session.id), before);
-  assert.equal(engine.isGenerating(session.id), false);
+  const before = (await storage.readSession(session.id)).messages;
+  for (const bubble of originals) {
+    assert.equal(canRegenerateTurn(before, bubble.id), false);
+    await assert.rejects(engine.regenerateMessage(bubble.id, undefined, session.id), /eligible/);
+  }
+  assert.deepEqual((await storage.readSession(session.id)).messages, before);
+  await storage.deleteMessages(session.id, [later.id]);
+  for (const bubble of originals) await assert.rejects(engine.regenerateMessage(bubble.id), /unconfirmed/);
 });
 
-test("truncation and new reply reservation roll back together if storage preparation fails", async () => {
-  const { storage, session, target } = await setup();
-  const before = await storage.readSession(session.id);
-  const randomUUID = crypto.randomUUID;
+test("User and active streaming bubbles are not replacement targets", async () => {
+  const { storage, session, document, user } = await setup();
+  const engine = createChatEngine(storage, async () => document, async function* () { assert.fail("must not generate"); });
+  await assert.rejects(engine.regenerateMessage(user.id), /Assistant/);
+  await storage.send(session.id, "New question");
+  const draft = await storage.beginReply(session.id); assert.ok(draft);
+  await assert.rejects(engine.regenerateMessage(draft.assistant.id), /in progress/);
+  await storage.updateReply(draft.assistant.id, { content: "", status: "cancelled" });
+});
+
+test("safe regeneration sanitizes timestamps and preserves split turn identity", async () => {
+  const { storage, session, document, originals } = await setup();
+  const engine = createChatEngine(storage, async () => document, async function* () {
+    yield "[2026-10-05 13:26 Asia/Shanghai]\nHello\n\nWorld";
+  });
+  await engine.regenerateMessage(originals[2].id);
+  assert.deepEqual((await storage.readSession(session.id)).messages.map((m) => m.content), ["Question", "Hello", "World"]);
+});
+
+test("remaining split bubbles retain replacement eligibility after their first bubble is deleted", async () => {
+  const { storage, session, document, originals } = await setup();
+  await storage.deleteMessages(session.id, [originals[0].id]);
+  const engine = createChatEngine(storage, async () => document, async function* () { yield "Replacement"; });
+  await engine.regenerateMessage(originals[2].id);
+  assert.deepEqual((await storage.readSession(session.id)).messages.map((m) => m.content), ["Question", "Replacement"]);
+});
+
+test("failed reservation retains data and releases resource ownership", async () => {
+  const { storage, session, originals } = await setup();
+  const before = await storage.readSession(session.id), randomUUID = crypto.randomUUID;
   crypto.randomUUID = () => { throw new Error("reservation failed"); };
-  try {
-    await assert.rejects(storage.beginReply(session.id, target.id), /reservation failed/);
-  } finally {
-    crypto.randomUUID = randomUUID;
-  }
+  try { await assert.rejects(storage.beginReply(session.id, originals[0].id), /reservation failed/); }
+  finally { crypto.randomUUID = randomUUID; }
   assert.deepEqual(await storage.readSession(session.id), before);
+  const draft = await storage.beginReply(session.id, originals[0].id); assert.ok(draft);
+  await storage.updateReply(draft.assistant.id, { content: "", status: "cancelled" });
+});
+
+test("Stop during target lookup prevents a late regenerate while another session's Stop is independent", async () => {
+  for (const stopSameSession of [true, false]) {
+    const { storage, session, document, originals } = await setup();
+    const lookup = deferred(), ready = deferred(); let calls = 0;
+    const resolve = storage.regenerationSessionId.bind(storage);
+    storage.regenerationSessionId = async (id) => { ready.resolve(); await lookup.promise; return resolve(id); };
+    const engine = createChatEngine(storage, async () => document, async function* () { calls++; yield "Replacement"; });
+    const pending = engine.regenerateMessage(originals[1].id);
+    await ready.promise;
+    engine.stop(stopSameSession ? session.id : (await storage.openSession("b")).id);
+    lookup.resolve(); await pending;
+    assert.equal(calls, stopSameSession ? 0 : 1);
+    if (stopSameSession)
+      assert.deepEqual((await storage.readSession(session.id)).messages.filter((m) => m.role === "assistant"), originals);
+  }
+});
+
+test("Stop during the replacement transaction rolls back deletes and preserves the original turn", async (context) => {
+  const { storage, session, document, originals } = await setup();
+  const engine = createChatEngine(storage, async () => document, async function* () { yield "Replacement"; });
+  const remove = IDBObjectStore.prototype.delete;
+  const intercept = context.mock.method(IDBObjectStore.prototype, "delete", function (this: IDBObjectStore, key: IDBValidKey | IDBKeyRange) {
+    const result = remove.call(this, key);
+    if (this.name === "messages" && key === originals[0].id) engine.stop(session.id);
+    return result;
+  });
+  const stopped = await engine.regenerateMessage(originals[1].id);
+  assert.equal(stopped?.outcome, "stopped"); assert.equal(stopped?.failureStage, "finalizing");
+  assert.deepEqual((await storage.readSession(session.id)).messages.filter((m) => originals.some((o) => o.id === m.id)), originals);
+  intercept.mock.restore();
+  const retry = createChatEngine(storage, async () => document, async function* () { yield "Recovered"; });
+  assert.equal((await retry.regenerateMessage(originals[0].id))?.content, "Recovered");
+});
+
+test("a replacement persistence error after deletion rolls back atomically and remains retryable", async (context) => {
+  const { storage, session, document, originals } = await setup();
+  const put = IDBObjectStore.prototype.put;
+  const intercept = context.mock.method(IDBObjectStore.prototype, "put", function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+    const message = value as { content?: string; status?: string };
+    if (this.name === "messages" && message.status === "complete" && message.content === "Replacement")
+      throw new DOMException("Cannot persist replacement", "QuotaExceededError");
+    return put.call(this, value, key);
+  });
+  const engine = createChatEngine(storage, async () => document, async function* () { yield "Replacement"; });
+  const failed = await engine.regenerateMessage(originals[2].id);
+  assert.equal(failed?.outcome, "failed"); assert.equal(failed?.failureStage, "finalizing");
+  assert.deepEqual((await storage.readSession(session.id)).messages.filter((m) => originals.some((o) => o.id === m.id)), originals);
+  intercept.mock.restore();
+  assert.equal((await engine.regenerateMessage(failed!.id))?.content, "Replacement");
 });

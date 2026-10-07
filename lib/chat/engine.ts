@@ -19,13 +19,12 @@ import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
-import type { WorldBookActivationState } from "../worldbook-activation";
 import { browserRegexStorage } from "../regex-storage";
 import { emptyRegexDocument, resolveRegexGroups, type RegexDocument } from "../regex";
 import { applyRegex } from "../regex-engine";
 import { loadWeatherState } from "../weather";
 import type { Coordinates, WeatherState } from "../participant-config";
-import { createCompletionRequestContext, logPromptSummary, type CompletionSource } from "./request-diagnostics";
+import { logPromptSummary, type CompletionSource, type CompletionRequestContext } from "./request-diagnostics";
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
@@ -53,52 +52,87 @@ export function createChatEngine(
   weatherLoader: WeatherLoader = (target) => loadWeatherState(target),
   apiConfig: (id: string) => Promise<ApiConfig | undefined> = (id) => browserApiConfigStorage.getApiConfig(id),
 ) {
-  const active = new Map<string, AbortController>();
-  async function prepareGeneration(characterId: string) {
-    const document = await foundation();
+  const active = new Map<string, { controller: AbortController; id?: string }>();
+  let stopSequence = 0;
+  const lastStop = new Map<string, number>();
+  // Cancellation races the awaited stage, not its underlying service. A late
+  // resolver cannot resume this attempt; weather/network timeout policy is separate.
+  function awaited<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    signal.throwIfAborted();
+    return new Promise<T>((resolve, reject) => {
+      const abort = () => { cleanup(); reject(signal.reason); };
+      const cleanup = () => signal.removeEventListener("abort", abort);
+      signal.addEventListener("abort", abort, { once: true });
+      promise.then((value) => { cleanup(); if (signal.aborted) reject(signal.reason); else resolve(value); },
+        (error) => { cleanup(); reject(error); });
+    });
+  }
+  async function prepareGeneration(characterId: string, signal: AbortSignal) {
+    const document = await awaited(foundation(), signal);
     const character = document.characters.find((item) => item.characterId === characterId);
     if (!character) throw new Error("This Character is no longer available.");
-    const binding = resolveBindings(await bindings(), character.characterId, "messages");
-    if (binding.apiConfigId === null)
-      throw new Error("The Messages API binding is disabled for this Character.");
-    const config = await apiConfig(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID);
-    if (!config)
-      throw new Error("The selected Text API is missing. Choose a saved config in Settings → Text API.");
+    const binding = resolveBindings(await awaited(bindings(), signal), character.characterId, "messages");
+    if (binding.apiConfigId === null) throw new Error("The Messages API binding is disabled for this Character.");
+    const config = await awaited(apiConfig(binding.apiConfigId ?? DEFAULT_API_CONFIG_ID), signal);
+    if (!config) throw new Error("The selected Text API is missing. Choose a saved config in Settings → Text API.");
     validateApiConfig(config);
-    const preset = presetForBinding(await presets(), binding.presetId);
+    const preset = presetForBinding(await awaited(presets(), signal), binding.presetId);
     return { document, character, config, preset, binding };
   }
+  async function sendMessage(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, signal?: AbortSignal) {
+    const check = () => signal?.throwIfAborted();
+    const wait = <T>(promise: Promise<T>) => signal ? awaited(promise, signal) : promise;
+    const { session } = await wait(storage.readSession(sessionId));
+    const document = await wait(foundation());
+    const ids = resolveBindings(await wait(bindings()), session.characterId, "messages").regexIds;
+    const groups = resolveRegexGroups(await wait(regex()), ids);
+    const character = document.characters.find((item) => item.characterId === session.characterId);
+    check();
+    return storage.send(sessionId, applyRegex(content, groups, "user", "stored",
+      { character: character?.name, user: document.user.name }), quoteMessageId, attemptId);
+  }
+  type Draft = { content: string; quoteMessageId?: string; onSent?: () => void };
   async function generateReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void,
-    regenerateId?: string, source: CompletionSource = "manual-reply"): Promise<ChatMessage | null> {
-    if (active.has(sessionId)) return null;
-    const controller = new AbortController();
-    active.set(sessionId, controller);
+    regenerateId?: string, source: CompletionSource = "manual-reply", draft?: Draft): Promise<ChatMessage | null> {
+    if (active.has(sessionId)) throw new Error("A reply is already in progress.");
+    const attempt = { controller: new AbortController(), id: undefined as string | undefined };
+    const { controller } = attempt;
+    active.set(sessionId, attempt); // Exists synchronously, before Send or storage awaits.
+    let unsubscribe = () => {};
     let assistant: ChatMessage | undefined;
-    let rawContent = "";
-    let content = "";
-    let activationState: WorldBookActivationState | undefined;
-    let providerStarted = false;
+    let rawContent = "", finishReason: string | undefined;
+    let iterator: AsyncIterator<string> | undefined;
     try {
-      const current = await storage.readSession(sessionId);
-      if (regenerateId === undefined && !current.messages.some((m) =>
-        m.role === "user" && m.status === "sent" && !m.requestedBy))
-        return null;
-      const { document, character, config, preset, binding } = await prepareGeneration(current.session.characterId);
+      // Validate prerequisites before any ownership or pending-message claim; failures here
+      // leave no attempt, claim or failed assistant behind.
+      const { session: target } = await awaited(storage.readSession(sessionId), controller.signal);
+      const prepared = await prepareGeneration(target.characterId, controller.signal);
+      attempt.id = await storage.claimGeneration(sessionId, regenerateId, source === "continue" ? "continue" : "regenerate");
       controller.signal.throwIfAborted();
-      const batch = await storage.beginReply(sessionId, regenerateId);
+      unsubscribe = storage.subscribe((change) => {
+        if (change.domain === "messages" && change.generationChanged && change.sessionId === sessionId)
+          void storage.generationIsCurrent(sessionId, attempt.id!).then((current) => {
+            if (!current) controller.abort();
+          }).catch(() => { controller.abort(); });
+      });
+      if (draft?.content.trim()) {
+        await awaited(sendMessage(sessionId, draft.content, draft.quoteMessageId, attempt.id, controller.signal).then(() => {
+          try { draft.onSent?.(); } catch { /* Saved user content remains authoritative. */ }
+        }), controller.signal);
+        controller.signal.throwIfAborted();
+      }
+      const batch = await storage.beginReply(sessionId, regenerateId, attempt.id, source === "continue" ? "continue" : "regenerate");
       if (!batch) return null;
       assistant = batch.assistant;
-      const selectedIds = binding.worldBookIds;
-      const regexIds = binding.regexIds;
-      const regexGroups = resolveRegexGroups(await regex(), regexIds);
-      const books = (await worldBooks()).books.filter((book) =>
-        selectedIds === undefined || selectedIds.includes(book.id));
+      controller.signal.throwIfAborted();
+      const { document, character, config, preset, binding } = prepared;
+      const regexGroups = resolveRegexGroups(await awaited(regex(), controller.signal), binding.regexIds);
+      const books = (await awaited(worldBooks(), controller.signal)).books.filter((book) =>
+        binding.worldBookIds === undefined || binding.worldBookIds.includes(book.id));
       const activation = evaluateWorldBooks(books, batch.messages,
-        await storage.readWorldBookState(sessionId));
-      activationState = activation.nextState;
-      const weather = document.runtime?.timeAware === false ? undefined : await Promise.all([
-        safeWeather(weatherLoader, document.user.location),
-        safeWeather(weatherLoader, character.location),
+        await awaited(storage.readWorldBookState(sessionId), controller.signal));
+      const weather = document.runtime?.timeAware === false ? undefined : await awaited(Promise.all([
+        safeWeather(weatherLoader, document.user.location), safeWeather(weatherLoader, character.location),
       ]).then(([user, characterWeather]) => ({
         ...(user.status === "ready" && document.user.location ? {
           user: { location: document.user.location.label, temperatureC: user.temperatureC, summary: user.summary },
@@ -106,82 +140,75 @@ export function createChatEngine(
         ...(characterWeather.status === "ready" && character.location ? {
           character: { location: character.location.label, temperatureC: characterWeather.temperatureC, summary: characterWeather.summary },
         } : {}),
-      }));
-      const prompt = assembleChatPrompt(
-        document,
-        character,
-        batch.messages,
-        batch.pending,
-        undefined,
-        preset,
-        now(),
-        activation,
-        regexGroups,
-        weather,
-      );
-      const request = createCompletionRequestContext(source, sessionId);
+      })), controller.signal);
+      const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, undefined, preset,
+        now(), activation, regexGroups, weather);
+      if (source === "continue") prompt.messages.push({ role: "system",
+        content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
+      const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };
       logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages);
-      providerStarted = true;
-      for await (const text of provider(
-        config,
-        prompt.messages,
-        controller.signal,
-        preset.generation,
-        request,
-      )) {
+      await storage.generationStage(sessionId, attempt.id, "provider");
+      controller.signal.throwIfAborted();
+      iterator = provider(config, prompt.messages, controller.signal, preset.generation, request,
+        (reason) => { finishReason = reason; })[Symbol.asyncIterator]();
+      while (true) {
+        const chunk = await awaited(iterator.next(), controller.signal);
+        if (chunk.done) break;
+        rawContent += chunk.value;
         controller.signal.throwIfAborted();
-        rawContent += text;
-        content = sanitizeHistoryTimestamps(rawContent, true);
-        await storage.updateReply(assistant.id, {
-          content,
-          status: "streaming",
-        });
+        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(rawContent, true), status: "streaming" },
+          undefined, attempt.id, controller.signal);
       }
       controller.signal.throwIfAborted();
-      content = sanitizeHistoryTimestamps(rawContent);
-      if (!content.trim()) throw new Error("The API returned no reply text.");
-      const completed = await storage.finalizeReply(assistant.id, content, activationState,
-        (part) => applyRegex(part, regexGroups, "assistant", "stored",
-          { character: character.name, user: document.user.name }));
-      // Optional presentation notification; it cannot turn a committed reply into an error.
-      try { onFinalized?.(completed); } catch { /* Generation and storage have succeeded. */ }
+      await storage.generationStage(sessionId, attempt.id, "finalizing");
+      controller.signal.throwIfAborted();
+      const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(rawContent), activation.nextState,
+        (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
+        attempt.id, finishReason, controller.signal);
+      try { onFinalized?.(completed); } catch { /* Presentation cannot undo a committed turn. */ }
       return completed[0];
     } catch (error) {
-      if (!assistant) {
+      if (!attempt.id) throw error;
+      const outcome = controller.signal.aborted ? "stopped" : "failed";
+      // Ownership/eligibility rejection is not a provider failure or a new turn.
+      if (!assistant && regenerateId !== undefined) {
         if (controller.signal.aborted) return null;
         throw error;
       }
-      return await storage.updateReply(assistant.id, {
-        content,
-        status: controller.signal.aborted ? "cancelled" : "error",
-        error: controller.signal.aborted
-          ? undefined
-          : error instanceof Error
-            ? error.message
-            : "Reply failed.",
-      }, providerStarted ? activationState : undefined);
+      return await storage.failGeneration(sessionId, attempt.id, outcome,
+        outcome === "stopped" ? "Reply stopped. Retry or delete this attempt." :
+          error instanceof Error ? error.message : "Generation failed. Retry or delete this attempt.");
     } finally {
-      active.delete(sessionId);
+      unsubscribe();
+      // Do not await an uncooperative provider's return(): Stop must settle now.
+      if (controller.signal.aborted) void iterator?.return?.().catch(() => {});
+      try { if (attempt.id) await storage.releaseGeneration(sessionId, attempt.id); }
+      finally { if (active.get(sessionId) === attempt) active.delete(sessionId); }
     }
   }
   return {
-    async send(sessionId: string, content: string, quoteMessageId?: string) {
-      const { session } = await storage.readSession(sessionId);
-      const document = await foundation();
-      const ids = resolveBindings(await bindings(), session.characterId, "messages").regexIds;
-      const groups = resolveRegexGroups(await regex(), ids);
-      const character = document.characters.find((item) => item.characterId === session.characterId);
-      return storage.send(sessionId, applyRegex(content, groups, "user", "stored",
-        { character: character?.name, user: document.user.name }), quoteMessageId);
-    },
+    send: (sessionId: string, content: string, quoteMessageId?: string) => sendMessage(sessionId, content, quoteMessageId),
     isGenerating: (sessionId: string) => active.has(sessionId),
-    stop: (sessionId: string) => active.get(sessionId)?.abort(),
+    // Lifecycle cleanup only aborts a local attempt; persisting a Stop is an explicit user action.
+    stop: (sessionId: string, options?: { persist?: boolean }) => {
+      lastStop.set(sessionId, ++stopSequence);
+      const attempt = active.get(sessionId);
+      if (attempt) attempt.controller.abort();
+      else if (options?.persist) void storage.stopGeneration(sessionId).catch(() => { console.warn("[Chat generation] stop persistence failed"); });
+    },
     requestReply: (sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void,
-      source: CompletionSource = "manual-reply") => generateReply(sessionId, onFinalized, undefined, source),
-    async regenerateMessage(messageId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, expectedSessionId?: string): Promise<ChatMessage | null> {
+      source: CompletionSource = "manual-reply", draft?: Draft) => generateReply(sessionId, onFinalized, undefined, source, draft),
+    async regenerateMessage(messageId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, expectedSessionId?: string) {
+      const observed = stopSequence;
       const sessionId = expectedSessionId ?? await storage.regenerationSessionId(messageId);
-      if (active.has(sessionId)) throw new Error("A reply is already in progress.");
+      if ((lastStop.get(sessionId) ?? 0) > observed) return null;
       return generateReply(sessionId, onFinalized, messageId, "regenerate");
+    },
+    async continueMessage(messageId: string, onFinalized?: (messages: readonly ChatMessage[]) => void, expectedSessionId?: string) {
+      const observed = stopSequence;
+      const sessionId = expectedSessionId ?? await storage.regenerationSessionId(messageId);
+      if ((lastStop.get(sessionId) ?? 0) > observed) return null;
+      return generateReply(sessionId, onFinalized, messageId, "continue");
     },
   };
 }

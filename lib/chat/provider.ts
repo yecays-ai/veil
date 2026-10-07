@@ -1,5 +1,5 @@
 import type { ApiConfig } from "../api-config";
-import type { PromptTurn } from "./types";
+import { isTruncatedReason, type PromptTurn } from "./types";
 import type { GenerationParameters } from "../preset";
 import {
   createCompletionRequestContext,
@@ -46,9 +46,10 @@ export type TextProvider = (
   signal: AbortSignal,
   generation?: GenerationParameters,
   request?: CompletionRequestContext,
+  terminal?: (finishReason: string) => void,
 ) => AsyncIterable<string>;
 
-function choice(value: unknown): { text: string; finished: boolean } {
+function choice(value: unknown): { text: string; finishReason?: string } {
   const data = value as {
     error?: unknown;
     choices?: {
@@ -63,7 +64,7 @@ function choice(value: unknown): { text: string; finished: boolean } {
   const text = first?.delta?.content ?? first?.message?.content;
   return {
     text: typeof text === "string" ? text : "",
-    finished: !!first?.finish_reason,
+    finishReason: typeof first?.finish_reason === "string" ? first.finish_reason : undefined,
   };
 }
 export const openAITextProvider: TextProvider = async function* (
@@ -72,6 +73,7 @@ export const openAITextProvider: TextProvider = async function* (
   signal,
   generation,
   request,
+  terminal,
 ) {
   validateApiConfig(config);
   const context = request ?? createCompletionRequestContext("unclassified");
@@ -120,6 +122,7 @@ export const openAITextProvider: TextProvider = async function* (
       usage = parseCompletionUsage(data);
       const result = choice(data);
       if (result.text) yield result.text;
+      if (result.finishReason) terminal?.(result.finishReason);
       return;
     }
     if (!response.body) throw new Error("The API returned no response stream.");
@@ -141,8 +144,11 @@ export const openAITextProvider: TextProvider = async function* (
       }
       usage = parseCompletionUsage(data) ?? usage;
       const result = choice(data);
-      finished ||= result.finished;
-      return { text: result.text, done: false };
+      finished ||= !!result.finishReason;
+      if (result.finishReason) terminal?.(result.finishReason);
+      // The provider has explicitly ended output at its token budget. Do not
+      // leave visible truncated text hostage to an optional later [DONE] frame.
+      return { text: result.text, done: isTruncatedReason(result.finishReason) };
     }
     try {
       while (true) {

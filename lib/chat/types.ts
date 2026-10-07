@@ -14,6 +14,8 @@ export type ChatSession = {
   backgroundBlur?: number;
   customCSS?: string;
   nextOrder: number;
+  generation?: { id: string; draftId?: string; targetId?: string; mode?: "regenerate" | "continue";
+    stage: "preparing" | "provider" | "finalizing" };
 };
 
 export type ChatBackgroundSettings = {
@@ -67,9 +69,20 @@ export type ChatMessage = {
   requestedBy?: string;
   error?: string;
   quote?: MessageQuote;
+  turnId?: string;
+  attemptId?: string;
+  attemptFor?: string;
+  attemptMode?: "regenerate" | "continue";
+  outcome?: "success" | "stopped" | "failed" | "truncated" | "interrupted";
+  finishReason?: string;
+  failureStage?: "preparing" | "provider" | "finalizing";
+  confirmed?: boolean;
 };
 
 export type PromptTurn = { role: ChatMessage["role"]; content: string };
+export function isTruncatedReason(reason?: string) {
+  return ["length", "max_tokens", "max_output_tokens"].includes(reason ?? "");
+}
 export type ReplyBatch = {
   session: ChatSession;
   messages: ChatMessage[];

@@ -25,16 +25,6 @@ export function visibleReplyText(message: ChatMessage, streaming: boolean) {
     ? "" : message.content;
 }
 
-// The awaited send is committed before the existing engine reads its history.
-export async function sendThenRequestReply(
-  draft: string,
-  send: (content: string) => Promise<unknown>,
-  request: () => Promise<unknown>,
-) {
-  if (draft.trim()) await send(draft);
-  return request();
-}
-
 export class KeyboardCloseDetector {
   private wasOpen = false;
   private width: number;
