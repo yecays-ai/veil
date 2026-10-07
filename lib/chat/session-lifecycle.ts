@@ -22,7 +22,7 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
         observed = revision;
         try {
           let next: Snapshot | null = null;
-          if (!checkedExisting) {
+          if (!checkedExisting && !enabled) {
             next = await storage.readExistingSession(characterId);
             if (!active) return;
             if (observed !== revision) continue;
@@ -40,6 +40,7 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
             const opened = await storage.openSession(characterId);
             if (!active) return;
             if (observed !== revision) continue;
+            checkedExisting = true;
             sessionId = opened.id;
             changedBeforeResolution.clear();
             next = await storage.readSession(sessionId);

@@ -87,7 +87,8 @@ regressionContract("chat.route-hydration-budget", "storage-read-budget",
   for (let route = 0; route < 5; route++) {
     const ready = deferred<Snapshot>();
     const owner = createChatSessionLifecycle("peter", adapter, (data) => { if (data) ready.resolve(data); }, () => {});
-    owner.mount(true);
+    owner.mount(false);
+    owner.setEnabled(true);
     owner.mount(true);
     assert.equal((await ready.promise).session.id, session.id);
     await settle();
@@ -95,7 +96,7 @@ regressionContract("chat.route-hydration-budget", "storage-read-budget",
     owner.unmount();
     assert.equal(counts.active, 0);
   }
-  assert.deepEqual([counts.existing, counts.opens, counts.reads, counts.subscriptions, counts.maxActive], [5, 0, 0, 5, 1]);
+  assert.deepEqual([counts.existing, counts.opens, counts.reads, counts.subscriptions, counts.maxActive], [0, 5, 5, 5, 1]);
   assert.equal((await storage.listSessions()).length, 1);
 });
 
@@ -118,19 +119,19 @@ regressionContract("chat.scoped-subscription-cleanup", "subscription-hygiene",
   emit({ domain: "asset" });
   emit({ domain: "worldbook-state", sessionId: session.id });
   await settle();
-  assert.equal(counts.reads, 0);
+  assert.equal(counts.reads, 1);
   const refreshed = deferred<Snapshot>();
   const original = adapter.readSession;
   adapter.readSession = async (id) => { const data = await original(id); refreshed.resolve(data); return data; };
   await storage.send(session.id, "scoped update");
   await refreshed.promise;
   await settle();
-  assert.equal(counts.reads, 1);
+  assert.equal(counts.reads, 2);
   const beforeUnmount = publications;
   owner.unmount();
   emit({ domain: "messages", sessionId: session.id });
   await settle();
-  assert.equal(counts.reads, 1);
+  assert.equal(counts.reads, 2);
   assert.equal(publications, beforeUnmount);
   assert.equal(counts.active, 0);
   assert.deepEqual(stopped, [session.id]);
@@ -146,8 +147,9 @@ regressionContract("chat.obsolete-hydration-suppressed", "async-race-safety",
   adapter.readExistingSession = () => initial.promise;
   const ready = deferred<Snapshot>();
   const owner = createChatSessionLifecycle("peter", adapter, (next) => { if (next) ready.resolve(next); }, () => {});
-  owner.mount(true);
+  owner.mount(false);
   await settle();
+  owner.setEnabled(true);
   await storage.send(session.id, "written during hydration");
   emit({ domain: "messages", sessionId: session.id });
   initial.resolve(data);
@@ -159,9 +161,10 @@ regressionContract("chat.obsolete-hydration-suppressed", "async-race-safety",
     const late = deferred<Snapshot | null>();
     adapter.readExistingSession = () => late.promise;
     let published = 0;
-    const cancelled = createChatSessionLifecycle("peter", adapter, () => { published++; }, () => {});
-    cancelled.mount(true);
+    const cancelled = createChatSessionLifecycle("peter", adapter, (data, error) => { if (data || error) published++; }, () => {});
+    cancelled.mount(false);
     await settle();
+    cancelled.setEnabled(true);
     cancelled.unmount();
     if (failure) late.reject(new Error("late error")); else late.resolve(data);
     await settle();
@@ -242,7 +245,7 @@ regressionContract("chat.obsolete-refresh-error-suppressed", "async-race-safety"
     if (failure) oldRefresh.reject(new Error("obsolete failure")); else oldRefresh.resolve(before);
     assert.deepEqual((await latest.promise).messages.map((message) => message.content), ["latest message"]);
     assert.ok(errors.every((error) => error === ""));
-    assert.equal(counts.reads, 1, "one authoritative follow-up read after the controlled obsolete request");
+    assert.equal(counts.reads, 2, "one initial read and one authoritative follow-up after the controlled obsolete request");
     assert.equal(counts.subscriptions, 1);
     owner.unmount();
   }
@@ -251,8 +254,8 @@ regressionContract("chat.obsolete-refresh-error-suppressed", "async-race-safety"
 test("failed initial hydration cannot create a session and a fresh mount can retry", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const { adapter, counts } = counted(storage);
-  const original = adapter.readExistingSession;
-  adapter.readExistingSession = async () => { throw new Error("read failure"); };
+  const original = adapter.openSession;
+  adapter.openSession = async () => { throw new Error("open failure"); };
   const failed = deferred<string>();
   const owner = createChatSessionLifecycle("peter", adapter, (_, error) => { if (error) failed.resolve(error); }, () => {});
   owner.mount(true);
@@ -260,13 +263,25 @@ test("failed initial hydration cannot create a session and a fresh mount can ret
   assert.equal(counts.opens, 0);
   assert.deepEqual(await storage.listSessions(), []);
   owner.unmount();
-  adapter.readExistingSession = original;
+  adapter.openSession = original;
   const ready = deferred<Snapshot>();
   const retry = createChatSessionLifecycle("peter", adapter, (data) => { if (data) ready.resolve(data); }, () => {});
   retry.mount(true);
   assert.equal((await ready.promise).session.characterId, "peter");
   assert.deepEqual([counts.opens, counts.reads, counts.maxActive], [1, 1, 1]);
   retry.unmount();
+});
+
+test("an already validated new character uses the original creation path without an extra read-only lookup", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const { adapter, counts } = counted(storage);
+  const ready = deferred<Snapshot>();
+  const owner = createChatSessionLifecycle("new", adapter, (data) => { if (data) ready.resolve(data); }, () => {});
+  owner.mount(false);
+  owner.setEnabled(true);
+  assert.equal((await ready.promise).session.characterId, "new");
+  assert.deepEqual([counts.existing, counts.opens, counts.reads, counts.subscriptions], [0, 1, 1, 1]);
+  owner.unmount();
 });
 
 test("losing character validation stops the owner and revalidation resolves durable session identity again", async () => {
@@ -286,7 +301,7 @@ test("losing character validation stops the owner and revalidation resolves dura
   await storage.deleteSession(session.id);
   owner.setEnabled(true);
   assert.notEqual((await reopened.promise).session.id, session.id);
-  assert.deepEqual([counts.existing, counts.opens, counts.reads, counts.subscriptions], [2, 1, 1, 1]);
+  assert.deepEqual([counts.existing, counts.opens, counts.reads, counts.subscriptions], [0, 2, 2, 1]);
   owner.unmount();
 });
 
