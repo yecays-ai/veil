@@ -139,9 +139,9 @@
   color: var(--theme-text);
   background: color-mix(in srgb, var(--theme-surface) 92%, transparent);
 }
-.foundation-form input:focus,
-.foundation-form textarea:focus,
-.foundation-form select:focus {
+.foundation-form input:focus-visible,
+.foundation-form textarea:focus-visible,
+.foundation-form select:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
   outline-offset: 2px;
 }

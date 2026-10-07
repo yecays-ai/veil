@@ -193,6 +193,19 @@ test("disabling Here & There cancels expired schedules and re-enabling starts in
   assert.equal(settings.nextCommentAt, now + 10 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000);
 });
 
+test("failed Here & There opportunities can be rescheduled soon without overriding disabled state", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const now = 90_000_000;
+  const schedule = await storage.ensureHereThereSchedule(now, () => 0);
+  assert.equal(await storage.claimHereThereOpportunity(schedule.nextCommentAt!, () => 0), true);
+  const retryAt = schedule.nextCommentAt! + 5 * 60 * 1000;
+  assert.equal(await storage.rescheduleHereThereOpportunity(schedule.nextCommentAt!, 5 * 60 * 1000), true);
+  assert.equal((await storage.readGlobalProfileSettings()).nextCommentAt, retryAt);
+  await storage.updateHereThereEnabled(false, retryAt);
+  assert.equal(await storage.rescheduleHereThereOpportunity(retryAt, 5 * 60 * 1000), false);
+  assert.equal((await storage.readGlobalProfileSettings()).nextCommentAt, null);
+});
+
 async function seedHistoryAndWorldBookState(storage: ChatStorage, sessionId: string) {
   await storage.send(sessionId, "old history");
   const batch = await storage.beginReply(sessionId);

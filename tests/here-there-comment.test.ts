@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { HERE_THERE_COMMENT_MAX_DELAY_MS, HERE_THERE_COMMENT_MIN_DELAY_MS, HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh,
+import { HERE_THERE_COMMENT_MAX_DELAY_MS, HERE_THERE_COMMENT_MIN_DELAY_MS, HERE_THERE_COMMENT_RETRY_DELAY_MS, HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh,
   ensureHereThereComment, startHereThereCommentAttempt } from "../lib/here-there-comment";
 import { bindHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
@@ -33,6 +33,7 @@ function fixture() {
   const services = { bindings: async () => bindings, foundation: async () => foundation, presets: async () => createPresetDocument(),
     api: async (id: string) => ({ id, apiKey: "test", model: "test", baseUrl: "https://example.test/v1" }),
     settings: async () => ({ hereThereEnabled: true }), claimOpportunity: async () => true,
+    scheduleRetry: async (now: number, delayMs: number) => now + delayMs > 0,
     provider: async function* () { yield "Wish you were here."; } as TextProvider };
   return { get bindings() { return bindings; }, set bindings(value) { bindings = value; }, foundation, context, services, commit, theme: () => theme };
 }
@@ -61,14 +62,16 @@ test("mounted guard rejects the same opportunity but accepts a distinct persiste
   assert.equal(mounted.begin("a", true, "200"), true);
 });
 
-test("widget generation failure does not retry on clock rerenders but a fresh Home mount can retry", async () => {
+test("widget failure schedules a short retry without looping, and a fresh Home mount can retry", async () => {
   const value = fixture();
   let calls = 0;
+  let retryAt: number | null = null;
   value.services.provider = async function* () { calls++; throw new Error("temporary provider failure"); };
+  value.services.scheduleRetry = async (now, delayMs) => { retryAt = now + delayMs; return true; };
   const mountedAttempts = new HereThereCommentAttemptGuard();
-  const opportunity = value.context.now.getTime();
   const runWidgetEffect = async (attempts: HereThereCommentAttemptGuard, now: Date) => {
     const widget = value.theme().current.widgets[0];
+    const opportunity = retryAt ?? value.context.now.getTime();
     const attempt = startHereThereCommentAttempt(
       () => attempts.begin("a", hereThereCommentNeedsRefresh(widget, now, opportunity), String(opportunity)),
       () => ensureHereThereComment(widget, { ...value.context, now }, value.commit, value.services));
@@ -77,6 +80,7 @@ test("widget generation failure does not retry on clock rerenders but a fresh Ho
 
   await runWidgetEffect(mountedAttempts, value.context.now);
   assert.equal(calls, 1);
+  assert.equal(retryAt, value.context.now.getTime() + HERE_THERE_COMMENT_RETRY_DELAY_MS);
   assert.equal(value.theme().current.widgets[0].config.comment, undefined);
 
   const nextClockTick = new Date(value.context.now.getTime() + 1000);
@@ -86,7 +90,9 @@ test("widget generation failure does not retry on clock rerenders but a fresh Ho
 
   value.services.provider = async function* () { calls++; yield "Peter is back."; };
   const freshHomeMount = new HereThereCommentAttemptGuard();
-  await runWidgetEffect(freshHomeMount, new Date(nextClockTick.getTime() + 1000));
+  await runWidgetEffect(freshHomeMount, new Date(retryAt! - 1));
+  assert.equal(calls, 1);
+  await runWidgetEffect(freshHomeMount, new Date(retryAt!));
   assert.equal(calls, 2);
   assert.equal(value.theme().current.widgets[0].config.comment?.text, "Peter is back.");
 });
@@ -205,7 +211,7 @@ test("Here & There schedule constants define the intended future opportunity win
   assert.equal(HERE_THERE_COMMENT_MAX_DELAY_MS, 5 * 60 * 60 * 1000);
 });
 
-test("OFF returns before generation and OFF to ON clears the prior opportunity", async () => {
+test("OFF returns before generation", async () => {
   const value = fixture(); let calls = 0;
   value.services.settings = async () => ({ hereThereEnabled: false });
   value.services.provider = async function* () { calls++; yield "Should not run."; };

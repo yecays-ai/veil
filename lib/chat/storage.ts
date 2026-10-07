@@ -479,6 +479,18 @@ export class ChatStorage {
     }, ["chatSettings"], (claimed) => claimed ? { domain: "global-profile" } : null);
   }
 
+  rescheduleHereThereOpportunity(now: number, delayMs: number): Promise<boolean> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("chatSettings");
+      const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
+      if (current?.hereThereEnabled === false) return false;
+      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
+        bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
+        hereThereEnabled: true, nextCommentAt: now + delayMs }));
+      return true;
+    }, ["chatSettings"], (scheduled) => scheduled ? { domain: "global-profile" } : null);
+  }
+
   updateGlobalChatBackground(backgroundImage: string | null): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
       if (backgroundImage !== null) {

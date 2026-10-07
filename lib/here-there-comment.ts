@@ -17,6 +17,7 @@ import type { WidgetInstance } from "./widget-types";
 
 export const HERE_THERE_COMMENT_MIN_DELAY_MS = 60 * 60 * 1000;
 export const HERE_THERE_COMMENT_MAX_DELAY_MS = 5 * 60 * 60 * 1000;
+export const HERE_THERE_COMMENT_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 export class HereThereCommentAttemptGuard {
   private readonly attempted = new Set<string>();
@@ -56,18 +57,22 @@ type Commit = (update: (theme: ThemeDocument) => ThemeDocument) => Promise<void>
 type Dependencies = { foundation: () => Promise<FoundationDocument>; presets: () => Promise<PresetDocument>;
   api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider; bindings: () => Promise<BindingDocument>;
   settings: () => Promise<{ hereThereEnabled: boolean }>;
-  claimOpportunity: (now: number) => Promise<boolean> };
+  claimOpportunity: (now: number) => Promise<boolean>;
+  scheduleRetry: (now: number, delayMs: number) => Promise<boolean> };
 const dependencies: Dependencies = { foundation: () => browserFoundationStorage.load(),
   presets: () => browserPresetStorage.load(), api: (id) => browserApiConfigStorage.getApiConfig(id), provider: openAITextProvider,
   bindings: () => browserBindingStorage.load(), settings: () => chatStorage.readGlobalProfileSettings(),
-  claimOpportunity: (now) => chatStorage.claimHereThereOpportunity(now) };
+  claimOpportunity: (now) => chatStorage.claimHereThereOpportunity(now),
+  scheduleRetry: (now, delayMs) => chatStorage.rescheduleHereThereOpportunity(now, delayMs) };
 
 export async function ensureHereThereComment(widget: WidgetInstance, context: Context, commit: Commit,
   services: Dependencies = dependencies): Promise<void> {
   if (widget.config.characterId !== context.characterId) return;
+  let opportunityClaimed = false;
   try {
     const settings = await services.settings();
     if (!settings.hereThereEnabled || !await services.claimOpportunity(context.now.getTime())) return;
+    opportunityClaimed = true;
     const foundation = await services.foundation();
     const character = foundation.characters.find((item) => item.characterId === context.characterId);
     if (!character) throw new Error("Character unavailable");
@@ -102,5 +107,10 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
       current.id === widget.id && current.config.characterId === context.characterId
         ? { ...current, config: { ...current.config, comment: { characterId: context.characterId,
           text: text.slice(0, 500), generatedAt: context.now.toISOString() } } } : current) } }));
-  } catch { /* Keep the last successful comment; a later render can try again. */ }
+  } catch {
+    if (opportunityClaimed) {
+      try { await services.scheduleRetry(context.now.getTime(), HERE_THERE_COMMENT_RETRY_DELAY_MS); }
+      catch { /* Keep the last successful comment even when retry scheduling fails. */ }
+    }
+  }
 }

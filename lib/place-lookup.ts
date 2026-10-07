@@ -1,7 +1,6 @@
 import type { Coordinates } from "./participant-config";
 
-// Users only ever type a place name. Open-Meteo's keyless geocoding turns that
-// name into the coordinates (and timezone) weather needs.
+// Place-name lookup supplies weather coordinates and the timezone used for local time.
 export const OPEN_METEO_GEOCODING_URL =
   "https://geocoding-api.open-meteo.com/v1/search";
 export const PLACE_CACHE_MS = 6 * 60 * 60 * 1000;

@@ -1,7 +1,6 @@
 export type Coordinates = { latitude: number; longitude: number };
 export type ManualLocation = {
   label: string;
-  // Future city selection/geocoding writes coordinates here, never IP location.
   coordinates: Coordinates | null;
 };
 export type ParticipantConfig = {
@@ -21,7 +20,6 @@ export type WeatherState =
     }
   | { status: "error"; message: string };
 export type WeatherRequest = { coordinates: Coordinates; timezone: string };
-// Future adapter: manually selected city → coordinates → weather provider.
 export interface WeatherProvider {
   getWeather(request: WeatherRequest): Promise<WeatherState>;
 }
