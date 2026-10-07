@@ -40,6 +40,9 @@ reviews:
     drafts: false
     base_branches:
       - main
+  finishing_touches:
+    autofix:
+      enabled: false
 
 chat:
   auto_reply: false
@@ -50,7 +53,3 @@ knowledge_base:
     filePatterns:
       - "**/AGENTS.md"
       - "**/README.md"
-
-# Do not let the reviewer apply changes automatically.
-autofix:
-  enabled: false
