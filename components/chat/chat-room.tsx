@@ -54,6 +54,7 @@ import { applyRegex } from "../../lib/regex-engine";
 import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/search";
 import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
+import { chatLoadingNotice } from "../../lib/chat/loading-notice";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -439,17 +440,41 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     try { await chatStorage.updateSessionSettings(session.id, patch); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Setting could not be saved."); }
   }
-  if (!ready)
+  const loadingNotice = chatLoadingNotice(ready, !!character, loadError);
+  if (!ready || !character)
     return (
-      <div className="chat-app">
-        <p className="chat-notice">Loading Character…</p>
-      </div>
-    );
-  if (!character)
-    return (
-      <div className="chat-app">
-        <Link href="/messages">‹ Messages</Link>
-        <p className="chat-notice">This Character is no longer available.</p>
+      <div className="chat-app chat-room chat-room-wrapper" ref={shell}>
+        <header key="header" className="chat-header page-header">
+          <Link href="/messages" className="chat-back page-back-btn" aria-label="Back to Messages">
+            <ChevronLeft aria-hidden="true" />
+          </Link>
+          <strong className="chat-contact-summary page-title">Chat</strong>
+          <button type="button" className="chat-settings-button page-back-btn"
+            aria-label="Conversation settings" disabled><Ellipsis aria-hidden="true" /></button>
+        </header>
+        <div key="history" className="chat-history chat-scroll-anchored" ref={history}
+          aria-label="Conversation history" aria-busy={!ready}>
+          <p className="chat-notice" role="status">{loadingNotice}</p>
+        </div>
+        <form key="composer" className="chat-composer chat-input-bar" ref={composerBar}>
+          <button type="button" className="chat-composer-icon chat-composer-plus" aria-label="More message options" disabled>
+            <Plus aria-hidden="true" />
+          </button>
+          <div className="chat-input-shell">
+            <label className="chat-input-label" htmlFor="chat-input">Message</label>
+            <textarea id="chat-input" className="chat-input-textarea" ref={composer}
+              rows={1} value="" readOnly disabled placeholder="Message…" />
+            <span className="chat-voice-slot" aria-hidden="true" />
+          </div>
+          <div className="chat-composer-actions chat-input-actions">
+            <button type="button" className="chat-composer-icon chat-request-reply" aria-label="Request Reply" disabled>
+              <Sparkles aria-hidden="true" />
+            </button>
+            <button type="button" className="chat-composer-icon chat-send" aria-label="Send" disabled>
+              <SendHorizontal aria-hidden="true" />
+            </button>
+          </div>
+        </form>
       </div>
     );
   const pending = hasPendingUserContent(messages);
@@ -479,7 +504,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       data-chat-background={chatBackground.url ? "custom" : "default"}
       data-context-menu-open={activeMessage ? "" : undefined}>
       {session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
-      <header className="chat-header page-header">
+      <header key="header" className="chat-header page-header">
         <Link
           href="/messages"
           className="chat-back page-back-btn"
@@ -498,9 +523,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           onClick={() => setChatInfoOpen(true)}><Ellipsis aria-hidden="true" /></button>
       </header>
       <div
+        key="history"
         className={`chat-history chat-scroll-anchored${empty ? " chat-history-empty" : ""}`}
         ref={history}
         aria-label="Conversation history"
+        aria-busy={!session && !loadError}
         onScroll={() => {
           const el = history.current;
           if (el)
@@ -509,11 +536,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           if (activeMessage) positionMenu.current();
         }}
       >
-        {!session && (
-          <p className="chat-notice">
-            {loadError ? "Conversation unavailable." : "Loading conversation…"}
-          </p>
-        )}
+        {!session && loadingNotice && <p className="chat-notice" role="status">{loadingNotice}</p>}
         {empty && <p className="chat-empty-state">No messages yet</p>}
         {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
           const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
@@ -598,6 +621,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <button type="button" onClick={() => { setMultiSelect(false); setSelectedIds(new Set()); }}>Cancel</button>
       </div>}
       <form
+        key="composer"
         className="chat-composer chat-input-bar"
         ref={composerBar}
         onSubmit={(e) => {
