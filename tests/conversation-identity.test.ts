@@ -8,7 +8,8 @@ test("Character routes open the existing direct chat and keep Messages/Contacts 
   const list = readFileSync("components/chat/messages-home.tsx", "utf8");
   const contacts = readFileSync("components/contacts-pages.tsx", "utf8");
   assert.match(room, /ChatRoom\(\{ characterId \}/);
-  assert.match(hook, /\.openSession\(characterId\)/);
+  assert.match(hook, /createChatSessionLifecycle\(characterId, chatStorage/);
+  assert.match(readFileSync("lib/chat/session-lifecycle.ts", "utf8"), /storage\.openSession\(characterId\)/);
   assert.match(list, /encodeURIComponent\(session.characterId\)/);
   assert.match(contacts, /encodeURIComponent\(character.characterId\)/);
   const route = readFileSync("app/messages/[characterId]/page.tsx", "utf8");

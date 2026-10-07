@@ -56,7 +56,8 @@ test("New Message single-select opens or creates the one direct Conversation", a
   assert.doesNotMatch(source.match(/function openDirect[\s\S]*?function toggleSelected/)?.[0] ?? "", /chatStorage\.openSession/);
   assert.match(source, /router\.push\(`\/messages\/\$\{encodeURIComponent\(characterId\)\}`\)/);
   const sessionHook = readFileSync("components/chat/use-chat-session.ts", "utf8");
-  assert.match(sessionHook, /chatStorage\s*\.\s*openSession\(characterId\)/);
+  assert.match(sessionHook, /createChatSessionLifecycle\(characterId, chatStorage/);
+  assert.match(readFileSync("lib/chat/session-lifecycle.ts", "utf8"), /storage\.openSession\(characterId\)/);
 });
 
 test("Contacts query state remains client-side and preserves normal, single, multi and repeated contact parameters", () => {

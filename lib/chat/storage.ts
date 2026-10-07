@@ -28,6 +28,10 @@ function randomDelay(random: () => number) {
 }
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
+function directSessionFor(sessions: ChatSession[], characterId: string) {
+  return sessions.find((session) => session.type !== "group" && session.characterId === characterId);
+}
+
 export type ChatStorageChange =
   | { domain: "session"; sessionId: string; backgroundChanged?: boolean }
   | { domain: "messages" | "worldbook-state"; sessionId: string }
@@ -263,8 +267,7 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
       const sessions: ChatSession[] = await request(table.getAll());
-      const existing = sessions.filter((session) => session.type !== "group" && session.characterId === characterId);
-      const direct = existing[0];
+      const direct = directSessionFor(sessions, characterId);
       if (direct) return direct;
       const session: ChatSession = {
         id: crypto.randomUUID(),
@@ -283,13 +286,23 @@ export class ChatStorage {
     sessionId: string,
   ): Promise<{ session: ChatSession; messages: ChatMessage[] }> {
     return this.transaction("readonly", async (tx) => {
-      const session: ChatSession | undefined = await request(
-        tx.objectStore("sessions").get(sessionId),
-      );
+      const [session, messages]: [ChatSession | undefined, ChatMessage[]] = await Promise.all([
+        request(tx.objectStore("sessions").get(sessionId)),
+        request(tx.objectStore("messages").index("sessionId").getAll(sessionId)),
+      ]);
       if (!session) throw new Error("Conversation not found.");
-      const messages: ChatMessage[] = await request(
-        tx.objectStore("messages").index("sessionId").getAll(sessionId),
-      );
+      return { session, messages: messages.sort((a, b) => a.order - b.order) };
+    });
+  }
+
+  /** Read-only route hydration may overlap Foundation; only openSession can create. */
+  readExistingSession(characterId: string): Promise<{ session: ChatSession; messages: ChatMessage[] } | null> {
+    if (!characterId) return Promise.resolve(null);
+    return this.transaction("readonly", async (tx) => {
+      const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
+      const session = directSessionFor(sessions, characterId);
+      if (!session) return null;
+      const messages: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(session.id));
       return { session, messages: messages.sort((a, b) => a.order - b.order) };
     });
   }
