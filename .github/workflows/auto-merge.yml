@@ -13,6 +13,10 @@ on:
 
 permissions: {}
 
+concurrency:
+  group: safe-pr-auto-merge
+  cancel-in-progress: false
+
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
@@ -78,17 +82,21 @@ jobs:
               }
             }`;
 
-            for (const pullNumber of pullNumbers) {
+            const evaluate = async (pullNumber, expectedHead, expectedBase) => {
               const gate = (reason) => core.info(`PR #${pullNumber}: ${reason}`);
               gate("evaluating auto-merge gates");
+              const { data: base } = await github.rest.git.getRef({ owner, repo, ref: "heads/main" });
+              const baseSha = base.object.sha;
               const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
               if (
                 pull.state !== "open" ||
                 pull.base.ref !== "main" ||
                 pull.draft ||
                 pull.head.repo?.full_name !== owner + "/" + repo ||
-                !pull.labels.some((label) => label.name === labelName)
-              ) continue;
+                !pull.labels.some((label) => label.name === labelName) ||
+                (expectedHead && pull.head.sha !== expectedHead) ||
+                (expectedBase && baseSha !== expectedBase)
+              ) { gate("PR eligibility or evaluated head/base changed"); return null; }
 
               const candidateShas = [...new Set([pull.head.sha, pull.merge_commit_sha].filter(Boolean))];
               const runs = [];
@@ -109,7 +117,50 @@ jobs:
                   (run.head_sha === pull.head.sha ||
                     (pull.merge_commit_sha && run.head_sha === pull.merge_commit_sha)))
                 .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
-              if (latestRun?.conclusion !== "success") { gate("waiting for current-head CI"); continue; }
+              if (latestRun?.conclusion !== "success") { gate("waiting for current-head CI"); return null; }
+              if (!Number.isSafeInteger(latestRun.id) || latestRun.id <= 0 ||
+                  !Number.isSafeInteger(latestRun.run_attempt) || latestRun.run_attempt <= 0) {
+                gate("missing CI run identity"); return null;
+              }
+
+              // Run associations are mutable, and run.head_sha may be the source head rather
+              // than the checkout. Use the existing verify job's immutable checkout log;
+              // never infer its tested base from today's PR/run association or timestamps.
+              const jobs = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+                owner, repo, run_id: latestRun.id, filter: "latest", per_page: 100,
+              });
+              const verifyJobs = jobs.filter((job) => job.name === "verify");
+              const job = verifyJobs[0];
+              if (verifyJobs.length !== 1 || job.conclusion !== "success" ||
+                  job.run_attempt !== latestRun.run_attempt ||
+                  job.steps?.[1]?.name !== "Run actions/checkout@v5" ||
+                  job.steps[1].conclusion !== "success" ||
+                  job.steps?.[2]?.name !== "Run actions/setup-node@v5") {
+                gate("waiting for verifiable CI checkout evidence"); return null;
+              }
+              const { data: rawLogs } = await github.rest.actions.downloadJobLogsForWorkflowRun({
+                owner, repo, job_id: job.id,
+              });
+              const logs = (typeof rawLogs === "string" ? rawLogs : Buffer.from(rawLogs).toString("utf8"))
+                .replace(/\r\n/g, "\n");
+              const checkoutStart = logs.indexOf("##[group]Run actions/checkout@v5\n");
+              const checkoutEnd = logs.indexOf("##[group]Run actions/setup-node@v5\n", checkoutStart);
+              const checkout = checkoutStart >= 0 && checkoutEnd > checkoutStart
+                ? logs.slice(checkoutStart, checkoutEnd) : "";
+              const checkedOut = [...checkout.matchAll(
+                /^\S+ \[command\][^\n]*\/git log -1 --format=%H\n\S+ ([0-9a-f]{40})$/gm,
+              )];
+              if (checkedOut.length !== 1) {
+                gate("missing or ambiguous CI checkout SHA"); return null;
+              }
+              const { data: testedCommit } = await github.rest.git.getCommit({
+                owner, repo, commit_sha: checkedOut[0][1],
+              });
+              if (testedCommit.parents.length !== 2 ||
+                  testedCommit.parents[0].sha !== baseSha ||
+                  testedCommit.parents[1].sha !== pull.head.sha) {
+                gate("waiting for CI validated against current main and PR head"); return null;
+              }
 
               const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
                 owner,
@@ -124,7 +175,7 @@ jobs:
                   codeRabbitStatus.creator?.login !== "coderabbitai[bot]" ||
                   codeRabbitStatus.description !== "Review completed") {
                 gate("waiting for authenticated current-head CodeRabbit completion");
-                continue;
+                return null;
               }
 
               const reviews = await github.paginate(github.rest.pulls.listReviews, {
@@ -140,7 +191,7 @@ jobs:
                 .sort((left, right) => Date.parse(right.submitted_at || "") - Date.parse(left.submitted_at || ""))[0];
               if (!codeRabbitReview || !["COMMENTED", "APPROVED"].includes(codeRabbitReview.state)) {
                 gate("waiting for a non-blocking submitted CodeRabbit review");
-                continue;
+                return null;
               }
 
               const latestReviewsByAuthor = new Map();
@@ -152,7 +203,7 @@ jobs:
               }
               const blockingReview = [...latestReviewsByAuthor.values()]
                 .some((review) => review.state === "CHANGES_REQUESTED");
-              if (blockingReview) { gate("waiting for blocking reviews to be cleared"); continue; }
+              if (blockingReview) { gate("waiting for blocking reviews to be cleared"); return null; }
 
               let cursor = null;
               let hasUnresolvedThreads = false;
@@ -178,15 +229,38 @@ jobs:
                   break;
                 }
               } while (cursor);
-              if (hasUnresolvedThreads) { gate("waiting for review threads to be resolved"); continue; }
+              if (hasUnresolvedThreads) { gate("waiting for review threads to be resolved"); return null; }
 
-              gate("all gates passed; requesting SHA-guarded merge");
-              await github.rest.pulls.merge({
-                owner,
-                repo,
-                pull_number: pull.number,
-                sha: pull.head.sha,
-                merge_method: "squash",
-              });
+              return { pull, baseSha };
+            };
+
+            for (const pullNumber of pullNumbers) {
+              try {
+                const initial = await evaluate(pullNumber);
+                if (!initial) continue;
+                // Re-fetch ALL gates, including CI, authenticated completion, reviews and
+                // every thread page. Do not reuse initial snapshots for merge authorization.
+                const final = await evaluate(pullNumber, initial.pull.head.sha, initial.baseSha);
+                if (!final) continue;
+                // These last reads catch PR/base changes during the final API scan.
+                const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
+                const { data: base } = await github.rest.git.getRef({ owner, repo, ref: "heads/main" });
+                if (pull.state !== "open" || pull.draft || pull.base.ref !== "main" ||
+                    pull.head.repo?.full_name !== owner + "/" + repo ||
+                    !pull.labels.some((label) => label.name === labelName) ||
+                    pull.head.sha !== final.pull.head.sha || base.object.sha !== final.baseSha) {
+                  core.info(`PR #${pullNumber}: eligibility changed before merge`);
+                  continue;
+                }
+                // REST merge atomically guards only the head. Concurrent external changes
+                // after these reads need server-side branch protection for an atomic guard.
+                core.info(`PR #${pullNumber}: all gates passed; requesting SHA-guarded merge`);
+                const { data: result } = await github.rest.pulls.merge({
+                  owner, repo, pull_number: pull.number, sha: pull.head.sha, merge_method: "squash",
+                });
+                if (!result.merged) throw new Error(result.message || "merge was not performed");
+              } catch (error) {
+                core.warning(`PR #${pullNumber}: auto-merge failed; continuing scan: ${error.message}`);
+              }
             }
 
