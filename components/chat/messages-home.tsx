@@ -47,6 +47,14 @@ export function MessagesHome() {
   }, [router]);
   const characters = new Map(document.characters.map((item) => [item.characterId, item]));
   const contactByCharacter = new Map(contacts.document.contacts.map((item) => [item.characterId, item]));
+  const namesReady = ready && contacts.ready;
+  function conversationName(session: ChatSession): string | null {
+    if (session.type === "group") return session.title ?? "Group";
+    if (!namesReady) return null;
+    const character = characters.get(session.characterId);
+    return character
+      ? contactDisplayName(contactByCharacter.get(character.characterId), character.name) : "Unknown Contact";
+  }
   function onListPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
     if (!openRowId) return;
     const row = (event.target as HTMLElement).closest<HTMLElement>("[data-conversation-row]");
@@ -106,10 +114,9 @@ export function MessagesHome() {
   const visible = sessions.filter((session) => {
     const group = session.type === "group";
     if ((filter === "groups" && !group) || (filter === "private" && group)) return false;
-    const character = characters.get(session.characterId);
-    const name = group ? session.title ?? "Group" : character
-      ? contactDisplayName(contactByCharacter.get(character.characterId), character.name) : "Unknown Contact";
-    return name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase());
+    const search = query.trim().toLocaleLowerCase();
+    if (!search) return true;
+    return conversationName(session)?.toLocaleLowerCase().includes(search) ?? false;
   });
   const actionMenu = menuOpen && <div className="chat-action-layer" onMouseDown={(event) => {
     if (event.target === event.currentTarget) setMenuOpen(false);
@@ -124,17 +131,16 @@ export function MessagesHome() {
     <div className="messages-filters" role="group" aria-label="Conversation type">{(["all", "private", "groups"] as const).map((item) =>
       <button key={item} type="button" aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
     {error && <p role="alert" className="chat-notice">{error}</p>}
-    {!ready || !loaded ? <p className="chat-notice">Loading conversations…</p> : visible.length > 0 &&
+    {!loaded ? <p className="chat-notice">Loading conversations…</p> : visible.length > 0 &&
       <div className="conversation-list">{visible.map((session) => { const group = session.type === "group", character = characters.get(session.characterId);
-        const name = group ? session.title ?? "Group" : character
-          ? contactDisplayName(contactByCharacter.get(character.characterId), character.name) : "Unknown Contact";
+        const name = conversationName(session);
         const rowOpen = openRowId === session.id;
         const offset = draggingRowId === session.id ? dragOffset : rowOpen ? -CONVERSATION_DELETE_WIDTH : 0;
         const deleteMotion = conversationDeleteMotion(offset);
         return <div className="conversation-swipe-row" key={session.id} data-conversation-row={session.id}>
           <button className={`conversation-delete-action${draggingRowId === session.id ? " is-dragging" : ""}`}
             style={{ width: `${deleteMotion.width}px`, transform: `translateX(${deleteMotion.translateX}px)` }}
-            type="button" aria-label={`Delete ${name} conversation`}
+            type="button" aria-label={name ? `Delete ${name} conversation` : "Delete conversation"}
             aria-hidden={!rowOpen} tabIndex={rowOpen ? 0 : -1}
             onClick={() => { setDeleteError(""); setOpenRowId(null); setDeleteTarget(session); }}>
             <span className="conversation-delete-label" style={{ transform: `translateX(${deleteMotion.labelOffsetX}px)` }}>Delete</span>
@@ -155,9 +161,9 @@ export function MessagesHome() {
                 }
               }
             }}>
-            {group ? <span className="chat-avatar group-avatar"><Users /></span> : character ? <ChatAvatar profile={character} /> : <span className="chat-avatar">?</span>}
+            {group ? <span className="chat-avatar group-avatar"><Users /></span> : namesReady && character ? <ChatAvatar profile={character} /> : <span className="chat-avatar">{namesReady ? "?" : ""}</span>}
             <span className="conversation-summary">
-              <span className="conversation-title-line"><strong>{name}</strong>
+              <span className="conversation-title-line"><strong>{name ?? "Loading contact…"}</strong>
                 {!!session.updatedAt && <time dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}
               </span>
               <span className="conversation-preview">{session.lastMessagePreview || (group ? `${session.participantIds?.length ?? 0} members` : "Start a conversation")}</span>
