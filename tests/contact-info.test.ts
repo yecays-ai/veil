@@ -130,7 +130,7 @@ test("Contact Info route structure has real actions and honest placeholders with
   assert.match(room, /contactDisplayName\(contact, character\.name\)/);
   assert.match(room, /<Link href=\{`\/contacts\/\$\{encodeURIComponent\(character\.characterId\)\}\?from=direct`\}[\s\S]*?className="chat-contact-summary page-title"/);
   const messages = readFileSync("components/chat/messages-home.tsx", "utf8");
-  assert.match(messages, /group \? session\.title \?\? "Group" : character[\s\S]*?contactDisplayName\(contactByCharacter/);
+  assert.match(messages, /if \(session\.type === "group"\) return session\.title \?\? "Group";[\s\S]*?contactDisplayName\(contactByCharacter/);
   assert.doesNotMatch(messages, /group \? session\.title \?\? "Group" : session\.remark/);
   assert.doesNotMatch(room, /session\?\.remark \|\| character\.name/);
   const css = readFileSync("app/contacts/contact-info.css", "utf8");

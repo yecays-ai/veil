@@ -145,6 +145,19 @@ test("Messages conversation rows keep navigation and expose only a confirmed Del
   assert.match(home, /<span className="conversation-preview">/);
 });
 
+test("Chats waits for session loading only and resolves direct names after Foundation and Contacts", () => {
+  const home = readFileSync("components/chat/messages-home.tsx", "utf8");
+  assert.match(home, /!loaded \? <p className="chat-notice">Loading conversations…<\/p>/);
+  assert.doesNotMatch(home, /!ready \|\| !loaded/);
+  assert.match(home, /const namesReady = ready && contacts\.ready/);
+  assert.match(home, /if \(session\.type === "group"\) return session\.title \?\? "Group"/);
+  assert.match(home, /if \(!namesReady\) return null/);
+  assert.match(home, /contactDisplayName\(contactByCharacter\.get\(character\.characterId\), character\.name\)/);
+  assert.match(home, /name \?\? "Loading contact…"/);
+  assert.match(home, /if \(!search\) return true/);
+  assert.match(home, /conversationName\(session\)\?\.toLocaleLowerCase\(\)\.includes\(search\) \?\? false/);
+});
+
 test("horizontal swipes preserve vertical scrolling and resist overpull before release settle", async () => {
   const { isHorizontalConversationSwipe, conversationSwipeOffset, conversationSwipeReleaseTarget, conversationDeleteMotion } =
     await import("../lib/chat/swipe-gesture");
@@ -199,7 +212,7 @@ test("conversation title and timestamp share a truncating first line above the p
   assert.match(css, /\.conversation-title-line\s*\{[^}]*align-items:\s*center/);
   assert.match(css, /\.conversation-title-line strong\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis/);
   assert.match(css, /\.conversation-title-line time\s*\{[^}]*flex:\s*none/);
-  assert.match(home, /<span className="conversation-title-line"><strong>\{name\}<\/strong>[\s\S]*?<time dateTime=/);
+  assert.match(home, /<span className="conversation-title-line"><strong>\{name \?\? "Loading contact…"\}<\/strong>[\s\S]*?<time dateTime=/);
   assert.match(home, /<span className="conversation-preview">/);
   assert.match(css, /\.conversation-preview\s*\{[^}]*text-overflow:\s*ellipsis/);
   assert.match(css, /\.conversation-summary\s*\{[^}]*padding-right:\s*14px/);
