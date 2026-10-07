@@ -93,6 +93,7 @@ jobs:
                 repo,
                 workflow_id: "ci.yml",
                 event: "pull_request",
+                head_sha: pull.head.sha,
                 per_page: 100,
               });
               const latestRun = data.workflow_runs

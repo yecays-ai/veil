@@ -26,8 +26,15 @@ const pull = {
   labels: [{ name: "automerge" }],
 };
 
+interface WorkflowRun {
+  conclusion: string;
+  created_at: string;
+  pull_requests: Array<{ number: number; head: { sha: string } }>;
+}
+
 interface MockOptions {
   ciConclusion?: string;
+  workflowRuns?: WorkflowRun[];
   codeRabbitState?: string;
   unresolvedThreads?: boolean;
   reviewState?: string;
@@ -38,6 +45,7 @@ interface MockOptions {
 
 function mockGitHub(options: MockOptions = {}) {
   const merges: number[] = [];
+  const workflowRunRequests: Array<Record<string, unknown>> = [];
   const currentPull = {
     ...pull,
     labels: options.label === false ? [] : pull.labels,
@@ -64,11 +72,17 @@ function mockGitHub(options: MockOptions = {}) {
         merge: async ({ pull_number }: { pull_number: number }) => { merges.push(pull_number); },
       },
       actions: {
-        listWorkflowRuns: async () => ({ data: { workflow_runs: [{
+        listWorkflowRuns: async (params: Record<string, unknown>) => {
+          workflowRunRequests.push(params);
+          const workflowRuns = options.workflowRuns ?? [{
           conclusion: options.ciConclusion ?? "success",
           created_at: "2026-10-07T10:00:00Z",
           pull_requests: [{ number: pull.number, head: { sha: headSha } }],
-        }] } }),
+          }];
+          return { data: { workflow_runs: workflowRuns.filter((run) =>
+            !params.head_sha || run.pull_requests.some((item) =>
+              item.head?.sha === params.head_sha)) } };
+        },
       },
       repos: {
         listCommitStatusesForRef: async () => ({ data: options.codeRabbitState ? [{
@@ -87,7 +101,7 @@ function mockGitHub(options: MockOptions = {}) {
       pageInfo: { hasNextPage: false, endCursor: null },
     } } } }),
   };
-  return { github, merges };
+  return { github, merges, workflowRunRequests };
 }
 
 function context(eventName: string, payload: Record<string, unknown>) {
@@ -161,6 +175,27 @@ test("clean CodeRabbit review and resolved threads still require successful CI",
     context: "CodeRabbit", state: "success", sha: headSha,
   }, { codeRabbitState: "success" });
   assert.deepEqual(merges, [pull.number]);
+});
+
+test("finds the current-head CI run beyond 100 newer unrelated runs", async () => {
+  const unrelatedRuns = Array.from({ length: 101 }, (_, index) => ({
+    conclusion: "success",
+    created_at: `2026-10-07T11:${String(index).padStart(2, "0")}:00Z`,
+    pull_requests: [{ number: 1000 + index, head: { sha: `other-${index}` } }],
+  }));
+  const { github, merges, workflowRunRequests } = mockGitHub({
+    codeRabbitState: "success",
+    workflowRuns: [...unrelatedRuns, {
+      conclusion: "success",
+      created_at: "2026-10-07T10:00:00Z",
+      pull_requests: [{ number: pull.number, head: { sha: headSha } }],
+    }],
+  });
+
+  await executeWorkflow(github, context("schedule", {}));
+
+  assert.deepEqual(merges, [pull.number]);
+  assert.equal(workflowRunRequests[0]?.head_sha, headSha);
 });
 
 test("scheduled recheck waits until review findings are resolved", async () => {
