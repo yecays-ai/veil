@@ -79,6 +79,8 @@ jobs:
             }`;
 
             for (const pullNumber of pullNumbers) {
+              const gate = (reason) => core.info(`PR #${pullNumber}: ${reason}`);
+              gate("evaluating auto-merge gates");
               const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
               if (
                 pull.state !== "open" ||
@@ -107,7 +109,7 @@ jobs:
                   (run.head_sha === pull.head.sha ||
                     (pull.merge_commit_sha && run.head_sha === pull.merge_commit_sha)))
                 .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
-              if (latestRun?.conclusion !== "success") continue;
+              if (latestRun?.conclusion !== "success") { gate("waiting for current-head CI"); continue; }
 
               const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
                 owner,
@@ -118,7 +120,12 @@ jobs:
               const codeRabbitStatus = statuses
                 .filter((status) => status.context === "CodeRabbit")
                 .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
-              if (codeRabbitStatus?.state !== "success") continue;
+              if (codeRabbitStatus?.state !== "success" ||
+                  codeRabbitStatus.creator?.login !== "coderabbitai[bot]" ||
+                  codeRabbitStatus.description !== "Review completed") {
+                gate("waiting for authenticated current-head CodeRabbit completion");
+                continue;
+              }
 
               const reviews = await github.paginate(github.rest.pulls.listReviews, {
                 owner,
@@ -127,20 +134,25 @@ jobs:
                 per_page: 100,
               });
               const codeRabbitReview = reviews
-                .filter((review) => review.user?.login === "coderabbitai[bot]" && review.commit_id === pull.head.sha)
+                // Incremental fixes can resolve an existing review without submitting another one.
+                // The authenticated status above establishes completion for this exact head.
+                .filter((review) => review.user?.login === "coderabbitai[bot]" && review.submitted_at)
                 .sort((left, right) => Date.parse(right.submitted_at || "") - Date.parse(left.submitted_at || ""))[0];
-              if (!codeRabbitReview || codeRabbitReview.state === "CHANGES_REQUESTED") continue;
+              if (!codeRabbitReview || !["COMMENTED", "APPROVED"].includes(codeRabbitReview.state)) {
+                gate("waiting for a non-blocking submitted CodeRabbit review");
+                continue;
+              }
 
               const latestReviewsByAuthor = new Map();
               for (const review of reviews) {
-                if (review.commit_id !== pull.head.sha || !review.user?.login) continue;
+                if (!review.submitted_at || !review.user?.login) continue;
                 const previous = latestReviewsByAuthor.get(review.user.login);
                 if (!previous || Date.parse(review.submitted_at || "") > Date.parse(previous.submitted_at || ""))
                   latestReviewsByAuthor.set(review.user.login, review);
               }
               const blockingReview = [...latestReviewsByAuthor.values()]
                 .some((review) => review.state === "CHANGES_REQUESTED");
-              if (blockingReview) continue;
+              if (blockingReview) { gate("waiting for blocking reviews to be cleared"); continue; }
 
               let cursor = null;
               let hasUnresolvedThreads = false;
@@ -166,8 +178,9 @@ jobs:
                   break;
                 }
               } while (cursor);
-              if (hasUnresolvedThreads) continue;
+              if (hasUnresolvedThreads) { gate("waiting for review threads to be resolved"); continue; }
 
+              gate("all gates passed; requesting SHA-guarded merge");
               await github.rest.pulls.merge({
                 owner,
                 repo,
