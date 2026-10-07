@@ -10,6 +10,7 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
   let active = false, enabled = false, checkedExisting = false, revision = 0;
   let sessionId: string | undefined, snapshot: Snapshot | null = null, error = "";
   let running: Promise<void> | undefined;
+  let awaitingExisting = false;
   let completedRevision = 0;
   let unsubscribe = () => {};
   const changedBeforeResolution = new Set<string>();
@@ -23,7 +24,9 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
         try {
           let next: Snapshot | null = null;
           if (!checkedExisting && !enabled) {
+            awaitingExisting = true;
             next = await storage.readExistingSession(characterId);
+            awaitingExisting = false;
             if (!active) return;
             if (observed !== revision) continue;
             checkedExisting = true;
@@ -51,6 +54,7 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
           error = "";
           notify();
         } catch {
+          awaitingExisting = false;
           if (!active) return;
           if (observed !== revision) continue;
           error = sessionId
@@ -97,7 +101,13 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
         return;
       }
       if (!running && (!sessionId || error)) void load();
-      else notify();
+      else {
+        notify();
+        const pending = running, enabledRevision = revision;
+        if (pending && awaitingExisting) void pending.then(() => {
+          if (active && enabled && revision === enabledRevision && !checkedExisting && !sessionId && error) void load();
+        });
+      }
     },
     unmount() {
       active = false;

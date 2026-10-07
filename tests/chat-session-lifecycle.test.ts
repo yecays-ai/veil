@@ -272,6 +272,53 @@ test("failed initial hydration cannot create a session and a fresh mount can ret
   retry.unmount();
 });
 
+regressionContract("chat.validation-recovers-pending-lookup-failure", "async-race-safety",
+  "validation during a pending speculative lookup recovers automatically after rejection, once and while still active", async () => {
+  for (const outcome of ["success", "failure", "unmount", "disabled", "validated-open-failure"] as const) {
+    const storage = new ChatStorage(() => new IDBFactory());
+    const session = await storage.openSession("peter");
+    await storage.send(session.id, "existing history");
+    const { adapter, counts } = counted(storage);
+    const lookup = deferred<Snapshot | null>();
+    adapter.readExistingSession = () => { counts.existing++; return lookup.promise; };
+    if (outcome === "failure" || outcome === "validated-open-failure")
+      adapter.openSession = async () => { counts.opens++; throw new Error("still unavailable"); };
+    const visible: Array<{ data: Snapshot | null; error: string }> = [];
+    const recovered = deferred<void>();
+    const owner = createChatSessionLifecycle("peter", adapter, (data, error) => {
+      visible.push({ data, error });
+      if (counts.opens === 1 && (data || error)) recovered.resolve();
+    }, () => {});
+    owner.mount(false);
+    await settle();
+    assert.deepEqual([counts.existing, counts.opens, counts.reads], [1, 0, 0]);
+    owner.setEnabled(true);
+    owner.setEnabled(true);
+    if (outcome === "unmount") owner.unmount();
+    if (outcome === "disabled") owner.setEnabled(false);
+    if (outcome === "validated-open-failure") lookup.resolve(null);
+    else lookup.reject(new Error("speculative read failed"));
+    if (outcome === "success" || outcome === "failure" || outcome === "validated-open-failure") await recovered.promise;
+    await settle();
+    if (outcome === "success") {
+      const latest = visible.at(-1);
+      assert.equal(latest?.data?.session.id, session.id);
+      assert.deepEqual(latest?.data?.messages.map((message) => message.content), ["existing history"]);
+      assert.equal(latest?.error, "");
+      assert.deepEqual([counts.existing, counts.opens, counts.reads], [1, 1, 1]);
+    } else if (outcome === "failure" || outcome === "validated-open-failure") {
+      assert.match(visible.at(-1)?.error ?? "", /Chat storage is unavailable/);
+      assert.deepEqual([counts.existing, counts.opens, counts.reads], [1, 1, 0], "recovery failure must not cause an automatic retry loop");
+    } else {
+      assert.equal(counts.opens, 0, "obsolete validation must not authorize recovery");
+      assert.ok(visible.every(({ data, error }) => data === null && error === ""));
+    }
+    if (outcome !== "unmount") owner.unmount();
+    assert.equal(counts.active, 0);
+    assert.equal(counts.subscriptions, 1);
+  }
+});
+
 test("an already validated new character uses the original creation path without an extra read-only lookup", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const { adapter, counts } = counted(storage);
