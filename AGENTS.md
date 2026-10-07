@@ -43,6 +43,9 @@ Browser data belongs to the user. Treat Character, User, Universe, chat, appeara
 - Use the available GitHub integration/API for remote repository operations instead and continue the original task without asking the user to manually intervene.
 - If the execution environment is already known to restrict direct GitHub network access, prefer the GitHub integration/API immediately rather than attempting the known-failing transport first.
 - A direct Git transport failure alone is not a reason to stop the task when an authorized GitHub integration/API path is available.
+- For normal implementation PRs that are ready for CI and review, add the `automerge` label when creating or updating the PR so the repository's Safe PR auto-merge workflow can merge it after the required CI succeeds.
+- Do not add `automerge` to draft, incomplete, experimental, intentionally manual-review, or otherwise unsafe-to-merge PRs.
+- Adding the `automerge` label is part of the normal PR publishing workflow and does not count as manually merging the PR. Do not call the merge API directly unless the user explicitly requests it.
 
 ## Changes and verification
 
