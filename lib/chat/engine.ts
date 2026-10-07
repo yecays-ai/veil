@@ -103,6 +103,10 @@ export function createChatEngine(
     let rawContent = "", finishReason: string | undefined;
     let iterator: AsyncIterator<string> | undefined;
     try {
+      // Validate prerequisites before any ownership or pending-message claim; failures here
+      // leave no attempt, claim or failed assistant behind.
+      const { session: target } = await awaited(storage.readSession(sessionId), controller.signal);
+      const prepared = await prepareGeneration(target.characterId, controller.signal);
       attempt.id = await storage.claimGeneration(sessionId, regenerateId, source === "continue" ? "continue" : "regenerate");
       controller.signal.throwIfAborted();
       unsubscribe = storage.subscribe((change) => {
@@ -121,7 +125,7 @@ export function createChatEngine(
       if (!batch) return null;
       assistant = batch.assistant;
       controller.signal.throwIfAborted();
-      const { document, character, config, preset, binding } = await prepareGeneration(batch.session.characterId, controller.signal);
+      const { document, character, config, preset, binding } = prepared;
       const regexGroups = resolveRegexGroups(await awaited(regex(), controller.signal), binding.regexIds);
       const books = (await awaited(worldBooks(), controller.signal)).books.filter((book) =>
         binding.worldBookIds === undefined || binding.worldBookIds.includes(book.id));
@@ -185,11 +189,12 @@ export function createChatEngine(
   return {
     send: (sessionId: string, content: string, quoteMessageId?: string) => sendMessage(sessionId, content, quoteMessageId),
     isGenerating: (sessionId: string) => active.has(sessionId),
-    stop: (sessionId: string) => {
+    // Lifecycle cleanup only aborts a local attempt; persisting a Stop is an explicit user action.
+    stop: (sessionId: string, options?: { persist?: boolean }) => {
       lastStop.set(sessionId, ++stopSequence);
       const attempt = active.get(sessionId);
       if (attempt) attempt.controller.abort();
-      else void storage.stopGeneration(sessionId).catch(() => { console.warn("[Chat generation] stop persistence failed"); });
+      else if (options?.persist) void storage.stopGeneration(sessionId).catch(() => { console.warn("[Chat generation] stop persistence failed"); });
     },
     requestReply: (sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void,
       source: CompletionSource = "manual-reply", draft?: Draft) => generateReply(sessionId, onFinalized, undefined, source, draft),

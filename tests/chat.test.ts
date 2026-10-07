@@ -604,17 +604,18 @@ test("missing API config persists a failed attempt and only explicit retry start
     }, undefined, undefined, undefined, undefined, undefined, undefined,
     async (id) => id === config.id && available ? config : undefined,
   );
-  const failed = await engine.requestReply(session.id);
-  assert.match(failed?.error ?? "", /selected Text API is missing/);
-  assert.ok((await storage.readSession(session.id)).messages[0].requestedBy);
-  assert.equal(await engine.requestReply(session.id), null);
+  // A missing prerequisite is rejected before any claim: nothing is reserved or persisted.
+  await assert.rejects(engine.requestReply(session.id), /selected Text API is missing/);
+  const untouched = await storage.readSession(session.id);
+  assert.equal(untouched.messages.length, 1);
+  assert.equal(untouched.messages[0].requestedBy, undefined);
+  assert.equal(untouched.session.generation, undefined);
   available = true;
-  assert.equal((await engine.regenerateMessage(failed!.id))?.status, "error");
+  const failed = await engine.requestReply(session.id);
+  assert.equal(failed?.status, "error");
+  assert(failed?.error?.includes("401"));
   assert.equal((await storage.readSession(session.id)).messages.filter(
-    (message) => message.role === "assistant").length, 2);
-  assert(
-    (await storage.readSession(session.id)).messages.at(-1)?.error?.includes("401"),
-  );
+    (message) => message.role === "assistant").length, 1);
   assert.equal(await engine.requestReply(session.id), null);
   assert.equal(calls, 1);
 });
@@ -652,7 +653,7 @@ test("API configuration is local/separate, respects binding precedence, and neve
   assert(!unrelated.includes("apiKey"));
   bindings.characters.a.apps.messages = { apiConfigId: null };
   await engine.send(session.id, "new");
-  assert.match((await engine.requestReply(session.id))?.error ?? "", /binding is disabled/);
+  await assert.rejects(engine.requestReply(session.id), /binding is disabled/);
 });
 
 test("OpenAI adapter handles fragmented UTF-8 SSE, ignores reasoning fields, and normalizes endpoint paths", async () => {

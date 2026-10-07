@@ -77,6 +77,7 @@ test("direct reply awaits persisted Send and generates once with the new message
 test("failed direct Send never starts generation", async () => {
   const factory = new IDBFactory(), storage = new ChatStorage(() => factory);
   const session = await storage.openSession("a"), document = defaultFoundation();
+  document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
   let requests = 0;
   storage.send = async () => { throw new Error("save failed"); };
   const engine = createChatEngine(storage, async () => document, async function* () { requests++; yield "unexpected"; });

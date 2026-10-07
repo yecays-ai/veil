@@ -174,7 +174,9 @@ export class ChatStorage {
       return messages.some((message) => message.status === "streaming");
     }, ["sessions", "messages"]);
     if (!needsRecovery) return false;
-    const release = await this.acquireSessionLock(sessionId);
+    let release: (() => Promise<void>) | null;
+    // Unsupported Web Locks or a lock failure must not turn ordinary reads into rejections.
+    try { release = await this.acquireSessionLock(sessionId); } catch { return false; }
     if (!release) return false; // Another document owns it, even if that tab is suspended.
     try {
       return await this.transaction("readwrite", (tx) => this.recoverInTransaction(tx, sessionId), STORES,

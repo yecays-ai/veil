@@ -102,7 +102,7 @@ test("failure before provider start does not advance WorldBook cycles", async ()
   bindings.global.apiConfigId = "missing-config";
   const engine = createChatEngine(storage, async () => document, async function* () { assert.fail("provider must not start"); },
     undefined, undefined, async () => books);
-  assert.match((await engine.requestReply(session.id))?.error ?? "", /missing/);
+  await assert.rejects(engine.requestReply(session.id), /missing/);
   assert.equal(await storage.readWorldBookState(session.id), null);
 });
 

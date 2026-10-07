@@ -105,17 +105,17 @@ test("deletion retains references and chat fails closed instead of picking a dif
     config.id,
   );
   await engine.send(session.id, "Second");
-  const failed = await engine.requestReply(session.id);
-  assert.match(failed?.error ?? "", /selected Text API is missing/);
+  await assert.rejects(engine.requestReply(session.id), /selected Text API is missing/);
   assert.equal(calls, 1);
+  // Rejected before any claim: the pending message is left unclaimed and no attempt is persisted.
   assert.equal(
     (await store.readSession(session.id)).messages.filter(
       (m) => m.role === "user" && !m.requestedBy,
     ).length,
-    0,
+    1,
   );
   bindings.characters.a.apps.messages = { apiConfigId: null };
-  assert.match((await engine.regenerateMessage(failed!.id))?.error ?? "", /disabled/);
+  await assert.rejects(engine.requestReply(session.id), /disabled/);
 });
 
 test("Test Connection success/failure is independent of saving, capped and credential-safe", async () => {

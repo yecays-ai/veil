@@ -9,6 +9,8 @@ import { canContinueTurn } from "../lib/chat/turns";
 import { assembleChatPrompt } from "../lib/chat/prompt";
 import { regressionContract } from "./regression-contract";
 import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
+import { emptyWorldBookDocument } from "../lib/worldbook";
+import { emptyRegexDocument } from "../lib/regex";
 import { lockOrigin } from "./generation-lock-fixture";
 
 function deferred() {
@@ -184,8 +186,10 @@ test("another tab's Stop interrupts preparation through asynchronous scoped noti
     await storage.send(session.id, "Question");
     unsubscribe = peer.subscribe(() => {});
     const started = deferred(); let calls = 0;
-    const engine = createChatEngine(storage, async () => { started.resolve(); await finish.promise; return document; },
-      async function* () { calls++; yield "late"; });
+    // Stall after the claim (WorldBook stage) so there is a persisted attempt for the peer to Stop.
+    const engine = createChatEngine(storage, async () => document, async function* () { calls++; yield "late"; },
+      undefined, undefined, async () => { started.resolve(); await finish.promise; return emptyWorldBookDocument(); },
+      async () => emptyRegexDocument(), async () => ({ global: {}, characters: {} }));
     pending = engine.requestReply(session.id);
     await started.promise;
     await peer.stopGeneration(session.id);
@@ -342,7 +346,10 @@ test("browsers without Web Locks fail closed for generation while idle Send/Edit
   try {
     const factory = new IDBFactory(), storage = new ChatStorage(() => factory, () => undefined);
     const session = await storage.openSession("a"), user = await storage.send(session.id, "Question");
-    const engine = createChatEngine(storage, async () => defaultFoundation(), async function* () { assert.fail("unsafe generation"); });
+    const document = defaultFoundation();
+    document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
+    const engine = createChatEngine(storage, async () => document, async function* () { assert.fail("unsafe generation"); },
+      undefined, undefined, undefined, undefined, async () => ({ global: {}, characters: {} }));
     await assert.rejects(engine.requestReply(session.id), /Web Locks support/);
     assert.equal(engine.isGenerating(session.id), false);
     await storage.editMessage(user.id, "Edited");

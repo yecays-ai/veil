@@ -678,7 +678,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <button type="button" className="chat-composer-icon" aria-label="Stop reply" title="Stop reply"
               onClick={() => {
                 revealQueue.cancel();
-                if (session) chatEngine.stop(session.id);
+                if (session) chatEngine.stop(session.id, { persist: true });
               }}>
               <Square aria-hidden="true" />
             </button>
