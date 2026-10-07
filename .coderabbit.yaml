@@ -1,0 +1,55 @@
+# CodeRabbit configuration for VEIL
+# Keep review guidance aligned with the repository's AGENTS.md.
+
+language: en-US
+tone_instructions: >-
+  Be concise, direct, and specific. Prioritize correctness, data safety,
+  architecture boundaries, and measured performance. Explain user impact and
+  cite the relevant code path. Avoid speculative findings and cosmetic nitpicks.
+early_access: false
+enable_free_tier: true
+
+reviews:
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  path_instructions:
+    - path: "lib/**"
+      instructions: >-
+        Check ownership and module boundaries. Look for duplicate work,
+        speculative abstractions, and changes that couple unrelated domains.
+    - path: "**/*storage*"
+      instructions: >-
+        Pay close attention to IndexedDB transaction boundaries, repeated reads,
+        migration safety, failure handling, and preservation of existing user data.
+    - path: "components/**"
+      instructions: >-
+        Look for unnecessary rerenders, duplicate subscriptions or requests,
+        stale async responses, missing cancellation/cleanup, and UI changes that
+        can lose user-authored data.
+    - path: "**/*chat*"
+      instructions: >-
+        Check AI request count, cancellation, provider error handling, context
+        selection and budgets, accidental prompt/context growth, and API key exposure.
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+  finishing_touches:
+    autofix:
+      enabled: false
+
+chat:
+  auto_reply: false
+
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/AGENTS.md"
+      - "**/README.md"
