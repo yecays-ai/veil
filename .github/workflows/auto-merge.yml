@@ -88,13 +88,18 @@ jobs:
                 !pull.labels.some((label) => label.name === labelName)
               ) continue;
 
-              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
-                owner,
-                repo,
-                workflow_id: "ci.yml",
-                event: "pull_request",
-                per_page: 100,
-              });
+              const candidateShas = [...new Set([pull.head.sha, pull.merge_commit_sha].filter(Boolean))];
+              const runs = [];
+              for (const head_sha of candidateShas) {
+                runs.push(...await github.paginate(github.rest.actions.listWorkflowRuns, {
+                  owner,
+                  repo,
+                  workflow_id: "ci.yml",
+                  event: "pull_request",
+                  head_sha,
+                  per_page: 100,
+                }));
+              }
               // PR associations can reflect a newer head; also verify the run's own code SHA.
               const latestRun = runs
                 .filter((run) => run.pull_requests?.some((item) =>

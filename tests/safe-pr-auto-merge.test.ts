@@ -44,6 +44,7 @@ interface MockOptions {
   reviewHeadSha?: string;
   humanReviewState?: string;
   label?: boolean;
+  mergeSha?: string | null;
 }
 
 function mockGitHub(options: MockOptions = {}) {
@@ -51,6 +52,7 @@ function mockGitHub(options: MockOptions = {}) {
   const workflowRunRequests: Array<Record<string, unknown>> = [];
   const currentPull = {
     ...pull,
+    merge_commit_sha: options.mergeSha === undefined ? mergeSha : options.mergeSha,
     labels: options.label === false ? [] : pull.labels,
   };
   const github = {
@@ -86,7 +88,8 @@ function mockGitHub(options: MockOptions = {}) {
           created_at: "2026-10-07T10:00:00Z",
           pull_requests: [{ number: pull.number, head: { sha: headSha } }],
           }];
-          const filtered = workflowRuns.filter((run) => !params.head_sha || run.head_sha === params.head_sha);
+          // GitHub applies filters before pagination and caps workflow-run searches at 1,000 results.
+          const filtered = workflowRuns.filter((run) => !params.head_sha || run.head_sha === params.head_sha).slice(0, 1000);
           const page = Number(params.page ?? 1), perPage = Number(params.per_page ?? 30);
           return { data: { workflow_runs: filtered.slice((page - 1) * perPage, page * perPage) } };
         },
@@ -217,6 +220,7 @@ test("stale, wrong-PR and wrong-code-state CI cannot authorize a merge", async (
   const cases = [
     { head_sha: "older-source", number: pull.number, source: "older-source" },
     { head_sha: mergeSha, number: 999, source: headSha },
+    { head_sha: headSha, number: 999, source: headSha },
     { head_sha: mergeSha, number: pull.number, source: "older-source" },
     // GitHub can update the PR association on an old run to the PR's current head.
     { head_sha: "older-source", number: pull.number, source: headSha },
@@ -233,23 +237,25 @@ test("stale, wrong-PR and wrong-code-state CI cannot authorize a merge", async (
   }
 });
 
-test("a newer failed or unfinished current-code CI run blocks an older success", async () => {
+test("a newer failed or unfinished CI run blocks an older success across source and merge SHA queries", async () => {
   for (const conclusion of ["failure", "cancelled", null]) {
-    const merges = await run("schedule", {}, {
-      codeRabbitState: "success",
-      workflowRuns: [
-        { head_sha: mergeSha, conclusion: "success", created_at: "2026-10-07T10:00:00Z",
-          pull_requests: [{ number: pull.number, head: { sha: headSha } }] },
-        { head_sha: mergeSha, conclusion, created_at: "2026-10-07T11:00:00Z",
-          pull_requests: [{ number: pull.number, head: { sha: headSha } }] },
-      ],
-    });
-    assert.deepEqual(merges, []);
+    for (const newerSha of [headSha, mergeSha]) {
+      const merges = await run("schedule", {}, {
+        codeRabbitState: "success",
+        workflowRuns: [
+          { head_sha: newerSha === headSha ? mergeSha : headSha, conclusion: "success", created_at: "2026-10-07T10:00:00Z",
+            pull_requests: [{ number: pull.number, head: { sha: headSha } }] },
+          { head_sha: newerSha, conclusion, created_at: "2026-10-07T11:00:00Z",
+            pull_requests: [{ number: pull.number, head: { sha: headSha } }] },
+        ],
+      });
+      assert.deepEqual(merges, []);
+    }
   }
 });
 
-test("finds the current-head CI run beyond 100 newer unrelated runs", async () => {
-  const unrelatedRuns = Array.from({ length: 101 }, (_, index) => ({
+test("targeted SHA lookups find current CI behind more than 1,000 newer unrelated runs", async () => {
+  const unrelatedRuns = Array.from({ length: 1001 }, (_, index) => ({
     head_sha: `other-merge-${index}`,
     conclusion: "success",
     created_at: new Date(Date.parse("2026-10-07T11:00:00Z") + index * 1000).toISOString(),
@@ -265,12 +271,39 @@ test("finds the current-head CI run beyond 100 newer unrelated runs", async () =
     }],
   });
 
+  const broad = await github.rest.actions.listWorkflowRuns({ event: "pull_request", per_page: 100, page: 11 });
+  assert.deepEqual(broad.data.workflow_runs, [], "broad pagination cannot reach the candidate past GitHub's cap");
+  workflowRunRequests.length = 0;
   await executeWorkflow(github, context("schedule", {}));
 
   assert.deepEqual(merges, [pull.number]);
-  assert.equal(workflowRunRequests.length, 2, "the candidate is found on the second API page");
-  assert.ok(workflowRunRequests.every((request) => request.head_sha === undefined));
-  assert.deepEqual(workflowRunRequests.map((request) => request.page), [1, 2]);
+  assert.equal(workflowRunRequests.length, 2, "unrelated runs consume no candidate lookup pages");
+  assert.deepEqual(workflowRunRequests.map((request) => request.head_sha), [headSha, mergeSha]);
+  assert.deepEqual(workflowRunRequests.map((request) => request.page), [1, 1]);
+  assert.ok(workflowRunRequests.every((request) => request.workflow_id === "ci.yml" && request.event === "pull_request"));
+});
+
+test("a missing or identical merge SHA produces only one targeted source lookup", async () => {
+  for (const candidateMergeSha of [null, headSha]) {
+    const { github, merges, workflowRunRequests } = mockGitHub({ codeRabbitState: "success", mergeSha: candidateMergeSha,
+      workflowRuns: [{ head_sha: headSha, conclusion: "success", created_at: "2026-10-07T10:00:00Z",
+        pull_requests: [{ number: pull.number, head: { sha: headSha } }] }],
+    });
+    await executeWorkflow(github, context("schedule", {}));
+    assert.deepEqual(merges, [pull.number]);
+    assert.deepEqual(workflowRunRequests.map((request) => request.head_sha), [headSha]);
+  }
+});
+
+test("targeted discovery still independently rejects an unexpected stale run SHA", async () => {
+  const { github, merges } = mockGitHub({ codeRabbitState: "success" });
+  // Exercise the validation independently of the API's normal SHA filtering.
+  github.rest.actions.listWorkflowRuns = async () => ({ data: { workflow_runs: [{
+    head_sha: "older-merge", conclusion: "success", created_at: "2026-10-07T10:00:00Z",
+    pull_requests: [{ number: pull.number, head: { sha: headSha } }],
+  }] } });
+  await executeWorkflow(github, context("schedule", {}));
+  assert.deepEqual(merges, []);
 });
 
 test("scheduled recheck waits until review findings are resolved", async () => {
