@@ -6,7 +6,6 @@ test("high-frequency dynamic destinations provide a small shared loading boundar
   const routeLoading = readFileSync("components/route-loading.tsx", "utf8");
   assert.match(routeLoading, /<p role="status">Loading…<\/p>/);
   for (const path of [
-    "app/messages/[characterId]/loading.tsx",
     "app/messages/group/[sessionId]/loading.tsx",
     "app/contacts/[characterId]/loading.tsx",
     "app/social/[characterId]/loading.tsx",

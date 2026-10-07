@@ -31,6 +31,16 @@ These checks test the lifecycle owner used by the hook with real fake IndexedDB
 and controlled promises; they do
 not claim mounted React/router or device acceptance. No session cache is introduced.
 
+Direct-chat first-paint contracts also protect the absence of a full-page route
+fallback, awaited/keyed route identity, neutral pending header/history/composer
+anchors, and visible notices only for unavailable Foundation, missing characters,
+or failed conversation reads. Warm validated identity paints the chat structure
+with a busy history and disabled composer until the authoritative session resolves;
+it does not display a transient conversation-loading paragraph or reuse old content.
+Real fake-IndexedDB navigation/remount checks retain one hydration and one cleaned-up
+subscription per mount across different characters. Route/anchor checks inspect
+the component wiring; they do not claim mounted router or iPhone visual acceptance.
+
 The versioned JSON contract is:
 
 ```json
