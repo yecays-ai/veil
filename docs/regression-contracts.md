@@ -39,7 +39,20 @@ with a busy history and disabled composer until the authoritative session resolv
 it does not display a transient conversation-loading paragraph or reuse old content.
 Real fake-IndexedDB navigation/remount checks retain one hydration and one cleaned-up
 subscription per mount across different characters. Route/anchor checks inspect
-the component wiring; they do not claim mounted router or iPhone visual acceptance.
+component wiring; the jsdom interaction test mounts ChatRoom but does not emulate
+the Next.js network router or claim iPhone visual acceptance.
+
+Secondary chat lifecycle contracts mount the actual direct-chat page and ChatRoom
+while global bubble timing, Regex, and Background reads are held pending. Current
+session/history still renders; Background settings are read and observed only once
+a session ID exists. Scoped background changes refresh that session, overlapping
+refreshes cannot apply an older result last, and a late image read after navigation
+cannot create an orphan object URL. The mount releases its subscriptions and owned
+URLs on unmount. Bubble timer contracts check direct queue cancellation and mounted
+hook route changes: the former route's timer is cancelled, the next route's timer
+proceeds, and unmount clears the current timer. These are mounted jsdom and
+controlled-timer checks, not browser-router
+or iPhone visual acceptance.
 
 The versioned JSON contract is:
 

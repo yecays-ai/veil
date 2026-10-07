@@ -10,15 +10,21 @@ export function useChatBackground(session: ChatSession | null) {
   const resolved = resolveChatBackground(session, settings);
 
   useEffect(() => {
+    const sessionId = session?.id;
+    if (!sessionId) return;
     let active = true;
-    const refresh = () => void chatStorage.readChatBackgroundSettings().then((next) => {
-      if (active) setSettings(next);
-    });
+    let revision = 0;
+    const refresh = () => {
+      const requestRevision = ++revision;
+      void chatStorage.readChatBackgroundSettings().then((next) => {
+        if (active && revision === requestRevision) setSettings(next);
+      }).catch(() => {});
+    };
     refresh();
     const unsubscribe = chatStorage.subscribe((change) => {
-      if (affectsChatBackground(change, session?.id ?? "")) refresh();
+      if (affectsChatBackground(change, sessionId)) refresh();
     });
-    return () => { active = false; unsubscribe(); };
+    return () => { active = false; revision++; unsubscribe(); };
   }, [session?.id]);
 
   useEffect(() => {
@@ -26,12 +32,11 @@ export function useChatBackground(session: ChatSession | null) {
     if (!id) return;
     let active = true;
     let objectUrl: string | undefined;
-    void (async () => {
-      const blob = await chatStorage.readChatImage(id);
+    void chatStorage.readChatImage(id).then((blob) => {
       if (!active || !blob) return;
       objectUrl = URL.createObjectURL(blob);
       setAsset({ id, url: objectUrl });
-    })();
+    }).catch(() => {});
     return () => {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
