@@ -5,6 +5,11 @@ on:
     types: [labeled]
   pull_request:
     types: [ready_for_review]
+  pull_request_review:
+    types: [submitted, dismissed]
+  pull_request_review_thread:
+    types: [resolved]
+  status:
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -13,19 +18,20 @@ permissions: {}
 
 jobs:
   auto-merge:
-    if: github.event_name == 'issues' || github.event_name == 'pull_request' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: write
       pull-requests: write
+      statuses: read
     steps:
       - uses: actions/github-script@v8
         with:
           script: |
             const labelName = "automerge";
             const { owner, repo } = context.repo;
-            let pullNumber;
+            const pullNumbers = new Set();
             let successfulRun;
 
             if (context.eventName === "workflow_run") {
@@ -35,49 +41,135 @@ jobs:
                 pull.base?.ref === "main" &&
                 pull.head?.repo?.id === context.payload.repository.id);
               if (!associated) return;
-              pullNumber = associated.number;
+              pullNumbers.add(associated.number);
               successfulRun = run;
             } else if (context.eventName === "issues") {
               const issue = context.payload.issue;
               if (!issue.pull_request || context.payload.label?.name !== labelName) return;
-              pullNumber = issue.number;
-            } else {
-              if (context.payload.action !== "ready_for_review") return;
-              pullNumber = context.payload.pull_request.number;
-            }
-
-            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
-            if (
-              pull.state !== "open" ||
-              pull.base.ref !== "main" ||
-              pull.draft ||
-              pull.head.repo?.full_name !== owner + "/" + repo ||
-              !pull.labels.some((label) => label.name === labelName)
-            ) return;
-
-            if (successfulRun) {
-              const associated = (successfulRun.pull_requests || []).some((item) =>
-                item.number === pull.number && item.head?.sha === pull.head.sha);
-              if (!associated) return;
-            } else {
-              const { data } = await github.rest.actions.listWorkflowRuns({
+              pullNumbers.add(issue.number);
+            } else if (context.eventName === "status") {
+              const status = context.payload;
+              if (status.context !== "CodeRabbit" || status.state !== "success") return;
+              const { data: associated } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
                 owner,
                 repo,
-                workflow_id: "ci.yml",
-                event: "pull_request",
-                per_page: 100,
+                commit_sha: status.sha,
               });
-              const latestRun = data.workflow_runs
-                .filter((run) => run.pull_requests?.some((item) =>
-                  item.number === pull.number && item.head?.sha === pull.head.sha))
-                .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
-              if (latestRun?.conclusion !== "success") return;
+              for (const pull of associated) {
+                if (pull.head?.sha === status.sha && pull.base?.ref === "main")
+                  pullNumbers.add(pull.number);
+              }
+            } else if (context.eventName === "pull_request_review") {
+              if (!["submitted", "dismissed"].includes(context.payload.action)) return;
+              pullNumbers.add(context.payload.pull_request.number);
+            } else if (context.eventName === "pull_request_review_thread") {
+              if (context.payload.action !== "resolved") return;
+              pullNumbers.add(context.payload.pull_request.number);
+            } else if (context.eventName === "pull_request") {
+              if (context.payload.action !== "ready_for_review") return;
+              pullNumbers.add(context.payload.pull_request.number);
+            } else {
+              return;
             }
 
-            await github.rest.pulls.merge({
-              owner,
-              repo,
-              pull_number: pull.number,
-              sha: pull.head.sha,
-              merge_method: "squash",
-            });
+            const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!, $cursor: String) {
+              repository(owner: $owner, name: $repo) {
+                pullRequest(number: $number) {
+                  reviewThreads(first: 100, after: $cursor) {
+                    nodes { isResolved }
+                    pageInfo { hasNextPage endCursor }
+                  }
+                }
+              }
+            }`;
+
+            for (const pullNumber of pullNumbers) {
+              const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
+              if (
+                pull.state !== "open" ||
+                pull.base.ref !== "main" ||
+                pull.draft ||
+                pull.head.repo?.full_name !== owner + "/" + repo ||
+                !pull.labels.some((label) => label.name === labelName)
+              ) continue;
+
+              if (successfulRun) {
+                const associated = (successfulRun.pull_requests || []).some((item) =>
+                  item.number === pull.number && item.head?.sha === pull.head.sha);
+                if (!associated) continue;
+              } else {
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  owner,
+                  repo,
+                  workflow_id: "ci.yml",
+                  event: "pull_request",
+                  per_page: 100,
+                });
+                const latestRun = data.workflow_runs
+                  .filter((run) => run.pull_requests?.some((item) =>
+                    item.number === pull.number && item.head?.sha === pull.head.sha))
+                  .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
+                if (latestRun?.conclusion !== "success") continue;
+              }
+
+              const { data: statuses } = await github.rest.repos.listCommitStatusesForRef({
+                owner,
+                repo,
+                ref: pull.head.sha,
+                per_page: 100,
+              });
+              const codeRabbitStatus = statuses
+                .filter((status) => status.context === "CodeRabbit")
+                .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
+              if (codeRabbitStatus?.state !== "success") continue;
+
+              const { data: reviews } = await github.rest.pulls.listReviews({
+                owner,
+                repo,
+                pull_number: pull.number,
+                per_page: 100,
+              });
+              const codeRabbitReview = reviews
+                .filter((review) => review.user?.login === "coderabbitai[bot]" && review.commit_id === pull.head.sha)
+                .sort((left, right) => Date.parse(right.submitted_at || "") - Date.parse(left.submitted_at || ""))[0];
+              if (!codeRabbitReview || codeRabbitReview.state === "CHANGES_REQUESTED") continue;
+
+              const blockingReview = reviews.some((review) =>
+                review.commit_id === pull.head.sha && review.state === "CHANGES_REQUESTED");
+              if (blockingReview) continue;
+
+              let cursor = null;
+              let hasUnresolvedThreads = false;
+              do {
+                const result = await github.graphql(reviewThreadsQuery, {
+                  owner,
+                  repo,
+                  number: pull.number,
+                  cursor,
+                });
+                const connection = result.repository?.pullRequest?.reviewThreads;
+                if (!connection) {
+                  hasUnresolvedThreads = true;
+                  break;
+                }
+                if (connection.nodes.some((thread) => !thread.isResolved)) {
+                  hasUnresolvedThreads = true;
+                  break;
+                }
+                cursor = connection.pageInfo.hasNextPage ? connection.pageInfo.endCursor : null;
+                if (connection.pageInfo.hasNextPage && !cursor) {
+                  hasUnresolvedThreads = true;
+                  break;
+                }
+              } while (cursor);
+              if (hasUnresolvedThreads) continue;
+
+              await github.rest.pulls.merge({
+                owner,
+                repo,
+                pull_number: pull.number,
+                sha: pull.head.sha,
+                merge_method: "squash",
+              });
+            }
+
