@@ -19,6 +19,17 @@ test("shared Switch keeps switch semantics, theme accent, keyboard focus and tou
   assert.match(globalCss, /prefers-reduced-motion:\s*reduce/);
 });
 
+test("global control focus resets browser rings and keeps a theme-colored keyboard focus indicator", () => {
+  const globalCss = read("app/globals.css");
+  const foundationCss = read("app/foundation.css");
+  assert.match(globalCss, /:where\(button, input, select, textarea, \[tabindex\]\):focus \{\s*outline: none;/);
+  assert.match(globalCss, /:where\(button, input, select, textarea, \[tabindex\]\):focus-visible \{\s*outline: 2px solid var\(--theme-accent\);/);
+  assert.match(globalCss, /a:focus-visible \{ outline: 2px solid var\(--theme-accent\);/);
+  assert.doesNotMatch(globalCss, /#2563eb/);
+  assert.match(foundationCss, /\.foundation-form input:focus-visible/);
+  assert.doesNotMatch(foundationCss, /\.foundation-form input:focus,/);
+});
+
 test("all boolean settings use the shared Switch while selection checkboxes remain checkboxes", () => {
   const sources = [
     "components/chat/chat-room.tsx",

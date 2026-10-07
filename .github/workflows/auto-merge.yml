@@ -1,0 +1,83 @@
+name: Safe PR auto-merge
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [ready_for_review]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  auto-merge:
+    if: github.event_name == 'issues' || github.event_name == 'pull_request' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const labelName = "automerge";
+            const { owner, repo } = context.repo;
+            let pullNumber;
+            let successfulRun;
+
+            if (context.eventName === "workflow_run") {
+              const run = context.payload.workflow_run;
+              if (run.event !== "pull_request" || run.conclusion !== "success") return;
+              const associated = (run.pull_requests || []).find((pull) =>
+                pull.base?.ref === "main" &&
+                pull.head?.repo?.id === context.payload.repository.id);
+              if (!associated) return;
+              pullNumber = associated.number;
+              successfulRun = run;
+            } else if (context.eventName === "issues") {
+              const issue = context.payload.issue;
+              if (!issue.pull_request || context.payload.label?.name !== labelName) return;
+              pullNumber = issue.number;
+            } else {
+              if (context.payload.action !== "ready_for_review") return;
+              pullNumber = context.payload.pull_request.number;
+            }
+
+            const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });
+            if (
+              pull.state !== "open" ||
+              pull.base.ref !== "main" ||
+              pull.draft ||
+              pull.head.repo?.full_name !== owner + "/" + repo ||
+              !pull.labels.some((label) => label.name === labelName)
+            ) return;
+
+            if (successfulRun) {
+              const associated = (successfulRun.pull_requests || []).some((item) =>
+                item.number === pull.number && item.head?.sha === pull.head.sha);
+              if (!associated) return;
+            } else {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                owner,
+                repo,
+                workflow_id: "ci.yml",
+                event: "pull_request",
+                per_page: 100,
+              });
+              const latestRun = data.workflow_runs
+                .filter((run) => run.pull_requests?.some((item) =>
+                  item.number === pull.number && item.head?.sha === pull.head.sha))
+                .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
+              if (latestRun?.conclusion !== "success") return;
+            }
+
+            await github.rest.pulls.merge({
+              owner,
+              repo,
+              pull_number: pull.number,
+              sha: pull.head.sha,
+              merge_method: "squash",
+            });

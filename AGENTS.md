@@ -37,6 +37,13 @@ Browser data belongs to the user. Treat Character, User, Universe, chat, appeara
 - Keep prompts and generated context focused. Do not add prompt layers or abstractions without a concrete need.
 - Handle provider errors and cancellation without losing user-authored or persisted data. Never expose API keys.
 
+## Git and GitHub workflow
+
+- When direct Git network operations such as `fetch`, `pull`, or `push` fail or time out because the execution sandbox cannot reach GitHub, do not repeatedly retry the same failing transport or troubleshoot or modify the user's Git, SSH, credentials, DNS, proxy, or remote configuration when those configurations are otherwise known to be valid.
+- Use the available GitHub integration/API for remote repository operations instead and continue the original task without asking the user to manually intervene.
+- If the execution environment is already known to restrict direct GitHub network access, prefer the GitHub integration/API immediately rather than attempting the known-failing transport first.
+- A direct Git transport failure alone is not a reason to stop the task when an authorized GitHub integration/API path is available.
+
 ## Changes and verification
 
 - Keep changes within the requested scope. Do not opportunistically refactor neighboring features.
