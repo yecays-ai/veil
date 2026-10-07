@@ -40,6 +40,16 @@ export class HereThereCommentAttemptGuard {
   }
 }
 
+/** Epoch ownership: a result may commit only while the epoch it started under is still current. */
+export class HereThereGenerationOwner {
+  private epoch = 0;
+  begin(): () => boolean {
+    const owned = this.epoch;
+    return () => this.epoch === owned;
+  }
+  invalidate() { this.epoch++; }
+}
+
 export function startHereThereCommentAttempt(begin: () => boolean,
   generate: () => Promise<void>): Promise<void> | null {
   return begin() ? generate() : null;
@@ -52,7 +62,7 @@ export function hereThereCommentNeedsRefresh(widget: WidgetInstance, now: Date,
 }
 
 type Context = { foundation: FoundationDocument; characterId: string; now: Date;
-  hereWeather: WeatherState; thereWeather: WeatherState };
+  hereWeather: WeatherState; thereWeather: WeatherState; isCurrent?: () => boolean };
 type Commit = (update: (theme: ThemeDocument) => ThemeDocument) => Promise<void>;
 type Dependencies = { foundation: () => Promise<FoundationDocument>; presets: () => Promise<PresetDocument>;
   api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider; bindings: () => Promise<BindingDocument>;
@@ -91,7 +101,9 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
     const promptText = (value: string | null, limit = 500) => value?.trim().slice(0, limit) || "unspecified";
     const weatherText = (weather: WeatherState) => weather.status === "ready"
       ? `${weather.temperatureC}°C, ${weather.summary.slice(0, 120)}` : "unavailable";
-    const contextInstruction = `You are ${promptText(character.name, 100)}. Make one short, natural in-character remark about the current time or weather.\nPersonality: ${promptText(character.personality)}\nSpeaking Style: ${promptText(character.speakingStyle)}\nCurrent local time (HERE): ${userTime}; weather: ${weatherText(context.hereWeather)}\nCurrent local time (THERE): ${characterTime}; weather: ${weatherText(context.thereWeather)}. Never invent weather or temperatures. Output only the remark.`;
+    const userName = promptText(context.foundation.user.name, 100);
+    const characterName = promptText(character.name, 100);
+    const contextInstruction = `You are ${characterName}, the speaker. Make one short, natural in-character remark to ${userName} about the current time or weather.\nHERE is ${userName}'s place (${userName} is the user, in ${promptText(context.foundation.user.location?.label ?? null, 100)}); THERE is ${characterName}'s place (${characterName} is the character, in ${promptText(character.location?.label ?? null, 100)}). "Here" always means ${userName}'s city and "there" always means ${characterName}'s city, even though ${characterName} is the one speaking.\nPersonality: ${promptText(character.personality)}\nSpeaking Style: ${promptText(character.speakingStyle)}\nCurrent local time (HERE, ${userName}): ${userTime}; weather: ${weatherText(context.hereWeather)}\nCurrent local time (THERE, ${characterName}): ${characterTime}; weather: ${weatherText(context.thereWeather)}. Never invent weather or temperatures. Output only the remark.`;
     const messages = [{ role: "system" as const, content: contextInstruction }];
     const diagnostics = [{ identifier: "here-there-context", role: "system" as const, characterLength: contextInstruction.length }];
     const latestSettings = await services.settings();
@@ -105,11 +117,13 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
       request)) text += part;
     text = sanitizeHistoryTimestamps(text).trim();
     if (!text) throw new Error("Empty remark");
+    if (context.isCurrent && !context.isCurrent()) return;
     await commit((theme) => ({ ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((current) =>
       current.id === widget.id && current.config.characterId === context.characterId
         ? { ...current, config: { ...current.config, comment: { characterId: context.characterId,
           text: text.slice(0, 500), generatedAt: context.now.toISOString() } } } : current) } }));
   } catch {
+    if (context.isCurrent && !context.isCurrent()) return;
     if (claimedNextCommentAt !== null) {
       try { await services.scheduleRetry(claimedNextCommentAt, Date.now(), HERE_THERE_COMMENT_RETRY_DELAY_MS); }
       catch { /* Keep the last successful comment even when retry scheduling fails. */ }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { HERE_THERE_COMMENT_MAX_DELAY_MS, HERE_THERE_COMMENT_MIN_DELAY_MS, HERE_THERE_COMMENT_RETRY_DELAY_MS, HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh,
+import { HERE_THERE_COMMENT_MAX_DELAY_MS, HERE_THERE_COMMENT_MIN_DELAY_MS, HERE_THERE_COMMENT_RETRY_DELAY_MS, HereThereCommentAttemptGuard, HereThereGenerationOwner, hereThereCommentNeedsRefresh,
   ensureHereThereComment, startHereThereCommentAttempt } from "../lib/here-there-comment";
 import { bindHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
@@ -264,4 +264,64 @@ test("non-chat generation leaves sessions, messages and WorldBook activation sta
     { ...value.services, api: (id) => api.getApiConfig(id) });
   assert.deepEqual(await storage.readSession(session.id), before);
   assert.deepEqual(await storage.readWorldBookState(session.id), world);
+});
+
+test("Here & There prompt states Lan/Chengdu = here and Peter/New York = there with Peter speaking", async () => {
+  const value = fixture();
+  value.foundation.user.name = "Lan";
+  value.foundation.user.location = { label: "Chengdu", coordinates: null };
+  value.foundation.characters[0] = { ...value.foundation.characters[0], name: "Peter" };
+  let system = "";
+  value.services.provider = async function* (_api, messages) { system = messages[0].content as string; yield "Ok."; };
+  await ensureHereThereComment(value.theme().current.widgets[0], value.context, value.commit, value.services);
+  assert.match(system, /You are Peter, the speaker/);
+  assert.match(system, /HERE is Lan's place \(Lan is the user, in Chengdu\)/);
+  assert.match(system, /THERE is Peter's place \(Peter is the character, in New York\)/);
+  assert.match(system, /"Here" always means Lan's city and "there" always means Peter's city/);
+  assert.match(system, /dry wit/);
+  assert.match(system, /brief and warm/);
+});
+
+test("Here & There widget has no top title but keeps both location columns", async () => {
+  const { readFileSync } = await import("node:fs");
+  const source = readFileSync("components/widgets/here-there-widget.tsx", "utf8");
+  assert.doesNotMatch(source, /here-there-title|hereThere\.title|HERE & THERE/);
+  assert.match(source, /config=\{document\.user\}/);
+  assert.match(source, /config=\{character\}/);
+  assert.match(source, /participant-location/);
+});
+
+test("Here & There result that resolves after OFF is discarded and never committed", async () => {
+  const value = fixture();
+  const owner = new HereThereGenerationOwner();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  value.services.provider = async function* () { await gate; yield "Late remark."; };
+  const widget = value.theme().current.widgets[0];
+  const before = JSON.stringify(value.theme());
+  const run = ensureHereThereComment(widget, { ...value.context, isCurrent: owner.begin() }, value.commit, value.services);
+  owner.invalidate(); // feature switched OFF
+  release();
+  await run;
+  assert.equal(JSON.stringify(value.theme()), before);
+  assert.equal(value.theme().current.widgets[0].config.comment, undefined);
+});
+
+test("OFF then ON starts a new epoch so an older result cannot overwrite the new state", async () => {
+  const value = fixture();
+  const owner = new HereThereGenerationOwner();
+  const widget = value.theme().current.widgets[0];
+  let releaseOld!: () => void;
+  const oldGate = new Promise<void>((resolve) => { releaseOld = resolve; });
+  const oldProvider: TextProvider = async function* () { await oldGate; yield "Old A."; };
+  const newProvider: TextProvider = async function* () { yield "New B."; };
+  const oldRun = ensureHereThereComment(widget, { ...value.context, isCurrent: owner.begin() }, value.commit,
+    { ...value.services, provider: oldProvider });
+  owner.invalidate(); // OFF
+  owner.invalidate(); // ON again, fresh ownership
+  await ensureHereThereComment(widget, { ...value.context, isCurrent: owner.begin() }, value.commit,
+    { ...value.services, provider: newProvider });
+  releaseOld();
+  await oldRun;
+  assert.equal(value.theme().current.widgets[0].config.comment?.text, "New B.");
 });
