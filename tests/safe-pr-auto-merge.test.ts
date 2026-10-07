@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const workflow = readFileSync(".github/workflows/auto-merge.yml", "utf8");
+const workflow = readFileSync(".github/workflows/auto-merge.yml", "utf8").replace(/\r\n/g, "\n");
 const scriptMarker = "          script: |\n";
 const scriptStart = workflow.indexOf(scriptMarker);
 assert.notEqual(scriptStart, -1, "auto-merge workflow script is present");
@@ -14,7 +14,9 @@ for (const line of scriptLines) {
 }
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as new (...args: string[]) =>
   (...args: unknown[]) => Promise<void>;
-const executeWorkflow = new AsyncFunction("github", "context", script.join("\n"));
+const workflowBody = script.join("\n");
+const executeScript = new AsyncFunction("github", "context", "core", workflowBody);
+const executeWorkflow = (github: unknown, context: unknown) => executeScript(github, context, { info: () => {} });
 
 const headSha = "head-sha";
 const mergeSha = "merge-sha";
@@ -39,11 +41,16 @@ interface MockOptions {
   ciConclusion?: string;
   workflowRuns?: WorkflowRun[];
   codeRabbitState?: string;
+  codeRabbitCreator?: string;
+  codeRabbitDescription?: string;
   unresolvedThreads?: boolean;
   reviewState?: string;
   reviewHeadSha?: string;
   humanReviewState?: string;
+  humanReviewHeadSha?: string;
   label?: boolean;
+  draft?: boolean;
+  repository?: string;
   mergeSha?: string | null;
 }
 
@@ -52,6 +59,8 @@ function mockGitHub(options: MockOptions = {}) {
   const workflowRunRequests: Array<Record<string, unknown>> = [];
   const currentPull = {
     ...pull,
+    draft: options.draft ?? false,
+    head: { ...pull.head, repo: { ...pull.head.repo, full_name: options.repository ?? pull.head.repo.full_name } },
     merge_commit_sha: options.mergeSha === undefined ? mergeSha : options.mergeSha,
     labels: options.label === false ? [] : pull.labels,
   };
@@ -69,7 +78,7 @@ function mockGitHub(options: MockOptions = {}) {
           },
           ...(options.humanReviewState ? [{
             user: { login: "reviewer" },
-            commit_id: headSha,
+            commit_id: options.humanReviewHeadSha ?? headSha,
             state: options.humanReviewState,
             submitted_at: "2026-10-07T10:00:00Z",
           }] : []),
@@ -98,6 +107,8 @@ function mockGitHub(options: MockOptions = {}) {
         listCommitStatusesForRef: async () => ({ data: options.codeRabbitState ? [{
           context: "CodeRabbit",
           state: options.codeRabbitState,
+          creator: { login: options.codeRabbitCreator ?? "coderabbitai[bot]" },
+          description: options.codeRabbitDescription ?? "Review completed",
           created_at: "2026-10-07T10:00:00Z",
         }] : [] }),
         listPullRequestsAssociatedWithCommit: async () => ({ data: [currentPull] }),
@@ -156,7 +167,7 @@ test("a completed review with unresolved findings cannot auto-merge", async () =
   assert.deepEqual(merges, []);
 });
 
-test("a successful CodeRabbit status without a current-head review cannot auto-merge", async () => {
+test("a successful CodeRabbit status without a submitted review cannot auto-merge", async () => {
   const { github, merges } = mockGitHub({ codeRabbitState: "success" });
   github.rest.pulls.listReviews = async () => ({ data: [] });
   await executeWorkflow(github, context("status", {
@@ -165,10 +176,10 @@ test("a successful CodeRabbit status without a current-head review cannot auto-m
   assert.deepEqual(merges, []);
 });
 
-test("a CodeRabbit review for an older head cannot authorize auto-merge", async () => {
+test("an older formal review alone cannot authorize auto-merge without current-head completion", async () => {
   const merges = await run("status", {
     context: "CodeRabbit", state: "success", sha: headSha,
-  }, { codeRabbitState: "success", reviewHeadSha: "older-head" });
+  }, { codeRabbitState: "pending", reviewHeadSha: "older-head" });
   assert.deepEqual(merges, []);
 });
 
@@ -315,5 +326,91 @@ test("scheduled recheck waits until review findings are resolved", async () => {
 
   const merges = await run("schedule", {}, { codeRabbitState: "success" });
   assert.deepEqual(merges, [pull.number]);
+});
+
+test("PR #16 incremental fix sequence merges after final-head completion without a second formal review", async () => {
+  const originalHead = "325c8539c90965fa20ad4512b724db5a89e177ef";
+  const finalHead = "55c854afa50d4b7dbc63f3b8447bc0404d8e4696";
+  const { github, merges } = mockGitHub({ codeRabbitState: "pending", reviewHeadSha: originalHead });
+  const candidate = { ...pull, number: 16, head: { ...pull.head, sha: finalHead } };
+  github.rest.pulls.get = async () => ({ data: candidate });
+  github.rest.pulls.list = async () => ({ data: [candidate] });
+  const paginate = github.paginate;
+  github.paginate = async (endpoint, params) => endpoint === github.rest.pulls.list
+    ? [candidate] : paginate(endpoint, params);
+  github.rest.repos.listPullRequestsAssociatedWithCommit = async () => ({ data: [candidate] });
+  let ci: string | null = null;
+  let resolved = false;
+  let completed = false;
+  github.rest.actions.listWorkflowRuns = async () => ({ data: { workflow_runs: [{
+    head_sha: finalHead, conclusion: ci, created_at: "2026-10-07T11:01:30Z",
+    pull_requests: [{ number: 16, head: { sha: finalHead } }],
+  }] } });
+  github.rest.repos.listCommitStatusesForRef = async () => ({ data: [{
+    context: "CodeRabbit", state: completed ? "success" : "pending",
+    creator: { login: "coderabbitai[bot]" },
+    description: completed ? "Review completed" : "Review in progress",
+    created_at: completed ? "2026-10-07T11:14:39Z" : "2026-10-07T11:01:33Z",
+  }] });
+  github.graphql = async () => ({ repository: { pullRequest: { reviewThreads: {
+    nodes: [{ isResolved: resolved }, { isResolved: resolved }],
+    pageInfo: { hasNextPage: false, endCursor: null },
+  } } } });
+  github.rest.pulls.merge = async ({ pull_number, sha }) => {
+    assert.equal(sha, finalHead);
+    merges.push(pull_number);
+  };
+  // An earlier formal review exists throughout; no new review event is emitted.
+  await executeWorkflow(github, context("schedule", {}));
+  assert.deepEqual(merges, []);
+  ci = "success";
+  await executeWorkflow(github, context("schedule", {}));
+  assert.deepEqual(merges, []);
+  resolved = true;
+  await executeWorkflow(github, context("schedule", {}));
+  assert.deepEqual(merges, [], "11:14:01 scheduled recheck still waits for CodeRabbit completion");
+  completed = true;
+  // Reproduce the removed gate: even now it could never find a final-head review.
+  assert.equal((await github.rest.pulls.listReviews()).data.some((review) => review.commit_id === finalHead), false);
+  const oldGate = workflowBody.replace(
+    'review.user?.login === "coderabbitai[bot]" && review.submitted_at',
+    'review.user?.login === "coderabbitai[bot]" && review.commit_id === pull.head.sha',
+  );
+  assert.notEqual(oldGate, workflowBody);
+  await new AsyncFunction("github", "context", "core", oldGate)(github,
+    context("status", { context: "CodeRabbit", state: "success", sha: finalHead }), { info: () => {} });
+  assert.deepEqual(merges, [], "restoring the old gate reproduces #16's eligible-state failure");
+  const logs: string[] = [];
+  await executeScript(github, context("status", {
+    context: "CodeRabbit", state: "success", sha: finalHead,
+  }), { info: (message: string) => logs.push(message) });
+  assert.deepEqual(merges, [16], "11:14:41 completion event requests merge without manual intervention");
+  assert.ok(logs.some((message) => message.includes("all gates passed")));
+  merges.length = 0;
+  await executeWorkflow(github, context("schedule", {}));
+  assert.deepEqual(merges, [16], "scheduled recheck also handles incremental review completion");
+});
+
+test("incremental review support rejects skipped, spoofed, failed or unfinished completion", async () => {
+  for (const options of [
+    { codeRabbitState: "pending" }, { codeRabbitState: "failure" },
+    { codeRabbitState: "success", codeRabbitDescription: "Review skipped" },
+    { codeRabbitState: "success", codeRabbitCreator: "another-user" },
+    { codeRabbitState: "success", reviewState: "PENDING" },
+    { codeRabbitState: "success", reviewState: "DISMISSED" },
+    { codeRabbitState: "success", unresolvedThreads: true },
+    { codeRabbitState: "success", reviewState: "CHANGES_REQUESTED" },
+    { codeRabbitState: "success", humanReviewState: "CHANGES_REQUESTED", humanReviewHeadSha: "older-head" },
+    { codeRabbitState: "success", draft: true },
+    { codeRabbitState: "success", repository: "other/veil" },
+  ]) {
+    assert.deepEqual(await run("schedule", {}, { reviewHeadSha: "older-head", ...options }), [], JSON.stringify(options));
+  }
+});
+
+test("a stale completion event cannot authorize a newer head", async () => {
+  assert.deepEqual(await run("status", {
+    context: "CodeRabbit", state: "success", sha: "older-head",
+  }, { codeRabbitState: "success", reviewHeadSha: "older-head" }), []);
 });
 
