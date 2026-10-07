@@ -3,6 +3,8 @@ name: Safe PR auto-merge
 on:
   issues:
     types: [labeled]
+  pull_request:
+    types: [ready_for_review]
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -11,7 +13,7 @@ permissions: {}
 
 jobs:
   auto-merge:
-    if: github.event_name == 'issues' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    if: github.event_name == 'issues' || github.event_name == 'pull_request' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -31,14 +33,17 @@ jobs:
               if (run.event !== "pull_request" || run.conclusion !== "success") return;
               const associated = (run.pull_requests || []).find((pull) =>
                 pull.base?.ref === "main" &&
-                pull.head?.repo?.full_name === owner + "/" + repo);
+                pull.head?.repo?.id === context.payload.repository.id);
               if (!associated) return;
               pullNumber = associated.number;
               successfulRun = run;
-            } else {
+            } else if (context.eventName === "issues") {
               const issue = context.payload.issue;
               if (!issue.pull_request || context.payload.label?.name !== labelName) return;
               pullNumber = issue.number;
+            } else {
+              if (context.payload.action !== "ready_for_review") return;
+              pullNumber = context.payload.pull_request.number;
             }
 
             const { data: pull } = await github.rest.pulls.get({ owner, repo, pull_number: pullNumber });

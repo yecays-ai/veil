@@ -169,13 +169,14 @@ test("Here & There keeps one persisted future schedule and atomically claims an 
   assert.equal(scheduled.nextCommentAt, now + 2 * 60 * 60 * 1000);
   const reloaded = await second.ensureHereThereSchedule(now + 5_000, () => 0.99);
   assert.equal(reloaded.nextCommentAt, scheduled.nextCommentAt);
-  assert.equal(await first.claimHereThereOpportunity(scheduled.nextCommentAt! - 1, () => 0), false);
+  assert.equal(await first.claimHereThereOpportunity(scheduled.nextCommentAt! - 1, () => 0), null);
   const claims = await Promise.all([
     first.claimHereThereOpportunity(scheduled.nextCommentAt!, () => 0.5),
     second.claimHereThereOpportunity(scheduled.nextCommentAt!, () => 0.5),
   ]);
-  assert.equal(claims.filter(Boolean).length, 1);
+  assert.equal(claims.filter((claim) => claim !== null).length, 1);
   const next = await first.readGlobalProfileSettings();
+  assert.equal(next.nextCommentAt, claims.find((claim) => claim !== null));
   assert(next.nextCommentAt! > scheduled.nextCommentAt!);
   assert(next.nextCommentAt! - scheduled.nextCommentAt! >= 60 * 60 * 1000);
   assert(next.nextCommentAt! - scheduled.nextCommentAt! < 5 * 60 * 60 * 1000);
@@ -186,24 +187,33 @@ test("disabling Here & There cancels expired schedules and re-enabling starts in
   const now = 80_000_000;
   await storage.ensureHereThereSchedule(now, () => 0);
   await storage.updateHereThereEnabled(false, now + 10 * 60 * 60 * 1000);
-  assert.equal(await storage.claimHereThereOpportunity(now + 10 * 60 * 60 * 1000, () => 0), false);
+  assert.equal(await storage.claimHereThereOpportunity(now + 10 * 60 * 60 * 1000, () => 0), null);
   await storage.updateHereThereEnabled(true, now + 10 * 60 * 60 * 1000, () => 0.75);
   const settings = await storage.readGlobalProfileSettings();
   assert.equal(settings.hereThereEnabled, true);
   assert.equal(settings.nextCommentAt, now + 10 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000);
 });
 
-test("failed Here & There opportunities can be rescheduled soon without overriding disabled state", async () => {
+test("failed Here & There opportunities only reschedule their owned opportunity", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const now = 90_000_000;
   const schedule = await storage.ensureHereThereSchedule(now, () => 0);
-  assert.equal(await storage.claimHereThereOpportunity(schedule.nextCommentAt!, () => 0), true);
-  const retryAt = schedule.nextCommentAt! + 5 * 60 * 1000;
-  assert.equal(await storage.rescheduleHereThereOpportunity(schedule.nextCommentAt!, 5 * 60 * 1000), true);
+  const claimedSchedule = await storage.claimHereThereOpportunity(schedule.nextCommentAt!, () => 0);
+  assert.notEqual(claimedSchedule, null);
+  const failureTime = schedule.nextCommentAt! + 2 * 60 * 1000;
+  const retryAt = failureTime + 5 * 60 * 1000;
+  assert.equal(await storage.rescheduleHereThereOpportunity(claimedSchedule!, failureTime, 5 * 60 * 1000), true);
   assert.equal((await storage.readGlobalProfileSettings()).nextCommentAt, retryAt);
-  await storage.updateHereThereEnabled(false, retryAt);
-  assert.equal(await storage.rescheduleHereThereOpportunity(retryAt, 5 * 60 * 1000), false);
+  await storage.updateHereThereEnabled(false, retryAt + 1);
+  assert.equal(await storage.rescheduleHereThereOpportunity(claimedSchedule!, retryAt + 2, 5 * 60 * 1000), false);
   assert.equal((await storage.readGlobalProfileSettings()).nextCommentAt, null);
+
+  const reenabledAt = retryAt + 10_000;
+  await storage.updateHereThereEnabled(true, reenabledAt, () => 0.75);
+  const reenabledSchedule = (await storage.readGlobalProfileSettings()).nextCommentAt;
+  assert.notEqual(reenabledSchedule, claimedSchedule);
+  assert.equal(await storage.rescheduleHereThereOpportunity(claimedSchedule!, retryAt + 20_000, 5 * 60 * 1000), false);
+  assert.equal((await storage.readGlobalProfileSettings()).nextCommentAt, reenabledSchedule);
 });
 
 async function seedHistoryAndWorldBookState(storage: ChatStorage, sessionId: string) {

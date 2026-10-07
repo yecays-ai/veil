@@ -466,24 +466,25 @@ export class ChatStorage {
     }, ["chatSettings"], { domain: "global-profile" });
   }
 
-  claimHereThereOpportunity(now = Date.now(), random = Math.random): Promise<boolean> {
+  claimHereThereOpportunity(now = Date.now(), random = Math.random): Promise<number | null> {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
       if (current?.hereThereEnabled === false || typeof current?.nextCommentAt !== "number"
-        || !Number.isFinite(current.nextCommentAt) || current.nextCommentAt > now) return false;
+        || !Number.isFinite(current.nextCommentAt) || current.nextCommentAt > now) return null;
+      const claimedNextCommentAt = now + randomDelay(random);
       await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
         bubbleTiming: normalizeBubbleTiming(current.bubbleTiming),
-        hereThereEnabled: true, nextCommentAt: now + randomDelay(random) }));
-      return true;
-    }, ["chatSettings"], (claimed) => claimed ? { domain: "global-profile" } : null);
+        hereThereEnabled: true, nextCommentAt: claimedNextCommentAt }));
+      return claimedNextCommentAt;
+    }, ["chatSettings"], (claimed) => claimed !== null ? { domain: "global-profile" } : null);
   }
 
-  rescheduleHereThereOpportunity(now: number, delayMs: number): Promise<boolean> {
+  rescheduleHereThereOpportunity(expectedNextCommentAt: number, now: number, delayMs: number): Promise<boolean> {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
-      if (current?.hereThereEnabled === false) return false;
+      if (current?.hereThereEnabled === false || current?.nextCommentAt !== expectedNextCommentAt) return false;
       await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
         bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
         hereThereEnabled: true, nextCommentAt: now + delayMs }));

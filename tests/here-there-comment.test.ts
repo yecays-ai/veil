@@ -32,8 +32,8 @@ function fixture() {
     thereWeather: { status: "ready", temperatureC: 16, summary: "Cloudy", icon: "", updatedAt: "now" } as WeatherState };
   const services = { bindings: async () => bindings, foundation: async () => foundation, presets: async () => createPresetDocument(),
     api: async (id: string) => ({ id, apiKey: "test", model: "test", baseUrl: "https://example.test/v1" }),
-    settings: async () => ({ hereThereEnabled: true }), claimOpportunity: async () => true,
-    scheduleRetry: async (now: number, delayMs: number) => now + delayMs > 0,
+    settings: async () => ({ hereThereEnabled: true }), claimOpportunity: async () => context.now.getTime() + 1_000,
+    scheduleRetry: async (_expectedNextCommentAt: number, now: number, delayMs: number) => now + delayMs > 0,
     provider: async function* () { yield "Wish you were here."; } as TextProvider };
   return { get bindings() { return bindings; }, set bindings(value) { bindings = value; }, foundation, context, services, commit, theme: () => theme };
 }
@@ -66,8 +66,18 @@ test("widget failure schedules a short retry without looping, and a fresh Home m
   const value = fixture();
   let calls = 0;
   let retryAt: number | null = null;
+  let retryBaseTime: number | null = null;
+  let retryClaimSchedule: number | null = null;
+  const claimedSchedule = value.context.now.getTime() + 1_000;
+  const failureTime = value.context.now.getTime() + 7 * 60 * 1000;
+  value.services.claimOpportunity = async () => claimedSchedule;
   value.services.provider = async function* () { calls++; throw new Error("temporary provider failure"); };
-  value.services.scheduleRetry = async (now, delayMs) => { retryAt = now + delayMs; return true; };
+  value.services.scheduleRetry = async (expectedNextCommentAt, now, delayMs) => {
+    retryClaimSchedule = expectedNextCommentAt;
+    retryBaseTime = now;
+    retryAt = now + delayMs;
+    return true;
+  };
   const mountedAttempts = new HereThereCommentAttemptGuard();
   const runWidgetEffect = async (attempts: HereThereCommentAttemptGuard, now: Date) => {
     const widget = value.theme().current.widgets[0];
@@ -78,9 +88,17 @@ test("widget failure schedules a short retry without looping, and a fresh Home m
     if (attempt) await attempt.finally(() => attempts.finish("a", String(opportunity)));
   };
 
-  await runWidgetEffect(mountedAttempts, value.context.now);
+  const originalDateNow = Date.now;
+  Date.now = () => failureTime;
+  try {
+    await runWidgetEffect(mountedAttempts, value.context.now);
+  } finally {
+    Date.now = originalDateNow;
+  }
   assert.equal(calls, 1);
-  assert.equal(retryAt, value.context.now.getTime() + HERE_THERE_COMMENT_RETRY_DELAY_MS);
+  assert.equal(retryClaimSchedule, claimedSchedule);
+  assert.equal(retryBaseTime, failureTime);
+  assert.equal(retryAt, failureTime + HERE_THERE_COMMENT_RETRY_DELAY_MS);
   assert.equal(value.theme().current.widgets[0].config.comment, undefined);
 
   const nextClockTick = new Date(value.context.now.getTime() + 1000);
