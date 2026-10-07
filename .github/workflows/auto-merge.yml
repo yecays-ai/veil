@@ -88,17 +88,19 @@ jobs:
                 !pull.labels.some((label) => label.name === labelName)
               ) continue;
 
-              const { data } = await github.rest.actions.listWorkflowRuns({
+              const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
                 owner,
                 repo,
                 workflow_id: "ci.yml",
                 event: "pull_request",
-                head_sha: pull.head.sha,
                 per_page: 100,
               });
-              const latestRun = data.workflow_runs
+              // PR associations can reflect a newer head; also verify the run's own code SHA.
+              const latestRun = runs
                 .filter((run) => run.pull_requests?.some((item) =>
-                  item.number === pull.number && item.head?.sha === pull.head.sha))
+                  item.number === pull.number && item.head?.sha === pull.head.sha) &&
+                  (run.head_sha === pull.head.sha ||
+                    (pull.merge_commit_sha && run.head_sha === pull.merge_commit_sha)))
                 .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0];
               if (latestRun?.conclusion !== "success") continue;
 
