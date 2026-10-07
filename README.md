@@ -23,6 +23,10 @@ npm test
 npm start
 ```
 
+`npm test` also reports the current rendering/navigation lifecycle regression
+contracts as JSON. See [Lifecycle regression contracts](docs/regression-contracts.md)
+for the protected invariants and how to add a focused maintenance check.
+
 The Home Screen reads the App Registry and links to Messages, Appearance, User Profile, Characters, and Universe.
 
 Character and user defaults live separately in `config/character.ts` and `config/user.ts`. The only placeholder names are `Character` and `User`; generic routes and UI remain independent of identity configuration.

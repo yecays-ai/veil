@@ -17,5 +17,12 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
+        id: tests
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.tests.outcome != 'skipped'
+        with:
+          name: lifecycle-regression-contracts
+          path: node_modules/.cache/veil-regression-contracts.json
+          if-no-files-found: error
       - run: npm run build
       - run: git diff --check

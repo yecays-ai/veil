@@ -4,6 +4,7 @@ import { createLiveDocument } from "../lib/live-document";
 import { createContactStorage, CONTACT_STORAGE_KEY, addContact } from "../lib/contact-storage";
 import { createBindingStorage, BINDING_STORAGE_KEY } from "../lib/binding-storage";
 import { liveContacts, liveBindings } from "../lib/contacts-bindings-live";
+import { regressionContract } from "./regression-contract";
 
 function environment() {
   const events = new EventTarget();
@@ -25,7 +26,8 @@ function environment() {
 }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-test("the app-session Contacts and Bindings instances are lazy and share real storage reads", async () => {
+regressionContract("contacts-bindings.shared-hydration", "storage-read-budget",
+  "the app-session Contacts and Bindings instances are lazy and share real storage reads", async () => {
   const env = environment();
   const previousWindow = globalThis.window;
   globalThis.window = env.owner as Window & typeof globalThis;
@@ -52,7 +54,8 @@ test("the app-session Contacts and Bindings instances are lazy and share real st
 });
 
 for (const domain of ["Contacts", "Bindings"] as const) {
-  test(`${domain}: repeated consumers and navigation hydrate once and keep scoped synchronization`, async () => {
+  regressionContract(`${domain.toLowerCase()}.route-remount-snapshot`, "render-lifecycle",
+    `${domain}: repeated consumers and navigation hydrate once and keep scoped synchronization`, async () => {
     const env = environment();
     const storage = domain === "Contacts" ? createContactStorage(() => env.localStorage)
       : createBindingStorage(() => env.localStorage);
@@ -120,7 +123,8 @@ test("failed hydration retries on remount; refresh failure retains the last good
   again();
 });
 
-test("changes during hydration coalesce and cannot publish an obsolete document or error", async () => {
+regressionContract("shared-document.stale-hydration", "async-race-safety",
+  "changes during hydration coalesce and cannot publish an obsolete document or error", async () => {
   for (const rejectOld of [false, true]) {
     const env = environment();
     const requests: { resolve: (value: number) => void; reject: (error: Error) => void }[] = [];
@@ -143,6 +147,35 @@ test("changes during hydration coalesce and cannot publish an obsolete document 
     stop();
   }
 });
+
+regressionContract("contacts-bindings.consumer-unsubscribe", "subscription-hygiene",
+  "unmounted consumers stop receiving updates without duplicating app-session listeners", async () => {
+    for (const domain of ["Contacts", "Bindings"] as const) {
+      const env = environment();
+      const storage = domain === "Contacts" ? createContactStorage(() => env.localStorage)
+        : createBindingStorage(() => env.localStorage);
+      const event = domain === "Contacts" ? "veil-contacts-change" : "veil-bindings-change";
+      const key = domain === "Contacts" ? CONTACT_STORAGE_KEY : BINDING_STORAGE_KEY;
+      const live = createLiveDocument<object>({ initial: {}, load: storage.load, key, event,
+        error: "failed", getWindow: () => env.owner });
+      let removedCalls = 0, activeCalls = 0;
+      const stop = live.subscribe(() => { removedCalls++; });
+      await settle();
+      assert.equal(removedCalls, 1);
+      stop();
+      const stopActive = live.subscribe(() => { activeCalls++; });
+      env.events.dispatchEvent(new Event(event));
+      await settle();
+      assert.equal(removedCalls, 1);
+      assert.equal(activeCalls, 1);
+      assert.equal(env.attached(), 2);
+      stopActive();
+      env.events.dispatchEvent(new Event(event));
+      await settle();
+      assert.equal(activeCalls, 1);
+      assert.equal(env.attached(), 2);
+    }
+  });
 
 test("transactions read durable storage, failed writes do not change the snapshot, and restore synchronizes", async () => {
   const env = environment();
