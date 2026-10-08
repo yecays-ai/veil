@@ -110,4 +110,3 @@ test("Foundation uses Core IndexedDB as its only persistence authority", async (
   }))).user.name, "IndexedDB");
   assert.equal((await createIndexedDBFoundationStorage(documents).load()).user.name, "IndexedDB");
 });
-

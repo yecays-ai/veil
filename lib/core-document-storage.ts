@@ -158,4 +158,3 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
 }
 
 export const browserDocumentStorage = new IndexedDBDocumentStorage();
-
