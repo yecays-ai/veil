@@ -44,33 +44,66 @@ export function addContact(document: ContactDocument, characterId: string, now =
   return { ...document, contacts: [...document.contacts,
     { id: crypto.randomUUID(), characterId, createdAt: now, remark: null, heroBackground: null, lastRemarkChange: null }] };
 }
+// Same-Contact conflict rule: when `base` (the values the editor started from) is given,
+// only fields the user actually changed are applied; untouched fields keep whatever is
+// currently stored, so a concurrent edit to the other field is not rolled back. If both
+// sides changed the same field, the later committed write wins. Without `base`, the whole
+// patch is applied (previous behavior).
 export function updateContact(document: ContactDocument, characterId: string,
-  patch: Pick<Contact, "remark" | "heroBackground">, now = Date.now()): ContactDocument {
+  patch: Pick<Contact, "remark" | "heroBackground">, now = Date.now(),
+  base?: Pick<Contact, "remark" | "heroBackground">): ContactDocument {
   if (!document.contacts.some((item) => item.characterId === characterId)) throw new Error("Contact not found.");
   if (patch.heroBackground !== null && !isContactHeroBackground(patch.heroBackground)) throw new Error("Invalid Contact background.");
-  const remark = normalizeContactRemark(patch.remark);
-  return { ...document, contacts: document.contacts.map((contact) => contact.characterId !== characterId ? contact : {
-    ...contact, remark, heroBackground: patch.heroBackground,
-    lastRemarkChange: contact.remark === remark ? contact.lastRemarkChange
-      : { type: "remark-changed", fromRemark: contact.remark, toRemark: remark, createdAt: now },
+  return { ...document, contacts: document.contacts.map((contact) => {
+    if (contact.characterId !== characterId) return contact;
+    const remark = base && normalizeContactRemark(base.remark) === normalizeContactRemark(patch.remark)
+      ? contact.remark : normalizeContactRemark(patch.remark);
+    const heroBackground = base && base.heroBackground === patch.heroBackground
+      ? contact.heroBackground : patch.heroBackground;
+    return { ...contact, remark, heroBackground,
+      lastRemarkChange: contact.remark === remark ? contact.lastRemarkChange
+        : { type: "remark-changed", fromRemark: contact.remark, toRemark: remark, createdAt: now } };
   }) };
 }
 export function removeContact(document: ContactDocument, characterId: string): ContactDocument {
   return { ...document, contacts: document.contacts.filter((item) => item.characterId !== characterId) };
 }
-export function createContactStorage(getStorage: () => StringStorage) {
-  let queue = Promise.resolve();
-  const load = async () => {
-    const raw = getStorage().getItem(CONTACT_STORAGE_KEY);
-    return normalizeContacts(raw ? JSON.parse(raw) : null);
-  };
-  const transact = (update: (current: ContactDocument) => ContactDocument) => {
-    const operation = queue.then(async () => {
-      const next = normalizeContacts(update(await load()));
+const WRITE_ATTEMPTS = 3;
+/**
+ * Writes are one read-modify-write of the whole document, so they are coordinated at three levels:
+ * 1. This instance queues its own writes in order.
+ * 2. Across tabs, each write holds an exclusive Web Lock (`CONTACT_STORAGE_KEY`), so cooperating
+ *    tabs run their read-modify-write one at a time and every write starts from the latest document.
+ *    Without Web Locks (`getLocks()` undefined) only levels 1 and 3 apply.
+ * 3. Just before writing, the stored value is re-read; if another context changed it since the
+ *    read, the update is recomputed from the new value (at most WRITE_ATTEMPTS times, then the
+ *    write fails and nothing is saved). This narrows, but cannot close, the gap between that
+ *    re-read and setItem, which localStorage cannot make atomic; it is not a substitute for the lock.
+ * A failed write never changes stored data and never blocks later writes.
+ */
+export function createContactStorage(getStorage: () => StringStorage,
+  getLocks: () => Pick<LockManager, "request"> | undefined = () => globalThis.navigator?.locks) {
+  let queue: Promise<unknown> = Promise.resolve();
+  const parse = (raw: string | null) => normalizeContacts(raw ? JSON.parse(raw) : null);
+  const load = async () => parse(getStorage().getItem(CONTACT_STORAGE_KEY));
+  const commit = (update: (current: ContactDocument) => ContactDocument): ContactDocument => {
+    for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt++) {
+      const before = getStorage().getItem(CONTACT_STORAGE_KEY);
+      const next = normalizeContacts(update(parse(before)));
+      if (getStorage().getItem(CONTACT_STORAGE_KEY) !== before) continue;
       getStorage().setItem(CONTACT_STORAGE_KEY, JSON.stringify(next));
       if (typeof window !== "undefined") window.dispatchEvent(new Event("veil-contacts-change"));
       return next;
-    });
+    }
+    throw new Error("Contacts changed in another tab. Nothing was saved; try again.");
+  };
+  const transact = (update: (current: ContactDocument) => ContactDocument) => {
+    const run = async () => {
+      const locks = getLocks();
+      return locks ? await locks.request(CONTACT_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
+        : commit(update);
+    };
+    const operation = queue.then(run, run);
     queue = operation.then(() => {}, () => {});
     return operation;
   };
