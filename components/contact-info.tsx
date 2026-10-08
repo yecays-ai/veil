@@ -104,6 +104,7 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     {pending ? <span aria-label="Back to Contacts" aria-disabled="true"><ChevronLeft /> Back</span>
       : <Link href={backHref} aria-label="Back to Contacts"><ChevronLeft /> Back</Link>}
     <p role={contacts.error ? "alert" : undefined}>{!ready || !contacts.ready ? "Loading contact…" : contacts.error || "Contact not found."}</p>
+    {contacts.error && <button type="button" className="settings-button" onClick={() => void contacts.retry()}>Retry</button>}
   </div>;
   const heroBackground = draft ? draft.heroBackground : contact.heroBackground;
   const name = contactDisplayName(draft ? { remark: draft.remark } : contact, character.name);
