@@ -92,7 +92,7 @@ function scopeBlock(raw: string, scope: string, keyframes: ReadonlySet<string>, 
     if (raw[index] === "}") { note("Custom CSS has an unmatched \"}\"."); index++; continue; }
     const atRule = raw[index] === "@";
     const stop = scanPrelude(raw, index);
-    const prelude = raw.slice(index, stop.end).trim();
+    const prelude = stripComments(raw.slice(index, stop.end)).trim();
     if (stop.kind === "eof" || stop.kind === "close") {
       if (prelude) note(atRule ? "An at-rule is incomplete." : "A rule is missing its { } block.");
       index = stop.kind === "close" ? stop.end : raw.length;
@@ -186,8 +186,44 @@ function scopeSelector(selector: string, scope: string): string | null {
     selector.startsWith(`${scope}[`) || selector.startsWith(`${scope}.`) || selector.startsWith(`${scope}>`)) {
     scoped = selector;
   } else scoped = `${scope} ${selector}`;
-  const after = scoped.slice(scope.length).trimStart();
-  return /^[+~]/.test(after) ? null : scoped;
+  return reachesRootSiblings(scoped.slice(scope.length)) ? null : scoped;
+}
+
+/**
+ * True when the root's own compound selector (`:not(.x)`, `.dark`, `[a]`, `:has(…)` …) is
+ * followed by a sibling combinator, which would select elements next to the conversation root.
+ * `rest` is everything after the root token, already free of comments.
+ */
+function reachesRootSiblings(rest: string): boolean {
+  let i = 0, depth = 0;
+  for (; i < rest.length; i++) {
+    const char = rest[i];
+    if (char === "\\") { i++; continue; }
+    if (char === '"' || char === "'") { i = skipString(rest, i); continue; }
+    if (char === "(" || char === "[") depth++;
+    else if ((char === ")" || char === "]") && depth > 0) depth--;
+    else if (depth === 0 && (/\s/.test(char) || char === ">" || char === "+" || char === "~")) break;
+  }
+  while (i < rest.length && /\s/.test(rest[i])) i++;
+  return rest[i] === "+" || rest[i] === "~";
+}
+
+/** Comments are insignificant to the browser; removing them keeps checks from being hidden by one. */
+function stripComments(text: string): string {
+  let out = "";
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    if (char === "\\") { out += text.slice(i, i + 2); i++; continue; }
+    if (char === '"' || char === "'") { const end = skipString(text, i); out += text.slice(i, end + 1); i = end; continue; }
+    if (char === "/" && text[i + 1] === "*") {
+      const end = text.indexOf("*/", i + 2);
+      out += " ";
+      i = end === -1 ? text.length : end + 1;
+      continue;
+    }
+    out += char;
+  }
+  return out;
 }
 
 type Stop = { kind: "block" | "semicolon" | "close" | "eof"; end: number };

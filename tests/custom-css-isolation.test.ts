@@ -27,6 +27,16 @@ function leaks(css: string): string[] {
   style.textContent = css;
   dom.window.document.head.append(style);
   const found: string[] = [];
+  // Independent oracle: a real selector engine against elements next to and around the root.
+  const probe = new JSDOM(`<!doctype html><html class="dark"><body class="dark"><header class="x dark" id="before"></header>
+    <div class="chat-room-wrapper dark" data-a="1"><span class="a b x dark" id="inside"></span></div>
+    <p class="x a dark" id="after"></p><p class="b" id="after2"></p></body></html>`);
+  const root = probe.window.document.querySelector(SCOPE)!;
+  const outside = (selector: string) => {
+    try {
+      return [...probe.window.document.querySelectorAll(selector)].some((el) => el !== root && !root.contains(el));
+    } catch { return false; } // an invalid selector matches nothing in the browser either
+  };
   const walk = (rules: ArrayLike<CSSRule>) => {
     for (const rule of Array.from(rules)) {
       const text = rule.cssText.trimStart();
@@ -39,14 +49,14 @@ function leaks(css: string): string[] {
         for (const selector of topLevelSelectors((rule as CSSStyleRule).selectorText)) {
           const trimmed = selector.trim();
           const rest = trimmed.startsWith(SCOPE) ? trimmed.slice(SCOPE.length).trimStart() : null;
-          if (rest === null || /^[+~]/.test(rest)) found.push(`selector:${trimmed}`);
+          if (rest === null || /^[+~]/.test(rest) || outside(trimmed)) found.push(`selector:${trimmed}`);
         }
       } else if ("cssRules" in rule) walk((rule as CSSGroupingRule).cssRules);
       else found.push(`other:${text.slice(0, 20)}`);
     }
   };
   walk(style.sheet!.cssRules);
-  dom.window.close();
+  dom.window.close(); probe.window.close();
   return found;
 }
 
@@ -64,6 +74,12 @@ const hostile: Record<string, string> = {
   "sibling of the root": `${SCOPE} ~ .x { display: none }`,
   "sibling via body": "body ~ .x { display: none }",
   "root sibling combinator": "html + body { display: none }",
+  "comment hides sibling combinator": "body /**/ ~ .x { display: none }",
+  "comment before leading combinator": "/**/+ .x { display: none }",
+  "root pseudo-class then sibling": ":root:not(.missing) ~ * { display: none }",
+  "root class then sibling": "html.dark ~ * { display: none }",
+  "root :has then sibling": "body:has(.a)~* { display: none }",
+  "scope attribute then sibling": `${SCOPE}[data-a] ~ * { display: none }`,
   "leading sibling combinator": "+ .x { display: none }",
   "scope literal sibling": `${SCOPE} + .x { display: none }`,
   "nested at-rule leak": "@media screen { @import 'x.css'; body ~ .x { color: red } }",
@@ -132,7 +148,9 @@ test("hostile or malformed CSS cannot style anything outside the conversation ro
     const result = analyzeSessionCSS(css, SCOPE);
     assert.deepEqual(leaks(result.css), [], `${name} leaked: ${result.css}`);
   }
-  for (const name of ["sibling of the root", "sibling via body", "root sibling combinator", "leading sibling combinator", "scope literal sibling"]) {
+  for (const name of ["sibling of the root", "sibling via body", "root sibling combinator", "leading sibling combinator", "scope literal sibling",
+    "comment hides sibling combinator", "comment before leading combinator", "root pseudo-class then sibling",
+    "root class then sibling", "root :has then sibling", "scope attribute then sibling"]) {
     const result = analyzeSessionCSS(hostile[name], SCOPE);
     assert.match(result.errors.join(" "), /reach outside this conversation/, name);
     assert.equal(result.css.trim(), "");
@@ -157,7 +175,8 @@ test("hostile or malformed CSS cannot style anything outside the conversation ro
 test("fault injection: the previous implementation leaks on these inputs and these tests catch it", () => {
   const legacyLeaks = (css: string) => leaks(legacyScopeSessionCSS(legacyRemoveCssImports(css), SCOPE));
   for (const name of ["uppercase import", "mixed-case import", "font-face", "unprefixed keyframes", "brace inside string",
-    "brace inside comment", "sibling via body", "scope literal sibling"]) {
+    "brace inside comment", "sibling via body", "scope literal sibling",
+    "root pseudo-class then sibling", "scope attribute then sibling"]) {
     assert.notDeepEqual(legacyLeaks(hostile[name]), [], `old scoper should leak: ${name}`);
     assert.deepEqual(leaks(analyzeSessionCSS(hostile[name], SCOPE).css), [], `fixed scoper must not leak: ${name}`);
   }
