@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/chat-stop-boundary`；PR 见 PR 页面；base `origin/main` 3107d8e。
+Claude；分支 `claude/chat-stop-boundary`；PR https://github.com/yecays-ai/veil/pull/48；base `origin/main` 3107d8e。
 涉及：`lib/chat/engine.ts`、`components/chat/chat-room.tsx`（仅 `regenerate()` 的 finally）、`tests/chat-stop-boundary.test.ts`。
 
 ## 已完成
