@@ -1,8 +1,8 @@
 # STATUS — Contacts async operation protection
 
 更新人：Codex
-更新时间：2026-10-08T22:32:00+08:00
-发现范围：PR #49 当前 head f647c08，原 base 3107d8e；当前 main daff476。GitHub open PR 检查发现 #36、#49、#50；#36 与 #50 均为 Chat 文件，PR #48 已不再开放且其合并差异仅涉及 Chat Stop 文件。PR #49 最新 CodeRabbit 线程指出 ContactInfo 复用实例切换 characterId 时保留联系人状态，已在当前 head 复现。未改 #36、#48 或 #50。
+更新时间：2026-10-08T22:40:49+08:00
+发现范围：实际远端检查时间 2026-10-08T22:40:49+08:00（UTC 14:40:49）；main=bff33fc7e87211424316b31dcc2040d1d39321f9。检查开放 PR #36（fix/chat-first-frame-complete，head ea68ffe691138e6520ab6e7a06f753fd0e1df423）、#49（fix/contacts-async-lifecycle-20261008，head 06f2c2ce9a10cdcac304c7f3e9e09ae123a1985f，base 3107d8ea798be181f7528d2d72853020c7b2efb4）和 #51（fix/resource-load-retry-20261008，head ef0945df5a067212095a0dcd2320b97ca7787d43）；并核对 #48（claude/chat-stop-boundary，已合并至 main）及 #50（claude/chat-background-async-errors，已合并至 main）。PR #49 最新 CodeRabbit 文档意见及精确 head 已从 GitHub 远端核对。本地 worktree 仍在旧提交 f647c08 且有未提交改动，故未用其代表远端现状；GitHub API 可访问，远端 PR/分支/评论核查没有因访问限制而缩小范围。未改 #36、#48、#50 或 #51。
 
 ## 当前任务
 
