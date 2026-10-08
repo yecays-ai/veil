@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/brave-davinci-ws2ruk`；PR 尚未创建（创建后补链接）；涉及 `lib/preset-storage.ts`、`tests/preset-delete-rollback.test.ts`（新）、`tests/preset-persistence-safety.test.ts`（仅一条断言）。
+Claude；分支 `claude/brave-davinci-ws2ruk`；PR [#40](https://github.com/yecays-ai/veil/pull/40)（人工审查，不加 automerge）；涉及 `lib/preset-storage.ts`、`tests/preset-delete-rollback.test.ts`（新）、`tests/preset-persistence-safety.test.ts`（仅一条断言）。
 
 ## 已完成
 
