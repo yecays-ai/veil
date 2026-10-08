@@ -63,8 +63,9 @@ test("mounted ThemeProvider rejects writes after failed hydration and leaves per
       const stored = JSON.stringify({ userConfiguration: "must survive" });
       dom.window.localStorage.setItem("companion-phone.appearance.v1", stored);
       await act(async () => { root.render(createElement(ThemeProvider, null, createElement(Probe))); });
-      assert.equal(container.querySelector("button")!.dataset.ready, "false");
-      await act(async () => { container.querySelector("button")!.click(); });
+      const save = () => [...container.querySelectorAll("button")].find((button) => button.textContent === "Save")!;
+      assert.equal(save().dataset.ready, "false");
+      await act(async () => { save().click(); });
       await waitFor(() => !!failure);
       assert.equal(writes, 0);
       assert.equal(dom.window.localStorage.getItem("companion-phone.appearance.v1"), stored);
