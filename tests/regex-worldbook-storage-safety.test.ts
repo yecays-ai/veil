@@ -74,11 +74,49 @@ function storageCases<D>(name: string, key: string, fixture: (raw: StringStorage
   test(`${name}: failed cleanup cannot roll back across a newer post-delete update`, async () => {
     const { raw } = memory(), first = fixture(raw), peer = fixture(raw);
     await first.adapter.save(first.document);
+    const cleanup = new Error("Binding unavailable");
     const bindings = { ...createBindingStorage(() => raw), transact: async () => {
-      await peer.adapter.transact(peer.edit); throw new Error("Binding unavailable");
+      await peer.adapter.transact(peer.edit); throw cleanup;
     } };
-    await assert.rejects(first.remove(first.adapter, bindings), /Newer data was kept/);
+    await assert.rejects(first.remove(first.adapter, bindings), (error: unknown) => {
+      assert(error instanceof Error); assert.match(error.message, /Newer data was kept/);
+      assert.equal(error.cause, cleanup); return true;
+    });
     assert.deepEqual(await peer.adapter.load(), peer.edit(peer.drop(first.document)));
+  });
+  test(`${name}: failed cleanup reports rollback storage failure without inventing a newer version`, async () => {
+    const { raw, fail } = memory(), first = fixture(raw);
+    await first.adapter.save(first.document);
+    const cleanup = new Error("Binding unavailable");
+    const bindings = { ...createBindingStorage(() => raw), transact: async () => { fail(true); throw cleanup; } };
+    await assert.rejects(first.remove(first.adapter, bindings), (error: unknown) => {
+      assert(error instanceof Error); assert.match(error.message, /could not be restored.*Quota blocked/);
+      assert.doesNotMatch(error.message, /Newer data was kept/); assert.equal(error.cause, cleanup); return true;
+    });
+    fail(false); assert.deepEqual(await first.adapter.load(), first.drop(first.document));
+  });
+  test(`${name}: failed cleanup reports rollback lock contention and retains the Binding error cause`, async () => {
+    const { raw } = memory(), first = fixture(raw);
+    await first.adapter.save(first.document);
+    const cleanup = new Error("Binding unavailable");
+    let release!: () => void, active: Promise<void> | undefined;
+    let startedResolve!: () => void;
+    const started = new Promise<void>((done) => { startedResolve = done; });
+    const bindings = { ...createBindingStorage(() => raw), transact: async () => {
+        active = navigator.locks.request(key, { ifAvailable: true }, async (lock) => {
+          assert(lock); startedResolve(); await new Promise<void>((finish) => { release = finish; });
+        }).then(() => {});
+        await started; throw cleanup;
+    } };
+    const pending = first.remove(first.adapter, bindings);
+    try {
+      await started;
+      await assert.rejects(pending, (error: unknown) => {
+        assert(error instanceof Error); assert.match(error.message, /could not be restored.*saved elsewhere/);
+        assert.doesNotMatch(error.message, /Newer data was kept/); assert.equal(error.cause, cleanup); return true;
+      });
+    } finally { release?.(); await active; }
+    assert.deepEqual(await first.adapter.load(), first.drop(first.document));
   });
 }
 

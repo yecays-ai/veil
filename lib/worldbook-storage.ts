@@ -2,6 +2,7 @@ import type { BindingStorage } from "./binding-storage";
 import type { StringStorage } from "./storage-types";
 import { emptyWorldBookDocument, validateWorldBookDocument, type WorldBookDocument } from "./worldbook";
 import { withoutWorldBookBinding } from "./bindings";
+import { createRegexWorldBookWriteGuard, EditorSnapshotConflict } from "./regex-worldbook-write-guard";
 
 const KEY = "veil.worldbooks.v1";
 export interface WorldBookStorage {
@@ -10,20 +11,11 @@ export interface WorldBookStorage {
   transact(update: (current: WorldBookDocument) => WorldBookDocument, expected?: WorldBookDocument): Promise<WorldBookDocument>;
 }
 export function createWorldBookStorage(getStorage: () => StringStorage): WorldBookStorage {
-  const exclusive = async <T>(operation: () => T, guarded: boolean): Promise<T> => {
-    if (typeof navigator !== "undefined" && navigator.locks)
-      return await navigator.locks.request(KEY, { ifAvailable: true }, async (lock) => {
-        if (!lock) throw new Error("WorldBooks are being saved elsewhere. Try again.");
-        return operation();
-      });
-    if (guarded && typeof window !== "undefined")
-      throw new Error("Safe WorldBook editing requires browser Web Locks. Your draft has been kept.");
-    return operation();
-  };
-  const assertSnapshot = (current: WorldBookDocument, expected?: WorldBookDocument) => {
-    if (expected && JSON.stringify(current) !== JSON.stringify(validateWorldBookDocument(expected)))
-      throw new Error("WorldBook changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.");
-  };
+  const { exclusive, assertSnapshot } = createRegexWorldBookWriteGuard(KEY, validateWorldBookDocument, {
+    busy: "WorldBooks are being saved elsewhere. Try again.",
+    unsupported: "Safe WorldBook editing requires browser Web Locks. Your draft has been kept.",
+    conflict: "WorldBook changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.",
+  });
   const load = (): WorldBookDocument => {
     const raw = getStorage().getItem(KEY);
     if (!raw) return emptyWorldBookDocument();
@@ -68,7 +60,11 @@ export async function deleteWorldBookAndBindings(
     await bindings.transact((current) => withoutWorldBookBinding(current, bookId));
   } catch (reason) {
     try { await worldBooks.transact(() => before, after); }
-    catch { throw new Error("WorldBooks changed while Binding cleanup failed. Newer data was kept; review WorldBooks and Bindings."); }
+    catch (rollback) {
+      if (rollback instanceof EditorSnapshotConflict)
+        throw new Error("WorldBooks changed while Binding cleanup failed. Newer data was kept; review WorldBooks and Bindings.", { cause: reason });
+      throw new Error(`Binding cleanup failed and the WorldBook could not be restored: ${rollback instanceof Error ? rollback.message : String(rollback)}`, { cause: reason });
+    }
     throw reason;
   }
   return worldBooks.load();

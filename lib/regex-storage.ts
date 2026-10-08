@@ -3,6 +3,7 @@ import type { StringStorage } from "./storage-types";
 import { withoutRegexBinding } from "./bindings";
 import { emptyRegexDocument, validateRegexDocument, type RegexDocument } from "./regex";
 import { DEFAULT_REGEX_GROUP_ID, defaultRegexGroup, withDefaultRegexGroup } from "./regex-defaults";
+import { createRegexWorldBookWriteGuard, EditorSnapshotConflict } from "./regex-worldbook-write-guard";
 
 const KEY = "veil.regex.v1";
 export interface RegexStorage {
@@ -11,20 +12,11 @@ export interface RegexStorage {
   transact(update: (current: RegexDocument) => RegexDocument, expected?: RegexDocument): Promise<RegexDocument>;
 }
 export function createRegexStorage(getStorage: () => StringStorage): RegexStorage {
-  const exclusive = async <T>(operation: () => T, guarded: boolean): Promise<T> => {
-    if (typeof navigator !== "undefined" && navigator.locks)
-      return await navigator.locks.request(KEY, { ifAvailable: true }, async (lock) => {
-        if (!lock) throw new Error("Regex is being saved elsewhere. Try again.");
-        return operation();
-      });
-    if (guarded && typeof window !== "undefined")
-      throw new Error("Safe Regex editing requires browser Web Locks. Your draft has been kept.");
-    return operation();
-  };
-  const assertSnapshot = (current: RegexDocument, expected?: RegexDocument) => {
-    if (expected && JSON.stringify(current) !== JSON.stringify(validateRegexDocument(expected)))
-      throw new Error("Regex changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.");
-  };
+  const { exclusive, assertSnapshot } = createRegexWorldBookWriteGuard(KEY, validateRegexDocument, {
+    busy: "Regex is being saved elsewhere. Try again.",
+    unsupported: "Safe Regex editing requires browser Web Locks. Your draft has been kept.",
+    conflict: "Regex changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.",
+  });
   const load = (): RegexDocument => {
     const raw = getStorage().getItem(KEY);
     if (!raw) return emptyRegexDocument();
@@ -102,7 +94,11 @@ export async function deleteRegexGroupAndBindings(
     await bindings.transact((current) => withoutRegexBinding(current, groupId));
   } catch (reason) {
     try { await regex.transact(() => before, after); }
-    catch { throw new Error("Regex changed while Binding cleanup failed. Newer data was kept; review Regex and Bindings."); }
+    catch (rollback) {
+      if (rollback instanceof EditorSnapshotConflict)
+        throw new Error("Regex changed while Binding cleanup failed. Newer data was kept; review Regex and Bindings.", { cause: reason });
+      throw new Error(`Binding cleanup failed and the Regex Group could not be restored: ${rollback instanceof Error ? rollback.message : String(rollback)}`, { cause: reason });
+    }
     throw reason;
   }
   return regex.load();
