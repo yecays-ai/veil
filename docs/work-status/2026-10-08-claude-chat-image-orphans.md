@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/brave-davinci-ws2ruk`；PR 创建后补链接（人工审查，不加 automerge）；涉及 `lib/chat/storage.ts`（图片引用辅助函数与 `saveChatImage`）、`tests/chat-image-orphans.test.ts`（新）。与 #36 同改 `lib/chat/storage.ts` 但位置不同（#36 在 revision 计数与 `peekExistingSession`），`git merge-tree` 试合并无冲突；与 Codex 的 C9 分支无文件重叠。
+Claude；分支 `claude/brave-davinci-ws2ruk`；PR [#41](https://github.com/yecays-ai/veil/pull/41)（人工审查，不加 automerge）；涉及 `lib/chat/storage.ts`（图片引用辅助函数与 `saveChatImage`）、`tests/chat-image-orphans.test.ts`（新）。与 #36 同改 `lib/chat/storage.ts` 但位置不同（#36 在 revision 计数与 `peekExistingSession`），`git merge-tree` 试合并无冲突；与 Codex 的 C9 分支无文件重叠。
 
 ## 已完成
 
