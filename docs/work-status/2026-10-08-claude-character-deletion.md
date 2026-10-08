@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/brave-davinci-ws2ruk`；PR 尚未创建（创建后在此补链接）；base `origin/main` 5e0b03c。
+Claude；分支 `claude/brave-davinci-ws2ruk`；PR https://github.com/yecays-ai/veil/pull/46；base `origin/main` 5e0b03c。
 涉及：`lib/character-deletion.ts`、`lib/character-leftovers.ts`（新）、`lib/chat/storage.ts`（`countMessages`、`removeGroupMembers`）、`lib/chat/types.ts`（注释）、`lib/bindings.ts`、`lib/here-there-binding.ts`、`lib/foundation-copy.ts`、`components/profile-pages.tsx`、`tests/character-deletion*.ts`、`tests/stale-editor-ui.test.ts`、`tests/navigation-reentry.test.ts`、`tests/no-active-character.test.ts`。
 
 ## 已完成
