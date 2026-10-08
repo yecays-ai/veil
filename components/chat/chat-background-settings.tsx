@@ -14,17 +14,24 @@ import type { ChatBackgroundSettings, ChatSession } from "../../lib/chat/types";
 
 function useAssetPreview(id: string | null) {
   const [url, setUrl] = useState<string | null>(null);
+  const [failedId, setFailedId] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     let objectUrl: string | undefined;
     void (async () => {
-      const blob = id ? await getChatImageFromIndexedDB(id) : null;
-      if (!active) return;
-      if (!blob) {
+      try {
+        const blob = id ? await getChatImageFromIndexedDB(id) : null;
+        if (!active) return;
+        if (!blob) {
+          setUrl(null);
+        } else {
+          objectUrl = URL.createObjectURL(blob);
+          setUrl(objectUrl);
+        }
+      } catch {
+        if (!active) return;
         setUrl(null);
-      } else {
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
+        setFailedId(id);
       }
     })();
     return () => {
@@ -32,7 +39,7 @@ function useAssetPreview(id: string | null) {
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [id]);
-  return url;
+  return { url, failed: id !== null && failedId === id };
 }
 
 export function ChatBackgroundSettings({ session, onBack }: {
@@ -44,19 +51,29 @@ export function ChatBackgroundSettings({ session, onBack }: {
   const [busy, setBusy] = useState(false);
   const [crop, setCrop] = useState<string | null>(null);
   const conversationInput = useRef<HTMLInputElement>(null);
+  const [loadError, setLoadError] = useState("");
   useEffect(() => {
     let active = true;
-    const refresh = () => void chatStorage.readChatBackgroundSettings().then((next) => {
-      if (active) setSettings(next);
-    });
+    let revision = 0;
+    // Only the newest read may publish, so an older read finishing late cannot replace newer settings.
+    const refresh = () => {
+      const requestRevision = ++revision;
+      void chatStorage.readChatBackgroundSettings().then((next) => {
+        if (!active || requestRevision !== revision) return;
+        setSettings(next);
+        setLoadError("");
+      }).catch(() => {
+        if (active && requestRevision === revision) setLoadError("Chat background settings could not be loaded.");
+      });
+    };
     refresh();
     const unsubscribe = chatStorage.subscribe((change) => {
       if (affectsChatBackground(change, session.id)) refresh();
     });
-    return () => { active = false; unsubscribe(); };
+    return () => { active = false; revision++; unsubscribe(); };
   }, [session.id]);
   const effectiveId = resolveChatBackgroundImage(session, settings);
-  const effectivePreview = useAssetPreview(effectiveId);
+  const { url: effectivePreview, failed: previewFailed } = useAssetPreview(effectiveId);
 
   async function choose(file: File | undefined) {
     if (!file) return;
@@ -140,7 +157,8 @@ export function ChatBackgroundSettings({ session, onBack }: {
           void choose(event.target.files?.[0]); event.target.value = "";
         }} />
       </section>
-      {error && <p className="chat-notice" role="alert">{error}</p>}
+      {(error || loadError || previewFailed) && <p className="chat-notice" role="alert">
+        {error || loadError || "The current background preview could not be loaded."}</p>}
     </div>
     {crop && <ImageCropDialog source={crop} shape="portrait" title="Adjust chat background"
       onSave={saveCrop} onCancel={() => setCrop(null)} />}
