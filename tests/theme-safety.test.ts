@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { AppearanceImageStorage, HOLDER_LEASE_MS, withThemeSnapshotImages } from "../lib/appearance-image-storage";
+import { AppearanceImageStorage, COLLECT_GRACE_MS, HOLDER_LEASE_MS, withThemeSnapshotImages } from "../lib/appearance-image-storage";
 import { createThemeStorage, persistAppearanceImage } from "../lib/theme-storage";
 import { ThemeImageUrls } from "../lib/theme-image-urls";
 import { defaultSnapshot, themeImageAssetId, themeImageAssetIds, type ThemeDocument } from "../lib/theme-types";
@@ -13,9 +13,10 @@ function fixture() {
   const storage = { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); } };
   const factory = new IDBFactory();
-  const images = new AppearanceImageStorage(() => factory);
-  const peerImages = new AppearanceImageStorage(() => factory);
-  return { values, storage, images, peerImages, themes: createThemeStorage(() => storage, images),
+  const time = { now: 1_000_000 };
+  const images = new AppearanceImageStorage(() => factory, () => time.now);
+  const peerImages = new AppearanceImageStorage(() => factory, () => time.now);
+  return { values, storage, images, peerImages, time, themes: createThemeStorage(() => storage, images),
     peer: createThemeStorage(() => storage, peerImages) };
 }
 function deferred<T>() {
@@ -53,7 +54,7 @@ test("concurrent Theme writers update the latest persisted authority, not stale 
 });
 
 test("cross-client collection preserves staged uploads until publication, and saved preset references afterward", async () => {
-  const { themes, peer, images, peerImages } = fixture();
+  const { themes, peer, images, peerImages, time } = fixture();
   await themes.save(document());
   const entered = deferred<string>();
   const resume = deferred<void>();
@@ -71,6 +72,9 @@ test("cross-client collection preserves staged uploads until publication, and sa
   await peer.transact((saved) => ({ ...saved, current: defaultSnapshot(),
     presets: [{ id: "saved", name: "Saved", snapshot: saved.current }] }));
   assert(await images.readBlob(themeImageAssetId(reference)!));
+  await themes.transact((saved) => ({ ...saved, presets: [] }));
+  assert(await images.readBlob(themeImageAssetId(reference)!), "a freshly published image survives collection by a stale reader");
+  time.now += COLLECT_GRACE_MS;
   await themes.transact((saved) => ({ ...saved, presets: [] }));
   assert.equal(await images.readBlob(themeImageAssetId(reference)!), null);
 });
@@ -148,4 +152,16 @@ test("a staging holder left by an interrupted owner stops pinning its image afte
   clock += 2;
   await images.collect(() => new Set());
   assert.equal(await images.readBlob(id), null, "an expired holder no longer pins the blob");
+});
+
+test("a collector holding a stale document cannot delete an image that was just published", async () => {
+  const { images, peerImages, time } = fixture();
+  const staged = await images.stageBlobs([new Blob(["image"], { type: "image/png" })]);
+  const id = themeImageAssetId(staged.references[0])!;
+  await staged.release();
+  await peerImages.collect(() => new Set()); // the peer still sees the document from before the publication
+  assert(await images.readBlob(id), "a young image is kept even when the stale document does not reference it");
+  time.now += COLLECT_GRACE_MS;
+  await peerImages.collect(() => new Set());
+  assert.equal(await images.readBlob(id), null, "once past the grace period an unreferenced image is collected");
 });

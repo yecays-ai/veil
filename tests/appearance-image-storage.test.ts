@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { AppearanceImageStorage, storeThemeSnapshotImages } from "../lib/appearance-image-storage";
+import { AppearanceImageStorage, COLLECT_GRACE_MS, storeThemeSnapshotImages } from "../lib/appearance-image-storage";
 import { createThemeStorage, persistAppearanceImage } from "../lib/theme-storage";
 import { defaultSnapshot, type ThemeDocument } from "../lib/theme-types";
 import { themeImageAssetId } from "../lib/theme-types";
@@ -54,7 +54,8 @@ test("Appearance saves image blobs separately and reloads lightweight references
 
 test("snapshots share image references and GC waits for the final reference", async () => {
   const factory = new IDBFactory();
-  const images = new AppearanceImageStorage(() => factory);
+  const time = { now: 1_000 };
+  const images = new AppearanceImageStorage(() => factory, () => time.now);
   const [reference] = await images.saveBlobs([image()]);
   const snapshot = { ...defaultSnapshot(), profile: { ...defaultSnapshot().profile,
     wallpaper: { ...defaultSnapshot().profile.wallpaper, source: reference } } };
@@ -67,6 +68,7 @@ test("snapshots share image references and GC waits for the final reference", as
 
   await themes.save({ ...shared, presets: [shared.presets[1]] });
   assert(await images.readBlob(themeImageAssetId(reference)!));
+  time.now += COLLECT_GRACE_MS; // a freshly written image is kept for the grace period
   await themes.save({ ...shared, current: defaultSnapshot(), presets: [] });
   assert.equal(await images.readBlob(themeImageAssetId(reference)!), null);
   assert.equal(await countAssets(factory), 0);
@@ -125,7 +127,8 @@ test("asset write failure never applies a theme reference", async () => {
 
 test("failed Theme document write preserves the prior document and defers optional image cleanup", async () => {
   const factory = new IDBFactory();
-  const images = new AppearanceImageStorage(() => factory);
+  const time = { now: 1_000 };
+  const images = new AppearanceImageStorage(() => factory, () => time.now);
   const storage = new MemoryStorage();
   const themes = createThemeStorage(() => storage, images);
   const before = await themes.load();
@@ -137,6 +140,7 @@ test("failed Theme document write preserves the prior document and defers option
   storage.failWrites = false;
   assert.deepEqual(await themes.load(), before);
   assert(await images.readBlob(themeImageAssetId(reference)!));
+  time.now += COLLECT_GRACE_MS;
   await themes.save(before);
   assert.equal(await images.readBlob(themeImageAssetId(reference)!), null);
 });

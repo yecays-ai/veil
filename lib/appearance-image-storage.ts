@@ -12,6 +12,10 @@ const STORE = "assets";
 type Holder = { id: string; at: number };
 type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: Holder[] };
 export const HOLDER_LEASE_MS = 24 * 60 * 60 * 1000;
+// Theme documents live in localStorage while images live here, and another tab's localStorage write
+// has no cross-process visibility guarantee. An image this young is never collected, so a collector
+// holding a stale document cannot delete an image that was just published.
+export const COLLECT_GRACE_MS = 10 * 60 * 1000;
 
 const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
@@ -97,7 +101,7 @@ export class AppearanceImageStorage {
       for (let index = 0; index < blobs.length; index++) {
         const previous = await request<ImageAsset | undefined>(store.get(ids[index]));
         await request(store.put({ id: ids[index], blob: blobs[index], type: blobs[index].type,
-          createdAt: previous?.createdAt ?? this.now(), holders: previous?.holders } satisfies ImageAsset));
+          createdAt: this.now(), holders: previous?.holders } satisfies ImageAsset));
       }
       if (holder) for (const id of new Set([...ids, ...heldIds])) {
         const asset = await request<ImageAsset | undefined>(store.get(id));
@@ -158,7 +162,8 @@ export class AppearanceImageStorage {
       const held = (asset: ImageAsset) => (asset.holders ?? []).some((holder) =>
         typeof holder === "object" && holder !== null && typeof holder.at === "number" && now - holder.at < HOLDER_LEASE_MS);
       for (const asset of saved)
-        if (!usedIds.has(asset.id) && !held(asset)) await request(store.delete(asset.id));
+        if (!usedIds.has(asset.id) && !held(asset) && now - asset.createdAt >= COLLECT_GRACE_MS)
+          await request(store.delete(asset.id));
     });
   }
 }
