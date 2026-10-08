@@ -20,6 +20,7 @@ import { useFoundation } from "./foundation-provider";
 import { ProfileForm } from "./profile-form";
 import { Avatar, ProfileView } from "./profile-view";
 import { PageShell } from "./page-shell";
+import { useBackNavigation } from "./use-back-navigation";
 import { PresenceBadge } from "./presence";
 import { RootAppHeader } from "./root-app-header";
 
@@ -123,6 +124,7 @@ export function CharactersPage() {
 }
 export function CharacterPage({ characterId }: { characterId?: string }) {
   const { document, ready, commit } = useFoundation();
+  const back = useBackNavigation();
   const router = useRouter();
   const [editing, setEditing] = useState(false),
     [confirmDelete, setConfirmDelete] = useState(false),
@@ -136,6 +138,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
       <PageShell
         title={C.characters.title}
         backHref="/characters"
+        {...back}
         backLabel="Back to Characters"
         bodyClassName="foundation-page"
       >
@@ -147,6 +150,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
       <PageShell
         title={C.characters.title}
         backHref="/characters"
+        {...back}
         backLabel="Back to Characters"
         bodyClassName="foundation-page"
       >
@@ -175,6 +179,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
             : character!.name
       }
       backHref="/characters"
+        {...back}
       backLabel="Back to Characters"
       bodyClassName="foundation-page"
     >
