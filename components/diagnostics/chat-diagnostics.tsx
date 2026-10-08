@@ -77,8 +77,8 @@ function ChatDiagnosticsObserver({ onDisable }: { onDisable: () => void }) {
     recordChatDiagnostic("provider-ready", { provider: "contacts", ready: contacts.ready, error: !!contacts.error });
   }, [contacts.ready, contacts.error, pathname]);
   useEffect(() => {
-    recordChatDiagnostic("provider-ready", { provider: "theme", ready: theme.ready, error: !!theme.error });
-  }, [theme.ready, theme.error, pathname]);
+    recordChatDiagnostic("provider-ready", { provider: "theme", ready: theme.ready });
+  }, [theme.ready, pathname]);
   useEffect(() => {
     recordChatDiagnostic("provider-ready", { provider: "bindings", ready: bindings.ready, error: !!bindings.error });
   }, [bindings.ready, bindings.error, pathname]);
