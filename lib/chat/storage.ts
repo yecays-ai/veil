@@ -376,26 +376,32 @@ export class ChatStorage {
       try { listener(change); } catch { /* Persistence has already succeeded. */ }
     });
   }
+  // One channel per storage instance, opened on first use and kept for the page's lifetime. It both
+  // publishes and receives from the moment it exists, so `backgroundRevision()` stays current for a
+  // caller that validates a cached snapshot while it has no listener.
+  private openChannel(): BroadcastChannel | undefined {
+    if (this.channel) return this.channel;
+    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return undefined;
+    try { this.channel = new BroadcastChannel(CHAT_DATABASE_NAME); } catch { return undefined; }
+    this.channel.onmessage = this.receive;
+    return this.channel;
+  }
+  // A received change goes to local listeners only (dispatch, never notify), so it is not re-broadcast.
+  private receive = (message: MessageEvent<ChatStorageChange>) => {
+    const change = message.data;
+    if (!change || typeof change !== "object" || typeof change.domain !== "string") return;
+    if (change.domain === "session" || change.domain === "messages" || change.domain === "worldbook-state") {
+      if (typeof change.sessionId !== "string") return;
+    } else if (change.domain !== "chat-background" && change.domain !== "global-profile" && change.domain !== "asset") return;
+    this.dispatch(change);
+  };
+  // Called only after the transaction has committed.
   private notify(change: ChatStorageChange) {
     this.dispatch(change);
-    try { this.channel?.postMessage(change); } catch { /* A closed observer channel. */ }
+    try { this.openChannel()?.postMessage(change); } catch { /* A closed observer channel. */ }
   }
   subscribe(listener: (change: ChatStorageChange) => void) {
-    if (
-      !this.channel &&
-      typeof window !== "undefined" &&
-      typeof BroadcastChannel !== "undefined"
-    ) {
-      this.channel = new BroadcastChannel(CHAT_DATABASE_NAME);
-      this.channel.onmessage = (message: MessageEvent<ChatStorageChange>) => {
-        const change = message.data;
-        if (!change || typeof change !== "object" || typeof change.domain !== "string") return;
-        if (change.domain === "session" || change.domain === "messages" || change.domain === "worldbook-state") {
-          if (typeof change.sessionId !== "string") return;
-        } else if (change.domain !== "chat-background" && change.domain !== "global-profile" && change.domain !== "asset") return;
-        this.dispatch(change);
-      };
-    }
+    this.openChannel(); // a window that only listens must receive too
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);

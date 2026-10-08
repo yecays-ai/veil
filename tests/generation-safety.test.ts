@@ -342,7 +342,10 @@ test("failed or stopped Continue preserves the visible truncated turn and manual
 
 test("browsers without Web Locks fail closed for generation while idle Send/Edit/Clear remain usable", async () => {
   const saved = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const savedChannel = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");
   Object.defineProperty(globalThis, "window", { configurable: true, value: {} });
+  // Writes open a channel once a window exists; an open Node channel would keep the test process alive.
+  Object.defineProperty(globalThis, "BroadcastChannel", { configurable: true, value: undefined });
   try {
     const factory = new IDBFactory(), storage = new ChatStorage(() => factory, () => undefined);
     const session = await storage.openSession("a"), user = await storage.send(session.id, "Question");
@@ -356,6 +359,7 @@ test("browsers without Web Locks fail closed for generation while idle Send/Edit
     assert.equal(await storage.clearSession(session.id), 1);
   } finally {
     if (saved) Object.defineProperty(globalThis, "window", saved); else Reflect.deleteProperty(globalThis, "window");
+    if (savedChannel) Object.defineProperty(globalThis, "BroadcastChannel", savedChannel); else Reflect.deleteProperty(globalThis, "BroadcastChannel");
   }
 });
 
