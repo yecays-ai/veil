@@ -10,6 +10,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
 import { regressionContract } from "./regression-contract";
 import { browserRegexStorage } from "../lib/regex-storage";
+import { drainContinuation } from "./lifecycle-test-tools";
 
 regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
   "direct chat has no full-page fallback and still awaits and keys the current route identity", () => {
@@ -143,13 +144,13 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   const peterAssetPending = new Promise<void>((resolve) => { releasePeterAsset = resolve; });
   let holdBackgroundRefreshes = false;
   const backgroundResponses: Array<(settings: Awaited<ReturnType<typeof chatStorage.readChatBackgroundSettings>>) => void> = [];
-  let finishPeterAsset!: () => void;
-  const peterAssetFinished = new Promise<void>((resolve) => { finishPeterAsset = resolve; });
+  const assetReads: Promise<Blob | null>[] = [];
   let destinationReads = 0, backgroundReads = 0, profileReads = 0, regexReads = 0;
   let activeChatSubscriptions = 0;
   const imageReads: string[] = [], createdUrls: string[] = [], revokedUrls: string[] = [];
   const container = dom.window.document.getElementById("root")!;
   const root = createRoot(container);
+  let failed = false;
   try {
     browserFoundationStorage.load = async () => foundation;
     chatStorage.readChatBackgroundSettings = async () => {
@@ -184,10 +185,14 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     const pepAssetId = await chatStorage.saveChatImage(new Blob(["pep wallpaper"], { type: "image/png" }));
     await chatStorage.updateSessionSettings(peter.id, { backgroundImage: peterAssetId });
     await chatStorage.updateSessionSettings(destination.id, { backgroundImage: pepAssetId });
-    chatStorage.readChatImage = async (id) => {
+    chatStorage.readChatImage = (id) => {
       imageReads.push(id);
-      if (id === peterAssetId) { await peterAssetPending; finishPeterAsset(); }
-      return originalImageRead.call(chatStorage, id);
+      const read = (async () => {
+        if (id === peterAssetId) await peterAssetPending;
+        return await originalImageRead.call(chatStorage, id);
+      })();
+      assetReads.push(read);
+      return read;
     };
     URL.createObjectURL = (() => {
       const url = `blob:chat-lifecycle-${createdUrls.length + 1}`;
@@ -272,14 +277,24 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       "a late scoped read cannot restore an older background setting");
     holdBackgroundRefreshes = false;
 
-    releasePeterAsset();
-    await peterAssetFinished;
+    await act(async () => {
+      releasePeterAsset();
+      await drainContinuation(Promise.all(assetReads), "late chat background reads");
+    });
     assert.deepEqual(createdUrls, ["blob:chat-lifecycle-1"], "a late asset from the unmounted route never creates an object URL");
+  } catch (reason) {
+    failed = true;
+    throw reason;
   } finally {
     releaseDestination();
     releaseSecondary();
     releasePeterAsset();
-    await act(async () => { root.unmount(); });
+    let cleanupError: unknown;
+    await act(async () => {
+      root.unmount();
+      try { await drainContinuation(Promise.allSettled(assetReads), "chat background cleanup"); }
+      catch (reason) { cleanupError = reason; }
+    });
     const subscriptionsAtUnmount = activeChatSubscriptions;
     const revokedAtUnmount = [...revokedUrls];
     chatStorage.readSession = originalRead;
@@ -291,13 +306,15 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     browserRegexStorage.load = originalRegexLoad;
     URL.createObjectURL = originalCreateObjectURL;
     URL.revokeObjectURL = originalRevokeObjectURL;
-    if (createdUrls.length) assert.deepEqual(revokedUrls, createdUrls, "mounted chat assets are revoked on unmount");
     dom.window.close();
     for (const [name, descriptor] of saved) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else Reflect.deleteProperty(globalThis, name);
     }
-    assert.equal(subscriptionsAtUnmount, 0, "the ChatRoom releases its session, timing and background subscriptions on unmount");
-    if (createdUrls.length) assert.deepEqual(revokedAtUnmount, createdUrls, "mounted chat assets are revoked on unmount");
+    if (!failed) {
+      assert.equal(subscriptionsAtUnmount, 0, "the ChatRoom releases its session, timing and background subscriptions on unmount");
+      assert.equal(cleanupError, undefined, "asset continuations settle before test globals are restored");
+      if (createdUrls.length) assert.deepEqual(revokedAtUnmount, createdUrls, "mounted chat assets are revoked on unmount");
+    }
   }
 });
