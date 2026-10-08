@@ -216,7 +216,7 @@ async function mountedRoom() {
       else Reflect.deleteProperty(globalThis, name);
     }
   };
-  return { a, b, full, withoutA, chatEngine, input, button, click, type, render, refresh, settle, hold, wait, close };
+  return { a, b, full, withoutA, chatEngine, chatStorage, input, button, click, type, render, refresh, settle, hold, wait, close };
 }
 
 regressionContract("chat.reply-lock-released-without-session", "async-race-safety",
@@ -241,23 +241,46 @@ regressionContract("chat.reply-lock-released-without-session", "async-race-safet
   });
 
 regressionContract("chat.send-lock-released-without-session", "async-race-safety",
-  "Send finishing while the room temporarily lacks a session restores the composer", async () => {
+  "a saved Send clears its draft when the original session returns, without a duplicate Send", async () => {
     const ui = await mountedRoom();
-    const pending = ui.hold<Awaited<ReturnType<typeof ui.chatEngine.send>>>();
+    const pending = ui.hold<void>();
     const calls: string[] = [];
     try {
-      ui.chatEngine.send = (sessionId) => {
+      ui.chatEngine.send = async (sessionId, content, quoteMessageId) => {
         calls.push(sessionId);
-        return calls.length === 1 ? pending.promise : Promise.resolve(null as never);
+        await pending.promise;
+        return ui.chatStorage.send(sessionId, content, quoteMessageId);
       };
       await ui.render("a"); await ui.type("Draft"); await ui.click("Send");
       assert.deepEqual(calls, [ui.a.id]);
       await ui.refresh(ui.withoutA); await ui.wait(() => !ui.input() || !!ui.input()?.disabled);
-      await ui.settle(pending, null as never);
+      await ui.settle(pending, undefined);
       await ui.refresh(ui.full); await ui.wait(() => !!ui.input() && !ui.input()!.disabled);
-      assert.equal(ui.button("Send")?.disabled, false, "sending state is released when the original session returns");
+      await ui.wait(() => ui.input()?.value === "");
+      assert.equal(ui.button("Send")?.disabled, true, "a saved draft cannot be sent again after its session returns");
       await ui.click("Send");
-      assert.deepEqual(calls, [ui.a.id, ui.a.id], "the old sendingLock does not block the next Send");
+      assert.deepEqual(calls, [ui.a.id], "the completed Send is not duplicated");
+      assert.equal((await ui.chatStorage.readSession(ui.a.id)).messages.filter((message) => message.content === "Draft").length, 1);
+    } finally { await ui.close(); }
+  });
+
+regressionContract("chat.saved-send-preserves-other-session-draft", "async-race-safety",
+  "a saved Send cannot clear a different session's identical draft", async () => {
+    const ui = await mountedRoom();
+    const pending = ui.hold<void>();
+    try {
+      ui.chatEngine.send = async (sessionId, content, quoteMessageId) => {
+        await pending.promise;
+        return ui.chatStorage.send(sessionId, content, quoteMessageId);
+      };
+      await ui.render("a"); await ui.type("Same text"); await ui.click("Send");
+      await ui.render("b"); await ui.type("B's draft"); await ui.type("Same text");
+      await ui.settle(pending, undefined);
+      assert.equal(ui.input()?.value, "Same text", "B's draft survives A's successful save");
+      await ui.render("a");
+      assert.equal(ui.input()?.value, "Same text", "returning to A must not clear text B edited");
+      assert.equal((await ui.chatStorage.readSession(ui.a.id)).messages.filter((message) => message.content === "Same text").length, 1);
+      assert.equal((await ui.chatStorage.readSession(ui.b.id)).messages.length, 0);
     } finally { await ui.close(); }
   });
 
