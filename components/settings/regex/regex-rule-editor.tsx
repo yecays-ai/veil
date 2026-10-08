@@ -18,14 +18,14 @@ const modes: { value: RegexMode; label: string; description: string }[] = [
   { value: "display", label: "Display Only", description: "Only changes what you see." },
 ];
 export function RegexRuleEditor({ groupId, ruleId }: { groupId: string; ruleId: string }) {
-  const library = useRegex();
+  const library = useRegex(`${groupId}/${ruleId}`);
   const group = library.document?.groups.find((item) => item.id === groupId);
   const saved = group?.rules.find((item) => item.id === ruleId);
   const back = `/settings/regex/${groupId}`;
   if (!saved) return <PageShell className="settings-app regex-manager" title="Regex Rule" backHref={back} backLabel="Back to Regex Group">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Regex Rule not found." : "Loading Regex Rule…"}</p>}
   </PageShell>;
-  return <Editor key={ruleId} saved={saved} groupId={groupId} library={library} />;
+  return <Editor key={`${groupId}/${ruleId}`} saved={saved} groupId={groupId} library={library} />;
 }
 function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string; library: ReturnType<typeof useRegex> }) {
   const { error, busy, run, change } = library;

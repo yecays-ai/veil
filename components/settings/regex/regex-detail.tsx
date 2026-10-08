@@ -14,7 +14,7 @@ import { DEFAULT_REGEX_GROUP_ID } from "../../../lib/regex-defaults";
 import { Switch } from "../ui/switch";
 
 export function RegexDetail({ groupId }: { groupId: string }) {
-  const library = useRegex();
+  const library = useRegex(groupId);
   const saved = library.document?.groups.find((group) => group.id === groupId);
   if (!saved) return <PageShell className="settings-app regex-manager" title="Regex Group" backHref="/settings/regex" backLabel="Back to Regex Groups">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Regex Group not found." : "Loading Regex Group…"}</p>}

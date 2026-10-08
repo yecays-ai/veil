@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import type { RegexMode, RegexRole, RegexRule } from "../../../lib/regex";
 import { regexPatternError } from "../../../lib/regex-engine";
@@ -16,17 +16,23 @@ export function RegexInlineRule({ rule, busy, initiallyOpen = false, onSave }: {
   const [draft, setDraft] = useState(rule);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const locked = useRef(false), baseline = useRef(rule);
   const save = async (next: RegexRule, syncDraft = true, closeAfterSave = false) => {
+    if (locked.current) return;
+    locked.current = true;
     setSaving(true);
     setError("");
     try {
+      if (JSON.stringify(rule) !== JSON.stringify(baseline.current))
+        throw new Error("This Rule changed elsewhere. Copy your draft, then reopen the editor.");
       await onSave(next);
+      baseline.current = next;
       if (syncDraft) setDraft(next);
       else setDraft((current) => ({ ...current, enabled: next.enabled }));
       if (closeAfterSave) setOpen(false);
     }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Rule could not be saved."); }
-    finally { setSaving(false); }
+    finally { locked.current = false; setSaving(false); }
   };
   const roles: RegexRole[] = ["user", "assistant"];
   const modes: RegexMode[] = ["stored", "prompt", "display"];
@@ -60,7 +66,7 @@ export function RegexInlineRule({ rule, busy, initiallyOpen = false, onSave }: {
       </select></label>
       <button type="button" className="settings-button" disabled={busy || saving || !!invalid || !draft.appliesTo.length || !draft.name.trim()}
         onClick={() => void save(draft, true, true)}>Save Rule</button>
-      {error && <small role="alert">{error}</small>}
     </div>}
+    {error && <small role="alert">{error}</small>}
   </article>;
 }
