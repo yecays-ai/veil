@@ -5,7 +5,7 @@ import { APP_REGISTRY } from "../lib/app-registry";
 import { reverseAppPositions } from "../lib/desktop-layout";
 import { applyPreset, deletePreset, savePreset } from "../lib/theme-presets";
 import { exportTheme, importTheme } from "../lib/theme-package";
-import { inlineThemeSnapshotImages, storeThemeSnapshotImages } from "../lib/appearance-image-storage";
+import { inlineThemeSnapshotImages, withThemeSnapshotImages } from "../lib/appearance-image-storage";
 import { persistAppearanceImage, readImage } from "../lib/theme-storage";
 import {
   CSS_VARIABLES,
@@ -602,8 +602,8 @@ export function Appearance() {
                       throw new Error(
                         "Theme package is too large (maximum 3 MB).",
                       );
-                    const snapshot = await storeThemeSnapshotImages(importTheme(await file.text()));
-                    await commit((d) => ({ ...d, current: snapshot }));
+                    await withThemeSnapshotImages(importTheme(await file.text()),
+                      (snapshot) => commit((d) => ({ ...d, current: snapshot })));
                     setCss(null);
                   }, "Theme imported.");
               }}
