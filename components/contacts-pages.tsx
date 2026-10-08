@@ -15,6 +15,7 @@ import { addContact, contactDisplayName } from "../lib/contact-storage";
 import { ContactInfo } from "./contact-info";
 import { contactReturnSourceFromQuery } from "../lib/contact-navigation";
 import { contactIdsFromQuery, contactSelectionState, type ContactSelectionMode } from "../lib/contact-route-state";
+import { recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 
 export function ContactsRoute() {
   const { mode, initialSelection } = contactSelectionState(useSearchParams());
@@ -62,7 +63,9 @@ export function ContactsHome({ mode, initialSelection = [] }: {
   function openDirect(characterId: string) {
     if (openingId) return;
     setOpeningId(characterId); setError("");
-    router.push(`/messages/${encodeURIComponent(characterId)}`);
+    const target = `/messages/${encodeURIComponent(characterId)}`;
+    recordChatDiagnostic("navigation-call", { target, characterId });
+    router.push(target);
   }
   function toggleSelected(characterId: string) {
     setSelected((current) => current.includes(characterId)
@@ -90,6 +93,7 @@ export function ContactsHome({ mode, initialSelection = [] }: {
             </span>}
           </>;
           if (mode === "single") return <button className="social-row contact-select-row" type="button" key={character.characterId}
+            data-chat-navigation={`/messages/${encodeURIComponent(character.characterId)}`}
             disabled={!!openingId} onClick={() => openDirect(character.characterId)}>{content}</button>;
           if (mode === "multi") return <button className="social-row contact-select-row" type="button" key={character.characterId}
             aria-pressed={selectedContacts.includes(character.characterId)} onClick={() => toggleSelected(character.characterId)}>{content}</button>;

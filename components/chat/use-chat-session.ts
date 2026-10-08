@@ -4,6 +4,7 @@ import { chatStorage } from "../../lib/chat/storage";
 import { chatEngine } from "../../lib/chat/engine";
 import { createChatSessionLifecycle } from "../../lib/chat/session-lifecycle";
 import type { ChatMessage, ChatSession } from "../../lib/chat/types";
+import { recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
 
 export function useChatSession(characterId: string, enabled: boolean) {
   const [state, setState] = useState<{ characterId: string; session: ChatSession | null; messages: ChatMessage[]; error: string }>({
@@ -12,6 +13,7 @@ export function useChatSession(characterId: string, enabled: boolean) {
   const lifecycle = useRef<ReturnType<typeof createChatSessionLifecycle> | null>(null);
   useEffect(() => {
     const owner = createChatSessionLifecycle(characterId, chatStorage, (next, error) => {
+      recordChatDiagnostic("session-messages-published", { characterId, hasSession: !!next, messageCount: next?.messages.length ?? 0, error: !!error });
       setState({ characterId, session: next?.session ?? null, messages: next?.messages ?? [], error });
     }, (id) => chatEngine.stop(id));
     lifecycle.current = owner;

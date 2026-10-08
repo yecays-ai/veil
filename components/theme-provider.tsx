@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { browserThemeStorage } from "../lib/theme-storage";
+import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 import { browserAppearanceImageStorage } from "../lib/appearance-image-storage";
 import { ThemeImageUrls } from "../lib/theme-image-urls";
 import {
@@ -73,8 +74,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         setDocument(saved);
         setReady(true);
         setError("");
+        const assetsStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
+        if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-start");
         const urls = await images.sync(saved);
-        if (active && request === revision && urls) setResolvedImages(urls);
+        if (active && request === revision && urls) {
+          setResolvedImages(urls);
+          if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-ready", {
+            resolvedCount: Object.keys(urls).length, durationMs: performance.now() - assetsStartedAt, ready: true,
+          });
+        }
       } catch (reason) {
         if (!active || request !== revision) return;
         writable.current = false;
