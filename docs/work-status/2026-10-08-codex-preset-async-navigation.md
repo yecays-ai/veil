@@ -6,7 +6,7 @@
 
 ## 当前任务
 
-待审查：Presеt / Prompt 页面异步写操作导航归属保护，PR #53 已创建，等待 CodeRabbit；GitHub Actions CI 已通过。
+待审查：Preset / Prompt 页面异步写操作导航归属保护，PR #53 已创建，等待 CodeRabbit；GitHub Actions CI 已通过。
 
 ## 谁在改哪里
 
