@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, MessageCircle, Phone, Video, UserRound, Plus } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { useContacts } from "./use-contacts";
 import { Avatar } from "./profile-view";
@@ -36,10 +36,13 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
   const backgroundInput = useRef<HTMLInputElement>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const backHref = contactReturnTarget(characterId, returnSource);
-  useEffect(() => () => { imageRequest.current++; }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
+    imageRequest.current++;
+    setDraft(null); setBusy(false); setError(""); setCropSource(null);
+    setImageReading(false); setDeleteOpen(false);
     const owner = lifetime;
-    return () => { owner.current++; };
+    const request = imageRequest;
+    return () => { owner.current++; request.current++; };
   }, [characterId]);
 
   function cancelEdit() {
