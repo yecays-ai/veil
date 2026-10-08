@@ -1,16 +1,16 @@
 # STATUS — 2026-10-08-codex-regex-worldbook-editors
 
 更新人：GPT/Codex
-更新时间：2026-10-08T16:09:03+08:00
+更新时间：2026-10-08T16:10:35+08:00
 发现范围：开工通过 GitHub API 检查 main、开放 PR #33/#34 的文件和 head 分支、main 与两个 head 的 work-status 记录及远端分支列表。GitHub 集成传输暂不可用后，复用既有 Git 认证以备用 Git/API 通道完成发布前发现：main 已到 b74bdd5b936c5b3cb6a82721e711cdaa8225eedc，开放 #36（Chat 首帧）和 #37（Text API / Character）。已读其任务记录；未发布本地任务不可见。
 
 ## 当前任务
 
-实现和验证已完成；正在发布独立 PR。
+已完成并发布独立 PR #38；停止在人工审查边界，无 automerge、未合并、不等待审核。
 
 ## 谁在改哪里
 
-GPT/Codex；分支 fix/regex-worldbook-editor-safety；PR 尚未创建；base d12b0e0306bfe70e24deda208d6adc337fdd42f7。仅 lib/regex-storage.ts、lib/worldbook-storage.ts、components/settings/regex/、components/settings/worldbooks/、两个新行为测试以及本任务记录。发布前发现 #37 也修改共享 tests/ui-save-consistency.test.ts，已保留原回调签名并撤销本任务对该文件的修改，避免重叠。开工检查的 PR #33（Chat 壁纸）与 #34（Contacts 并发）无重叠。不修改 Bindings 管理器、Chat、Theme、格式或迁移。
+GPT/Codex；分支 fix/regex-worldbook-editor-safety；[PR #38](https://github.com/yecays-ai/veil/pull/38)；base d12b0e0306bfe70e24deda208d6adc337fdd42f7。仅 lib/regex-storage.ts、lib/worldbook-storage.ts、components/settings/regex/、components/settings/worldbooks/、两个新行为测试以及本任务记录。发布前发现 #37 也修改共享 tests/ui-save-consistency.test.ts，已保留原回调签名并撤销本任务对该文件的修改，避免重叠。开工检查的 PR #33（Chat 壁纸）与 #34（Contacts 并发）无重叠。不修改 Bindings 管理器、Chat、Theme、格式或迁移。
 
 ## 已完成
 
@@ -18,16 +18,16 @@ GPT/Codex；分支 fix/regex-worldbook-editor-safety；PR 尚未创建；base d1
 - hooks 绑定路由/lifetime，过滤旧加载、失效文件读取和等待中的保存回调；提交内部再次检查所有权，失败不会假成功跳转。
 - 删除回滚快照来自实际删除事务；清理失败时只在删除后的版本仍匹配时恢复，保留并发更新。未扩展 Binding 存储或跨域事务。
 - Regex Inline 保存使用原始 Rule 基线，阻止重复提交；折叠状态也显示写入错误。
-- 28 个新增行为场景，包括实际挂载双编辑器、失败重试、目标删除、异步路由/重入、锁冲突，以及 WorldBook Binding 顺序。
+- 30 个新增行为场景（13 个存储、17 个挂载组件/hook 场景），包括实际挂载双编辑器、失败重试、目标删除、异步路由/重入、锁冲突，以及 WorldBook Binding 顺序。
 - 20 个旧实现负对照全部出现预期断言失败，无跳过/取消；未靠缺失 API 或源字符串制造失败。
 - Node 等价包脚本：测试编译、完整测试 483/483、回归契约 36/36、重点测试 57/57、typecheck、ESLint、production build、diff 检查全部通过。npm 不可用；按仓库 skill 使用底层 Node 入口。
 
 ## 尚未验证
 
-- 尚无远端 CI/审核结果；按用户要求发布后不等待审核。已恢复备用发布通道，无凭据输出或配置更改。
+- 远端 CI/审核结果未等待；按用户要求发布后即结束。已恢复备用发布通道，无凭据输出或配置更改。
 - 原生多窗口/iPhone 未验证；测试使用真实 localStorage（JSDOM）、受控锁生命周期、实际 hooks/组件与存储适配器。
 - 整库快照会保守拒绝不相关并发编辑；旧版本标签页应重载。无锁浏览器受保护的编辑被拒绝，草稿仍在。Binding 清理仍为既有跨域补偿流程。
 
 ## 下一步
 
-创建一个独立 PR，更新本记录中的链接和状态后结束；禁止 automerge，不等待审核，不直接合并。
+本任务到 PR #38 结束，后续由人工审查；禁止 automerge，不等待审核，不直接合并。
