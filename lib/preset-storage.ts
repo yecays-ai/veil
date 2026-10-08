@@ -26,13 +26,21 @@ function withCanonicalBuiltin(document: PresetDocument): PresetDocument {
 }
 export function createPresetStorage(getStorage: () => StringStorage): PresetStorage {
   // All cooperating tabs share one mutation boundary, including rollback.
-  const exclusive = async <T>(operation: () => T): Promise<T> => {
-    if (typeof navigator !== "undefined" && navigator.locks)
-      return await navigator.locks.request(KEY, { ifAvailable: true }, async (lock) => {
-        if (!lock) throw new Error("Presets are busy in another tab. Try again.");
-        return operation();
-      });
-    return Promise.resolve().then(operation);
+  // Calls on this instance queue first; the browser lock is only for other tabs and clients, so
+  // two reads in the same tab never see each other as "another tab".
+  let queue: Promise<unknown> = Promise.resolve();
+  const exclusive = <T>(operation: () => T): Promise<T> => {
+    const run = async (): Promise<T> => {
+      if (typeof navigator !== "undefined" && navigator.locks)
+        return await navigator.locks.request(KEY, { ifAvailable: true }, async (lock) => {
+          if (!lock) throw new Error("Presets are busy in another tab. Try again.");
+          return operation();
+        });
+      return operation();
+    };
+    const result = queue.then(run, run);
+    queue = result.then(() => undefined, () => undefined);
+    return result;
   };
   const parse = (raw: string): PresetDocument => {
     try {

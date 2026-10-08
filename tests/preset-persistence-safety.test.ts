@@ -171,3 +171,24 @@ test("two storage clients refuse updates and rollback while another tab holds th
     else Reflect.deleteProperty(globalThis, "navigator");
   }
 });
+
+test("concurrent calls on one storage instance queue instead of reporting another tab", async () => {
+  const { storage, document } = setup(); await storage.save(document);
+  let held = false;
+  const locks = { async request<T>(_name: string, _options: LockOptions, callback: (lock: Lock | null) => T | Promise<T>): Promise<T> {
+    if (held) return callback(null);
+    held = true;
+    try { return await callback({ name: KEY, mode: "exclusive" } as Lock); }
+    finally { held = false; }
+  } };
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { locks } });
+  try {
+    const results = await Promise.all([storage.load(), storage.load(), storage.transact(renameKept), storage.load()]);
+    assert.equal(results.length, 4, "none of the same-tab calls was rejected as busy");
+    assert.equal((await storage.load()).presets.find((p) => p.id === "kept")?.name, "Concurrent edit");
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, "navigator", descriptor);
+    else Reflect.deleteProperty(globalThis, "navigator");
+  }
+});
