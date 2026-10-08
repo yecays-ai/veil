@@ -13,6 +13,8 @@ import {
   type UserProfile,
 } from "./foundation-types";
 
+export class CharacterConflictError extends Error {}
+
 function validateProfile(input: CharacterInput | UserProfile) {
   if (!input.name.trim()) throw new Error("Name is required.");
   if (input.birthday && !validBirthday(input.birthday))
@@ -49,10 +51,17 @@ export function updateCharacter(
   document: FoundationDocument,
   characterId: string,
   input: CharacterInput,
+  expected?: CharacterInput,
 ): FoundationDocument {
   validateProfile(input);
-  if (!document.characters.some((c) => c.characterId === characterId))
+  const current = document.characters.find((c) => c.characterId === characterId);
+  if (!current) {
+    if (expected) throw new CharacterConflictError("Character not found. It was deleted elsewhere; your draft was not saved.");
     throw new Error("Character not found.");
+  }
+  if (expected && JSON.stringify(normalizeCharacterInput(current))
+    !== JSON.stringify(normalizeCharacterInput(expected)))
+    throw new CharacterConflictError("This Character changed elsewhere. Your draft was not saved. Reopen it to review the latest version.");
   return {
     ...document,
     characters: document.characters.map((c) =>
@@ -65,7 +74,14 @@ export function updateCharacter(
 export function deleteCharacter(
   document: FoundationDocument,
   characterId: string,
+  expected?: CharacterInput,
 ): FoundationDocument {
+  if (expected) {
+    const current = document.characters.find((c) => c.characterId === characterId);
+    if (!current) throw new CharacterConflictError("Character not found. It was deleted elsewhere.");
+    if (JSON.stringify(normalizeCharacterInput(current)) !== JSON.stringify(normalizeCharacterInput(expected)))
+      throw new CharacterConflictError("This Character changed elsewhere and was not deleted. Reopen it to review the latest version.");
+  }
   // Normalization removes dangling relations and nodes.
   return normalizeFoundation({
     ...document,

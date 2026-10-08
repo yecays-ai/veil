@@ -123,7 +123,7 @@ test("Text API and Regex Rule saves finish at a result view only after persisten
   const apiModal = read("components/settings/text-api-settings.tsx");
   const regexRule = read("components/settings/regex/regex-rule-editor.tsx");
   const regexHook = read("components/settings/regex/use-regex.ts");
-  assert.match(api, /saveApiConfig\(next\)[\s\S]*setConfigs\(await browserApiConfigStorage\.listApiConfigs\(\)\)[\s\S]*setDraft\(null\)/);
+  assert.match(api, /await browserApiConfigStorage\.saveApiConfig\(next, baseline\)[\s\S]*setConfigs\([\s\S]*setDraft\(null\)/);
   assert.match(apiModal, /catch \(err\)[\s\S]*setError\([\s\S]*finally \{[\s\S]*setBusy\(""\)/);
   assert.match(regexRule, /await change\([\s\S]*router\.push\(back\)/);
   assert.match(regexHook, /catch \(reason\)[\s\S]*setError\(reason instanceof Error/);

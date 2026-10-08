@@ -14,6 +14,7 @@ import {
 import {
   normalizeCharacterInput,
   type CharacterInput,
+  type Character,
   type UserProfile,
 } from "../lib/foundation-types";
 import { useFoundation } from "./foundation-provider";
@@ -123,6 +124,10 @@ export function CharactersPage() {
   );
 }
 export function CharacterPage({ characterId }: { characterId?: string }) {
+  return <CharacterEditor key={characterId ?? "new"} characterId={characterId} />;
+}
+
+function CharacterEditor({ characterId }: { characterId?: string }) {
   const { document, ready, commit } = useFoundation();
   const back = useBackNavigation();
   const router = useRouter();
@@ -130,6 +135,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
     [confirmDelete, setConfirmDelete] = useState(false),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState("");
+  const [baseline, setBaseline] = useState<Character | null>(null);
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
@@ -145,7 +151,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
         {C.common.loading}
       </PageShell>
     );
-  if (characterId && !character)
+  if (characterId && !character && !(editing && baseline))
     return (
       <PageShell
         title={C.characters.title}
@@ -190,7 +196,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
             key={characterId ?? "new"}
             kind="character"
             initial={
-              character ?? { ...normalizeCharacterInput(null), name: "" }
+              baseline ?? character ?? { ...normalizeCharacterInput(null), name: "" }
             }
             saveLabel={isNew ? C.characters.create : C.common.save}
             onCancel={() =>
@@ -199,7 +205,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
             onSave={async (input) => {
               const saved = await commit((d) =>
                 characterId
-                  ? updateCharacter(d, characterId, input as CharacterInput)
+                  ? updateCharacter(d, characterId, input as CharacterInput, baseline ?? undefined)
                   : createCharacter(d, input as CharacterInput),
               );
               if (isNew) {
@@ -214,7 +220,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
       ) : (
         <>
           <ProfileView profile={character!} kind="character">
-            <button onClick={() => setEditing(true)}>{C.common.edit}</button>
+            <button onClick={() => { setBaseline(structuredClone(character!)); setEditing(true); }}>{C.common.edit}</button>
           </ProfileView>
           <footer className="danger-area">
             {confirmDelete ? (
@@ -226,7 +232,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
                     disabled={busy}
                     onClick={() =>
                       void action(async () => {
-                        await commit((d) => deleteCharacter(d, characterId!));
+                        await commit((d) => deleteCharacter(d, characterId!, baseline ?? undefined));
                         await browserBindingStorage.transact((bindings) => {
                           const characters = { ...bindings.characters };
                           delete characters[characterId!];
@@ -246,7 +252,7 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
             ) : (
               <button
                 className="text-button danger-button"
-                onClick={() => setConfirmDelete(true)}
+                onClick={() => { setBaseline(structuredClone(character!)); setConfirmDelete(true); }}
               >
                 {U.deleteCharacter}
               </button>
