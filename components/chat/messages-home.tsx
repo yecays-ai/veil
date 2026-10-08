@@ -29,13 +29,18 @@ export function MessagesHome() {
   const swipe = useRef<{ id: string; startX: number; startY: number; startOffset: number; horizontal: boolean } | null>(null);
   const suppressClickFor = useRef<string | null>(null);
   useEffect(() => { let active = true;
-    const load = async () => { try { const rows = await chatStorage.listSessions(); if (active) {
-      setSessions(sortChatSessions(rows)); setLoaded(true); setError(""); }
-    } catch { if (active) setError("Could not load conversations. Existing messages have not been changed."); } };
+    let requestRevision = 0;
+    const load = async () => {
+      const revision = ++requestRevision;
+      try { const rows = await chatStorage.listSessions(); if (active && revision === requestRevision) {
+        setSessions(sortChatSessions(rows)); setLoaded(true); setError(""); }
+      } catch { if (active && revision === requestRevision)
+        setError("Could not load conversations. Existing messages have not been changed."); }
+    };
     const unsubscribe = chatStorage.subscribe((change) => {
       if (change.domain === "session" || change.domain === "messages") void load();
     }); void load();
-    return () => { active = false; unsubscribe(); };
+    return () => { active = false; requestRevision++; unsubscribe(); };
   }, []);
   useEffect(() => { if (!menuOpen) return; const close = (event: KeyboardEvent) => {
     if (event.key === "Escape") setMenuOpen(false); };
