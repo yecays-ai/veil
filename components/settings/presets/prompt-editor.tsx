@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageShell } from "../../page-shell";
 import { Input, Select } from "../ui/form";
@@ -29,15 +29,22 @@ function CreatePromptEditor({ preset, library, backHref }: {
   }));
   const { busy, error, run, change } = library;
   const router = useRouter();
+  const operationOwner = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    const owner = {};
+    operationOwner.current = owner;
+    return () => { if (operationOwner.current === owner) operationOwner.current = null; };
+  }, []);
   const readOnly = preset.builtIn;
   function update(patch: Partial<PresetPrompt>) { setDraft({ ...draft, ...patch } as PresetPrompt); }
   return <div className="preset-route" onClickCapture={(event) => {
     if (!readOnly && (event.target as HTMLElement).closest("a") && !window.confirm("Discard unsaved changes?")) event.preventDefault();
   }}><PageShell className="settings-app preset-manager" title="New Prompt" backHref={backHref} backLabel="Back to Preset"
     rightAction={!readOnly && <button className="settings-header-action" disabled={busy} onClick={() => void run(async () => {
+      const owner = operationOwner.current;
       const next = savePrompt(baseline, undefined, draft);
       await change((current) => updatePreset(current, next, baseline));
-      router.push(backHref);
+      if (owner && operationOwner.current === owner) router.push(backHref);
     })}>Save</button>}>
     {readOnly && <p className="settings-hint">Built-in · Read-only</p>}
     {error && <Alert variant="danger">{error}</Alert>}

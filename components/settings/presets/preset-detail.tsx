@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ChevronDown, Copy, Download, Plus, Trash2 } from "lucide-react";
 import { PageShell } from "../../page-shell";
@@ -31,6 +31,12 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
   const [deletingPrompt, setDeletingPrompt] = useState<string>();
   const [editingPromptId, setEditingPromptId] = useState<string>();
   const router = useRouter();
+  const operationOwner = useRef<object | null>(null);
+  useLayoutEffect(() => {
+    const owner = {};
+    operationOwner.current = owner;
+    return () => { if (operationOwner.current === owner) operationOwner.current = null; };
+  }, []);
   const dirty = presetFingerprint(draft) !== presetFingerprint(baseline);
   const readOnly = saved.builtIn;
   const baseHref = `/settings/presets/${encodeURIComponent(saved.id)}`;
@@ -62,19 +68,24 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
     }}>Delete {draft.prompts.find((entry) => entry.identifier === deletingPrompt)?.name} from this Preset?</ConfirmDialog>
     : deleting ? <ConfirmDialog title="Delete Preset?" confirmLabel="Delete" busy={busy}
     onCancel={() => { if (!busy) setDeleting(false); }} onConfirm={() => void run(async () => {
-      await remove(saved.id); router.push("/settings/presets");
+      const owner = operationOwner.current;
+      await remove(saved.id);
+      if (owner && operationOwner.current === owner) router.push("/settings/presets");
     })}>Delete {saved.name}? If active, VEIL Default will be used.</ConfirmDialog> : undefined;
   return <div className="preset-route" onClickCapture={(event) => {
     if (dirty && (event.target as HTMLElement).closest("a") && !window.confirm("Discard unsaved changes?")) event.preventDefault();
   }}><PageShell className="settings-app preset-manager" title={draft.name} backHref="/settings/presets" backLabel="Back to Presets" overlay={overlay}
     rightAction={!readOnly && <button className="settings-header-action" disabled={!dirty || busy} onClick={() => void run(async () => {
+      const owner = operationOwner.current;
       await change((current) => updatePreset(current, draft, baseline));
-      router.push("/settings/presets");
+      if (owner && operationOwner.current === owner) router.push("/settings/presets");
     })}>Save</button>}>
     <div className="settings-action-row preset-actions">
       <button className="settings-button" disabled={busy || dirty} onClick={() => void run(async () => {
+        const owner = operationOwner.current;
         const next = await change((current) => copyPreset(current, saved.id));
-        router.push(`/settings/presets/${encodeURIComponent(next.presets.at(-1)!.id)}`);
+        if (owner && operationOwner.current === owner)
+          router.push(`/settings/presets/${encodeURIComponent(next.presets.at(-1)!.id)}`);
       })}><Copy size={17} />Copy</button>
       <button className="settings-button" disabled={busy || dirty} onClick={() => void run(async () => {
         const url = URL.createObjectURL(new Blob([exportPreset(saved)], { type: "application/json" }));
