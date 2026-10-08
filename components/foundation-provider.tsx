@@ -38,23 +38,42 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
     let active = true;
     const lifetime = lifecycle;
     lifetime.current++;
-    browserFoundationStorage
-      .load()
-      .then((d) => {
-        if (active) setDocument(d);
-      })
-      .catch((e) => {
-        if (active)
-          setError(
-            e instanceof Error ? e.message : "Could not load profile data.",
-          );
-      })
-      .finally(() => {
-        if (active) setReady(true);
-      });
+    let requestedRevision = 0;
+    let pending: Promise<void> | undefined;
+    const refresh = () => {
+      requestedRevision++;
+      if (pending) return pending;
+      pending = Promise.resolve().then(async () => {
+        let observed: number;
+        do {
+          observed = requestedRevision;
+          try {
+            const next = await browserFoundationStorage.load();
+            if (active && observed === requestedRevision) {
+              setDocument(next);
+              setError("");
+            }
+          } catch (reason) {
+            if (active && observed === requestedRevision)
+              setError(reason instanceof Error ? reason.message : "Could not load profile data.");
+          } finally {
+            if (active && observed === requestedRevision) setReady(true);
+          }
+        } while (active && observed !== requestedRevision);
+      }).finally(() => { pending = undefined; });
+      return pending;
+    };
+    const unsubscribe = browserFoundationStorage.subscribe(() => { void refresh(); });
+    const checkAfterPossibleMiss = () => { if (globalThis.document.visibilityState !== "hidden") void refresh(); };
+    window.addEventListener("focus", checkAfterPossibleMiss);
+    globalThis.document.addEventListener("visibilitychange", checkAfterPossibleMiss);
+    void refresh();
     return () => {
       active = false;
       lifetime.current++;
+      unsubscribe();
+      window.removeEventListener("focus", checkAfterPossibleMiss);
+      globalThis.document.removeEventListener("visibilitychange", checkAfterPossibleMiss);
     };
   }, []);
   async function commit(
