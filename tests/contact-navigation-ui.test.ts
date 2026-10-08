@@ -6,7 +6,9 @@ const page = readFileSync("app/contacts/[characterId]/page.tsx", "utf8");
 const info = readFileSync("components/contact-info.tsx", "utf8");
 
 test("direct chat passes an explicit internal return source to Contact Info", () => {
-  assert.match(page, /from === "direct" \? "direct" : undefined/);
+  const pages = readFileSync("components/contacts-pages.tsx", "utf8");
+  assert.match(pages, /contactReturnSourceFromQuery\(useSearchParams\(\)\.get\("from"\)\)/);
+  assert.doesNotMatch(page, /searchParams/);
   assert.match(info, /const backHref = contactReturnTarget\(characterId, returnSource\)/);
   assert.match(info, /router\.push\(backHref\)/);
   assert.match(info, /<Link href=\{backHref\} aria-label="Back to Contacts"/);
