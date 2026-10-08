@@ -430,8 +430,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       if (mounted.current && currentSessionId.current === sessionId)
         setError(reason instanceof Error ? reason.message : "Message could not be regenerated.");
     } finally {
-      replyLock.current = false;
-      if (mounted.current && currentSessionId.current === sessionId) {
+      // Another session being current means a new room owns the locks; "no session" (switching, or a
+      // transient reload) must still release them, or Regenerate stays blocked after the session returns.
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) {
+        replyLock.current = false;
         revealQueue.settle(sessionId, revealToken);
         setGenerating(false);
       }
