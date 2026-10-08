@@ -36,7 +36,7 @@ test("clean install bootstraps canonical VEIL defaults and immediately supports 
   const preset = presetDocument.presets.find((item) => item.id === BUILTIN_PRESET_ID);
   assert.equal(preset?.name, "VEIL Default");
   const messageBinding = resolveBindings(await bindings.load(), null, "messages");
-  assert.equal(messageBinding.presetId, BUILTIN_PRESET_ID);
+  assert.equal(messageBinding.presetId, undefined);
   assert((await regex.load()).groups.some((group) => group.id === DEFAULT_REGEX_GROUP_ID));
   assert.deepEqual(emptyWorldBookDocument(), { version: 1, books: [] });
 
@@ -113,7 +113,7 @@ test("startup does not overwrite a user-customized Default Rules group", async (
   assert.equal((await createRegexStorage(() => memory).load()).groups[0].rules[0].replace, "user choice");
 });
 
-test("bootstrap replaces an unreadable Preset document while preserving Peter, API Config and chat history", async () => {
+test("bootstrap refuses an unreadable Preset document without changing other persisted data", async () => {
   const memory = new MemoryStorage();
   memory.setItem("veil.preset.v1", "{obsolete preset data");
   memory.setItem("veil.bindings.v1", JSON.stringify({
@@ -139,11 +139,14 @@ test("bootstrap replaces an unreadable Preset document while preserving Peter, A
   await chat.send(session.id, "New question after update");
   const before = await chat.readSession(session.id);
 
-  await bootstrapCurrentProduct(presets, bindings, regex);
+  const bindingBefore = memory.getItem("veil.bindings.v1");
+  await assert.rejects(bootstrapCurrentProduct(presets, bindings, regex), /could not be read/);
 
-  assert.deepEqual(await presets.load(), createPresetDocument());
+  assert.equal(memory.getItem("veil.preset.v1"), "{obsolete preset data");
+  assert.equal(memory.getItem("veil.bindings.v1"), bindingBefore);
+  assert.equal(memory.getItem("veil.regex.v1"), null);
   const messageBinding = resolveBindings(await bindings.load(), peter.characterId, "messages");
-  assert.equal(messageBinding.presetId, BUILTIN_PRESET_ID);
+  assert.equal(messageBinding.presetId, "removed-preset");
   assert.equal(messageBinding.apiConfigId, "peter-api");
   assert.equal((await foundationStorage.load()).characters[0].characterId, peter.characterId);
   assert.deepEqual(await api.getApiConfig("peter-api"), {
@@ -152,19 +155,4 @@ test("bootstrap replaces an unreadable Preset document while preserving Peter, A
   });
   assert.deepEqual(await chat.readSession(session.id), before);
 
-  let calls = 0;
-  const engine = createChatEngine(chat, () => foundationStorage.load(), async function* (config, prompt) {
-    calls++;
-    assert.equal(config.id, "peter-api");
-    assert(prompt.some((turn) => turn.content.includes("Earlier answer")));
-    yield "Reply after recovery.";
-  }, () => presets.load(), undefined, undefined, async () => regex.load(),
-  () => bindings.load(), undefined, (id) => api.getApiConfig(id));
-  await engine.requestReply(session.id);
-  assert.equal(calls, 1);
-  const after = await chat.readSession(session.id);
-  assert.deepEqual(after.messages.slice(0, 2), before.messages.slice(0, 2));
-  assert.equal(after.messages[2].id, before.messages[2].id);
-  assert.equal(after.messages[2].content, before.messages[2].content);
-  assert(after.messages.some((message) => message.content === "Reply after recovery."));
 });
