@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/brave-davinci-ws2ruk`；PR 见 GitHub（人工审查，不加 automerge）；涉及 `components/theme-provider.tsx`、`tests/theme-provider-recovery.test.ts`（新）、`tests/theme-safety-ui.test.ts`（仅把按钮选择器改为按文字选取）。
+Claude；分支 `claude/brave-davinci-ws2ruk`；PR [#39](https://github.com/yecays-ai/veil/pull/39)（人工审查，不加 automerge）；涉及 `components/theme-provider.tsx`、`tests/theme-provider-recovery.test.ts`（新）、`tests/theme-safety-ui.test.ts`（仅把按钮选择器改为按文字选取）。
 
 ## 已完成
 
