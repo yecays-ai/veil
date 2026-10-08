@@ -17,6 +17,11 @@ const request = <T>(operation: IDBRequest<T>): Promise<T> =>
     operation.onerror = () => reject(new Error("Core storage could not be read or written."));
   });
 
+function isInvalidStateError(error: unknown): boolean {
+  return !!error && typeof error === "object" &&
+    (error as { name?: unknown }).name === "InvalidStateError";
+}
+
 export class IndexedDBDocumentStorage implements DocumentStorage {
   private database?: Promise<IDBDatabase>;
 
@@ -26,6 +31,7 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
         let operation: IDBOpenDBRequest;
+        let blocked = false;
         try {
           operation = this.factory().open(CORE_DATABASE_NAME, CORE_DATABASE_VERSION);
         } catch {
@@ -37,16 +43,26 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
             operation.result.createObjectStore(DOCUMENT_STORE, { keyPath: "key" });
         };
         operation.onsuccess = () => {
-          operation.result.onversionchange = () => {
-            operation.result.close();
-            this.database = undefined;
+          const database = operation.result;
+          if (blocked) {
+            database.close();
+            return;
+          }
+          database.addEventListener("close", () => {
+            if (this.database === opening) this.database = undefined;
+          });
+          database.onversionchange = () => {
+            database.close();
+            if (this.database === opening) this.database = undefined;
           };
-          resolve(operation.result);
+          resolve(database);
         };
         operation.onerror = () =>
           reject(new Error("Core storage is unavailable. Existing data has not been changed."));
-        operation.onblocked = () =>
+        operation.onblocked = () => {
+          blocked = true;
           reject(new Error("Close other VEIL tabs to upgrade core storage."));
+        };
       });
       this.database = opening;
       void opening.catch(() => {
@@ -60,8 +76,24 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     mode: IDBTransactionMode,
     run: (store: IDBObjectStore) => Promise<T>,
   ): Promise<T> {
-    const database = await this.open();
-    const transaction = database.transaction(DOCUMENT_STORE, mode);
+    const opening = this.open();
+    const database = await opening;
+    let transaction: IDBTransaction;
+    try {
+      transaction = database.transaction(DOCUMENT_STORE, mode);
+    } catch (error) {
+      if (!isInvalidStateError(error)) throw error;
+      if (this.database === opening) this.database = undefined;
+      const recoveredOpening = this.open();
+      const recoveredDatabase = await recoveredOpening;
+      try {
+        transaction = recoveredDatabase.transaction(DOCUMENT_STORE, mode);
+      } catch (retryError) {
+        if (isInvalidStateError(retryError) && this.database === recoveredOpening)
+          this.database = undefined;
+        throw retryError;
+      }
+    }
     const done = new Promise<void>((resolve, reject) => {
       transaction.oncomplete = () => resolve();
       transaction.onabort = transaction.onerror = () =>
