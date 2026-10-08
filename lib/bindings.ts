@@ -103,6 +103,15 @@ export function setBindingField(
     [scope.characterId]: next }) };
 }
 
+// The value a scope itself shows and edits: global alone, global + Character defaults (no App
+// override), or the full chain for an App. Character defaults must never be written from a list
+// that already includes an App override.
+export function resolveScopeBindings(document: BindingDocument, scope: BindingScope): BindingSlot {
+  if (scope.appId) return resolveBindings(document, scope.characterId ?? null, scope.appId);
+  const character = scope.characterId ? document.characters[scope.characterId] : undefined;
+  return normalizeBindingSlot({ ...normalizeBindingSlot(document.global), ...normalizeBindingSlot(character?.defaults) });
+}
+
 export type BindingListEdit = { type: "add"; id: string } | { type: "remove"; id: string } | { type: "move"; id: string; by: -1 | 1 };
 
 // List edits are expressed as intents (add or remove one id, move one id by one place) and applied
@@ -113,7 +122,7 @@ export type BindingListEdit = { type: "add"; id: string } | { type: "remove"; id
 export function editBindingList(
   document: BindingDocument, scope: BindingScope, field: "worldBookIds" | "regexIds", edit: BindingListEdit,
 ): BindingDocument {
-  const current = resolveBindings(document, scope.characterId ?? null, scope.appId ?? "messages")[field] ?? [];
+  const current = resolveScopeBindings(document, scope)[field] ?? [];
   // add/remove are idempotent: the caller decides the direction from what the user saw, so a
   // concurrent change in another tab can never turn "select" into "deselect".
   if (edit.type === "add")

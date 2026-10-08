@@ -94,6 +94,23 @@ test("add and remove keep the user's intent when another tab already changed the
   assert.deepEqual(o.read().global.worldBookIds, ["w2"], "deselect is not reversed into select");
 });
 
+test("editing Character defaults never writes the Messages App override into them", async () => {
+  const o = origin(); const a = o.tab();
+  await seed(a, { global: {}, characters: { p: { defaults: { worldBookIds: ["w1"] },
+    apps: { messages: { worldBookIds: ["w9"] } } } } });
+  await a.transact((d) => editBindingList(d, { characterId: "p" }, "worldBookIds", { type: "add", id: "w2" }));
+  let saved = o.read();
+  assert.deepEqual(saved.characters.p.defaults.worldBookIds, ["w1", "w2"], "defaults build on defaults, not on the App list");
+  assert.deepEqual(saved.characters.p.apps.messages!.worldBookIds, ["w9"], "the App override is untouched");
+  await a.transact((d) => editBindingList(d, { characterId: "p" }, "worldBookIds", { type: "move", id: "w2", by: -1 }));
+  assert.deepEqual(o.read().characters.p.defaults.worldBookIds, ["w2", "w1"]);
+  // The App scope itself still edits the full chain.
+  await a.transact((d) => editBindingList(d, { characterId: "p", appId: "messages" }, "worldBookIds", { type: "add", id: "w3" }));
+  saved = o.read();
+  assert.deepEqual(saved.characters.p.apps.messages!.worldBookIds, ["w9", "w3"]);
+  assert.deepEqual(saved.characters.p.defaults.worldBookIds, ["w2", "w1"]);
+});
+
 test("Default (All), None and a selection keep their meaning through concurrent unrelated saves and deletions", async () => {
   const o = origin(); const a = o.tab(), b = o.tab();
   await seed(a, { global: { regexIds: [] }, characters: { p: { defaults: { worldBookIds: ["w1", "w2"] }, apps: {} } } });

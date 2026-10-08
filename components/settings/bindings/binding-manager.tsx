@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { PageShell } from "../../page-shell";
 import { Alert } from "../ui/feedback";
 import { APP_REGISTRY, bindingCapableApps, isAppId, type AppBindingCapability, type AppId } from "../../../lib/app-registry";
-import { resolveBindings, type BindingListEdit, type BindingScope, type BindingSlot,
+import { resolveBindings, resolveScopeBindings, type BindingListEdit, type BindingScope, type BindingSlot,
   type ManagedBindingField } from "../../../lib/bindings";
 import { DEFAULT_API_CONFIG_ID } from "../../../lib/api-config";
 import { BUILTIN_PRESET_ID } from "../../../lib/preset";
@@ -98,7 +98,7 @@ export function BindingEditor({ characterId, appId }: { characterId?: string; ap
     characters: { ...bindings.characters,
       [characterId!]: { defaults: binding?.defaults ?? {}, apps: {} } } }, characterId!, app.id)
     : resolveBindings(bindings, null, "messages");
-  const effective = resolveBindings(bindings, characterId ?? null, validApp ?? "messages");
+  const effective = resolveScopeBindings(bindings, scope);
   return <PageShell className="settings-app binding-manager" title={title} backHref={backHref} backLabel="Back to Bindings">
     {error && <Alert variant="danger">{error}</Alert>}
     {invalid ? <p>Binding target not found.</p> : !resources ? <p role="status">Loading Bindings…</p> : <>
