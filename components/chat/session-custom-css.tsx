@@ -1,10 +1,11 @@
 "use client";
 import { useMemo } from "react";
-import { removeCssImports, scopeSessionCSS } from "../../lib/chat/custom-css";
+import { analyzeSessionCSS } from "../../lib/chat/custom-css";
 
 export function SessionCustomCSS({ css }: { css: string }) {
   const scoped = useMemo(
-    () => scopeSessionCSS(removeCssImports(css), ".chat-room-wrapper"),
+    // Rules that cannot be limited to this conversation are dropped, never applied globally.
+    () => analyzeSessionCSS(css, ".chat-room-wrapper").css,
     [css],
   );
   return scoped ? <style data-chat-session-css dangerouslySetInnerHTML={{ __html: scoped }} /> : null;

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Circle, CircleCheck, Plus } from "lucide-react";
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { Avatar } from "./profile-view";
 import { PresenceBadge } from "./presence";
@@ -13,7 +13,7 @@ import { RootAppHeader } from "./root-app-header";
 import { useContacts } from "./use-contacts";
 import { addContact, contactDisplayName } from "../lib/contact-storage";
 import { ContactInfo } from "./contact-info";
-import type { ContactReturnSource } from "../lib/contact-navigation";
+import { contactReturnSourceFromQuery } from "../lib/contact-navigation";
 import { contactIdsFromQuery, contactSelectionState, type ContactSelectionMode } from "../lib/contact-route-state";
 
 export function ContactsRoute() {
@@ -157,6 +157,15 @@ export function CreateGroupPage({ characterIds }: { characterIds: string[] }) {
   </PageShell>;
 }
 
-export function ContactProfile({ characterId, returnSource }: { characterId: string; returnSource?: ContactReturnSource }) {
+function ContactProfileFromQuery({ characterId }: { characterId: string }) {
+  const returnSource = contactReturnSourceFromQuery(useSearchParams().get("from"));
   return <ContactInfo characterId={characterId} returnSource={returnSource} />;
+}
+
+export function ContactProfile({ characterId }: { characterId: string }) {
+  // The fallback is the real page (inert until the query decides where Back goes), so
+  // resolving the query never blanks or reloads the first frame.
+  return <Suspense fallback={<ContactInfo characterId={characterId} pending />}>
+    <ContactProfileFromQuery characterId={characterId} />
+  </Suspense>;
 }

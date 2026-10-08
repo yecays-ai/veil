@@ -33,6 +33,8 @@ function optionsFor(resources: BindingResources, field: ManagedBindingField): Op
 function displayValue(field: ManagedBindingField, value: BindingSlot[ManagedBindingField],
   resources: BindingResources): string {
   const options = optionsFor(resources, field);
+  // Unset lists mean "use every available resource"; only an explicit [] is None.
+  if ((field === "worldBookIds" || field === "regexIds") && value === undefined) return "Default (All)";
   if (Array.isArray(value)) return value.length
     ? value.map((id) => options.find((item) => item.id === id)?.name ?? "Unavailable").join(" · ") : "None";
   if (field === "apiConfigId") {
@@ -165,7 +167,10 @@ function BindingFields({ title, fields, own, inherited, effective, resources, bu
                 </button>)}
               </>}
               {multiple && <>
-                <button type="button" disabled={busy} onClick={() => set([])}>Clear all
+                {!inherited && <button type="button" disabled={busy} onClick={() => set(undefined)}>
+                  Default (All){!overridden && <span aria-hidden="true"> ✓</span>}
+                </button>}
+                <button type="button" disabled={busy} onClick={() => set([])}>None
                   {overridden && Array.isArray(own[key]) && own[key].length === 0 && <span aria-hidden="true"> ✓</span>}
                 </button>
                 {options.map((option) => <button type="button" key={option.id} disabled={busy}
