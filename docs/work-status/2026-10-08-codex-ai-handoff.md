@@ -1,7 +1,7 @@
 # STATUS — 2026-10-08-codex-ai-handoff
 
 更新人：GPT/Codex
-更新时间：2026-10-08T11:20:47+08:00
+更新时间：2026-10-08T11:22:26+08:00
 发现范围：2026-10-08T11:19:00+08:00 GitHub API main、根目录 AGENTS/README、CI/auto-merge/CodeRabbit 配置和开放 PR #23–#30（实际返回 #23、#24、#25、#26、#27、#28、#30）；未检查各业务 PR 分支交接文件或未发布本地任务，不宣称全局权威。
 
 ## 当前任务
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-GPT/Codex；分支 `docs/ai-task-handoff`；PR 尚未创建；仅 `AGENTS.md` 与 `docs/work-status/`；base `52a6944e4a67fc6c88af67b72b944a883031f369`。
+GPT/Codex；分支 `docs/ai-task-handoff`；[PR #31](https://github.com/yecays-ai/veil/pull/31)；仅 `AGENTS.md` 与 `docs/work-status/`；base `52a6944e4a67fc6c88af67b72b944a883031f369`。
 
 ## 已完成
 
@@ -25,4 +25,4 @@ GPT/Codex；分支 `docs/ai-task-handoff`；PR 尚未创建；仅 `AGENTS.md` �
 
 ## 下一步
 
-创建独立 PR，添加 automerge 标签，跟进 CI/CodeRabbit 并修复有效意见；不直接调用合并。
+为 PR #31 添加 automerge 标签，跟进 CI/CodeRabbit 并修复有效意见；不直接调用合并。
