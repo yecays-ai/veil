@@ -43,11 +43,18 @@ export class HereThereCommentAttemptGuard {
 /** Epoch ownership: a result may commit only while the epoch it started under is still current. */
 export class HereThereGenerationOwner {
   private epoch = 0;
+  private controller = new AbortController();
   begin(): () => boolean {
     const owned = this.epoch;
     return () => this.epoch === owned;
   }
-  invalidate() { this.epoch++; }
+  /** Aborted when the epoch it was read in ends, so the request itself stops, not only its commit. */
+  get signal(): AbortSignal { return this.controller.signal; }
+  invalidate() {
+    this.epoch++;
+    this.controller.abort();
+    this.controller = new AbortController();
+  }
 }
 
 export function startHereThereCommentAttempt(begin: () => boolean,
@@ -62,7 +69,7 @@ export function hereThereCommentNeedsRefresh(widget: WidgetInstance, now: Date,
 }
 
 type Context = { foundation: FoundationDocument; characterId: string; now: Date;
-  hereWeather: WeatherState; thereWeather: WeatherState; isCurrent?: () => boolean };
+  hereWeather: WeatherState; thereWeather: WeatherState; isCurrent?: () => boolean; signal?: AbortSignal };
 type Commit = (update: (theme: ThemeDocument) => ThemeDocument) => Promise<void>;
 type Dependencies = { foundation: () => Promise<FoundationDocument>; presets: () => Promise<PresetDocument>;
   api: (id: string) => Promise<ApiConfig | undefined>; provider: TextProvider; bindings: () => Promise<BindingDocument>;
@@ -80,6 +87,18 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
   services: Dependencies = dependencies): Promise<void> {
   if (widget.config.characterId !== context.characterId) return;
   let claimedNextCommentAt: number | null = null;
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (context.signal?.aborted) cancel(); else context.signal?.addEventListener("abort", cancel, { once: true });
+  // A claimed opportunity that produced no remark (failed, cancelled, timed out, discarded) is handed back
+  // to the existing short retry, so only a committed remark uses up the 1–5 hour slot.
+  const giveBackOpportunity = async () => {
+    const claimed = claimedNextCommentAt;
+    claimedNextCommentAt = null;
+    if (claimed === null) return;
+    try { await services.scheduleRetry(claimed, Date.now(), HERE_THERE_COMMENT_RETRY_DELAY_MS); }
+    catch { /* Keep the last successful comment even when retry scheduling fails. */ }
+  };
   try {
     const settings = await services.settings();
     if (!settings.hereThereEnabled) return;
@@ -109,7 +128,7 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
     const latestSettings = await services.settings();
     if (!latestSettings.hereThereEnabled) return;
     let text = "";
-    const controller = new AbortController();
+    controller.signal.throwIfAborted();
     const request = createCompletionRequestContext("here-there-comment");
     logPromptSummary(request, api.model, diagnostics, messages);
     for await (const part of services.provider(api, messages, controller.signal,
@@ -117,16 +136,14 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
       request)) text += part;
     text = sanitizeHistoryTimestamps(text).trim();
     if (!text) throw new Error("Empty remark");
-    if (context.isCurrent && !context.isCurrent()) return;
+    if (controller.signal.aborted || (context.isCurrent && !context.isCurrent())) { await giveBackOpportunity(); return; }
     await commit((theme) => ({ ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((current) =>
       current.id === widget.id && current.config.characterId === context.characterId
         ? { ...current, config: { ...current.config, comment: { characterId: context.characterId,
           text: text.slice(0, 500), generatedAt: context.now.toISOString() } } } : current) } }));
   } catch {
-    if (context.isCurrent && !context.isCurrent()) return;
-    if (claimedNextCommentAt !== null) {
-      try { await services.scheduleRetry(claimedNextCommentAt, Date.now(), HERE_THERE_COMMENT_RETRY_DELAY_MS); }
-      catch { /* Keep the last successful comment even when retry scheduling fails. */ }
-    }
+    await giveBackOpportunity();
+  } finally {
+    context.signal?.removeEventListener("abort", cancel);
   }
 }

@@ -157,11 +157,12 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
     const runOpportunity = () => {
       const opportunityTime = new Date();
       const isCurrent = generationOwner.current.begin();
+      const signal = generationOwner.current.signal;
       const attempt = startHereThereCommentAttempt(
         () => commentAttempts.current.begin(characterId,
           hereThereCommentNeedsRefresh(widget, opportunityTime, scheduledAt), String(scheduledAt)),
         () => ensureHereThereComment(widget, { foundation: document, characterId,
-          now: opportunityTime, hereWeather, thereWeather, isCurrent }, commit));
+          now: opportunityTime, hereWeather, thereWeather, isCurrent, signal }, commit));
       if (attempt) void attempt.finally(async () => {
         commentAttempts.current.finish(characterId, String(scheduledAt));
         try { setProfileSettings(await chatStorage.readGlobalProfileSettings()); } catch { /* Retry on next mount. */ }

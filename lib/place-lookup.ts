@@ -1,4 +1,5 @@
 import type { Coordinates } from "./participant-config";
+import { AUX_REQUEST_TIMEOUT_MS, withRequestTimeout } from "./request-timeout";
 
 // Place-name lookup supplies weather coordinates and the timezone used for local time.
 export const OPEN_METEO_GEOCODING_URL =
@@ -81,6 +82,7 @@ export async function lookupPlace(
   name: string,
   fetcher: typeof fetch | undefined = globalThis.fetch,
   now: number = Date.now(),
+  timeoutMs: number = AUX_REQUEST_TIMEOUT_MS,
 ): Promise<PlaceMatch | null> {
   const key = placeQueryKey(name);
   if (!key) return null;
@@ -90,15 +92,20 @@ export async function lookupPlace(
     if (now - entry.at < lifetime) return entry.match;
   }
   const pending = inflight.get(key);
-  if (pending) return pending;
+  // A joining caller keeps its own deadline; leaving early does not cancel the request others share.
+  if (pending) return withRequestTimeout(timeoutMs, () => pending).catch(() => null);
   const operation = (async (): Promise<PlaceMatch | null> => {
     if (typeof fetcher !== "function") return null;
     let match: PlaceMatch | null = null;
     try {
-      const response = await fetcher(geocodingUrl(name), {
-        headers: { accept: "application/json" },
+      // The deadline also clears the shared in-flight entry, so a later lookup can start again.
+      match = await withRequestTimeout(timeoutMs, async (signal) => {
+        const response = await fetcher(geocodingUrl(name), {
+          headers: { accept: "application/json" },
+          signal,
+        });
+        return response.ok ? parseGeocodingResult(await response.json()) : null;
       });
-      if (response.ok) match = parseGeocodingResult(await response.json());
     } catch {
       match = null;
     }
