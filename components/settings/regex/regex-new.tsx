@@ -11,7 +11,7 @@ import { useRegex } from "./use-regex";
 import { Switch } from "../ui/switch";
 
 export function RegexNew() {
-  const { document, error, busy, run, change } = useRegex("new");
+  const { document, error, busy, loading, loadError, retry, run, change } = useRegex("new");
   const [draft, setDraft] = useState(newRegexDraft);
   const [editing, setEditing] = useState<RegexRule | null>(null);
   const [ruleTest, setRuleTest] = useState("");
@@ -39,6 +39,8 @@ export function RegexNew() {
     return <PageShell className="settings-app regex-manager" title="New Rule" backHref="/settings/regex/new" backLabel="Back to new Regex Group"
       onBack={() => { setEditing(null); setRuleTest(""); }}
       rightAction={<button className="settings-header-action" onClick={saveRule}>Save Rule</button>}>
+      {loadError && <Alert variant="danger">{loadError}</Alert>}
+      {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
       <section className="regex-section"><h2>Rule</h2><div className="settings-editor">
         <label>Name<Input value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></label>
         <label>Find<textarea className="settings-input" rows={3} value={editing.find} onChange={(event) => setEditing({ ...editing, find: event.target.value })} /></label>
@@ -71,6 +73,7 @@ export function RegexNew() {
       router.replace("/settings/regex");
     })}>Save</button>}>
     {error && <Alert variant="danger">{error}</Alert>}
+    {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
     <section className="regex-section"><h2>Regex Group</h2><div className="settings-editor">
       <label>Name *<Input required maxLength={200} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></label>
       <label>Description<textarea className="settings-input" rows={3} value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.target.value })} /></label>

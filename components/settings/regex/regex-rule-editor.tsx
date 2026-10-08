@@ -24,6 +24,7 @@ export function RegexRuleEditor({ groupId, ruleId }: { groupId: string; ruleId: 
   const back = `/settings/regex/${groupId}`;
   if (!saved) return <PageShell className="settings-app regex-manager" title="Regex Rule" backHref={back} backLabel="Back to Regex Group">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Regex Rule not found." : "Loading Regex Rule…"}</p>}
+    {library.loadError && <button className="settings-button" disabled={library.loading} onClick={() => void library.retry()}>{library.loading ? "Retrying…" : "Retry"}</button>}
   </PageShell>;
   return <Editor key={`${groupId}/${ruleId}`} saved={saved} groupId={groupId} library={library} />;
 }

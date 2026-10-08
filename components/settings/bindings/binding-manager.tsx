@@ -51,10 +51,11 @@ function displayValue(field: ManagedBindingField, value: BindingSlot[ManagedBind
 }
 
 export function BindingHome() {
-  const { document, bindings, resources, error, busy, update, edit } = useBindingManager();
+  const { document, bindings, resources, error, busy, loadError, loading, retry, update, edit } = useBindingManager();
   const [openField, setOpenField] = useState<ManagedBindingField | null>(null);
   return <PageShell className="settings-app binding-manager" title="Bindings" backHref="/settings" backLabel="Back to Settings">
     {error && <Alert variant="danger">{error}</Alert>}
+    {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
     {!resources && !error && <p role="status">Loading Bindings…</p>}
     {resources && <>
       <BindingFields title="Global Defaults" fields={FIELDS} own={bindings.global}
@@ -81,7 +82,7 @@ export function BindingHome() {
 
 export function BindingEditor({ characterId, appId }: { characterId?: string; appId?: string }) {
   const manager = useBindingManager();
-  const { document, bindings, resources, error, busy, update, edit } = manager;
+  const { document, bindings, resources, error, busy, loadError, loading, retry, update, edit } = manager;
   const [openField, setOpenField] = useState<ManagedBindingField | null>(null);
   const character = characterId ? document.characters.find((item) => item.characterId === characterId) : undefined;
   const validApp: AppId | undefined = appId && isAppId(appId) ? appId : undefined;
@@ -101,6 +102,7 @@ export function BindingEditor({ characterId, appId }: { characterId?: string; ap
   const effective = resolveScopeBindings(bindings, scope);
   return <PageShell className="settings-app binding-manager" title={title} backHref={backHref} backLabel="Back to Bindings">
     {error && <Alert variant="danger">{error}</Alert>}
+    {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
     {invalid ? <p>Binding target not found.</p> : !resources ? <p role="status">Loading Bindings…</p> : <>
       {app && <p className="binding-context">{character?.name} · {app.label}</p>}
       <BindingFields title={app ? "App Override" : "Character Defaults"}

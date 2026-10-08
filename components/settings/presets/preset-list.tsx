@@ -8,7 +8,7 @@ import { importPreset, newPreset } from "../../../lib/preset-library";
 import { usePresetLibrary } from "./use-preset-library";
 
 export function PresetList() {
-  const { document, error, notice, busy, run, change, setNotice } = usePresetLibrary();
+  const { document, error, notice, busy, loading, loadError, retry, run, change, setNotice } = usePresetLibrary();
   const file = useRef<HTMLInputElement>(null);
   return <PageShell className="settings-app preset-manager" title="Presets" backHref="/settings" backLabel="Back to Settings">
     <div className="settings-action-row preset-actions">
@@ -26,6 +26,7 @@ export function PresetList() {
       });
     }} />
     {error && <Alert variant="danger">{error}</Alert>}
+    {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
     {notice && <Alert variant="success">{notice}</Alert>}
     {!document && !error && <p role="status">Loading Presets…</p>}
     <nav className="preset-list" aria-label="Preset Library">

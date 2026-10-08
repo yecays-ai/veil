@@ -18,6 +18,7 @@ export function RegexDetail({ groupId }: { groupId: string }) {
   const saved = library.document?.groups.find((group) => group.id === groupId);
   if (!saved) return <PageShell className="settings-app regex-manager" title="Regex Group" backHref="/settings/regex" backLabel="Back to Regex Groups">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Regex Group not found." : "Loading Regex Group…"}</p>}
+    {library.loadError && <button className="settings-button" disabled={library.loading} onClick={() => void library.retry()}>{library.loading ? "Retrying…" : "Retry"}</button>}
   </PageShell>;
   return <Detail key={groupId} saved={saved} library={library} />;
 }

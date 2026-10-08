@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { browserPresetStorage, deletePresetAndBindings } from "../../../lib/preset-storage";
 import { browserBindingStorage } from "../../../lib/binding-storage";
 import type { PresetDocument } from "../../../lib/preset";
@@ -11,18 +11,38 @@ export function usePresetLibrary() {
   const [busy, setBusy] = useState(false);
   const locked = useRef(false);
   const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-    browserPresetStorage.load().then((value) => {
-      if (mounted.current) setDocument(value);
+  const revision = useRef(0), pending = useRef<Promise<void> | undefined>(undefined);
+  const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState("");
+  const load = useCallback(() => {
+    if (!mounted.current || locked.current) return Promise.resolve();
+    if (pending.current) return pending.current;
+    const request = ++revision.current;
+    setLoading(true);
+    const operation = Promise.resolve().then(() => browserPresetStorage.load()).then((value) => {
+      if (mounted.current && request === revision.current) {
+        setDocument(value); setError(""); setLoadError("");
+      }
     }).catch((err: unknown) => {
-      if (mounted.current) setError(err instanceof Error ? err.message : "Could not load Presets.");
+      if (mounted.current && request === revision.current) {
+        const message = err instanceof Error ? err.message : "Could not load Presets.";
+        setError(message); setLoadError(message);
+      }
+    }).finally(() => {
+      if (pending.current === operation) pending.current = undefined;
+      if (mounted.current && request === revision.current) setLoading(false);
     });
-    return () => { mounted.current = false; };
+    pending.current = operation;
+    return operation;
   }, []);
+  useEffect(() => {
+    mounted.current = true; pending.current = undefined;
+    void load();
+    const revisionRef = revision;
+    return () => { mounted.current = false; revisionRef.current++; };
+  }, [load]);
   async function run(operation: () => Promise<void>) {
     if (locked.current) return;
-    locked.current = true;
+    locked.current = true; revision.current++;
     setBusy(true); setError(""); setNotice("");
     try { await operation(); }
     catch (err) { if (mounted.current) setError(err instanceof Error ? err.message : "Could not save Preset."); }
@@ -38,5 +58,5 @@ export function usePresetLibrary() {
     if (mounted.current) setDocument(next);
     return next;
   }
-  return { document, error, notice, busy, run, change, remove, setNotice };
+  return { document, error, notice, busy, loading, loadError, retry: load, run, change, remove, setNotice };
 }

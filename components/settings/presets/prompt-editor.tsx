@@ -15,6 +15,7 @@ export function NewPromptEditor({ presetId }: { presetId: string }) {
   const backHref = `/settings/presets/${encodeURIComponent(presetId)}`;
   if (!preset) return <PageShell className="settings-app preset-manager" title="New Prompt" backHref={backHref} backLabel="Back to Preset">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Preset not found." : "Loading Preset…"}</p>}
+    {library.loadError && <button className="settings-button" disabled={library.loading} onClick={() => void library.retry()}>{library.loading ? "Retrying…" : "Retry"}</button>}
   </PageShell>;
   return <CreatePromptEditor key={presetId} preset={preset} library={library} backHref={backHref} />;
 }

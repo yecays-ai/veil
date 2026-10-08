@@ -10,6 +10,8 @@ export function useWorldBooks(scope = "list") {
   const [error, setError] = useState("");
   const [notice, updateNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true), [loadError, setLoadError] = useState("");
+  const pending = useRef<Promise<void> | undefined>(undefined);
   const lifetime = useRef(0), live = useRef(false), revision = useRef(0);
   const running = useRef(false), writing = useRef<symbol | undefined>(undefined);
   const owner = lifetime.current;
@@ -19,21 +21,35 @@ export function useWorldBooks(scope = "list") {
     if (!document) throw new Error("WorldBook data is still loading.");
   }, [document, isCurrent]);
 
-  useEffect(() => {
-    const epoch = ++lifetime.current, request = ++revision.current;
-    live.current = true; running.current = false; writing.current = undefined;
-    void browserWorldBookStorage.load().then((value) => {
+  const load = useCallback(() => {
+    if (!live.current || running.current || writing.current) return Promise.resolve();
+    if (pending.current) return pending.current;
+    const epoch = lifetime.current, request = ++revision.current;
+    setLoading(true);
+    const operation = Promise.resolve().then(() => browserWorldBookStorage.load()).then((value) => {
       if (live.current && lifetime.current === epoch && revision.current === request) {
-        setBusy(false); setError(""); updateNotice("");
+        setBusy(false); setError(""); setLoadError(""); updateNotice("");
         setSnapshot({ scope, document: value });
       }
     }).catch((reason) => {
-      if (live.current && lifetime.current === epoch && revision.current === request)
-        setError(reason instanceof Error ? reason.message : "WorldBook data could not be loaded.");
+      if (live.current && lifetime.current === epoch && revision.current === request) {
+        const message = reason instanceof Error ? reason.message : "WorldBook data could not be loaded.";
+        setError(message); setLoadError(message);
+      }
+    }).finally(() => {
+      if (pending.current === operation) pending.current = undefined;
+      if (live.current && lifetime.current === epoch && revision.current === request) setLoading(false);
     });
+    pending.current = operation;
+    return operation;
+  }, [scope]);
+  useEffect(() => {
+    lifetime.current++; live.current = true;
+    running.current = false; writing.current = undefined; pending.current = undefined;
+    void load();
     const lifetimeRef = lifetime, revisionRef = revision;
     return () => { live.current = false; lifetimeRef.current++; revisionRef.current++; };
-  }, [scope]);
+  }, [load]);
 
   const run = useCallback(async (operation: () => Promise<void>) => {
     if (!isCurrent() || running.current || writing.current) return;
@@ -74,5 +90,5 @@ export function useWorldBooks(scope = "list") {
     setSnapshot({ scope, document: next });
   }, [assertCurrent, document, scope]);
   const setNotice = useCallback((value: string) => { if (isCurrent()) updateNotice(value); }, [isCurrent]);
-  return { document, error, notice, busy, run, change, removeBook, setNotice };
+  return { document, error, notice, busy, loading, loadError, retry: load, run, change, removeBook, setNotice };
 }

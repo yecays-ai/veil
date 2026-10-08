@@ -10,7 +10,7 @@ import { useRegex } from "./use-regex";
 import { RegexInlineRule } from "./regex-inline-rule";
 
 export function RegexList() {
-  const { document, error, notice, busy, run, change, setNotice } = useRegex();
+  const { document, error, notice, busy, loading, loadError, retry, run, change, setNotice } = useRegex();
   const file = useRef<HTMLInputElement>(null);
   const [newRuleId, setNewRuleId] = useState<string | null>(null);
   const defaults = document?.groups.find((group) => group.id === DEFAULT_REGEX_GROUP_ID);
@@ -27,6 +27,7 @@ export function RegexList() {
   }
   return <PageShell className="settings-app regex-manager" title="Regex" backHref="/settings" backLabel="Back to Settings">
     {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
+    {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
     {!document && !error && <p role="status">Loading Regex Rules…</p>}
     <section className="regex-section"><h2>Default Rules</h2>
       {defaults?.rules.map((rule) => <RegexInlineRule key={rule.id} rule={rule} busy={busy}
