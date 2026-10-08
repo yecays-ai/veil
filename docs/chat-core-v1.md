@@ -2,8 +2,11 @@
 
 Messages lists every existing Character. Opening a Character creates or reuses
 one session by `characterId`; there are no separate contacts or friend records.
-A deleted Character is hidden from Messages and cannot request replies. Its chat
-records are retained rather than silently erased.
+A deleted Character is hidden from Messages and cannot request replies. On the
+current main revision documented below, its chat records are retained rather
+than deleted by the Character action. Claude is implementing R3 Character
+deletion and associated-data cleanup in parallel; recheck this statement against
+the final R3 diff after it merges.
 
 ## Send and Request Reply
 
