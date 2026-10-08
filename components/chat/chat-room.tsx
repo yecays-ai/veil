@@ -358,7 +358,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         if (focus) composer.current?.focus();
       }
     } finally {
-      if (mounted.current && currentSessionId.current === sessionId) {
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) {
         sendingLock.current = false;
         setSending(false);
       }
@@ -405,7 +406,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         );
     } finally {
       revealQueue.settle(sessionId, revealToken);
-      if (mounted.current && currentSessionId.current === sessionId) {
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) {
         replyLock.current = false;
         setGenerating(false);
       }
