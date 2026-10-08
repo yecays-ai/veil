@@ -35,11 +35,15 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
   const lifetime = useRef(0);
   const backgroundInput = useRef<HTMLInputElement>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [stateCharacterId, setStateCharacterId] = useState(characterId);
   const backHref = contactReturnTarget(characterId, returnSource);
-  useLayoutEffect(() => {
-    imageRequest.current++;
+  if (stateCharacterId !== characterId) {
+    setStateCharacterId(characterId);
     setDraft(null); setBusy(false); setError(""); setCropSource(null);
     setImageReading(false); setDeleteOpen(false);
+  }
+  useLayoutEffect(() => {
+    imageRequest.current++;
     const owner = lifetime;
     const request = imageRequest;
     return () => { owner.current++; request.current++; };
