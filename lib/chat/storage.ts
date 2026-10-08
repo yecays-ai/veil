@@ -376,29 +376,35 @@ export class ChatStorage {
       try { listener(change); } catch { /* Persistence has already succeeded. */ }
     });
   }
+  // One channel per storage instance, opened on first use. Publishing needs it whether or not this
+  // instance ever subscribed; receiving is switched on only while a listener exists (see subscribe).
+  private openChannel(): BroadcastChannel | undefined {
+    if (this.channel) return this.channel;
+    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return undefined;
+    try { this.channel = new BroadcastChannel(CHAT_DATABASE_NAME); } catch { return undefined; }
+    return this.channel;
+  }
+  // A received change goes to local listeners only (dispatch, never notify), so it is not re-broadcast.
+  private receive = (message: MessageEvent<ChatStorageChange>) => {
+    const change = message.data;
+    if (!change || typeof change !== "object" || typeof change.domain !== "string") return;
+    if (change.domain === "session" || change.domain === "messages" || change.domain === "worldbook-state") {
+      if (typeof change.sessionId !== "string") return;
+    } else if (change.domain !== "chat-background" && change.domain !== "global-profile" && change.domain !== "asset") return;
+    this.dispatch(change);
+  };
+  // Called only after the transaction has committed.
   private notify(change: ChatStorageChange) {
     this.dispatch(change);
-    try { this.channel?.postMessage(change); } catch { /* A closed observer channel. */ }
+    try { this.openChannel()?.postMessage(change); } catch { /* A closed observer channel. */ }
   }
   subscribe(listener: (change: ChatStorageChange) => void) {
-    if (
-      !this.channel &&
-      typeof window !== "undefined" &&
-      typeof BroadcastChannel !== "undefined"
-    ) {
-      this.channel = new BroadcastChannel(CHAT_DATABASE_NAME);
-      this.channel.onmessage = (message: MessageEvent<ChatStorageChange>) => {
-        const change = message.data;
-        if (!change || typeof change !== "object" || typeof change.domain !== "string") return;
-        if (change.domain === "session" || change.domain === "messages" || change.domain === "worldbook-state") {
-          if (typeof change.sessionId !== "string") return;
-        } else if (change.domain !== "chat-background" && change.domain !== "global-profile" && change.domain !== "asset") return;
-        this.dispatch(change);
-      };
-    }
+    const channel = this.openChannel();
+    if (channel) channel.onmessage = this.receive; // assignment, so repeated subscriptions never add listeners
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
+      if (!this.listeners.size && this.channel) this.channel.onmessage = null; // stop receiving, keep publishing
     };
   }
 
