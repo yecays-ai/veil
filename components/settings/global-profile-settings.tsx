@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Image as ImageIcon } from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { ImageCropDialog } from "../image-crop-dialog";
@@ -21,23 +21,35 @@ export function GlobalProfileSettings() {
   const [error, setError] = useState("");
   const [backgroundExpanded, setBackgroundExpanded] = useState(false);
   const [timingExpanded, setTimingExpanded] = useState(false);
+  const mounted = useRef(false);
+  const fileRevision = useRef(0);
+  const blurRevision = useRef(0);
+  const reloadBackground = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
     let active = true;
+    mounted.current = true;
+    let backgroundRevision = 0;
     const refreshProfile = async () => {
       const profile = await chatStorage.readGlobalProfileSettings();
       if (active) setSettings(profile);
     };
     const refreshBackground = async () => {
+      const revision = ++backgroundRevision;
       const chat = await chatStorage.readChatBackgroundSettings();
-      if (active) setBackground(chat);
+      if (active && revision === backgroundRevision) setBackground(chat);
     };
+    reloadBackground.current = refreshBackground;
+    const invalidateSelections = () => { fileRevision.current++; blurRevision.current++; };
     void Promise.all([refreshProfile(), refreshBackground()])
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "Settings could not be loaded."));
+      .catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Settings could not be loaded."); });
     const unsubscribe = chatStorage.subscribe((change) => {
       if (change.domain === "global-profile") void refreshProfile().catch(() => {});
       if (change.domain === "chat-background") void refreshBackground().catch(() => {});
     });
-    return () => { active = false; unsubscribe(); };
+    return () => {
+      active = false; mounted.current = false; invalidateSelections();
+      reloadBackground.current = null; unsubscribe();
+    };
   }, []);
   useEffect(() => {
     let active = true;
@@ -48,11 +60,12 @@ export function GlobalProfileSettings() {
       if (!active) return;
       if (blob) { url = URL.createObjectURL(blob); setPreview(url); }
       else setPreview(null);
-    })();
+    })().catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Background preview could not be loaded."); });
     return () => { active = false; if (url) URL.revokeObjectURL(url); };
   }, [background.globalChatBackgroundImage]);
 
   async function saveCrop(value: string) {
+    fileRevision.current++;
     setBusy(true); setError("");
     let id: string | undefined;
     try {
@@ -66,10 +79,38 @@ export function GlobalProfileSettings() {
   }
 
   async function clearGlobalBackground() {
+    fileRevision.current++;
     setBusy(true); setError("");
     try { await chatStorage.updateGlobalChatBackground(null); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Global background could not be cleared."); }
     finally { setBusy(false); }
+  }
+
+  async function chooseBackground(file: File) {
+    const revision = ++fileRevision.current;
+    setError("");
+    try {
+      const source = await readImage(file);
+      if (mounted.current && revision === fileRevision.current) setCropSource(source);
+    } catch (reason) {
+      if (mounted.current && revision === fileRevision.current)
+        setError(reason instanceof Error ? reason.message : "Image could not be opened.");
+    }
+  }
+
+  async function saveBackgroundBlur(blur: number) {
+    const revision = ++blurRevision.current;
+    setError("");
+    try {
+      await chatStorage.updateGlobalChatBackgroundBlur(blur);
+      if (mounted.current && revision === blurRevision.current) await reloadBackground.current?.();
+    } catch (reason) {
+      if (mounted.current && revision === blurRevision.current) {
+        await reloadBackground.current?.().catch(() => {});
+        if (mounted.current && revision === blurRevision.current)
+          setError(reason instanceof Error ? reason.message : "Blur could not be saved.");
+      }
+    }
   }
 
   async function saveBubbleTiming(tier: keyof BubbleTiming, raw: string) {
@@ -106,7 +147,7 @@ export function GlobalProfileSettings() {
               <label className="settings-button">Choose Global Background
                 <input hidden type="file" accept="image/*" disabled={!ready || busy} onChange={(event) => {
                   const file = event.currentTarget.files?.[0]; event.currentTarget.value = "";
-                  if (file) void readImage(file).then(setCropSource).catch((reason) => setError(reason instanceof Error ? reason.message : "Image could not be opened."));
+                  if (file) void chooseBackground(file);
                 }} />
               </label>
               {background.globalChatBackgroundImage && <button className="settings-button" disabled={busy}
@@ -116,8 +157,7 @@ export function GlobalProfileSettings() {
               <input type="range" min="0" max="20" step="1" disabled={busy}
                 value={normalizeBackgroundBlur(background.blur)} onChange={(event) => {
                   const blur = Number(event.currentTarget.value);
-                  setBackground((current) => ({ ...current, blur }));
-                  void chatStorage.updateGlobalChatBackgroundBlur(blur).catch((reason) => setError(reason instanceof Error ? reason.message : "Blur could not be saved."));
+                  void saveBackgroundBlur(blur);
                 }} />
             </label>
             <small>Conversations use this background unless they have their own override.</small>
@@ -163,6 +203,6 @@ export function GlobalProfileSettings() {
     </div>
     {error && <p className="settings-alert" role="alert">{error}</p>}
     {cropSource && <ImageCropDialog source={cropSource} shape="portrait" title="Adjust chat background"
-      onSave={saveCrop} onCancel={() => setCropSource(null)} />}
+      onSave={saveCrop} onCancel={() => { fileRevision.current++; setCropSource(null); }} />}
   </>;
 }

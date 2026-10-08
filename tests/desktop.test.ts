@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { IDBFactory } from "fake-indexeddb";
 import { APP_IDS, APP_REGISTRY, isAppId } from "../lib/app-registry";
 import {
   addAppToDesktop,
@@ -173,7 +174,7 @@ test("added App survives Theme normalization and browser storage reload", async 
   const values = new Map<string, string>();
   Object.defineProperty(globalThis, "window", {
     configurable: true,
-    value: { localStorage: {
+    value: { indexedDB: new IDBFactory(), localStorage: {
       getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => { values.set(key, value); },
     } },
