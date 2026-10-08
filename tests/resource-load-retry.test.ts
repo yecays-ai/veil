@@ -164,6 +164,45 @@ test("Regex new: Retry preserves the existing unsaved draft", { timeout: 3000 },
   } finally { await ui.close(); }
 });
 
+test("Regex new: a pending load failure stays recoverable inside the rule editor without losing edits", { timeout: 3000 }, async () => {
+  const ui = await fixture("Regex");
+  try {
+    await ui.render(await pages.find((item) => item.name === "Regex new")!.page());
+    const enter = async (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+      const prototype = element instanceof ui.dom.window.HTMLInputElement
+        ? ui.dom.window.HTMLInputElement.prototype : ui.dom.window.HTMLTextAreaElement.prototype;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(element, value);
+        element.dispatchEvent(new ui.dom.window.Event("input", { bubbles: true }));
+      });
+    };
+    await enter(ui.dom.window.document.querySelector<HTMLInputElement>("input")!, "Unsaved group");
+    await act(async () => { ui.button("Add Rule").click(); });
+    const name = ui.dom.window.document.querySelector<HTMLInputElement>("input")!;
+    const [find, replace, testInput] = [...ui.dom.window.document.querySelectorAll<HTMLTextAreaElement>("textarea")];
+    await enter(name, "Unsaved rule"); await enter(find, "hello"); await enter(replace, "goodbye"); await enter(testInput, "hello world");
+    const assertEdits = () => {
+      assert.equal(ui.dom.window.document.querySelector("h1")?.textContent, "New Rule");
+      assert.equal(name.value, "Unsaved rule"); assert.equal(find.value, "hello");
+      assert.equal(replace.value, "goodbye"); assert.equal(testInput.value, "hello world");
+    };
+    await ui.settle(0, "Storage blocked");
+    assert.match(ui.dom.window.document.querySelector('[role="alert"]')?.textContent ?? "", /Storage blocked/);
+    assertEdits();
+    await act(async () => { const retry = ui.button("Retry"); retry.click(); retry.click(); });
+    assert.equal(ui.requests.length, 2); assert.equal(ui.button("Retrying…").disabled, true);
+    await ui.settle(1, "Still blocked");
+    assert.match(ui.dom.window.document.querySelector('[role="alert"]')?.textContent ?? "", /Still blocked/);
+    assertEdits();
+    await act(async () => { ui.button("Retry").click(); }); await ui.settle(2);
+    assert.equal(ui.dom.window.document.querySelector('[role="alert"]'), null); assertEdits();
+    assert.ok(![...ui.dom.window.document.querySelectorAll("button")].some((item) => item.textContent === "Retry"));
+    await act(async () => { ui.button("Save Rule").click(); });
+    assert.equal(ui.dom.window.document.querySelector<HTMLInputElement>("input")?.value, "Unsaved group");
+    assert.ok([...ui.dom.window.document.querySelectorAll("button")].some((item) => item.textContent?.includes("Unsaved rule")));
+  } finally { await ui.close(); }
+});
+
 for (const kind of ["Preset", "Regex", "WorldBook"] as const)
   test(`${kind}: Strict Mode replay rejects an obsolete initial result on the same hook`, { timeout: 3000 }, async () => {
     const ui = await fixture(kind), page = pages.find((item) => item.kind === kind)!;

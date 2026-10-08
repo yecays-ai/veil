@@ -1,7 +1,7 @@
 # STATUS — C4 resource load Retry
 
 更新人：Codex
-更新时间：2026-10-08T22:22:00+08:00
+更新时间：2026-10-08T22:49:00+08:00
 发现范围：GitHub 确认最新 main 为 3107d8ea798be181f7528d2d72853020c7b2efb4，与本地 origin/main 一致；本次 fetch 因连接重置失败，未改变网络配置。独立 worktree/分支基于该 main。开放 PR 搜索发现 #36（冻结）、#48（Chat Stop）、#49（Contacts）；现有改动文件和任务记录无 C4 文件重叠。未公开的并行工作仍不可见。
 
 ## 当前任务
@@ -34,6 +34,9 @@ Codex；分支 `fix/resource-load-retry-20261008`；PR https://github.com/yecays
 - 使用 Node 24 直接执行 package scripts 的等价 CLI（环境无 npm）。一次测试编译遭遇系统内存分配失败，缩小 Node heap/semi-space 后正常通过；生产 build 关闭 telemetry、在允许执行环境运行。
 - React best-practices 范围内复核：effect 清理、同步 request ownership、按钮禁用与错误提示；无新依赖/全局 Retry 框架。
 - 发布时再次核对：施工期间 #48 已合并，最新 main 为 daff476；与本单文件无重叠，PR #51 diff 仍严格为本记录列出的 17 个文件。本地检查的代码基于开工时的 main 3107d8e；未修改或合并 #48 PR。
+- CodeRabbit Minor `discussion_r4220380001` 已核实并修复：Regex New 初始读取 pending 时可进入 Add Rule；editing 分支提前返回，原来会隐藏迟到的加载错误与 Retry。仅在该分支添加 loadError 提示和现有 loading/retry 按钮，不重置 editing。
+- 新增实际 editing 分支回归：失败、快速重复 Retry、再失败、最终恢复均保留规则 Name/Find/Replace/Test Input；Save Rule 返回时原组草稿仍在。修复前该测试因缺少错误提示失败，修复后通过。
+- Minor 更新验证：资源 Retry 27/27，完整测试 614/614，TypeScript、生产 Turbopack build、diff --check 通过；ESLint 0 errors，仍只有未修改 Chat background 中的 1 条既有 warning。本次只修改 regex-new、测试和本记录。
 
 ## 尚未验证
 

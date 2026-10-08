@@ -39,6 +39,8 @@ export function RegexNew() {
     return <PageShell className="settings-app regex-manager" title="New Rule" backHref="/settings/regex/new" backLabel="Back to new Regex Group"
       onBack={() => { setEditing(null); setRuleTest(""); }}
       rightAction={<button className="settings-header-action" onClick={saveRule}>Save Rule</button>}>
+      {loadError && <Alert variant="danger">{loadError}</Alert>}
+      {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
       <section className="regex-section"><h2>Rule</h2><div className="settings-editor">
         <label>Name<Input value={editing.name} onChange={(event) => setEditing({ ...editing, name: event.target.value })} /></label>
         <label>Find<textarea className="settings-input" rows={3} value={editing.find} onChange={(event) => setEditing({ ...editing, find: event.target.value })} /></label>
