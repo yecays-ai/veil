@@ -278,8 +278,10 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
                 className="text-button danger-button"
                 onClick={() => {
                   setBaseline(structuredClone(character!)); setConfirmDelete(true); setImpact(null);
-                  void previewCharacterDeletion(document, characterId!, deps()).then(setImpact, (error) =>
-                    setNotice(error instanceof Error ? error.message : C.profile.saveError));
+                  void previewCharacterDeletion(document, characterId!, deps()).then(setImpact, (error) => {
+                    setConfirmDelete(false);
+                    setNotice(error instanceof Error ? error.message : C.profile.saveError);
+                  });
                 }}
               >
                 {U.deleteCharacter}

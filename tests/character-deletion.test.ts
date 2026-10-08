@@ -206,3 +206,13 @@ test("reconciliation does nothing when Foundation cannot be read, is empty, or t
   assert.deepEqual(await removeLeftovers(leftovers, everyone, world.deps), { removed: 0, skipped: 2, failed: 0 });
   assert.deepEqual(await world.snapshot(), before);
 });
+
+test("an empty Foundation catalogue never turns every conversation and contact into a leftover", async () => {
+  const world = await buildWorld();
+  const before = await world.snapshot();
+  const empty = { load: async () => ({ ...(await world.foundation.load()), characters: [] }) };
+  assert.equal(hasLeftovers(await findLeftovers(empty, world.deps)), false);
+  const stale = { conversations: [{ sessionId: world.ids.sessionA.id, characterId: A, messages: 3 }], contacts: [{ characterId: A }] };
+  assert.deepEqual(await removeLeftovers(stale, empty, world.deps), { removed: 0, skipped: 2, failed: 0 });
+  assert.deepEqual(await world.snapshot(), before);
+});

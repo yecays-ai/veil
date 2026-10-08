@@ -29,4 +29,4 @@ Claude；分支 `claude/brave-davinci-ws2ruk`；PR https://github.com/yecays-ai/
 
 ## 下一步
 
-创建 PR（不加 automerge），等待 CodeRabbit 与 CI，由用户本人手动合并。
+PR #46 已创建（未加 automerge）；等待 CodeRabbit 审查与 CI，由用户本人手动合并。

@@ -63,6 +63,7 @@ export async function findLeftovers(foundation: FoundationRead, deps: CleanupDep
   const empty: Leftovers = { conversations: [], contacts: [] };
   let document: FoundationDocument;
   try { document = await foundation.load(); } catch { return empty; }
+  if (!document.characters.length) return empty;
   const alive = new Set(document.characters.map((c) => c.characterId));
   const [sessions, contacts] = await Promise.all([deps.chat.listSessions(), deps.contacts.load()]);
   const orphans = sessions.filter((s) => s.type !== "group" && s.characterId && !alive.has(s.characterId));
@@ -76,7 +77,8 @@ export async function findLeftovers(foundation: FoundationRead, deps: CleanupDep
 export async function removeLeftovers(leftovers: Leftovers, foundation: FoundationRead, deps: CleanupDeps): Promise<{ removed: number; skipped: number; failed: number }> {
   const result = { removed: 0, skipped: 0, failed: 0 };
   const stillMissing = async (characterId: string) => {
-    try { return !(await foundation.load()).characters.some((c) => c.characterId === characterId); } catch { return false; }
+    const alive = await aliveIds(foundation);
+    return alive !== null && !alive.has(characterId);
   };
   for (const item of leftovers.conversations) {
     if (!await stillMissing(item.characterId)) { result.skipped++; continue; }
