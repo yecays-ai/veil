@@ -6,7 +6,7 @@ import type { ChatBackgroundSettings } from "./types";
 // URL per visit made it decode after the first frame, which showed as the wallpaper "popping in").
 // Eviction revokes the URL, so the set is bounded and nothing outlives it.
 const MAX_ENTRIES = 2;
-type Entry = { blob: Blob; url: string; image: HTMLImageElement | null; ready: Promise<void> };
+type Entry = { blob: Blob; url: string; image: HTMLImageElement | null; ready: Promise<void>; decoded: boolean };
 const entries = new Map<string, Entry>();
 let settings = new WeakMap<object, { value: ChatBackgroundSettings; revision: number }>();
 
@@ -15,12 +15,18 @@ function release(entry: Entry) {
   URL.revokeObjectURL(entry.url);
 }
 
-/** The object URL of a cached wallpaper (most recently used), or null when it has not been read yet. */
+/** The object URL of a cached wallpaper that has finished decoding (most recently used), or null. */
 export function cachedBackgroundUrl(id: string): string | null {
   const entry = entries.get(id);
   if (!entry) return null;
   entries.delete(id); entries.set(id, entry);
-  return entry.url;
+  return entry.decoded ? entry.url : null;
+}
+
+/** A wallpaper that was read but is still decoding: callers wait for it instead of reading the Blob again. */
+export function pendingBackgroundReady(id: string): Promise<void> | null {
+  const entry = entries.get(id);
+  return entry && !entry.decoded ? entry.ready : null;
 }
 
 /**
@@ -31,20 +37,21 @@ export function rememberBackgroundBlob(id: string, blob: Blob): { url: string; r
   const existing = entries.get(id);
   if (existing) { cachedBackgroundUrl(id); return { url: existing.url, ready: existing.ready }; }
   const url = URL.createObjectURL(blob);
-  let image: HTMLImageElement | null = null;
-  let ready: Promise<void> = Promise.resolve();
+  const entry: Entry = { blob, url, image: null, ready: Promise.resolve(), decoded: typeof Image === "undefined" };
   if (typeof Image !== "undefined") {
-    image = new Image();
+    const image = new Image();
     image.src = url;
-    ready = image.decode ? image.decode().catch(() => {}) : Promise.resolve();
+    entry.image = image;
+    // Settles on success or failure: a failed decode just means a normal paint, not a stuck wallpaper.
+    entry.ready = (image.decode ? image.decode() : Promise.resolve()).catch(() => {}).then(() => { entry.decoded = true; });
   }
-  entries.set(id, { blob, url, image, ready });
+  entries.set(id, entry);
   while (entries.size > MAX_ENTRIES) {
     const oldest = entries.keys().next().value as string;
     release(entries.get(oldest)!);
     entries.delete(oldest);
   }
-  return { url, ready };
+  return { url, ready: entry.ready };
 }
 
 // What a chat last resolved to, keyed by character: lets the wallpaper be chosen in the first frame,

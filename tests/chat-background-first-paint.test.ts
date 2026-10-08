@@ -10,7 +10,7 @@ import {
   cachedBackgroundSettings, resetChatBackgroundCacheForTests,
 } from "../lib/chat/background-cache";
 
-async function harness() {
+async function harness(options: { fakeImage?: boolean } = {}) {
   resetChatBackgroundCacheForTests();
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
   const descriptors = new Map<string, PropertyDescriptor | undefined>();
@@ -22,6 +22,9 @@ async function harness() {
   install("IS_REACT_ACT_ENVIRONMENT", true);
   install("self", dom.window);
   install("BroadcastChannel", undefined); // an open channel would keep the test process alive
+  const decodes: Array<() => void> = [];
+  if (options.fakeImage) // a browser image whose decode finishes only when the test says so
+    install("Image", class { src = ""; decode() { return new Promise<void>((resolve) => { decodes.push(resolve); }); } });
   const { createRoot } = await import("react-dom/client");
   const { useChatBackground } = await import("../components/chat/use-chat-background");
   const storage = new ChatStorage(() => new IDBFactory());
@@ -41,6 +44,7 @@ async function harness() {
   const late = () => dom.window.document.getElementById("probe")?.getAttribute("data-late");
   // Synchronous act: renders and flushes effects but not pending storage promises, i.e. the first frame.
   const mountNow = (session: ChatSession | null, characterId = "a") => act(() => { root.render(createElement(Probe, { session, characterId })); });
+  const settleDecodes = () => act(async () => { decodes.splice(0).forEach((resolve) => resolve()); });
   const leave = () => act(() => { root.render(createElement("div", { id: "elsewhere" })); });
   const until = async (condition: () => boolean) => {
     const deadline = Date.now() + 3000;
@@ -58,7 +62,7 @@ async function harness() {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
     }
   };
-  return { storage, reads, revoked, mountNow, leave, until, url, late, cleanup };
+  return { storage, reads, revoked, mountNow, leave, until, url, late, settleDecodes, pendingDecodes: () => decodes.length, cleanup };
 }
 
 async function sessionWithWallpaper(storage: ChatStorage, content = "wallpaper") {
@@ -132,6 +136,39 @@ test("each character keeps its own wallpaper hint", async () => {
     await app.leave();
     await app.mountNow(null, "a");
     assert.notEqual(app.url(), "", "the character that resolved it still has it");
+  } finally { await app.cleanup(); }
+});
+
+test("a wallpaper is not exposed before it has decoded, and re-entering while it decodes waits instead of re-reading", async () => {
+  const app = await harness({ fakeImage: true });
+  try {
+    const { session } = await sessionWithWallpaper(app.storage);
+    await app.mountNow(session);
+    await app.until(() => app.pendingDecodes() === 1); // the Blob is read; decode() is still pending
+    assert.equal(app.url(), "", "an undecoded wallpaper is not treated as ready");
+    await app.leave();
+    await app.mountNow(session); // re-entry while the decode is pending
+    assert.equal(app.url(), "");
+    await app.settleDecodes();
+    await app.until(() => app.url() !== "");
+    assert.equal(app.late(), "true", "it arrived after the first frame, decoded");
+    assert.equal(app.reads.image, 1, "the pending entry was awaited, not read again");
+  } finally { await app.cleanup(); }
+});
+
+test("a wallpaper selected after the chat opened is faded in even though the first one was cached", async () => {
+  const app = await harness();
+  try {
+    const { session } = await sessionWithWallpaper(app.storage);
+    await app.mountNow(session);
+    await app.until(() => app.url() !== "");
+    await app.leave();
+    await app.mountNow(session);
+    assert.equal(app.late(), "false", "the cached wallpaper is simply there");
+    const next = await app.storage.saveChatImage(new Blob(["next"], { type: "image/png" }));
+    await app.storage.updateSessionSettings(session.id, { backgroundImage: next });
+    await app.mountNow((await app.storage.readSession(session.id)).session); // same chat, newly selected wallpaper
+    await app.until(() => app.url() !== "" && app.late() === "true");
   } finally { await app.cleanup(); }
 });
 

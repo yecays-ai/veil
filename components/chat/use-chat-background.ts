@@ -2,8 +2,8 @@
 import { useEffect, useState } from "react";
 import { resolveChatBackground } from "../../lib/chat/background";
 import {
-  cachedBackgroundHint, cachedBackgroundSettings, cachedBackgroundUrl, rememberBackgroundBlob,
-  rememberBackgroundHint, rememberBackgroundSettings,
+  cachedBackgroundHint, cachedBackgroundSettings, cachedBackgroundUrl, pendingBackgroundReady,
+  rememberBackgroundBlob, rememberBackgroundHint, rememberBackgroundSettings,
 } from "../../lib/chat/background-cache";
 import { affectsChatBackground, chatStorage, type ChatStorage } from "../../lib/chat/storage";
 import type { ChatBackgroundSettings, ChatSession } from "../../lib/chat/types";
@@ -16,7 +16,8 @@ type Options = { characterId?: string; storage?: ChatStorage };
 export function useChatBackground(session: ChatSession | null, { characterId, storage = chatStorage }: Options = {}) {
   const [settings, setSettings] = useState<ChatBackgroundSettings>(
     () => cachedBackgroundSettings(storage, storage.backgroundRevision()) ?? DEFAULT_SETTINGS);
-  const [, setLoaded] = useState(0);
+  // The wallpaper that had to be loaded after it was selected (so it may fade in); reset when the image changes.
+  const [lateFor, setLateFor] = useState<string | null>(null);
   const hint = !session && characterId ? cachedBackgroundHint(storage, characterId, storage.backgroundRevision()) : null;
   const resolved = resolveChatBackground(session ? session : hint ? { backgroundImage: hint.image ?? undefined, backgroundBlur: hint.blur ?? undefined } : null, settings);
   const image = resolved.image;
@@ -51,21 +52,22 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     return () => { active = false; requestRevision++; unsubscribe(); };
   }, [session?.id, storage]);
 
+  if (lateFor !== null && lateFor !== image) setLateFor(null);
   useEffect(() => {
     if (!image || cachedBackgroundUrl(image)) return;
     let active = true;
-    void storage.readChatImage(image).then(async (blob) => {
-      if (!active || !blob) return;
-      // Reveal the wallpaper only once the browser can paint it, so it never appears half-decoded.
-      await rememberBackgroundBlob(image, blob).ready;
-      if (active) setLoaded((count) => count + 1);
+    const reveal = (ready: Promise<void>) => ready.then(() => { if (active) setLateFor(image); });
+    const pending = pendingBackgroundReady(image);
+    // Reveal a wallpaper only once the browser can paint it, so it never appears half-decoded.
+    if (pending) void reveal(pending);
+    else void storage.readChatImage(image).then(async (blob) => {
+      if (active && blob) await reveal(rememberBackgroundBlob(image, blob).ready);
     }).catch(() => {});
     return () => { active = false; };
   }, [image, storage]);
 
   // A wallpaper already known to the cache is part of the first painted frame, with its decoded bitmap.
   const url = image ? cachedBackgroundUrl(image) : null;
-  // "late": it was not there for the first frame, so the caller may fade it in instead of popping it in.
-  const [readyAtMount] = useState(url !== null);
-  return { url, blur: resolved.blur, late: url !== null && !readyAtMount };
+  // "late": it was not ready when it was selected, so the caller may fade it in instead of popping it in.
+  return { url, blur: resolved.blur, late: url !== null && lateFor === image };
 }
