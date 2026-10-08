@@ -1,8 +1,53 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { JSDOM } from "jsdom";
+import { act, createElement, useState } from "react";
+import { Switch } from "../components/settings/ui/switch";
 
 const read = (path: string) => readFileSync(path, "utf8");
+
+test("mounted disabled Switch blocks direct and label clicks, then works when re-enabled", async () => {
+  const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/settings" });
+  const saved = new Map<string, PropertyDescriptor | undefined>();
+  for (const [name, value] of Object.entries({ window: dom.window, document: dom.window.document,
+    navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true })) {
+    saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  }
+  const { createRoot } = await import("react-dom/client");
+  const container = dom.window.document.getElementById("root")!;
+  const root = createRoot(container);
+  const changes: boolean[] = [];
+  function Probe({ disabled }: { disabled: boolean }) {
+    const [checked, setChecked] = useState(false);
+    return createElement("label", null, "Setting", createElement(Switch, { checked, disabled,
+      onChange: (next) => { changes.push(next); setChecked(next); } }));
+  }
+  try {
+    await act(async () => { root.render(createElement(Probe, { disabled: true })); });
+    const input = container.querySelector<HTMLInputElement>('input[role="switch"]')!;
+    const label = container.querySelector("label")!;
+    await act(async () => { input.click(); label.click(); });
+    assert.deepEqual(changes, [], "disabled native and label activation never invokes onChange");
+    assert.equal(input.checked, false);
+    await act(async () => { root.render(createElement(Probe, { disabled: false })); });
+    await act(async () => { label.click(); });
+    assert.deepEqual(changes, [true], "the same mounted Switch works once enabled");
+    assert.equal(input.checked, true);
+    await act(async () => { root.render(createElement(Probe, { disabled: true })); });
+    await act(async () => { label.click(); input.click(); });
+    assert.deepEqual(changes, [true], "disabling again blocks further changes without clearing the value");
+    assert.equal(input.checked, true);
+  } finally {
+    await act(async () => { root.unmount(); });
+    dom.window.close();
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else Reflect.deleteProperty(globalThis, name);
+    }
+  }
+});
 
 test("shared Switch keeps switch semantics, theme accent, keyboard focus and touch target", () => {
   const component = read("components/settings/ui/switch.tsx");

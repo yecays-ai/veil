@@ -10,6 +10,7 @@ import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
 import { DEFAULT_BUBBLE_TIMING } from "../lib/chat/types";
 import { regressionContract } from "./regression-contract";
+import { observeTimeouts } from "./lifecycle-test-tools";
 import type { ChatMessage } from "../lib/chat/types";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { useBubbleReveal } from "../components/chat/use-bubble-reveal";
@@ -92,9 +93,13 @@ regressionContract("chat.bubble-timer-unmount-cleanup", "async-race-safety",
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const queue = new BubbleRevealQueue();
   const old = queue.begin("s", [], false, 0);
+  const timers = observeTimeouts(t);
   queue.complete("s", [message("a"), message("b")], 1000, old);
+  assert.equal(timers.length, 1, "the queue owns a scheduled reveal");
   queue.cancel();
+  assert.equal(timers[0].cancelled, true, "cleanup actually clears the scheduled timer");
   t.mock.timers.tick(10000);
+  assert.equal(timers[0].fired, false, "the cancelled callback never executes");
   assert.equal(queue.getSnapshot().sessionId, undefined);
   const next = queue.begin("s", [], false, 0);
   queue.complete("s", [message("old")], 1000, old);
@@ -107,6 +112,7 @@ regressionContract("chat.bubble-timer-unmount-cleanup", "async-race-safety",
 regressionContract("chat.mounted-bubble-timer-route-cleanup", "async-race-safety",
   "unmounting one route cancels its reveal timer before the next route starts its own", async (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
+  const timers = observeTimeouts(context);
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/messages/peter" });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   for (const [name, value] of Object.entries({
@@ -133,17 +139,28 @@ regressionContract("chat.mounted-bubble-timer-route-cleanup", "async-race-safety
   try {
     await act(async () => { root.render(createElement(Probe, { key: "peter", sessionId: "peter" })); });
     const peter = queues.get("peter")!;
+    const peterTimer = timers.at(-1)!;
+    assert.ok(peterTimer, "the first route scheduled a reveal");
     assert.equal(peter.getSnapshot().hiddenIds.size, 2);
     await act(async () => { root.render(createElement(Probe, { key: "pep", sessionId: "pep" })); });
     const pep = queues.get("pep")!;
+    assert.equal(peterTimer.cancelled, true, "route replacement physically cancels its timer");
+    const pepTimer = timers.at(-1)!;
+    assert.notEqual(pepTimer, peterTimer);
     assert.equal(peter.getSnapshot().pending, false, "the route cleanup cancels the old queue and timer");
     assert.equal(pep.getSnapshot().hiddenIds.size, 2);
     await act(async () => { context.mock.timers.tick(1200); });
+    assert.equal(peterTimer.fired, false, "an obsolete callback must not run even if its revision guard would ignore it");
+    assert.equal(pepTimer.fired, true, "the new route's timer remains executable");
     assert.equal(peter.getSnapshot().hiddenIds.size, 0, "the old route never reveals after unmount");
     assert.equal(pep.getSnapshot().hiddenIds.size, 1, "the current route's independent timer still advances");
+    const nextPepTimer = timers.at(-1)!;
+    assert.notEqual(nextPepTimer, pepTimer, "the current route scheduled its next bubble");
     await act(async () => { root.unmount(); });
+    assert.equal(nextPepTimer.cancelled, true, "unmount clears the current route's outstanding timer");
     assert.equal(pep.getSnapshot().pending, false);
     await act(async () => { context.mock.timers.tick(5000); });
+    assert.equal(nextPepTimer.fired, false);
     assert.equal(pep.getSnapshot().hiddenIds.size, 0, "unmount clears the active route's timer too");
   } finally {
     await act(async () => { root.unmount(); });
@@ -157,15 +174,19 @@ regressionContract("chat.mounted-bubble-timer-route-cleanup", "async-race-safety
 
 test("deleting queued messages and clearing authoritative history cancel pending timers", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
+  const timers = observeTimeouts(t);
   for (const deletion of [true, false]) {
     const queue = new BubbleRevealQueue();
     const parts = [message("a"), message("b")];
     const token = queue.begin("s", [], false, 0);
     queue.complete("s", parts, 1000, token);
+    const timer = timers.at(-1)!;
     queue.reconcile(parts);
     if (deletion) queue.discard(["b"]);
     else queue.reconcile([]);
+    assert.equal(timer.cancelled, true, "history invalidation actually clears its timer");
     t.mock.timers.tick(10000);
+    assert.equal(timer.fired, false);
     assert.equal(queue.getSnapshot().pending, false);
     assert.equal(queue.getSnapshot().replyIds.length, 0);
   }
