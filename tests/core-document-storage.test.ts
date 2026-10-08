@@ -61,6 +61,21 @@ test("Core storage retries transaction creation once and does not retry write fa
     assert.equal(openCalls, 1);
     assert.equal(await documents.read("profile"), "saved");
     assert.equal(openCalls, 2);
+
+    const database = await (documents as unknown as { database: Promise<IDBDatabase> }).database;
+    const objectStorePrototype = Object.getPrototypeOf(
+      database.transaction("documents", "readwrite").objectStore("documents"),
+    ) as {
+      put: (...args: unknown[]) => IDBRequest;
+    };
+    const originalPut = objectStorePrototype.put;
+    objectStorePrototype.put = () => { throw new Error("ordinary write failure"); };
+    try {
+      await assert.rejects(documents.replaceIfCurrent("profile", "saved", "updated"), /ordinary write failure/);
+      assert.equal(openCalls, 2, "an operation failure does not reopen the database");
+    } finally {
+      objectStorePrototype.put = originalPut;
+    }
   } finally {
     databasePrototype.transaction = originalTransaction;
   }
