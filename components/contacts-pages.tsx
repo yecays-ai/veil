@@ -163,9 +163,9 @@ function ContactProfileFromQuery({ characterId }: { characterId: string }) {
 }
 
 export function ContactProfile({ characterId }: { characterId: string }) {
-  // The fallback is the real page (Back inert until the query decides where it goes), so
+  // The fallback is the real page (inert until the query decides where Back goes), so
   // resolving the query never blanks or reloads the first frame.
-  return <Suspense fallback={<ContactInfo characterId={characterId} backPending />}>
+  return <Suspense fallback={<ContactInfo characterId={characterId} pending />}>
     <ContactProfileFromQuery characterId={characterId} />
   </Suspense>;
 }
