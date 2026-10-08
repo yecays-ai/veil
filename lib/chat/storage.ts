@@ -84,14 +84,36 @@ const request = <T>(req: IDBRequest<T>): Promise<T> =>
       reject(new Error("Chat storage could not be read or written."));
   });
 
-async function deleteUnusedChatImage(tx: IDBTransaction, id: string | undefined) {
-  if (!id) return;
+// The only references to a chat image are session wallpapers and the global wallpaper setting.
+async function referencedChatImageIds(tx: IDBTransaction): Promise<Set<string>> {
   const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
   const global: ChatBackgroundSettings | undefined = await request(
     tx.objectStore("chatSettings").get(CHAT_BACKGROUND_SETTINGS_ID));
-  if (sessions.some((session) => session.backgroundImage === id) ||
-      global?.globalChatBackgroundImage === id) return;
+  const ids = new Set<string>();
+  for (const session of sessions) if (session.backgroundImage) ids.add(session.backgroundImage);
+  if (global?.globalChatBackgroundImage) ids.add(global.globalChatBackgroundImage);
+  return ids;
+}
+
+async function deleteUnusedChatImage(tx: IDBTransaction, id: string | undefined) {
+  if (!id) return;
+  if ((await referencedChatImageIds(tx)).has(id)) return;
   await request(tx.objectStore("assets").delete(id));
+}
+
+// An image is saved before a later transaction attaches it, so a crash, reload or failed attach in
+// between leaves an unreferenced asset. This runs inside the transaction that saves the next image: the
+// reference check and the delete share one transaction with every attach, so a reference cannot appear
+// between them, and an attach that loses the race fails because its asset is gone. The grace period
+// covers the gap between "saved" and "attached". Assets of unknown age are kept.
+export const CHAT_IMAGE_ORPHAN_GRACE_MS = 60 * 60 * 1000;
+async function deleteOrphanedChatImages(tx: IDBTransaction, now: number) {
+  const assets: Partial<ChatImageAsset>[] = await request(tx.objectStore("assets").getAll());
+  const old = assets.filter((asset) => typeof asset.id === "string" && typeof asset.createdAt === "number"
+    && Number.isFinite(asset.createdAt) && now - asset.createdAt >= CHAT_IMAGE_ORPHAN_GRACE_MS);
+  if (!old.length) return;
+  const referenced = await referencedChatImageIds(tx);
+  for (const asset of old) if (!referenced.has(asset.id!)) await request(tx.objectStore("assets").delete(asset.id!));
 }
 
 // Conversation history-derived persistence must be keyed by sessionId and
@@ -515,10 +537,12 @@ export class ChatStorage {
     if (!blob.size || blob.size > MAX_CHAT_IMAGE_BYTES)
       return Promise.reject(new Error("Chat background images must be 25 MiB or smaller."));
     return this.transaction("readwrite", async (tx) => {
+      const now = Date.now();
+      await deleteOrphanedChatImages(tx, now);
       const asset: ChatImageAsset = {
         id: crypto.randomUUID(),
         blob,
-        createdAt: Date.now(),
+        createdAt: now,
       };
       await request(tx.objectStore("assets").add(asset));
       return asset.id;
