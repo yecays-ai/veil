@@ -41,6 +41,7 @@ async function mounted() {
   const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { PathnameContext } = await import("next/dist/shared/lib/hooks-client-context.shared-runtime");
   const { FoundationProvider, useFoundation } = await import("../components/foundation-provider");
+  const { ThemeProvider } = await import("../components/theme-provider");
   const { TextApiSettings } = await import("../components/settings/text-api-settings");
   const { CharacterPage } = await import("../components/profile-pages");
   const factory = new IDBFactory(), api = new ApiConfigStorage(() => factory);
@@ -60,7 +61,7 @@ async function mounted() {
   const router = { bfcacheId: "stale-editor-test", push: (href: string) => { pushes.push(href); }, back() {}, replace() {}, forward() {}, refresh() {}, prefetch() {} };
   const render = (child: ReactNode) => act(async () => { root.render(createElement(AppRouterContext.Provider,
     { value: router }, createElement(PathnameContext.Provider, { value: "/characters/p" },
-      createElement(FoundationProvider, null, child)))); });
+      createElement(ThemeProvider, null, createElement(FoundationProvider, null, child))))); });
   const wait = async (check: () => boolean) => {
     const deadline = Date.now() + 2500;
     while (!check()) {
@@ -227,6 +228,58 @@ test("Character persistence failure keeps its draft and the provider queue accep
     await app.submit(); await app.wait(() => !app.container.querySelector("form"));
     assert.equal((await app.foundation.load()).characters[0].name, "Retry character");
   } finally { await app.cleanup(); }
+});
+
+test("deleting a Character lists what goes with it, reports an unfinished step honestly and finishes it on retry", async () => {
+  const app = await mounted();
+  const { chatStorage } = await import("../lib/chat/storage");
+  const { browserContactStorage } = await import("../lib/contact-storage");
+  const { browserBindingStorage } = await import("../lib/binding-storage");
+  const { browserThemeStorage } = await import("../lib/theme-storage");
+  const { normalizeDocument } = await import("../lib/theme-types");
+  const originals = { list: chatStorage.listSessions, count: chatStorage.countMessages, group: chatStorage.removeGroupMembers,
+    contacts: browserContactStorage.load, bindingsLoad: browserBindingStorage.load, bindingsWrite: browserBindingStorage.transact, theme: browserThemeStorage.load };
+  const session = { id: "s1", type: "direct", characterId: "p", backgroundImage: null, generation: undefined };
+  let bindings = { global: {}, characters: { p: { defaults: {}, apps: {} } } } as never as Awaited<ReturnType<typeof browserBindingStorage.load>>;
+  let failBindings = true;
+  chatStorage.listSessions = async () => [session] as never;
+  chatStorage.countMessages = async () => 7;
+  chatStorage.removeGroupMembers = async () => [];
+  browserContactStorage.load = async () => ({ version: 1, contacts: [] }) as never;
+  browserThemeStorage.load = async () => normalizeDocument(null);
+  browserBindingStorage.load = async () => bindings;
+  browserBindingStorage.transact = async (update) => {
+    if (failBindings) throw new Error("bindings storage unavailable");
+    bindings = update(bindings); return bindings;
+  };
+  const deleted: string[] = [];
+  chatStorage.deleteSession = (async (id: string) => { deleted.push(id); }) as never;
+  try {
+    await app.render(createElement(app.CharacterPage, { characterId: "p" }));
+    await app.wait(() => !!app.button("Delete Character"));
+    await app.click(app.button("Delete Character"));
+    await app.wait(() => !!app.container.querySelector("ul[aria-label]"));
+    const list = app.container.querySelector("ul[aria-label]")!.textContent!;
+    assert.match(list, /private conversation \(7 messages\)/);
+    assert.match(list, /Binding overrides/);
+    await app.click(app.button("Confirm delete"));
+    await app.wait(() => app.container.textContent?.includes("did not finish") === true);
+    assert.match(app.container.textContent!, /Binding overrides: bindings storage unavailable/);
+    assert.deepEqual(deleted, ["s1"], "the other steps finished");
+    assert.equal((await app.foundation.load()).characters.length, 0, "the Character itself is already gone");
+    assert.deepEqual(app.pushes, [], "stays on the page while cleanup is unfinished");
+    failBindings = false;
+    await app.click(app.button("Retry cleanup"));
+    await app.wait(() => app.pushes.length === 1);
+    assert.deepEqual(app.pushes, ["/characters"]);
+    assert.deepEqual(Object.keys(bindings.characters), []);
+  } finally {
+    Object.assign(chatStorage, { listSessions: originals.list, countMessages: originals.count, removeGroupMembers: originals.group });
+    Reflect.deleteProperty(chatStorage, "deleteSession");
+    browserContactStorage.load = originals.contacts; browserBindingStorage.load = originals.bindingsLoad;
+    browserBindingStorage.transact = originals.bindingsWrite; browserThemeStorage.load = originals.theme;
+    await app.cleanup();
+  }
 });
 
 test("Foundation publishes serial durable results, including a delayed earlier result", async () => {

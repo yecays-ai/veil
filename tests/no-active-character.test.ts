@@ -27,5 +27,5 @@ test("Character UI and widget runtime contain no global active controls or impli
   assert.doesNotMatch(binding, /selectedCharacterId|characters\[0\]/);
   assert.doesNotMatch(widget, /migrationAttempt|selectedCharacterId/);
   assert.match(profile, /setEditing\(true\)/);
-  assert.match(profile, /deleteCharacter\(d, characterId!/);
+  assert.match(profile, /deleteCharacterWithData\(\{\s*characterId: characterId!/);
 });

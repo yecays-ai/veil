@@ -1,13 +1,17 @@
 "use client";
-import { browserBindingStorage } from "../lib/binding-storage";
+import {
+  CLEANUP_STEP_LABEL, browserCleanupDeps, cleanupCharacterData, deleteCharacterWithData, previewCharacterDeletion,
+  type CleanupReport, type DeletionImpact,
+} from "../lib/character-deletion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { findLeftovers, hasLeftovers, reconcileInertReferences, removeLeftovers, type Leftovers } from "../lib/character-leftovers";
+import { browserFoundationStorage } from "../lib/foundation-storage";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { UI_COPY as U } from "../lib/ui-copy";
 import {
   createCharacter,
-  deleteCharacter,
   saveUser,
   updateCharacter,
 } from "../lib/foundation";
@@ -18,6 +22,7 @@ import {
   type UserProfile,
 } from "../lib/foundation-types";
 import { useFoundation } from "./foundation-provider";
+import { useTheme } from "./theme-provider";
 import { ProfileForm } from "./profile-form";
 import { Avatar, ProfileView } from "./profile-view";
 import { PageShell } from "./page-shell";
@@ -80,6 +85,7 @@ export function UserProfilePage() {
 }
 export function CharactersPage() {
   const { document, ready } = useFoundation();
+  const { commit: commitTheme } = useTheme();
   return (
     <PageShell
       title={C.characters.title}
@@ -91,6 +97,7 @@ export function CharactersPage() {
       <nav>
         <Link href="/universe">{C.characters.universe}</Link>
       </nav>
+      {ready && <LeftoverData commitTheme={commitTheme} />}
       {!ready ? (
         <p>{C.common.loading}</p>
       ) : !document.characters.length ? (
@@ -129,16 +136,33 @@ export function CharacterPage({ characterId }: { characterId?: string }) {
 
 function CharacterEditor({ characterId }: { characterId?: string }) {
   const { document, ready, commit } = useFoundation();
+  const { commit: commitTheme } = useTheme();
   const back = useBackNavigation();
   const router = useRouter();
   const [editing, setEditing] = useState(false),
     [confirmDelete, setConfirmDelete] = useState(false),
     [busy, setBusy] = useState(false),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [impact, setImpact] = useState<DeletionImpact | null>(null),
+    [unfinished, setUnfinished] = useState<CleanupReport["failed"]>([]);
   const [baseline, setBaseline] = useState<Character | null>(null);
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
+  const deps = () => browserCleanupDeps(commitTheme);
+  async function retryCleanup() {
+    setBusy(true);
+    setNotice("");
+    try {
+      const report = await cleanupCharacterData(characterId!, deps());
+      setUnfinished(report.failed);
+      if (!report.failed.length) router.push("/characters");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : C.profile.saveError);
+    } finally {
+      setBusy(false);
+    }
+  }
   if (!ready)
     return (
       <PageShell
@@ -160,7 +184,8 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
         backLabel="Back to Characters"
         bodyClassName="foundation-page"
       >
-        <p>{C.characters.notFound}</p>
+        {unfinished.length ? <UnfinishedCleanup failed={unfinished} busy={busy} onRetry={() => void retryCleanup()} /> : <p>{C.characters.notFound}</p>}
+        {notice && <p role="alert">{notice}</p>}
       </PageShell>
     );
   const isNew = !characterId;
@@ -226,19 +251,18 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
             {confirmDelete ? (
               <>
                 <p>{C.characters.deleteQuestion}</p>
+                {impact ? <DeletionImpactList impact={impact} /> : <p>{C.characters.impactLoading}</p>}
                 <div className="foundation-actions">
                   <button
                     className="danger-button"
-                    disabled={busy}
+                    disabled={busy || !impact}
                     onClick={() =>
                       void action(async () => {
-                        await commit((d) => deleteCharacter(d, characterId!, baseline ?? undefined));
-                        await browserBindingStorage.transact((bindings) => {
-                          const characters = { ...bindings.characters };
-                          delete characters[characterId!];
-                          return { ...bindings, characters };
+                        const report = await deleteCharacterWithData({
+                          characterId: characterId!, baseline: baseline ?? undefined, commitFoundation: commit, deps: deps(),
                         });
-                        router.push("/characters");
+                        if (report.failed.length) setUnfinished(report.failed);
+                        else router.push("/characters");
                       })
                     }
                   >
@@ -252,7 +276,13 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
             ) : (
               <button
                 className="text-button danger-button"
-                onClick={() => { setBaseline(structuredClone(character!)); setConfirmDelete(true); }}
+                onClick={() => {
+                  setBaseline(structuredClone(character!)); setConfirmDelete(true); setImpact(null);
+                  void previewCharacterDeletion(document, characterId!, deps()).then(setImpact, (error) => {
+                    setConfirmDelete(false);
+                    setNotice(error instanceof Error ? error.message : C.profile.saveError);
+                  });
+                }}
               >
                 {U.deleteCharacter}
               </button>
@@ -263,4 +293,60 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
       {notice && <p role="alert">{notice}</p>}
     </PageShell>
   );
+}
+
+function DeletionImpactList({ impact }: { impact: DeletionImpact }) {
+  const items = [
+    impact.conversation && C.characters.impact.conversation(impact.conversation.messages, impact.conversation.hasBackground),
+    impact.groups.length && C.characters.impact.groups(impact.groups.map((g) => g.title)),
+    impact.contact && C.characters.impact.contact,
+    (impact.widgets.layout + impact.widgets.presets) && C.characters.impact.widgets(impact.widgets.layout, impact.widgets.presets),
+    impact.bindings && C.characters.impact.bindings,
+    impact.relations && C.characters.impact.relations(impact.relations),
+  ].filter(Boolean) as string[];
+  return <ul aria-label={C.characters.impact.title}>{items.map((item) => <li key={item}>{item}</li>)}</ul>;
+}
+
+function UnfinishedCleanup({ failed, busy, onRetry }: { failed: CleanupReport["failed"]; busy: boolean; onRetry: () => void }) {
+  return <div role="alert">
+    <p>{C.characters.cleanupUnfinished}</p>
+    <ul>{failed.map((item) => <li key={item.step}>{CLEANUP_STEP_LABEL[item.step]}: {item.message}</li>)}</ul>
+    <button disabled={busy} onClick={onRetry}>{C.characters.retryCleanup}</button>
+  </div>;
+}
+
+/**
+ * Once per visit: clears content-free references to Characters that no longer exist, then offers
+ * the user's own leftover conversations and contact records for removal. Nothing user-written is
+ * deleted without the explicit confirmation below. Failures are silent: the next visit tries again.
+ */
+function LeftoverData({ commitTheme }: { commitTheme: Parameters<typeof browserCleanupDeps>[0] }) {
+  const [leftovers, setLeftovers] = useState<Leftovers | null>(null);
+  const [busy, setBusy] = useState(false), [notice, setNotice] = useState("");
+  useEffect(() => {
+    let active = true;
+    const deps = browserCleanupDeps(commitTheme);
+    void (async () => {
+      try {
+        await reconcileInertReferences(browserFoundationStorage, deps);
+        const found = await findLeftovers(browserFoundationStorage, deps);
+        if (active && hasLeftovers(found)) setLeftovers(found);
+      } catch { /* retried on the next visit */ }
+    })();
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one pass per mount; the ThemeProvider commit is stable for its lifetime
+  }, []);
+  if (!leftovers) return notice ? <p role="status">{notice}</p> : null;
+  const messages = leftovers.conversations.reduce((sum, item) => sum + item.messages, 0);
+  return <section className="danger-area" aria-label={C.characters.leftovers.title}>
+    <p>{C.characters.leftovers.summary(leftovers.conversations.length, messages, leftovers.contacts.length)}</p>
+    <button className="danger-button" disabled={busy} onClick={() => {
+      setBusy(true);
+      void removeLeftovers(leftovers, browserFoundationStorage, browserCleanupDeps(commitTheme)).then((result) => {
+        setLeftovers(null);
+        setNotice(result.failed ? C.characters.leftovers.partial(result.failed) : C.characters.leftovers.done);
+      }, () => setNotice(C.characters.leftovers.partial(1))).finally(() => setBusy(false));
+    }}>{C.characters.leftovers.remove}</button>
+    <button disabled={busy} onClick={() => setLeftovers(null)}>{C.characters.leftovers.keep}</button>
+  </section>;
 }
