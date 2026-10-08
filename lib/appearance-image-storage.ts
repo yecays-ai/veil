@@ -7,7 +7,11 @@ import {
 export const APPEARANCE_IMAGE_DATABASE_NAME = "veil-appearance-images-v1";
 export const APPEARANCE_IMAGE_DATABASE_VERSION = 1;
 const STORE = "assets";
-type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: string[] };
+// A staging holder keeps an image from collection only for a lease: a tab that closed or crashed before
+// release() would otherwise pin the blob forever.
+type Holder = { id: string; at: number };
+type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: Holder[] };
+export const HOLDER_LEASE_MS = 24 * 60 * 60 * 1000;
 
 const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
@@ -36,7 +40,7 @@ async function imageId(blob: Blob): Promise<string> {
 
 export class AppearanceImageStorage {
   private database?: Promise<IDBDatabase>;
-  constructor(private factory: () => IDBFactory = () => window.indexedDB) {}
+  constructor(private factory: () => IDBFactory = () => window.indexedDB, private now: () => number = Date.now) {}
 
   private open(): Promise<IDBDatabase> {
     if (!this.database) {
@@ -93,12 +97,12 @@ export class AppearanceImageStorage {
       for (let index = 0; index < blobs.length; index++) {
         const previous = await request<ImageAsset | undefined>(store.get(ids[index]));
         await request(store.put({ id: ids[index], blob: blobs[index], type: blobs[index].type,
-          createdAt: previous?.createdAt ?? Date.now(), holders: previous?.holders } satisfies ImageAsset));
+          createdAt: previous?.createdAt ?? this.now(), holders: previous?.holders } satisfies ImageAsset));
       }
       if (holder) for (const id of new Set([...ids, ...heldIds])) {
         const asset = await request<ImageAsset | undefined>(store.get(id));
         if (!asset) throw new Error("An Appearance image asset is missing. Choose the image again before saving.");
-        await request(store.put({ ...asset, holders: [...new Set([...(asset.holders ?? []), holder])] }));
+        await request(store.put({ ...asset, holders: [...(asset.holders ?? []).filter((item) => item.id !== holder), { id: holder, at: this.now() }] }));
       }
     });
     return ids.map((id) => `${THEME_IMAGE_ASSET_PREFIX}${id}`);
@@ -111,7 +115,7 @@ export class AppearanceImageStorage {
     return { references, release: () => this.transaction("readwrite", async (store) => {
       for (const id of ids) {
         const asset = await request<ImageAsset | undefined>(store.get(id));
-        if (asset) await request(store.put({ ...asset, holders: asset.holders?.filter((value) => value !== holder) }));
+        if (asset) await request(store.put({ ...asset, holders: asset.holders?.filter((item) => item.id !== holder) }));
       }
     }) };
   }
@@ -149,8 +153,12 @@ export class AppearanceImageStorage {
       // Read the persisted authority while holding the same transaction lock as publishers.
       // Failure to read/parse references aborts collection rather than treating them as empty.
       const usedIds = resolveUsedIds();
+      const now = this.now();
+      // Only holders inside their lease count; anything else, including a malformed entry, is expired.
+      const held = (asset: ImageAsset) => (asset.holders ?? []).some((holder) =>
+        typeof holder === "object" && holder !== null && typeof holder.at === "number" && now - holder.at < HOLDER_LEASE_MS);
       for (const asset of saved)
-        if (!usedIds.has(asset.id) && !asset.holders?.length) await request(store.delete(asset.id));
+        if (!usedIds.has(asset.id) && !held(asset)) await request(store.delete(asset.id));
     });
   }
 }

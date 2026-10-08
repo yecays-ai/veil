@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { AppearanceImageStorage, withThemeSnapshotImages } from "../lib/appearance-image-storage";
+import { AppearanceImageStorage, HOLDER_LEASE_MS, withThemeSnapshotImages } from "../lib/appearance-image-storage";
 import { createThemeStorage, persistAppearanceImage } from "../lib/theme-storage";
 import { ThemeImageUrls } from "../lib/theme-image-urls";
 import { defaultSnapshot, themeImageAssetId, themeImageAssetIds, type ThemeDocument } from "../lib/theme-types";
@@ -133,4 +133,19 @@ test("superseded image owner revokes unfinished URLs and keeps only the latest p
   assert.deepEqual(revoked, ["blob:0"]);
   urls.dispose();
   assert.deepEqual(revoked, ["blob:0", "blob:1"]);
+});
+
+test("a staging holder left by an interrupted owner stops pinning its image after the lease", async () => {
+  let clock = 1_000;
+  const factory = new IDBFactory();
+  const images = new AppearanceImageStorage(() => factory, () => clock);
+  const staged = await images.stageBlobs([new Blob(["image"], { type: "image/png" })]);
+  const id = themeImageAssetId(staged.references[0])!;
+  // The owner never calls release(): its tab closed mid-publication.
+  clock += HOLDER_LEASE_MS - 1;
+  await images.collect(() => new Set());
+  assert(await images.readBlob(id), "a live holder still protects the image");
+  clock += 2;
+  await images.collect(() => new Set());
+  assert.equal(await images.readBlob(id), null, "an expired holder no longer pins the blob");
 });
