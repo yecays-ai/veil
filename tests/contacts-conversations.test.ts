@@ -96,7 +96,7 @@ test("normal Contacts still opens Contact Profile and Add Contact creates only t
   const add = contacts.match(/export function AddContactPage\(\)[\s\S]*?export function CreateGroupPage/)?.[0] ?? "";
   assert.match(normal, /\/contacts\//);
   assert.match(contacts, /export function ContactProfile/);
-  assert.match(add, /addContact\(current, character\.characterId\)/);
+  assert.match(add, /addContact\(current, characterId\)/);
   assert.doesNotMatch(add, /chatStorage\.openSession|createGroupSession/);
 });
 

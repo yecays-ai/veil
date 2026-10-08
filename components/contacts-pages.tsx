@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Circle, CircleCheck, Plus } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { Avatar } from "./profile-view";
 import { PresenceBadge } from "./presence";
@@ -101,17 +101,39 @@ export function AddContactPage() {
   const { document, ready } = useFoundation();
   const contactState = useContacts();
   const [query, setQuery] = useState(""), [notice, setNotice] = useState("");
+  const [pendingId, setPendingId] = useState<string | null>(null), [error, setError] = useState("");
+  const submitting = useRef(false), lifetime = useRef(0);
+  useEffect(() => {
+    const owner = lifetime;
+    return () => { owner.current++; };
+  }, []);
+  async function add(characterId: string, name: string) {
+    if (submitting.current) return;
+    submitting.current = true;
+    const owner = lifetime.current;
+    setPendingId(characterId); setNotice(""); setError("");
+    try {
+      await contactState.commit((current) => addContact(current, characterId));
+      if (owner === lifetime.current) setNotice(`${name} added to Contacts.`);
+    } catch (reason) {
+      if (owner === lifetime.current) setError(reason instanceof Error ? reason.message : "Contact could not be added.");
+    } finally {
+      submitting.current = false;
+      if (owner === lifetime.current) setPendingId(null);
+    }
+  }
   const ids = new Set(contactState.document.contacts.map((item) => item.characterId));
   const rows = document.characters.filter((character) => contactMatches(character.name, undefined, query));
   return <PageShell title="Add Contact" backHref="/contacts" backLabel="Back to Contacts" bodyClassName="foundation-page add-contact-page">
     <input className="social-search" type="search" aria-label="Search Characters" placeholder="Search Characters..." value={query} onChange={(event) => setQuery(event.target.value)} />
     {notice && <p role="status">{notice}</p>}
+    {error && <p role="alert">{error}</p>}
     {!ready || !contactState.ready ? <p>Loading Characters…</p> : contactState.error ? <p role="alert">{contactState.error}</p>
       : rows.length === 0 ? <p>No Characters available.</p> : <div className="social-list">
       {rows.map((character) => { const added = ids.has(character.characterId); return <div className="social-row" key={character.characterId}>
         <span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} /></span>
         <span><strong>{character.name}</strong></span>
-        <button type="button" disabled={added} onClick={() => void contactState.commit((current) => addContact(current, character.characterId)).then(() => setNotice(`${character.name} added to Contacts.`))}>{added ? "Added" : "Add Contact"}</button>
+        <button type="button" disabled={added || pendingId !== null} onClick={() => void add(character.characterId, character.name)}>{added ? "Added" : pendingId === character.characterId ? "Adding…" : "Add Contact"}</button>
       </div>; })}
     </div>}
   </PageShell>;
@@ -122,6 +144,11 @@ export function CreateGroupPage({ characterIds }: { characterIds: string[] }) {
   const router = useRouter();
   const contactState = useContacts();
   const [name, setName] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const lifetime = useRef(0);
+  useEffect(() => {
+    const owner = lifetime;
+    return () => { owner.current++; };
+  }, []);
   const contacts = new Set(characterIds);
   const memberContactIds = new Set(contactState.document.contacts.map((contact) => contact.characterId));
   const members = document.characters.filter((character) =>
@@ -129,13 +156,16 @@ export function CreateGroupPage({ characterIds }: { characterIds: string[] }) {
   const backHref = contactsSelectionHref("multi", members.map((character) => character.characterId));
   async function create() {
     if (busy || members.length < 2 || !name.trim()) return;
+    const owner = lifetime.current;
     setBusy(true); setError("");
     try {
       const session = await chatStorage.createGroupSession(members.map((character) => character.characterId), name);
-      router.push(`/messages/group/${encodeURIComponent(session.id)}`);
+      if (owner === lifetime.current) router.push(`/messages/group/${encodeURIComponent(session.id)}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Group could not be created.");
-      setBusy(false);
+      if (owner === lifetime.current) {
+        setError(reason instanceof Error ? reason.message : "Group could not be created.");
+        setBusy(false);
+      }
     }
   }
   return <PageShell title="Create Group" backHref={backHref} backLabel="Back to Contacts"
