@@ -130,13 +130,16 @@ test("a chat pressed in the list paints its history in the first frame; one that
 test("leaving a seeded chat before its own read lands still stops what was started from it", async () => {
   const pending = deferred<ReturnType<typeof snapshotOf> | null>();
   const stopped: string[] = [];
+  let reads = 0;
   const storage = {
-    readExistingSession: () => pending.promise, openSession: async () => snapshotOf("a").session,
+    readExistingSession: () => { reads++; return pending.promise; }, openSession: async () => snapshotOf("a").session,
     readSession: async () => snapshotOf("a"), subscribe: () => () => {},
   };
   const owner = createChatSessionLifecycle("a", storage, () => {}, (id) => stopped.push(id));
   owner.seed(snapshotOf("a")); // the route paints the seed and the user can already send from it
   owner.mount(false);
+  await Promise.resolve(); // mount schedules the route's own read in a promise callback
+  assert.equal(reads, 1, "the route read has started and is still pending");
   owner.setEnabled(true);
   owner.unmount(); // the user leaves before the storage read resolves
   assert.deepEqual(stopped, ["s-a"], "a reply started from the seed is stopped on exit, like one from a loaded chat");
