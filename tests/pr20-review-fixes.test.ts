@@ -101,3 +101,109 @@ test("recoverGeneration fails soft when the lock cannot be acquired and still re
   assert.equal(await live.recoverGeneration(session.id), true);
   assert.equal((await live.readSession(session.id)).messages[0].outcome, "interrupted");
 });
+
+// Mounted ChatRoom whose session generation is held by another tab (a distinct ChatStorage client
+// sharing the same IndexedDB and Web Locks origin).
+async function withPeerOwnedGeneration(run: (ctx: {
+  peer: ChatStorage; owner: string; sessionId: string; unmount: () => Promise<void>;
+  wait: (condition: () => boolean | Promise<boolean>) => Promise<void>;
+  button: (label: string) => HTMLButtonElement | undefined; click: (element: HTMLElement) => Promise<void>;
+  read: () => Promise<{ session: { generation?: unknown }; messages: { status?: string; outcome?: string }[] }>;
+}) => Promise<void>) {
+  const [{ JSDOM }, { act, createElement }, { TEST_API_CONFIG }] = await Promise.all([
+    import("jsdom"), import("react"), import("./chat-engine-fixture")]);
+  const dom = new JSDOM('<div class="phone-shell"><div id="root"></div></div>', {
+    url: "http://localhost/messages/a", pretendToBeVisual: true });
+  const descriptors = new Map<string, PropertyDescriptor | undefined>();
+  const install = (name: string, value: unknown) => {
+    descriptors.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  };
+  for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLTextAreaElement", "localStorage"] as const)
+    install(name, dom.window[name]);
+  const factory = new IDBFactory(), origin = lockOrigin();
+  Object.defineProperty(dom.window.navigator, "locks", { value: origin.client() });
+  Object.defineProperty(dom.window, "indexedDB", { value: factory });
+  install("indexedDB", factory); install("self", dom.window); install("BroadcastChannel", undefined);
+  install("requestAnimationFrame", dom.window.requestAnimationFrame.bind(dom.window));
+  install("cancelAnimationFrame", dom.window.cancelAnimationFrame.bind(dom.window));
+  install("getComputedStyle", dom.window.getComputedStyle.bind(dom.window));
+  install("ResizeObserver", class { observe() {} disconnect() {} });
+  install("IS_REACT_ACT_ENVIRONMENT", true);
+  dom.window.HTMLElement.prototype.scrollTo = () => {};
+  const { createRoot } = await import("react-dom/client");
+  const { FoundationProvider } = await import("../components/foundation-provider");
+  const { ChatRoom } = await import("../components/chat/chat-room");
+  const { chatStorage } = await import("../lib/chat/storage");
+  const { browserFoundationStorage } = await import("../lib/foundation-storage");
+  const { browserApiConfigStorage } = await import("../lib/api-config-storage");
+  const { normalizeFoundation } = await import("../lib/foundation-types");
+  const document = normalizeFoundation({ characters: [{ characterId: "a", name: "A" }] });
+  document.runtime.timeAware = false;
+  const load = browserFoundationStorage.load, api = browserApiConfigStorage.getApiConfig;
+  // The app singleton caches its database connection; each run uses a fresh in-memory origin.
+  const resetSingleton = () => { Object.assign(chatStorage as unknown as Record<string, unknown>, { database: undefined, lockFactory: undefined }); };
+  resetSingleton();
+  const root = createRoot(dom.window.document.getElementById("root")!);
+  let mounted = false;
+  const unmount = async () => { if (mounted) { mounted = false; await act(async () => { root.unmount(); }); } };
+  const wait = async (condition: () => boolean | Promise<boolean>) => {
+    const deadline = Date.now() + 5000;
+    while (true) {
+      assert.ok(Date.now() < deadline, "mounted UI condition timed out");
+      let ready = false;
+      await act(async () => { ready = await condition(); if (!ready) await new Promise((resolve) => setTimeout(resolve, 10)); });
+      if (ready) return;
+    }
+  };
+  const button = (label: string) => [...dom.window.document.querySelectorAll<HTMLButtonElement>("button")]
+    .find((element) => element.getAttribute("aria-label") === label);
+  let owner: string | undefined, peer: ChatStorage | undefined, sessionId = "";
+  try {
+    browserFoundationStorage.load = async () => document;
+    browserApiConfigStorage.getApiConfig = async () => ({ ...TEST_API_CONFIG, name: "Test", provider: "Custom" });
+    const session = await chatStorage.openSession("a");
+    sessionId = session.id;
+    await chatStorage.send(session.id, "Question");
+    peer = new ChatStorage(() => factory, () => origin.client());
+    owner = await peer.claimGeneration(session.id);
+    assert.ok(await peer.beginReply(session.id, undefined, owner));
+    await act(async () => { root.render(createElement(FoundationProvider, null, createElement(ChatRoom, { characterId: "a" }))); });
+    mounted = true;
+    await wait(() => !!button("Stop reply"));
+    await run({ peer, owner, sessionId, unmount, wait, button,
+      click: async (element) => { await act(async () => { element.click(); }); },
+      read: () => chatStorage.readSession(session.id) as never });
+  } finally {
+    await unmount();
+    if (peer && owner) await peer.releaseGeneration(sessionId, owner).catch(() => {});
+    browserFoundationStorage.load = load; browserApiConfigStorage.getApiConfig = api;
+    resetSingleton();
+    dom.window.close();
+    for (const [name, descriptor] of descriptors) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else Reflect.deleteProperty(globalThis, name);
+    }
+  }
+}
+
+test("mounted ChatRoom: the real Stop control persists a Stop for a generation held by another tab", async () => {
+  await withPeerOwnedGeneration(async ({ peer, owner, sessionId, wait, button, click }) => {
+    assert.equal(await peer.generationIsCurrent(sessionId, owner), true);
+    await click(button("Stop reply")!);
+    await wait(async () => !(await peer.generationIsCurrent(sessionId, owner)));
+    const { messages } = await peer.readSession(sessionId);
+    assert.equal(messages.at(-1)?.outcome, "stopped");
+  });
+});
+
+test("mounted ChatRoom: unmounting while another tab owns the generation does not stop it", async () => {
+  await withPeerOwnedGeneration(async ({ peer, owner, sessionId, unmount }) => {
+    await unmount(); // lifecycle cleanup runs engine.stop without the persist opt-in
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.equal(await peer.generationIsCurrent(sessionId, owner), true, "peer-owned generation is still live");
+    const { messages } = await peer.readSession(sessionId);
+    assert.equal(messages.at(-1)?.status, "streaming");
+    assert.notEqual(messages.at(-1)?.outcome, "stopped");
+  });
+});
