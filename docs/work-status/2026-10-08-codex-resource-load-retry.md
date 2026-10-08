@@ -1,16 +1,16 @@
 # STATUS — C4 resource load Retry
 
 更新人：Codex
-更新时间：2026-10-08T22:19:00+08:00
+更新时间：2026-10-08T22:22:00+08:00
 发现范围：GitHub 确认最新 main 为 3107d8ea798be181f7528d2d72853020c7b2efb4，与本地 origin/main 一致；本次 fetch 因连接重置失败，未改变网络配置。独立 worktree/分支基于该 main。开放 PR 搜索发现 #36（冻结）、#48（Chat Stop）、#49（Contacts）；现有改动文件和任务记录无 C4 文件重叠。未公开的并行工作仍不可见。
 
 ## 当前任务
 
-C4：资源首次加载失败恢复入口与异步安全；实现和验证完成，准备 PR，等待审查及用户手动合并。
+C4：资源首次加载失败恢复入口与异步安全；实现和验证完成，PR #51 待审查及用户手动合并。
 
 ## 谁在改哪里
 
-Codex；分支 `fix/resource-load-retry-20261008`；PR 待创建。
+Codex；分支 `fix/resource-load-retry-20261008`；PR https://github.com/yecays-ai/veil/pull/51。
 生产修改仅 `components/settings/bindings/`、`components/settings/presets/`、`components/settings/regex/`、`components/settings/worldbooks/` 内对应 hook 与加载错误 UI（15 个文件）。另新增 `tests/resource-load-retry.test.ts` 和本记录。未修改 storage、Contacts、Chat Stop 或 #36/#48/#49。
 
 ## 已完成
@@ -33,6 +33,7 @@ Codex；分支 `fix/resource-load-retry-20261008`；PR 待创建。
 - 旧 main 负向对照：26 项中 23 项失败，检出未提供 Retry 与 Preset Strict Mode stale 结果；临时加载器已移除。
 - 使用 Node 24 直接执行 package scripts 的等价 CLI（环境无 npm）。一次测试编译遭遇系统内存分配失败，缩小 Node heap/semi-space 后正常通过；生产 build 关闭 telemetry、在允许执行环境运行。
 - React best-practices 范围内复核：effect 清理、同步 request ownership、按钮禁用与错误提示；无新依赖/全局 Retry 框架。
+- 发布时再次核对：施工期间 #48 已合并，最新 main 为 daff476；与本单文件无重叠，PR #51 diff 仍严格为本记录列出的 17 个文件。本地检查的代码基于开工时的 main 3107d8e；未修改或合并 #48 PR。
 
 ## 尚未验证
 
@@ -40,7 +41,8 @@ Codex；分支 `fix/resource-load-retry-20261008`；PR 待创建。
 - 存储数据持续损坏时 Retry 仍会失败；本单不修复/清空数据，不改变导入恢复或删除行为。
 - 保存期间/已加载数据的业务操作仍沿用现有保护，本单不扩展为资源同步重构。
 - 远端 CodeRabbit、CI 结果尚未完成。
+- 最新 main daff476 的合并集成需由 PR CI 确认；本地没有将 Chat Stop 的新提交引入并重跑测试。
 
 ## 下一步
 
-创建一个普通 PR 并更新链接；不添加 automerge，不开启 Auto-merge，不合并。等待 CodeRabbit、CI 及用户手动合并。Contacts 加载恢复留待 #49 合并后另单处理。
+等待 CodeRabbit、CI 及用户手动合并；不添加 automerge，不开启 Auto-merge，不合并。Contacts 加载恢复留待 #49 合并后另单处理。
