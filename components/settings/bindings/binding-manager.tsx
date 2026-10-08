@@ -5,7 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { PageShell } from "../../page-shell";
 import { Alert } from "../ui/feedback";
 import { APP_REGISTRY, bindingCapableApps, isAppId, type AppBindingCapability, type AppId } from "../../../lib/app-registry";
-import { resolveBindings, type BindingScope, type BindingSlot,
+import { resolveBindings, resolveScopeBindings, type BindingListEdit, type BindingScope, type BindingSlot,
   type ManagedBindingField } from "../../../lib/bindings";
 import { DEFAULT_API_CONFIG_ID } from "../../../lib/api-config";
 import { BUILTIN_PRESET_ID } from "../../../lib/preset";
@@ -51,7 +51,7 @@ function displayValue(field: ManagedBindingField, value: BindingSlot[ManagedBind
 }
 
 export function BindingHome() {
-  const { document, bindings, resources, error, busy, update } = useBindingManager();
+  const { document, bindings, resources, error, busy, update, edit } = useBindingManager();
   const [openField, setOpenField] = useState<ManagedBindingField | null>(null);
   return <PageShell className="settings-app binding-manager" title="Bindings" backHref="/settings" backLabel="Back to Settings">
     {error && <Alert variant="danger">{error}</Alert>}
@@ -60,7 +60,8 @@ export function BindingHome() {
       <BindingFields title="Global Defaults" fields={FIELDS} own={bindings.global}
         effective={resolveBindings(bindings, null, "messages")} resources={resources}
         busy={busy} openField={openField} setOpenField={setOpenField}
-        update={(field, value) => update({}, field, value)} />
+        update={(field, value) => update({}, field, value)}
+        edit={(field, change) => void edit({}, field, change)} />
       <section className="binding-section"><h2>Characters</h2>
         {document.characters.length === 0 && <p>No Characters yet.</p>}
         {document.characters.map((character) => {
@@ -80,7 +81,7 @@ export function BindingHome() {
 
 export function BindingEditor({ characterId, appId }: { characterId?: string; appId?: string }) {
   const manager = useBindingManager();
-  const { document, bindings, resources, error, busy, update } = manager;
+  const { document, bindings, resources, error, busy, update, edit } = manager;
   const [openField, setOpenField] = useState<ManagedBindingField | null>(null);
   const character = characterId ? document.characters.find((item) => item.characterId === characterId) : undefined;
   const validApp: AppId | undefined = appId && isAppId(appId) ? appId : undefined;
@@ -97,7 +98,7 @@ export function BindingEditor({ characterId, appId }: { characterId?: string; ap
     characters: { ...bindings.characters,
       [characterId!]: { defaults: binding?.defaults ?? {}, apps: {} } } }, characterId!, app.id)
     : resolveBindings(bindings, null, "messages");
-  const effective = resolveBindings(bindings, characterId ?? null, validApp ?? "messages");
+  const effective = resolveScopeBindings(bindings, scope);
   return <PageShell className="settings-app binding-manager" title={title} backHref={backHref} backLabel="Back to Bindings">
     {error && <Alert variant="danger">{error}</Alert>}
     {invalid ? <p>Binding target not found.</p> : !resources ? <p role="status">Loading Bindings…</p> : <>
@@ -106,6 +107,7 @@ export function BindingEditor({ characterId, appId }: { characterId?: string; ap
         fields={app ? appBindingFields(app) : FIELDS} own={own} inherited={inherited}
         effective={effective} resources={resources} busy={busy} openField={openField}
         setOpenField={setOpenField} update={(field, value) => update(scope, field, value)}
+        edit={(field, change) => void edit(scope, field, change)}
         resetLabel={app ? "Inherit Character" : "Reset to Global"}
         inheritLabel={app ? "Character" : "Global"} />
       {character && !app && <section className="binding-section"><h2>App Overrides</h2>
@@ -123,11 +125,12 @@ export function BindingEditor({ characterId, appId }: { characterId?: string; ap
 }
 
 function BindingFields({ title, fields, own, inherited, effective, resources, busy, openField,
-  setOpenField, update, resetLabel, inheritLabel }: {
+  setOpenField, update, edit, resetLabel, inheritLabel }: {
   title: string; fields: typeof FIELDS; own: BindingSlot; inherited?: BindingSlot;
   effective: BindingSlot; resources: BindingResources; busy: boolean;
   openField: ManagedBindingField | null; setOpenField: (field: ManagedBindingField | null) => void;
   update: (field: ManagedBindingField, value: BindingSlot[ManagedBindingField]) => void;
+  edit: (field: "worldBookIds" | "regexIds", change: BindingListEdit) => void;
   resetLabel?: string; inheritLabel?: string;
 }) {
   return <section className="binding-section"><h2>{title}</h2>
@@ -174,17 +177,17 @@ function BindingFields({ title, fields, own, inherited, effective, resources, bu
                   {overridden && Array.isArray(own[key]) && own[key].length === 0 && <span aria-hidden="true"> ✓</span>}
                 </button>
                 {options.map((option) => <button type="button" key={option.id} disabled={busy}
-                  onClick={() => set(selected.includes(option.id)
-                    ? selected.filter((id) => id !== option.id) : [...selected, option.id])}>
+                  onClick={() => edit(key as "worldBookIds" | "regexIds",
+                    selected.includes(option.id) ? { type: "remove", id: option.id } : { type: "add", id: option.id })}>
                   {option.name}{selected.includes(option.id) && <span aria-hidden="true"> ✓</span>}
                 </button>)}
                 {selected.length > 1 && <div className="binding-selected-order"><strong>Selection order</strong>
                   {selected.map((id, index) => <div key={id}>
                     <span>{options.find((item) => item.id === id)?.name}</span>
                     <button type="button" aria-label={`Move ${label} ${index + 1} up`} disabled={busy || index === 0}
-                      onClick={() => { const next = [...selected]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; set(next); }}>↑</button>
+                      onClick={() => edit(key as "worldBookIds" | "regexIds", { type: "move", id, by: -1 })}>↑</button>
                     <button type="button" aria-label={`Move ${label} ${index + 1} down`} disabled={busy || index === selected.length - 1}
-                      onClick={() => { const next = [...selected]; [next[index], next[index + 1]] = [next[index + 1], next[index]]; set(next); }}>↓</button>
+                      onClick={() => edit(key as "worldBookIds" | "regexIds", { type: "move", id, by: 1 })}>↓</button>
                   </div>)}
                 </div>}
               </>}

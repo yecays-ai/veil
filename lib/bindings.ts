@@ -103,6 +103,40 @@ export function setBindingField(
     [scope.characterId]: next }) };
 }
 
+// The value a scope itself shows and edits: global alone, global + Character defaults (no App
+// override), or the full chain for an App. Character defaults must never be written from a list
+// that already includes an App override.
+export function resolveScopeBindings(document: BindingDocument, scope: BindingScope): BindingSlot {
+  if (scope.appId) return resolveBindings(document, scope.characterId ?? null, scope.appId);
+  const character = scope.characterId ? document.characters[scope.characterId] : undefined;
+  return normalizeBindingSlot({ ...normalizeBindingSlot(document.global), ...normalizeBindingSlot(character?.defaults) });
+}
+
+export type BindingListEdit = { type: "add"; id: string } | { type: "remove"; id: string } | { type: "move"; id: string; by: -1 | 1 };
+
+// List edits are expressed as intents (add or remove one id, move one id by one place) and applied
+// to the document being written, never to a copy rendered earlier, so a stale tab cannot drop
+// another tab's additions or reorder. The list the user was looking at is the effective one
+// (own override, else inherited, else unset = Default (All), which starts from empty).
+// Absolute choices (None = [], Default = undefined, a scalar) still go through setBindingField.
+export function editBindingList(
+  document: BindingDocument, scope: BindingScope, field: "worldBookIds" | "regexIds", edit: BindingListEdit,
+): BindingDocument {
+  const current = resolveScopeBindings(document, scope)[field] ?? [];
+  // add/remove are idempotent: the caller decides the direction from what the user saw, so a
+  // concurrent change in another tab can never turn "select" into "deselect".
+  if (edit.type === "add")
+    return current.includes(edit.id) ? document : setBindingField(document, scope, field, [...current, edit.id]);
+  if (edit.type === "remove")
+    return current.includes(edit.id)
+      ? setBindingField(document, scope, field, current.filter((id) => id !== edit.id)) : document;
+  const from = current.indexOf(edit.id), to = from + edit.by;
+  if (from < 0 || to < 0 || to >= current.length) return document;
+  const next = [...current];
+  [next[from], next[to]] = [next[to], next[from]];
+  return setBindingField(document, scope, field, next);
+}
+
 export function cleanStaleBindings(document: BindingDocument, available: {
   apiConfigIds: ReadonlySet<string>; presetIds: ReadonlySet<string>;
   worldBookIds: ReadonlySet<string>; regexIds: ReadonlySet<string>;
