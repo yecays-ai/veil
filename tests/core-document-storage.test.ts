@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { IDBDatabase, IDBFactory } from "fake-indexeddb";
+import { forceCloseDatabase, IDBDatabase, IDBFactory } from "fake-indexeddb";
 import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
 import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
 import { defaultFoundation } from "../lib/foundation-types";
+
+const forceClose = forceCloseDatabase as unknown as (database: IDBDatabase) => void;
 
 test("Core documents use atomic compare-and-set without overwriting newer data", async () => {
   const factory = new IDBFactory();
@@ -25,7 +27,8 @@ test("Core storage reopens a cached connection closed before the next read", asy
   const cached = documents as unknown as { database?: Promise<IDBDatabase> };
   const closed = await cached.database!;
 
-  closed.close();
+  forceClose(closed);
+  assert.equal(cached.database, undefined);
 
   assert.equal(await documents.read("profile"), "saved");
   assert.notEqual(await cached.database!, closed);
