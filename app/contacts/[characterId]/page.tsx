@@ -1,12 +1,12 @@
 import { ContactProfile } from "../../../components/contacts-pages";
-import type { ContactReturnSource } from "../../../lib/contact-navigation";
 
-export default async function Page({ params, searchParams }: {
-  params: Promise<{ characterId: string }>;
-  searchParams: Promise<{ from?: string }>;
-}) {
+// No server-side request data is read here: the page is a cacheable shell and the return source
+// (`?from=`) is resolved on the client. Contacts are device-local, so no ids are pre-rendered.
+export function generateStaticParams() {
+  return [];
+}
+
+export default async function Page({ params }: { params: Promise<{ characterId: string }> }) {
   const { characterId } = await params;
-  const { from } = await searchParams;
-  const returnSource: ContactReturnSource = from === "direct" ? "direct" : undefined;
-  return <ContactProfile characterId={characterId} returnSource={returnSource} />;
+  return <ContactProfile characterId={characterId} />;
 }

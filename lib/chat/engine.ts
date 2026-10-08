@@ -17,7 +17,7 @@ import { ChatStorage, chatStorage } from "./storage";
 import type { ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { browserWorldBookStorage } from "../worldbook-storage";
-import { emptyWorldBookDocument, type WorldBookDocument } from "../worldbook";
+import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
 import { browserRegexStorage } from "../regex-storage";
 import { emptyRegexDocument, resolveRegexGroups, type RegexDocument } from "../regex";
@@ -127,8 +127,8 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       const { document, character, config, preset, binding } = prepared;
       const regexGroups = resolveRegexGroups(await awaited(regex(), controller.signal), binding.regexIds);
-      const books = (await awaited(worldBooks(), controller.signal)).books.filter((book) =>
-        binding.worldBookIds === undefined || binding.worldBookIds.includes(book.id));
+      // An explicit Binding selection decides book order; only Default All uses library order.
+      const books = selectBoundWorldBooks((await awaited(worldBooks(), controller.signal)).books, binding.worldBookIds);
       const activation = evaluateWorldBooks(books, batch.messages,
         await awaited(storage.readWorldBookState(sessionId), controller.signal));
       const weather = document.runtime?.timeAware === false ? undefined : await awaited(Promise.all([

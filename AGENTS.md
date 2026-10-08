@@ -55,3 +55,12 @@ Browser data belongs to the user. Treat Character, User, Universe, chat, appeara
 - Run the relevant checks. The repository provides `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`.
 - Report what was checked and any environment or device behavior that remains unverified.
 - Keep commits focused. Do not call the merge API directly or publish a release unless explicitly requested; normal ready implementation PRs may use the repository's automerge label and Safe PR auto-merge workflow as described above.
+
+## AI collaboration handoff
+
+- At startup, read this guide, applicable nested agent guides, and [work-status conventions](docs/work-status/README.md). Confirm `yecays-ai/veil`, the current branch/base, and local changes before editing.
+- Discover parallel work from current remote open PRs (including drafts), their changed files and head branches, and task records on those branches as well as the default branch. Record when and where you checked; local files and a PR list alone are not a global registry. If remote discovery is unavailable, say so and treat ownership as unknown.
+- Before editing overlapping paths, coordinate through the task/PR or choose a non-overlapping scope. Do not overwrite another task's work or handoff record.
+- Maintain one uniquely named `docs/work-status/<task-id>.md` per task/PR on its own branch, using [TEMPLATE.md](docs/work-status/TEMPLATE.md). Keep its filename stable when a PR is assigned, and add the PR link in the record. Do not create a shared root STATUS file or a shared mutable task index.
+- Publish the initial record with the task's first commit/push so others can discover it. Refresh it when ownership, scope, blockers, or verification changes, and before stopping or handing off. Rewrite the snapshot rather than appending a log; commit and push it with the task's changes.
+- Include updater, timezone-qualified update time, branch/PR, touched paths, verified evidence, unverified behavior, and next step. Mark finished, blocked, paused, or superseded work explicitly. Check suspected stale records against live PR/branch state; age alone does not authorize takeover, deletion, or edits to someone else's record.

@@ -134,3 +134,22 @@ export function importWorldBookEntry(document: WorldBookDocument, bookId: string
 }
 export const exportWorldBook = (book: WorldBook) => JSON.stringify(book, null, 2);
 export const exportWorldBookEntry = (entry: WorldBookEntry) => JSON.stringify(entry, null, 2);
+
+/**
+ * Books a Binding selects, in the order the Binding lists them. `undefined` means the Binding
+ * is silent (Default All), which keeps library order; an explicit list, including `[]`, is
+ * authoritative. Duplicate ids keep their first position; missing or deleted ids are skipped.
+ */
+export function selectBoundWorldBooks(books: readonly WorldBook[], ids: readonly string[] | undefined): WorldBook[] {
+  if (ids === undefined) return [...books];
+  const byId = new Map<string, WorldBook>();
+  for (const book of books) if (!byId.has(book.id)) byId.set(book.id, book);
+  const seen = new Set<string>(), selected: WorldBook[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const book = byId.get(id);
+    if (book) selected.push(book);
+  }
+  return selected;
+}
