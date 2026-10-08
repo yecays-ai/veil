@@ -64,13 +64,13 @@ test("stale list edits from two tabs merge by intent and keep the explicit (non-
   const o = origin(); const a = o.tab(), b = o.tab();
   await seed(a, { global: { worldBookIds: ["w3"] }, characters: {} });
   // Both tabs rendered [w3]. A adds w2, B adds w1; neither knows about the other.
-  await a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "toggle", id: "w2" }));
-  await b.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "toggle", id: "w1" }));
+  await a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "add", id: "w2" }));
+  await b.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "add", id: "w1" }));
   assert.deepEqual(o.read().global.worldBookIds, ["w3", "w2", "w1"], "append order is commit order, nothing dropped");
   // B moves w3 down while A (stale) removes w2: ids, not positions, so both apply.
   await Promise.all([
     b.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "move", id: "w3", by: 1 })),
-    a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "toggle", id: "w2" })),
+    a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "remove", id: "w2" })),
   ]);
   const order = o.read().global.worldBookIds!;
   assert.deepEqual(order, ["w3", "w1"], "w3 moved past w2, then w2 was removed by id");
@@ -79,6 +79,19 @@ test("stale list edits from two tabs merge by intent and keep the explicit (non-
   await a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "move", id: "w2", by: 1 }));
   await a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "move", id: order[0], by: -1 }));
   assert.equal(o.values.get(KEY), before);
+});
+
+test("add and remove keep the user's intent when another tab already changed the same id", async () => {
+  const o = origin(); const a = o.tab(), b = o.tab();
+  await seed(a, { global: { worldBookIds: ["w1"] }, characters: {} });
+  // Tab B adds w2. Tab A still shows w2 unchecked and the user clicks it to select it: still selected.
+  await b.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "add", id: "w2" }));
+  await a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "add", id: "w2" }));
+  assert.deepEqual(o.read().global.worldBookIds, ["w1", "w2"], "select is not reversed into deselect");
+  // Tab B removes w1. Tab A still shows it checked and the user unchecks it: stays removed, nothing else lost.
+  await b.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "remove", id: "w1" }));
+  await a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "remove", id: "w1" }));
+  assert.deepEqual(o.read().global.worldBookIds, ["w2"], "deselect is not reversed into select");
 });
 
 test("Default (All), None and a selection keep their meaning through concurrent unrelated saves and deletions", async () => {
@@ -102,7 +115,7 @@ test("delete versus edit: a deleted Book is removed without losing another tab's
   await seed(a, { global: { worldBookIds: ["w1", "w2"] }, characters: {} });
   await Promise.all([
     b.transact((d) => withoutWorldBookBinding(d, "w1")),
-    a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "toggle", id: "w3" })),
+    a.transact((d) => editBindingList(d, {}, "worldBookIds", { type: "add", id: "w3" })),
   ]);
   assert.deepEqual(o.read().global.worldBookIds, ["w2", "w3"]);
 });
@@ -112,11 +125,11 @@ test("a failed save leaves stored Bindings untouched and later saves from every 
   const a = o.tab({ failWrites: () => fail }), b = o.tab();
   await seed(a, { global: { regexIds: ["r1"] }, characters: {} });
   const before = o.values.get(KEY); fail = true;
-  await assert.rejects(a.transact((d) => editBindingList(d, {}, "regexIds", { type: "toggle", id: "r2" })), /Quota/);
+  await assert.rejects(a.transact((d) => editBindingList(d, {}, "regexIds", { type: "add", id: "r2" })), /Quota/);
   assert.equal(o.values.get(KEY), before);
   fail = false;
-  await Promise.all([a.transact((d) => editBindingList(d, {}, "regexIds", { type: "toggle", id: "r2" })),
-    b.transact((d) => editBindingList(d, {}, "regexIds", { type: "toggle", id: "r3" }))]);
+  await Promise.all([a.transact((d) => editBindingList(d, {}, "regexIds", { type: "add", id: "r2" })),
+    b.transact((d) => editBindingList(d, {}, "regexIds", { type: "add", id: "r3" }))]);
   assert.deepEqual(o.read().global.regexIds, ["r1", "r2", "r3"]);
 });
 

@@ -177,7 +177,8 @@ function BindingFields({ title, fields, own, inherited, effective, resources, bu
                   {overridden && Array.isArray(own[key]) && own[key].length === 0 && <span aria-hidden="true"> ✓</span>}
                 </button>
                 {options.map((option) => <button type="button" key={option.id} disabled={busy}
-                  onClick={() => edit(key as "worldBookIds" | "regexIds", { type: "toggle", id: option.id })}>
+                  onClick={() => edit(key as "worldBookIds" | "regexIds",
+                    selected.includes(option.id) ? { type: "remove", id: option.id } : { type: "add", id: option.id })}>
                   {option.name}{selected.includes(option.id) && <span aria-hidden="true"> ✓</span>}
                 </button>)}
                 {selected.length > 1 && <div className="binding-selected-order"><strong>Selection order</strong>

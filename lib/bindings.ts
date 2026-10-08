@@ -103,9 +103,9 @@ export function setBindingField(
     [scope.characterId]: next }) };
 }
 
-export type BindingListEdit = { type: "toggle"; id: string } | { type: "move"; id: string; by: -1 | 1 };
+export type BindingListEdit = { type: "add"; id: string } | { type: "remove"; id: string } | { type: "move"; id: string; by: -1 | 1 };
 
-// List edits are expressed as intents (add/remove one id, move one id by one place) and applied
+// List edits are expressed as intents (add or remove one id, move one id by one place) and applied
 // to the document being written, never to a copy rendered earlier, so a stale tab cannot drop
 // another tab's additions or reorder. The list the user was looking at is the effective one
 // (own override, else inherited, else unset = Default (All), which starts from empty).
@@ -114,9 +114,13 @@ export function editBindingList(
   document: BindingDocument, scope: BindingScope, field: "worldBookIds" | "regexIds", edit: BindingListEdit,
 ): BindingDocument {
   const current = resolveBindings(document, scope.characterId ?? null, scope.appId ?? "messages")[field] ?? [];
-  if (edit.type === "toggle")
-    return setBindingField(document, scope, field, current.includes(edit.id)
-      ? current.filter((id) => id !== edit.id) : [...current, edit.id]);
+  // add/remove are idempotent: the caller decides the direction from what the user saw, so a
+  // concurrent change in another tab can never turn "select" into "deselect".
+  if (edit.type === "add")
+    return current.includes(edit.id) ? document : setBindingField(document, scope, field, [...current, edit.id]);
+  if (edit.type === "remove")
+    return current.includes(edit.id)
+      ? setBindingField(document, scope, field, current.filter((id) => id !== edit.id)) : document;
   const from = current.indexOf(edit.id), to = from + edit.by;
   if (from < 0 || to < 0 || to >= current.length) return document;
   const next = [...current];
