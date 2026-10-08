@@ -344,7 +344,11 @@ export class ChatStorage {
     } finally { signal?.removeEventListener("abort", cancel); }
   }
 
+  private chatBackgroundRevision = 0;
+  /** Bumped by every local or cross-tab chat-background change; lets callers validate a snapshot without a listener. */
+  backgroundRevision() { return this.chatBackgroundRevision; }
   private dispatch(change: ChatStorageChange) {
+    if (change.domain === "chat-background") this.chatBackgroundRevision++;
     // Observer failures must not turn an already committed write into a failed restore.
     this.listeners.forEach((listener) => {
       try { listener(change); } catch { /* Persistence has already succeeded. */ }
