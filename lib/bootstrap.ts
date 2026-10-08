@@ -17,7 +17,7 @@ export async function bootstrapCurrentProduct(
     throw new Error("VEIL Default Preset is unavailable.");
   await ensureDefaultRegexGroup(regex);
   const validPresetIds = new Set(document.presets.map((preset) => preset.id));
-  await bindings.transact((current) => current.global.presetId === null ||
+  await bindings.transact((current) => current.global.presetId === undefined || current.global.presetId === null ||
       (current.global.presetId !== undefined && validPresetIds.has(current.global.presetId))
     ? current
     : { ...current, global: { ...current.global, presetId: BUILTIN_PRESET_ID } });
