@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, MessageCircle, Phone, Video, UserRound, Plus } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { useContacts } from "./use-contacts";
 import { Avatar } from "./profile-view";
@@ -32,10 +32,22 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [imageReading, setImageReading] = useState(false);
   const imageRequest = useRef(0);
+  const lifetime = useRef(0);
   const backgroundInput = useRef<HTMLInputElement>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [stateCharacterId, setStateCharacterId] = useState(characterId);
   const backHref = contactReturnTarget(characterId, returnSource);
-  useEffect(() => () => { imageRequest.current++; }, []);
+  if (stateCharacterId !== characterId) {
+    setStateCharacterId(characterId);
+    setDraft(null); setBusy(false); setError(""); setCropSource(null);
+    setImageReading(false); setDeleteOpen(false);
+  }
+  useLayoutEffect(() => {
+    imageRequest.current++;
+    const owner = lifetime;
+    const request = imageRequest;
+    return () => { owner.current++; request.current++; };
+  }, [characterId]);
 
   function cancelEdit() {
     imageRequest.current++; setImageReading(false); setCropSource(null); setDraft(null); setError("");
@@ -52,28 +64,40 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
   }
   async function save() {
     if (!draft || busy || imageReading) return;
+    const owner = lifetime.current;
     setBusy(true); setError("");
     try {
       await contacts.commit((current) => updateContact(current, characterId, draft, undefined, draft.base));
-      setDraft(null);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Contact could not be saved."); }
-    finally { setBusy(false); }
+      if (owner === lifetime.current) setDraft(null);
+    } catch (reason) {
+      if (owner === lifetime.current) setError(reason instanceof Error ? reason.message : "Contact could not be saved.");
+    } finally { if (owner === lifetime.current) setBusy(false); }
   }
   async function message() {
     if (!character || busy) return;
+    const owner = lifetime.current;
     setBusy(true); setError("");
     try {
       await chatStorage.openSession(character.characterId);
-      router.push(`/messages/${encodeURIComponent(character.characterId)}`);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Conversation could not be opened."); setBusy(false); }
+      if (owner === lifetime.current) router.push(`/messages/${encodeURIComponent(character.characterId)}`);
+    } catch (reason) {
+      if (owner === lifetime.current) {
+        setError(reason instanceof Error ? reason.message : "Conversation could not be opened."); setBusy(false);
+      }
+    }
   }
   async function deleteContact() {
     if (busy || pending) return;
+    const owner = lifetime.current;
     setBusy(true); setError("");
     try {
       await contacts.commit((current) => removeContact(current, characterId));
-      router.push(backHref);
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "Contact could not be deleted."); setBusy(false); }
+      if (owner === lifetime.current) router.push(backHref);
+    } catch (reason) {
+      if (owner === lifetime.current) {
+        setError(reason instanceof Error ? reason.message : "Contact could not be deleted."); setBusy(false);
+      }
+    }
   }
 
   if (!ready || !contacts.ready || !character || !contact || contacts.error) return <div className="contact-info contact-info-unavailable">
