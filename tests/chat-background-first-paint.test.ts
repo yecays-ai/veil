@@ -33,13 +33,14 @@ async function harness() {
   storage.readChatImage = (id) => { reads.image++; return readImage(id); };
   storage.readChatBackgroundSettings = () => { reads.settings++; return readSettings(); };
   const root = createRoot(dom.window.document.getElementById("root")!);
-  function Probe({ session }: { session: ChatSession | null }) {
-    const background = useChatBackground(session, { characterId: "a", storage });
-    return createElement("div", { id: "probe", "data-url": background.url ?? "", "data-blur": String(background.blur) });
+  function Probe({ session, characterId }: { session: ChatSession | null; characterId: string }) {
+    const background = useChatBackground(session, { characterId, storage });
+    return createElement("div", { id: "probe", "data-url": background.url ?? "", "data-blur": String(background.blur), "data-late": String(background.late) });
   }
   const url = () => dom.window.document.getElementById("probe")?.getAttribute("data-url") ?? "";
+  const late = () => dom.window.document.getElementById("probe")?.getAttribute("data-late");
   // Synchronous act: renders and flushes effects but not pending storage promises, i.e. the first frame.
-  const mountNow = (session: ChatSession | null) => act(() => { root.render(createElement(Probe, { session })); });
+  const mountNow = (session: ChatSession | null, characterId = "a") => act(() => { root.render(createElement(Probe, { session, characterId })); });
   const leave = () => act(() => { root.render(createElement("div", { id: "elsewhere" })); });
   const until = async (condition: () => boolean) => {
     const deadline = Date.now() + 3000;
@@ -57,7 +58,7 @@ async function harness() {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
     }
   };
-  return { storage, reads, revoked, mountNow, leave, until, url, cleanup };
+  return { storage, reads, revoked, mountNow, leave, until, url, late, cleanup };
 }
 
 async function sessionWithWallpaper(storage: ChatStorage, content = "wallpaper") {
@@ -92,6 +93,45 @@ test("re-entering a chat paints its own wallpaper in the first frame, without re
     assert.notEqual(app.url(), "", "wallpaper is present in the first frame");
     assert.equal(app.url(), first, "the same object URL is reused so the browser keeps the decoded bitmap");
     assert.deepEqual(app.reads, { image: 1, settings: 1 }, "no repeated blob or settings read");
+  } finally { await app.cleanup(); }
+});
+
+test("the wallpaper is chosen before the session is read, from what that chat last resolved to", async () => {
+  const app = await harness();
+  try {
+    const { id, session } = await sessionWithWallpaper(app.storage);
+    await app.mountNow(session);
+    await app.until(() => app.url() !== "");
+    assert.equal(app.late(), "true", "a cold wallpaper arrives after the first frame, so it may fade in");
+    await app.leave();
+    await app.mountNow(null); // re-entry: the session itself is still being read from storage
+    assert.notEqual(app.url(), "", "the wallpaper is in the first frame even before the session exists");
+    assert.equal(app.late(), "false", "a wallpaper that was already there is never faded");
+    assert.deepEqual(app.reads, { image: 1, settings: 1 });
+
+    // Another tab (or this one) changes the chat's wallpaper: the hint must never paint the old one.
+    await app.leave();
+    const next = await app.storage.saveChatImage(new Blob(["next"], { type: "image/png" }));
+    await app.storage.updateSessionSettings(session.id, { backgroundImage: next });
+    assert.notEqual(next, id);
+    await app.mountNow(null);
+    assert.equal(app.url(), "", "a changed chat is not painted from the stale hint");
+  } finally { await app.cleanup(); }
+});
+
+test("each character keeps its own wallpaper hint", async () => {
+  const app = await harness();
+  try {
+    const { session } = await sessionWithWallpaper(app.storage);
+    await app.mountNow(session);
+    await app.until(() => app.url() !== "");
+    await app.leave();
+    // A different character (or a storage instance that never saw this chat) has no hint to paint.
+    await app.mountNow(null, "someone-else");
+    assert.equal(app.url(), "", "another character does not inherit this wallpaper");
+    await app.leave();
+    await app.mountNow(null, "a");
+    assert.notEqual(app.url(), "", "the character that resolved it still has it");
   } finally { await app.cleanup(); }
 });
 
