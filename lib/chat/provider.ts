@@ -67,7 +67,25 @@ function choice(value: unknown): { text: string; finishReason?: string } {
     finishReason: typeof first?.finish_reason === "string" ? first.finish_reason : undefined,
   };
 }
-export const openAITextProvider: TextProvider = async function* (
+/** How long the API may take to start answering, and how long an open reply may go silent. */
+export const MODEL_CONNECT_TIMEOUT_MS = 30_000;
+export const MODEL_IDLE_TIMEOUT_MS = 45_000;
+class ModelTimeoutError extends Error {}
+
+/** Races `work` against a deadline; on expiry `abort` cancels the underlying request and the caller gets `message`. */
+function withDeadline<T>(ms: number, work: Promise<T>, abort: () => void, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => { reject(new ModelTimeoutError(message)); abort(); }, ms); // reject first: the abort makes `work` fail too
+  });
+  work.catch(() => {}); // a request abandoned at its deadline may still fail later; that is not a new error
+  return Promise.race([work, expired]).finally(() => clearTimeout(timer));
+}
+
+export function createOpenAITextProvider(
+  timeouts: { connectMs: number; idleMs: number } = { connectMs: MODEL_CONNECT_TIMEOUT_MS, idleMs: MODEL_IDLE_TIMEOUT_MS },
+): TextProvider {
+  return async function* (
   config,
   messages,
   signal,
@@ -79,12 +97,17 @@ export const openAITextProvider: TextProvider = async function* (
   const context = request ?? createCompletionRequestContext("unclassified");
   let usage: CompletionUsage | null = null;
   logCompletionStart(context, config.model.trim(), messages, true);
+  // The request has its own controller so a timeout can cancel it; the caller's Stop is forwarded to it.
+  const network = new AbortController();
+  const forwardStop = () => network.abort(signal.reason);
+  if (signal.aborted) forwardStop(); else signal.addEventListener("abort", forwardStop, { once: true });
+  const cancelRequest = () => network.abort();
   try {
     let response: Response;
     try {
-      response = await fetch(completionUrl(config.baseUrl), {
+      response = await withDeadline(timeouts.connectMs, fetch(completionUrl(config.baseUrl), {
         method: "POST",
-        signal,
+        signal: network.signal,
         credentials: "omit",
         referrerPolicy: "no-referrer",
         headers: {
@@ -100,9 +123,10 @@ export const openAITextProvider: TextProvider = async function* (
           ...(generation?.maxTokens !== undefined
             ? { max_tokens: generation.maxTokens } : {}),
         }),
-      });
-    } catch {
+      }), cancelRequest, "The API did not respond in time. Try again.");
+    } catch (error) {
       signal.throwIfAborted();
+      if (error instanceof ModelTimeoutError) throw error;
       throw new Error(
         "Could not reach the API. Check the Base URL and your provider's browser/CORS support.",
       );
@@ -115,8 +139,10 @@ export const openAITextProvider: TextProvider = async function* (
     if (response.headers.get("content-type")?.includes("application/json")) {
       let data: unknown;
     try {
-        data = await response.json();
-      } catch {
+        data = await withDeadline(timeouts.idleMs, response.json(), cancelRequest, "The API stopped sending its reply. Try again.");
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof ModelTimeoutError) throw error;
         throw new Error("The API returned an invalid reply.");
       }
       usage = parseCompletionUsage(data);
@@ -153,7 +179,8 @@ export const openAITextProvider: TextProvider = async function* (
     try {
       while (true) {
         signal.throwIfAborted();
-        const { value, done } = await reader.read();
+        const { value, done } = await withDeadline(timeouts.idleMs, reader.read(), cancelRequest,
+          "The reply stopped arriving. Retry to continue.");
         buffer += decoder.decode(value, { stream: !done });
         if (done) buffer += "\n\n";
         let newline: number;
@@ -171,10 +198,14 @@ export const openAITextProvider: TextProvider = async function* (
       }
       if (!finished) throw new Error("The reply stream ended unexpectedly.");
     } finally {
-      await reader.cancel().catch(() => {});
-      reader.releaseLock();
+      // A stalled stream may never answer cancel(), so do not wait for it.
+      void reader.cancel().catch(() => {});
+      try { reader.releaseLock(); } catch { /* the stream is already gone */ }
     }
   } finally {
+    signal.removeEventListener("abort", forwardStop);
     logCompletionUsage(context, usage);
   }
-};
+  };
+}
+export const openAITextProvider: TextProvider = createOpenAITextProvider();

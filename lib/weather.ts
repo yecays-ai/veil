@@ -5,6 +5,7 @@ import type {
   WeatherState,
 } from "./participant-config";
 import { lookupPlace } from "./place-lookup";
+import { AUX_REQUEST_TIMEOUT_MS, withRequestTimeout } from "./request-timeout";
 
 // Open-Meteo is keyless, so a small in-memory cache is enough to keep Home from
 // re-requesting on every render. Successful readings live longer than failures.
@@ -117,6 +118,7 @@ export async function fetchCurrentWeather(
   request: WeatherRequest,
   fetcher?: typeof fetch,
   now: number = Date.now(),
+  timeoutMs: number = AUX_REQUEST_TIMEOUT_MS,
 ): Promise<WeatherState> {
   // An omitted provider uses the browser fetch. Explicit undefined represents
   // a non-browser runtime and must not accidentally make a real network call.
@@ -131,12 +133,16 @@ export async function fetchCurrentWeather(
       return { status: "error", message: "Weather unavailable" };
     let state: WeatherState;
     try {
-      const response = await provider(openMeteoUrl(request.coordinates), {
-        headers: { accept: "application/json" },
+      // One deadline covers the request and its body, and clears the shared in-flight entry when it passes.
+      state = await withRequestTimeout(timeoutMs, async (signal) => {
+        const response = await provider(openMeteoUrl(request.coordinates), {
+          headers: { accept: "application/json" },
+          signal,
+        });
+        return response.ok
+          ? parseOpenMeteoCurrent(await response.json(), now)
+          : ({ status: "error", message: "Weather unavailable" } as WeatherState);
       });
-      state = response.ok
-        ? parseOpenMeteoCurrent(await response.json(), now)
-        : { status: "error", message: "Weather unavailable" };
     } catch {
       state = { status: "error", message: "Weather unavailable" };
     }
@@ -160,20 +166,25 @@ export async function loadWeatherState(
   target: { label: string | null; coordinates: Coordinates | null },
   fetcher: typeof fetch | undefined = globalThis.fetch,
   now: number = Date.now(),
+  timeoutMs: number = AUX_REQUEST_TIMEOUT_MS,
 ): Promise<WeatherState> {
   if (target.coordinates)
     return fetchCurrentWeather(
       { coordinates: target.coordinates, timezone: "UTC" },
       fetcher,
       now,
+      timeoutMs,
     );
   const name = target.label?.trim();
   if (!name) return { status: "not-configured" };
-  const match = await lookupPlace(name, fetcher, now);
+  // The name lookup and the weather request share one deadline, so a caller never waits longer than it.
+  const started = Date.now();
+  const match = await lookupPlace(name, fetcher, now, timeoutMs);
   if (!match) return { status: "error", message: "Weather unavailable" };
   return fetchCurrentWeather(
     { coordinates: match.coordinates, timezone: match.timezone ?? "UTC" },
     fetcher,
     now,
+    Math.max(1, timeoutMs - (Date.now() - started)),
   );
 }
