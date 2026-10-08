@@ -17,6 +17,7 @@ import {
 
 type Context = {
   document: FoundationDocument;
+  /** True once the persisted document has been read successfully at least once. */
   ready: boolean;
   commit: (
     update: (document: FoundationDocument) => FoundationDocument,
@@ -34,6 +35,10 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const lifecycle = useRef(0);
+  // Mirrors of the latest load outcome for commit(), which runs outside the render that created it.
+  const loaded = useRef(false);
+  const failure = useRef<string | null>(null);
+  const refreshNow = useRef<(() => Promise<void>) | null>(null);
   useEffect(() => {
     let active = true;
     const lifetime = lifecycle;
@@ -50,19 +55,23 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
           try {
             const next = await browserFoundationStorage.load();
             if (active && observed === requestedRevision) {
+              loaded.current = true; failure.current = null;
               setDocument(next);
               setError("");
+              setReady(true);
             }
           } catch (reason) {
-            if (active && observed === requestedRevision)
-              setError(reason instanceof Error ? reason.message : "Could not load profile data.");
-          } finally {
-            if (active && observed === requestedRevision) setReady(true);
+            // A failed read is not an empty catalog: keep the last good document, and never become ready on it.
+            if (active && observed === requestedRevision) {
+              failure.current = reason instanceof Error ? reason.message : "Could not load profile data.";
+              setError(failure.current);
+            }
           }
         } while (active && observed !== requestedRevision);
       }).finally(() => { pending = undefined; });
       return pending;
     };
+    refreshNow.current = refresh;
     const unsubscribe = browserFoundationStorage.subscribe(() => { void refresh(); });
     const checkAfterPossibleMiss = () => { if (globalThis.document.visibilityState !== "hidden") void refresh(); };
     window.addEventListener("focus", checkAfterPossibleMiss);
@@ -71,6 +80,7 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
       lifetime.current++;
+      refreshNow.current = null;
       unsubscribe();
       window.removeEventListener("focus", checkAfterPossibleMiss);
       globalThis.document.removeEventListener("visibilitychange", checkAfterPossibleMiss);
@@ -79,11 +89,17 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
   async function commit(
     update: (document: FoundationDocument) => FoundationDocument,
   ) {
-    if (!ready) throw new Error("Profile data is still loading.");
+    if (!ready && !failure.current) throw new Error("Profile data is still loading.");
     const owner = lifecycle.current;
     // Serialize this provider's writes and their publication; a delayed earlier
     // transaction result cannot replace a later successful snapshot.
     const operation = queue.current.then(async () => {
+      // After a failed read, re-read once before writing; if it still fails nothing is written.
+      if (failure.current || !loaded.current) {
+        await refreshNow.current?.();
+        if (failure.current || !loaded.current)
+          throw new Error(failure.current ?? "Profile data could not be loaded. Nothing was changed.");
+      }
       try {
         const next = await browserFoundationStorage.transact(update);
         if (owner === lifecycle.current) { setDocument(next); setError(""); }
@@ -106,6 +122,7 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
       {error && (
         <p className="theme-notice foundation-error" role="alert">
           {error}
+          <button type="button" onClick={() => { void refreshNow.current?.(); }}>Retry</button>
         </p>
       )}
       {children}
