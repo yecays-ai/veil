@@ -56,11 +56,17 @@ regressionContract("bindings.default-all-list-selection", "render-lifecycle",
       const main = field(label).querySelector<HTMLButtonElement>(".binding-field-main")!;
       if (main.getAttribute("aria-expanded") !== "true") await click(main);
     };
+    let activeUnmount: (() => Promise<void>) | undefined;
     const mount = async (props: { characterId?: string }) => {
       const root = createRoot(doc.getElementById("root")!);
       await act(async () => { root.render(createElement(FoundationProvider, null, createElement(props.characterId ? BindingEditor : BindingHome, props))); });
       await wait(() => !!doc.querySelector(".binding-field"));
-      return async () => { await act(async () => { root.unmount(); }); };
+      const unmount = async () => {
+        if (activeUnmount === unmount) activeUnmount = undefined;
+        await act(async () => { root.unmount(); });
+      };
+      activeUnmount = unmount;
+      return unmount;
     };
     try {
       // Initial state: nothing stored; both resources are Default (All), never None.
@@ -106,6 +112,7 @@ regressionContract("bindings.default-all-list-selection", "render-lifecycle",
       assert.deepEqual(stored().characters.p.defaults, { regexIds: [] });
       await unmount();
     } finally {
+      await activeUnmount?.();
       browserFoundationStorage.load = originals[0]; browserApiConfigStorage.listApiConfigs = originals[1];
       browserPresetStorage.load = originals[2]; browserWorldBookStorage.load = originals[3];
       browserRegexStorage.load = originals[4];
