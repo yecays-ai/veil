@@ -13,6 +13,8 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
   publish: (snapshot: Snapshot | null, error: string) => void, stop: (sessionId: string) => void) {
   let active = false, enabled = false, checkedExisting = false, revision = 0;
   let sessionId: string | undefined, snapshot: Snapshot | null = null, error = "";
+  // The seeded chat is on screen and can be acted on before this owner has read storage, so leaving must still stop it.
+  let seededId: string | undefined;
   let running: Promise<void> | undefined;
   let awaitingExisting = false;
   let completedRevision = 0;
@@ -76,7 +78,7 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
     return running;
   };
   return {
-    seed(initial: Snapshot | null) { if (!active && !snapshot) snapshot = initial; },
+    seed(initial: Snapshot | null) { if (!active && !snapshot) { snapshot = initial; seededId = initial?.session.id; } },
     mount(validCharacter: boolean) {
       if (active) return;
       active = true;
@@ -95,7 +97,8 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
       if (!active || enabled === validCharacter) return;
       enabled = validCharacter;
       if (!enabled) {
-        if (sessionId) stop(sessionId);
+        const id = sessionId ?? seededId;
+        if (id) stop(id);
         revision++;
         checkedExisting = false;
         sessionId = undefined;
@@ -118,7 +121,8 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
       active = false;
       unsubscribe();
       changedBeforeResolution.clear();
-      if (enabled && sessionId) stop(sessionId);
+      const id = sessionId ?? seededId;
+      if (enabled && id) stop(id);
       enabled = false;
     },
   };

@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import { act, createElement } from "react";
 import { ChatStorage } from "../lib/chat/storage";
 import { prefetchChatSession, prefetchedChatSession } from "../lib/chat/session-prefetch";
+import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
 import type { ChatMessage, ChatSession } from "../lib/chat/types";
 
 const deferred = <T>() => { let resolve!: (value: T) => void; const promise = new Promise<T>((done) => { resolve = done; }); return { promise, resolve }; };
@@ -124,4 +125,24 @@ test("a chat pressed in the list paints its history in the first frame; one that
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
     }
   }
+});
+
+test("leaving a seeded chat before its own read lands still stops what was started from it", async () => {
+  const pending = deferred<ReturnType<typeof snapshotOf> | null>();
+  const stopped: string[] = [];
+  const storage = {
+    readExistingSession: () => pending.promise, openSession: async () => snapshotOf("a").session,
+    readSession: async () => snapshotOf("a"), subscribe: () => () => {},
+  };
+  const owner = createChatSessionLifecycle("a", storage, () => {}, (id) => stopped.push(id));
+  owner.seed(snapshotOf("a")); // the route paints the seed and the user can already send from it
+  owner.mount(false);
+  owner.setEnabled(true);
+  owner.unmount(); // the user leaves before the storage read resolves
+  assert.deepEqual(stopped, ["s-a"], "a reply started from the seed is stopped on exit, like one from a loaded chat");
+  pending.resolve(null);
+  await settled();
+  const other = createChatSessionLifecycle("a", storage, () => {}, (id) => stopped.push(id));
+  other.mount(false); other.setEnabled(true); other.unmount();
+  assert.deepEqual(stopped, ["s-a"], "an unseeded owner with nothing loaded has nothing to stop");
 });
