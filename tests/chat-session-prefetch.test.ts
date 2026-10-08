@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { JSDOM } from "jsdom";
-import { act, createElement } from "react";
+import { act, createElement, type FunctionComponent } from "react";
+import type { Root } from "react-dom/client";
 import { ChatStorage } from "../lib/chat/storage";
 import { prefetchChatSession, prefetchedChatSession } from "../lib/chat/session-prefetch";
 import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
@@ -69,7 +70,11 @@ test("peeking is read-only: a generating chat is never seeded and nothing is rec
   assert.deepEqual(recovered, [], "peeking never recovers or writes a generation");
 });
 
-test("a chat pressed in the list paints its history in the first frame; one that was not still loads normally", async () => {
+async function withMountedChat(run: (env: {
+  dom: JSDOM; root: Root; chatStorage: ChatStorage; chatEngine: typeof import("../lib/chat/engine").chatEngine;
+  Probe: FunctionComponent<{ characterId: string }>; read: () => { session: string; count: string };
+  until: (done: () => boolean) => Promise<void>;
+}) => Promise<void>) {
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
   const saved = new Map<string, PropertyDescriptor | undefined>();
   const install = (name: string, value: unknown) => {
@@ -86,6 +91,7 @@ test("a chat pressed in the list paints its history in the first frame; one that
   const { createRoot } = await import("react-dom/client");
   const { useChatSession } = await import("../components/chat/use-chat-session");
   const { chatStorage } = await import("../lib/chat/storage");
+  const { chatEngine } = await import("../lib/chat/engine");
   const root = createRoot(dom.window.document.getElementById("root")!);
   function Probe({ characterId }: { characterId: string }) {
     const chat = useChatSession(characterId, true);
@@ -100,6 +106,18 @@ test("a chat pressed in the list paints its history in the first frame; one that
     while (!done()) { assert.ok(Date.now() < deadline, "condition timed out"); await act(async () => { await new Promise((r) => setTimeout(r, 5)); }); }
   };
   try {
+    await run({ dom, root, chatStorage, chatEngine, Probe, read, until });
+  } finally {
+    await act(() => { root.unmount(); });
+    dom.window.close();
+    for (const [name, descriptor] of saved) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
+    }
+  }
+}
+
+test("a chat pressed in the list paints its history in the first frame; one that was not still loads normally", async () => {
+  await withMountedChat(async ({ root, chatStorage, Probe, read, until }) => {
     for (const characterId of ["pressed", "plain"]) {
       const session = await chatStorage.openSession(characterId);
       await chatStorage.send(session.id, "one"); await chatStorage.send(session.id, "two");
@@ -118,13 +136,33 @@ test("a chat pressed in the list paints its history in the first frame; one that
     await act(() => { root.render(createElement(Probe, { characterId: "plain" })); });
     assert.equal(read().count, "0", "a chat that was not pressed still starts empty and loads from storage");
     await until(() => read().count === "2");
-  } finally {
-    await act(() => { root.unmount(); });
-    dom.window.close();
-    for (const [name, descriptor] of saved) {
-      if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
+  });
+});
+
+test("navigating away from a seeded route while its own read is pending stops the seeded chat", async () => {
+  await withMountedChat(async ({ root, chatStorage, chatEngine, Probe, read, until }) => {
+    const session = await chatStorage.openSession("leaving");
+    await chatStorage.send(session.id, "one");
+    prefetchChatSession("leaving", chatStorage);
+    await until(() => prefetchedChatSession("leaving", chatStorage) !== null);
+    // The route's own read never lands before the user leaves.
+    const pending = deferred<null>();
+    const readExisting = chatStorage.readExistingSession;
+    chatStorage.readExistingSession = () => pending.promise;
+    const stopped: string[] = [];
+    const stop = chatEngine.stop;
+    chatEngine.stop = ((id: string) => { stopped.push(id); }) as typeof chatEngine.stop;
+    try {
+      await act(() => { root.render(createElement(Probe, { characterId: "leaving" })); });
+      assert.equal(read().count, "1", "the seeded route is on screen");
+      await act(() => { root.render(createElement("div", { id: "elsewhere" })); }); // navigate away through the rendered route
+      assert.deepEqual(stopped, [session.id], "leaving stops the seeded chat through the route's bound stop");
+    } finally {
+      pending.resolve(null);
+      chatStorage.readExistingSession = readExisting;
+      chatEngine.stop = stop;
     }
-  }
+  });
 });
 
 test("leaving a seeded chat before its own read lands still stops what was started from it", async () => {
