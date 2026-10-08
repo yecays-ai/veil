@@ -1,16 +1,16 @@
 # STATUS — Contacts async operation protection
 
 更新人：Codex
-更新时间：2026-10-08T21:49:00+08:00
+更新时间：2026-10-08T21:50:00+08:00
 发现范围：远端 main 3107d8ea798be181f7528d2d72853020c7b2efb4；已 fetch 到独立 worktree。GitHub open PR 搜索发现 #36（冻结）和 #48（Claude Chat Stop）；核对两者改动文件、#48 分支任务记录，无本单文件重叠。未发布的并行工作不在可见范围内。
 
 ## 当前任务
 
-Contacts 施工单 B：修复迟到导航、Add Contact 保存失败与重复提交；实现和验证完成，准备发布 PR，等待人工审查。
+Contacts 施工单 B：修复迟到导航、Add Contact 保存失败与重复提交；实现和验证完成，PR #49 待审查。
 
 ## 谁在改哪里
 
-Codex；分支 `fix/contacts-async-lifecycle-20261008`；PR 待创建。生产代码仅 `components/contact-info.tsx`、`components/contacts-pages.tsx`；测试 `tests/contacts-async-lifecycle.test.ts`、`tests/contacts-conversations.test.ts`，以及本记录。未改 Chat Stop、冻结 #36、Preset/Prompt 或存储实现。
+Codex；分支 `fix/contacts-async-lifecycle-20261008`；PR https://github.com/yecays-ai/veil/pull/49。生产代码仅 `components/contact-info.tsx`、`components/contacts-pages.tsx`；测试 `tests/contacts-async-lifecycle.test.ts`、`tests/contacts-conversations.test.ts`，以及本记录。未改 Chat Stop、冻结 #36、Preset/Prompt 或存储实现。
 
 ## 已完成
 
@@ -30,4 +30,4 @@ Codex；分支 `fix/contacts-async-lifecycle-20261008`；PR 待创建。生产�
 
 ## 下一步
 
-创建一个普通 PR，更新本记录；不启用 Auto-merge、不添加 automerge 标签、不自行合并。等待 CodeRabbit、CI 和用户手动合并。
+等待 CodeRabbit、CI 和用户手动合并；不启用 Auto-merge、不添加 automerge 标签、不自行合并。
