@@ -118,3 +118,195 @@ regressionContract("chat.regenerate-lock-released-without-session", "async-race-
       }
     }
   });
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((yes) => { resolve = yes; });
+  return { promise, resolve };
+}
+
+async function mountedRoom() {
+  const dom = new JSDOM('<div class="phone-shell"><div id="root"></div></div>', {
+    url: "http://localhost/messages/a", pretendToBeVisual: true,
+  });
+  const descriptors = new Map<string, PropertyDescriptor | undefined>();
+  const install = (name: string, value: unknown) => {
+    descriptors.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
+    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+  };
+  for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLTextAreaElement", "localStorage"] as const)
+    install(name, dom.window[name]);
+  const factory = new IDBFactory();
+  Object.defineProperty(dom.window.navigator, "locks", { value: lockOrigin().client() });
+  Object.defineProperty(dom.window, "indexedDB", { value: factory });
+  install("indexedDB", factory); install("self", dom.window); install("BroadcastChannel", undefined);
+  install("requestAnimationFrame", dom.window.requestAnimationFrame.bind(dom.window));
+  install("cancelAnimationFrame", dom.window.cancelAnimationFrame.bind(dom.window));
+  install("getComputedStyle", dom.window.getComputedStyle.bind(dom.window));
+  install("ResizeObserver", class { observe() {} disconnect() {} });
+  install("IS_REACT_ACT_ENVIRONMENT", true);
+  dom.window.HTMLElement.prototype.scrollTo = () => {};
+
+  const { createRoot } = await import("react-dom/client");
+  const { FoundationProvider } = await import("../components/foundation-provider");
+  const { ChatRoom } = await import("../components/chat/chat-room");
+  const { chatStorage } = await import("../lib/chat/storage");
+  const { chatEngine } = await import("../lib/chat/engine");
+  const { browserFoundationStorage } = await import("../lib/foundation-storage");
+  const { browserApiConfigStorage } = await import("../lib/api-config-storage");
+  const { normalizeFoundation } = await import("../lib/foundation-types");
+  const full = normalizeFoundation({ characters: [{ characterId: "a", name: "A" }, { characterId: "b", name: "B" }] });
+  const withoutA = normalizeFoundation({ characters: [{ characterId: "b", name: "B" }] });
+  full.runtime.timeAware = false;
+  let current = full;
+  const original = {
+    load: browserFoundationStorage.load, api: browserApiConfigStorage.getApiConfig,
+    send: chatEngine.send, reply: chatEngine.requestReply,
+  };
+  browserFoundationStorage.load = async () => current;
+  browserApiConfigStorage.getApiConfig = async () => ({ ...TEST_API_CONFIG, name: "Test", provider: "Custom" });
+  const a = await chatStorage.openSession("a"), b = await chatStorage.openSession("b");
+  const root = createRoot(dom.window.document.getElementById("root")!);
+  const held: Array<() => void> = [];
+  const hold = <T,>() => {
+    const gate = deferred<T>(); held.push(() => gate.resolve(null as T)); return gate;
+  };
+  const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+  const wait = async (condition: () => boolean) => {
+    const deadline = Date.now() + 5000;
+    while (!condition()) {
+      assert.ok(Date.now() < deadline, "mounted room condition timed out");
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    }
+  };
+  const input = () => dom.window.document.querySelector<HTMLTextAreaElement>("#chat-input");
+  const button = (label: string) => [...dom.window.document.querySelectorAll<HTMLButtonElement>("button")]
+    .find((element) => element.getAttribute("aria-label") === label);
+  const click = async (label: string) => {
+    const target = button(label); assert.ok(target, `${label} button exists`);
+    await act(async () => { target.click(); });
+  };
+  const type = async (value: string) => {
+    const target = input(); assert.ok(target, "composer exists");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(dom.window.HTMLTextAreaElement.prototype, "value")!.set!.call(target, value);
+      target.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+    });
+  };
+  const render = async (characterId: string) => {
+    await act(async () => { root.render(createElement(FoundationProvider, null, createElement(ChatRoom, { characterId }))); });
+    await wait(() => !!input() && !input()!.disabled);
+  };
+  const refresh = async (document: typeof full) => {
+    current = document;
+    await act(async () => { dom.window.dispatchEvent(new dom.window.Event("focus")); });
+  };
+  const settle = async <T,>(gate: ReturnType<typeof deferred<T>>, value: T) => {
+    await act(async () => { gate.resolve(value); await gate.promise; await flush(); });
+  };
+  const close = async () => {
+    held.forEach((release) => release());
+    await act(async () => { root.unmount(); await flush(); });
+    browserFoundationStorage.load = original.load;
+    browserApiConfigStorage.getApiConfig = original.api;
+    chatEngine.send = original.send; chatEngine.requestReply = original.reply;
+    dom.window.close();
+    for (const [name, descriptor] of descriptors) {
+      if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+      else Reflect.deleteProperty(globalThis, name);
+    }
+  };
+  return { a, b, full, withoutA, chatEngine, chatStorage, input, button, click, type, render, refresh, settle, hold, wait, close };
+}
+
+regressionContract("chat.reply-lock-released-without-session", "async-race-safety",
+  "Reply finishing while the room temporarily lacks a session releases its own lock", async () => {
+    const ui = await mountedRoom();
+    const pending = ui.hold<Awaited<ReturnType<typeof ui.chatEngine.requestReply>>>();
+    const calls: string[] = [];
+    try {
+      ui.chatEngine.requestReply = (sessionId) => {
+        calls.push(sessionId);
+        return calls.length === 1 ? pending.promise : Promise.resolve(null);
+      };
+      await ui.render("a"); await ui.type("Question"); await ui.click("Request Reply");
+      assert.deepEqual(calls, [ui.a.id]);
+      await ui.refresh(ui.withoutA); await ui.wait(() => !ui.input() || !!ui.input()?.disabled);
+      await ui.settle(pending, null);
+      await ui.refresh(ui.full); await ui.wait(() => !!ui.input() && !ui.input()!.disabled);
+      assert.equal(ui.button("Stop reply"), undefined, "generating state is released while the session is absent");
+      await ui.click("Request Reply");
+      assert.deepEqual(calls, [ui.a.id, ui.a.id], "the old replyLock does not block the next Reply");
+    } finally { await ui.close(); }
+  });
+
+regressionContract("chat.send-lock-released-without-session", "async-race-safety",
+  "a saved Send clears its draft when the original session returns, without a duplicate Send", async () => {
+    const ui = await mountedRoom();
+    const pending = ui.hold<void>();
+    const calls: string[] = [];
+    try {
+      ui.chatEngine.send = async (sessionId, content, quoteMessageId) => {
+        calls.push(sessionId);
+        await pending.promise;
+        return ui.chatStorage.send(sessionId, content, quoteMessageId);
+      };
+      await ui.render("a"); await ui.type("Draft"); await ui.click("Send");
+      assert.deepEqual(calls, [ui.a.id]);
+      await ui.refresh(ui.withoutA); await ui.wait(() => !ui.input() || !!ui.input()?.disabled);
+      await ui.settle(pending, undefined);
+      await ui.refresh(ui.full); await ui.wait(() => !!ui.input() && !ui.input()!.disabled);
+      await ui.wait(() => ui.input()?.value === "");
+      assert.equal(ui.button("Send")?.disabled, true, "a saved draft cannot be sent again after its session returns");
+      await ui.click("Send");
+      assert.deepEqual(calls, [ui.a.id], "the completed Send is not duplicated");
+      assert.equal((await ui.chatStorage.readSession(ui.a.id)).messages.filter((message) => message.content === "Draft").length, 1);
+    } finally { await ui.close(); }
+  });
+
+regressionContract("chat.saved-send-preserves-other-session-draft", "async-race-safety",
+  "a saved Send cannot clear a different session's identical draft", async () => {
+    const ui = await mountedRoom();
+    const pending = ui.hold<void>();
+    try {
+      ui.chatEngine.send = async (sessionId, content, quoteMessageId) => {
+        await pending.promise;
+        return ui.chatStorage.send(sessionId, content, quoteMessageId);
+      };
+      await ui.render("a"); await ui.type("Same text"); await ui.click("Send");
+      await ui.render("b"); await ui.type("B's draft"); await ui.type("Same text");
+      await ui.settle(pending, undefined);
+      assert.equal(ui.input()?.value, "Same text", "B's draft survives A's successful save");
+      await ui.render("a");
+      assert.equal(ui.input()?.value, "Same text", "returning to A must not clear text B edited");
+      assert.equal((await ui.chatStorage.readSession(ui.a.id)).messages.filter((message) => message.content === "Same text").length, 1);
+      assert.equal((await ui.chatStorage.readSession(ui.b.id)).messages.length, 0);
+    } finally { await ui.close(); }
+  });
+
+for (const action of ["Reply", "Send"] as const)
+  regressionContract(`chat.${action.toLowerCase()}-lock-owned-by-current-session`, "async-race-safety",
+    `an old ${action} completion cannot release the new session's lock`, async () => {
+      const ui = await mountedRoom();
+      const old = ui.hold<never>(), current = ui.hold<never>();
+      const calls: string[] = [];
+      try {
+        if (action === "Reply") ui.chatEngine.requestReply = (sessionId) => {
+          calls.push(sessionId); return sessionId === ui.a.id ? old.promise : current.promise;
+        };
+        else ui.chatEngine.send = (sessionId) => {
+          calls.push(sessionId); return sessionId === ui.a.id ? old.promise : current.promise;
+        };
+        await ui.render("a"); await ui.type("A draft"); await ui.click(action === "Reply" ? "Request Reply" : "Send");
+        await ui.render("b"); await ui.type("B draft"); await ui.click(action === "Reply" ? "Request Reply" : "Send");
+        assert.deepEqual(calls, [ui.a.id, ui.b.id]);
+        await ui.settle(old, null as never);
+        if (action === "Reply") assert.ok(ui.button("Stop reply"), "B must remain generating while its Reply is pending");
+        else assert.equal(ui.button("Send")?.disabled, true, "B must remain sending while its Send is pending");
+        assert.equal(ui.input()?.value, "B draft", "the old completion cannot clear B's draft");
+        await ui.settle(current, null as never);
+        if (action === "Reply") assert.equal(ui.button("Stop reply"), undefined);
+        else assert.equal(ui.button("Send")?.disabled, true, "B's completed Send clears its own draft");
+      } finally { await ui.close(); }
+    });
+

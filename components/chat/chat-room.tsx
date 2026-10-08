@@ -105,6 +105,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const chatBackground = useChatBackground(session, { characterId });
   const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
+  const draftEditVersion = useRef(0);
+  const savedDraftAwaitingSession = useRef<{ sessionId: string; content: string; editVersion: number } | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
   useEffect(() => { setQuotingMessage(null); }, [characterId]);
   const [sending, setSending] = useState(false);
@@ -117,6 +119,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
   currentSessionId.current = session?.characterId === characterId ? session.id : undefined;
+  useEffect(() => {
+    const saved = savedDraftAwaitingSession.current;
+    if (!saved || currentSessionId.current !== saved.sessionId) return;
+    savedDraftAwaitingSession.current = null;
+    if (draftEditVersion.current === saved.editVersion)
+      setDraft((current) => current === saved.content ? "" : current);
+  }, [session?.id, characterId]);
   useEffect(() => {
     replyLock.current = false; sendingLock.current = false;
     setGenerating(false); setSending(false); setError("");
@@ -348,6 +357,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   async function persistDraft(content: string, sessionId: string, focus: boolean) {
     sendingLock.current = true;
     setSending(true);
+    const editVersion = draftEditVersion.current;
     try {
       nearBottom.current = true;
       const quote = quotingMessage;
@@ -356,9 +366,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         setQuotingMessage((current) => current?.id === quote?.id ? null : current);
         setDraft((current) => (current === content ? "" : current));
         if (focus) composer.current?.focus();
+      } else if (mounted.current) {
+        savedDraftAwaitingSession.current = { sessionId, content, editVersion };
       }
     } finally {
-      if (mounted.current && currentSessionId.current === sessionId) {
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) {
         sendingLock.current = false;
         setSending(false);
       }
@@ -405,7 +418,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         );
     } finally {
       revealQueue.settle(sessionId, revealToken);
-      if (mounted.current && currentSessionId.current === sessionId) {
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) {
         replyLock.current = false;
         setGenerating(false);
       }
@@ -673,7 +687,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             value={draft}
             disabled={!session || !!loadError}
             placeholder="Message…"
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => { draftEditVersion.current += 1; setDraft(e.target.value); }}
           />
           <span className="chat-voice-slot" aria-hidden="true" />
         </div>
@@ -931,3 +945,4 @@ function ConfirmDialog({ title, text, onCancel, onConfirm }: {
     <p>{text}</p><div><button type="button" onClick={onCancel}>Cancel</button>
       <button type="button" className="chat-danger" onClick={onConfirm}>Delete</button></div></div></div>;
 }
+
