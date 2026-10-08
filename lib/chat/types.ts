@@ -1,5 +1,9 @@
 export type ChatSession = {
   id: string;
+  /**
+   * Direct chat: its Character. Group chat: the first member, or "" once no member remains (a group
+   * outlives its members). "" matches no Character, so no reader may treat it as a reference.
+   */
   characterId: string;
   type?: "direct" | "group";
   participantIds?: string[];
