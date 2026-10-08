@@ -89,6 +89,12 @@ export class BubbleRevealQueue {
   discard(ids: readonly string[]) {
     if (ids.some((id) => this.state.replyIds.includes(id))) this.cancel();
   }
+  revealMessage(id: string) {
+    if (!this.state.hiddenIds.has(id)) return;
+    const hiddenIds = new Set(this.state.hiddenIds);
+    hiddenIds.delete(id);
+    this.publish({ ...this.state, hiddenIds, pending: hiddenIds.size > 0 });
+  }
   reconcile(messages: readonly ChatMessage[]) {
     if (this.state.awaiting || !this.state.replyIds.length) return;
     const ids = new Set(messages.filter((message) => message.status === "complete").map((message) => message.id));
