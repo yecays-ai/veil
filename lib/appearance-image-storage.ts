@@ -7,7 +7,7 @@ import {
 export const APPEARANCE_IMAGE_DATABASE_NAME = "veil-appearance-images-v1";
 export const APPEARANCE_IMAGE_DATABASE_VERSION = 1;
 const STORE = "assets";
-type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number };
+type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: string[] };
 
 const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
@@ -84,13 +84,55 @@ export class AppearanceImageStorage {
   }
 
   async saveBlobs(blobs: readonly Blob[]): Promise<string[]> {
+    return this.writeBlobs(blobs);
+  }
+
+  private async writeBlobs(blobs: readonly Blob[], heldIds: readonly string[] = [], holder?: string): Promise<string[]> {
     const ids = await Promise.all(blobs.map(imageId));
     await this.transaction("readwrite", async (store) => {
-      for (let index = 0; index < blobs.length; index++)
+      for (let index = 0; index < blobs.length; index++) {
+        const previous = await request<ImageAsset | undefined>(store.get(ids[index]));
         await request(store.put({ id: ids[index], blob: blobs[index], type: blobs[index].type,
-          createdAt: Date.now() } satisfies ImageAsset));
+          createdAt: previous?.createdAt ?? Date.now(), holders: previous?.holders } satisfies ImageAsset));
+      }
+      if (holder) for (const id of new Set([...ids, ...heldIds])) {
+        const asset = await request<ImageAsset | undefined>(store.get(id));
+        if (!asset) throw new Error("An Appearance image asset is missing. Choose the image again before saving.");
+        await request(store.put({ ...asset, holders: [...new Set([...(asset.holders ?? []), holder])] }));
+      }
     });
     return ids.map((id) => `${THEME_IMAGE_ASSET_PREFIX}${id}`);
+  }
+
+  async stageBlobs(blobs: readonly Blob[], heldIds: readonly string[] = []) {
+    const holder = crypto.randomUUID();
+    const references = await this.writeBlobs(blobs, heldIds, holder);
+    const ids = new Set([...references.map((reference) => themeImageAssetId(reference)!), ...heldIds]);
+    return { references, release: () => this.transaction("readwrite", async (store) => {
+      for (const id of ids) {
+        const asset = await request<ImageAsset | undefined>(store.get(id));
+        if (asset) await request(store.put({ ...asset, holders: asset.holders?.filter((value) => value !== holder) }));
+      }
+    }) };
+  }
+
+  // The existing asset transaction serializes Theme publication and collection across tabs.
+  // publish is synchronous: no unrelated asynchronous work is performed inside the transaction.
+  async publish<T>(publish: (available: ReadonlySet<string>) => T): Promise<T> {
+    let published = false;
+    let result!: T;
+    try {
+      await this.transaction("readwrite", async (store) => {
+        const ids = await request<IDBValidKey[]>(store.getAllKeys());
+        result = publish(new Set(ids.filter((id): id is string => typeof id === "string")));
+        published = true;
+      });
+    } catch (error) {
+      // No assets are changed in this transaction. Once synchronous localStorage publication
+      // succeeded, a later transaction abort cannot undo that successful Theme write.
+      if (!published) throw error;
+    }
+    return result;
   }
 
   readBlob(id: string): Promise<Blob | null> {
@@ -101,52 +143,58 @@ export class AppearanceImageStorage {
     });
   }
 
-  async assertPresent(ids: ReadonlySet<string>): Promise<void> {
-    if (!ids.size) return;
-    const saved = await this.transaction("readonly", async (store) => request<IDBValidKey[]>(store.getAllKeys()));
-    const available = new Set(saved.filter((id): id is string => typeof id === "string"));
-    if ([...ids].some((id) => !available.has(id)))
-      throw new Error("An Appearance image asset is missing. Choose the image again before saving.");
-  }
-
-  collect(usedIds: ReadonlySet<string>): Promise<void> {
+  collect(resolveUsedIds: () => ReadonlySet<string>): Promise<void> {
     return this.transaction("readwrite", async (store) => {
-      const saved = await request<IDBValidKey[]>(store.getAllKeys());
-      for (const id of saved)
-        if (typeof id === "string" && !usedIds.has(id)) await request(store.delete(id));
+      const saved = await request<ImageAsset[]>(store.getAll());
+      // Read the persisted authority while holding the same transaction lock as publishers.
+      // Failure to read/parse references aborts collection rather than treating them as empty.
+      const usedIds = resolveUsedIds();
+      for (const asset of saved)
+        if (!usedIds.has(asset.id) && !asset.holders?.length) await request(store.delete(asset.id));
     });
   }
 }
 
 export const browserAppearanceImageStorage = new AppearanceImageStorage();
 
-export async function storeThemeImageSource(
-  source: string | null,
-  storage: AppearanceImageStorage = browserAppearanceImageStorage,
-): Promise<string | null> {
-  if (!source?.startsWith("data:image/")) return source;
-  return (await storage.saveBlobs([blobFromDataUrl(source)]))[0];
+export async function withThemeImageSource<T>(source: string | null, apply: (reference: string | null) => Promise<T>,
+  storage: AppearanceImageStorage = browserAppearanceImageStorage): Promise<T> {
+  const inline = source?.startsWith("data:image/");
+  const id = themeImageAssetId(source);
+  if (!inline && !id) return apply(source);
+  const staged = await storage.stageBlobs(inline ? [blobFromDataUrl(source!)] : [], id ? [id] : []);
+  try { return await apply(inline ? staged.references[0] : source); }
+  finally { await staged.release().catch(() => {}); }
 }
 
 export async function storeThemeSnapshotImages(
   snapshot: ThemeSnapshot,
   storage: AppearanceImageStorage = browserAppearanceImageStorage,
 ): Promise<ThemeSnapshot> {
+  return withThemeSnapshotImages(snapshot, async (stored) => stored, storage);
+}
+
+export async function withThemeSnapshotImages<T>(snapshot: ThemeSnapshot, apply: (stored: ThemeSnapshot) => Promise<T>,
+  storage: AppearanceImageStorage = browserAppearanceImageStorage): Promise<T> {
   const profile = snapshot.profile;
   const sources = [profile.wallpaper.source, ...Object.values(profile.icons), profile.dock.image];
   const inline = sources.map((source) => source?.startsWith("data:image/") ? source : null);
-  const references = await storage.saveBlobs(inline.flatMap((source) => source ? [blobFromDataUrl(source)] : []));
+  const staged = await storage.stageBlobs(inline.flatMap((source) => source ? [blobFromDataUrl(source)] : []),
+    sources.flatMap((source) => { const id = themeImageAssetId(source); return id ? [id] : []; }));
+  const references = staged.references;
   let next = 0;
   const storedBySource = new Map<string, string>();
   for (const source of inline)
     if (source) storedBySource.set(source, references[next++]);
   const replacement = (source: string | null) => source?.startsWith("data:image/") ? storedBySource.get(source)! : source;
   const icons = Object.fromEntries(Object.entries(profile.icons).map(([id, source]) => [id, replacement(source)]));
-  return { ...snapshot, profile: { ...profile,
+  const stored = { ...snapshot, profile: { ...profile,
     wallpaper: { ...profile.wallpaper, source: replacement(profile.wallpaper.source) },
     icons,
     dock: { ...profile.dock, image: replacement(profile.dock.image) },
   } };
+  try { return await apply(stored); }
+  finally { await staged.release().catch(() => {}); }
 }
 
 async function blobDataUrl(blob: Blob): Promise<string> {

@@ -11,11 +11,10 @@ import {
 } from "react";
 import { browserThemeStorage } from "../lib/theme-storage";
 import { browserAppearanceImageStorage } from "../lib/appearance-image-storage";
+import { ThemeImageUrls } from "../lib/theme-image-urls";
 import {
   defaultSnapshot,
-  normalizeDocument,
   themeImageAssetId,
-  themeImageAssetIds,
   type ThemeDocument,
   type ThemeProfile,
 } from "../lib/theme-types";
@@ -50,75 +49,76 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
   const [ready, setReady] = useState(false);
   const [error, setError] = useState("");
-  const current = useRef(document);
   const queue = useRef<Promise<void>>(Promise.resolve());
   const mounted = useRef(false);
-  const imageUrls = useRef<Record<string, string>>({});
+  const lifecycle = useRef(0);
+  const writable = useRef(false);
+  const hydration = useRef<Promise<void> | null>(null);
+  const refresh = useRef<(() => Promise<void>) | null>(null);
   const [resolvedImages, setResolvedImages] = useState<Record<string, string>>({});
-
-  async function syncImageUrls(value: ThemeDocument) {
-    const references = [...themeImageAssetIds(value)].map((id) => `appearance-asset:${id}`);
-    const next = Object.fromEntries(references.flatMap((reference) =>
-      imageUrls.current[reference] ? [[reference, imageUrls.current[reference]]] : []));
-    for (const reference of references) {
-      if (next[reference]) continue;
-      const id = themeImageAssetId(reference);
-      if (!id) continue;
-      const blob = await browserAppearanceImageStorage.readBlob(id).catch(() => null);
-      if (blob) next[reference] = URL.createObjectURL(blob);
-    }
-    for (const [reference, url] of Object.entries(imageUrls.current))
-      if (!next[reference]) URL.revokeObjectURL(url);
-    imageUrls.current = next;
-    if (mounted.current) setResolvedImages(next);
-  }
-
   useEffect(() => {
+    const owner = ++lifecycle.current;
     mounted.current = true;
-    return () => {
-      mounted.current = false;
-      Object.values(imageUrls.current).forEach((url) => URL.revokeObjectURL(url));
-      imageUrls.current = {};
-    };
-  }, []);
-
-  useEffect(() => {
     let active = true;
-    browserThemeStorage
-      .load()
-      .then(async (saved) => {
-        await syncImageUrls(saved);
-        if (active) {
-          current.current = saved;
-          setDocument(saved);
-        }
-      })
-      .catch((error: unknown) => {
-        if (active)
-          setError(
-            error instanceof Error
-              ? error.message
-              : "Could not load appearance.",
-          );
-      })
-      .finally(() => {
-        if (active) setReady(true);
-      });
+    let revision = 0;
+    const images = new ThemeImageUrls((id) => browserAppearanceImageStorage.readBlob(id));
+    const load = async () => {
+      const request = ++revision;
+      images.invalidate();
+      try {
+        const saved = await browserThemeStorage.load();
+        if (!active || request !== revision) return;
+        writable.current = true;
+        setDocument(saved);
+        setReady(true);
+        setError("");
+        const urls = await images.sync(saved);
+        if (active && request === revision && urls) setResolvedImages(urls);
+      } catch (reason) {
+        if (!active || request !== revision) return;
+        writable.current = false;
+        setReady(false);
+        setError(reason instanceof Error ? reason.message : "Could not load appearance.");
+        throw reason;
+      }
+    };
+    const beginLoad = () => {
+      const pending = load();
+      hydration.current = pending;
+      void pending.catch(() => {});
+      return pending;
+    };
+    refresh.current = beginLoad;
+    void beginLoad();
+    const changed = (event: StorageEvent) => {
+      if (event.key === null || event.key === "companion-phone.appearance.v1") void beginLoad();
+    };
+    window.addEventListener("storage", changed);
     return () => {
       active = false;
+      lifecycle.current = owner + 1;
+      mounted.current = false;
+      writable.current = false;
+      revision++;
+      refresh.current = null;
+      images.dispose();
+      window.removeEventListener("storage", changed);
     };
   }, []);
 
   function commit(
     update: (document: ThemeDocument) => ThemeDocument,
   ): Promise<void> {
+    const owner = lifecycle.current;
     const operation = queue.current.then(async () => {
-      const next = normalizeDocument(update(current.current), false);
-      await browserThemeStorage.save(next);
-      await syncImageUrls(next);
-      current.current = next;
-      setDocument(next);
-      setError("");
+      await hydration.current;
+      if (owner !== lifecycle.current || !mounted.current || !writable.current)
+        throw new Error("Appearance has not loaded. Existing data has not been changed.");
+      await browserThemeStorage.transact(update);
+      if (owner === lifecycle.current && mounted.current) await refresh.current?.();
+    }).catch((reason) => {
+      if (owner === lifecycle.current && mounted.current) setError(reason instanceof Error ? reason.message : "Could not save appearance.");
+      throw reason;
     });
     queue.current = operation.catch(() => {});
     return operation;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { IDBFactory } from "fake-indexeddb";
 import { readFileSync } from "node:fs";
 import { bindHereThereCharacter, resolveHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
@@ -31,7 +32,7 @@ test("Here & There normalization retains only time flags and a Character ID", ()
 test("explicit widget bindings persist independently across Theme reload", async () => {
   const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const saved = new Map<string, string>();
-  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: {
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { indexedDB: new IDBFactory(), localStorage: {
     getItem: (key: string) => saved.get(key) ?? null,
     setItem: (key: string, value: string) => saved.set(key, value),
   } } });

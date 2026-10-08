@@ -123,7 +123,7 @@ test("asset write failure never applies a theme reference", async () => {
   assert.equal((await themes.load()).current.profile.wallpaper.source, null);
 });
 
-test("failed Theme document write preserves the prior document and collects its new orphan image", async () => {
+test("failed Theme document write preserves the prior document and defers optional image cleanup", async () => {
   const factory = new IDBFactory();
   const images = new AppearanceImageStorage(() => factory);
   const storage = new MemoryStorage();
@@ -136,5 +136,7 @@ test("failed Theme document write preserves the prior document and collects its 
     profile: { ...before.current.profile, wallpaper: { ...before.current.profile.wallpaper, source: reference } } } }));
   storage.failWrites = false;
   assert.deepEqual(await themes.load(), before);
+  assert(await images.readBlob(themeImageAssetId(reference)!));
+  await themes.save(before);
   assert.equal(await images.readBlob(themeImageAssetId(reference)!), null);
 });
