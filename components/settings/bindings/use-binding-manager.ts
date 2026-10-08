@@ -2,7 +2,7 @@
 import { useBindings } from "../../use-bindings";
 import { useEffect, useState } from "react";
 import { useFoundation } from "../../foundation-provider";
-import { cleanStaleBindings, setBindingField,
+import { cleanStaleBindings, editBindingList, setBindingField, type BindingListEdit,
   type BindingScope, type BindingSlot, type ManagedBindingField } from "../../../lib/bindings";
 import { browserApiConfigStorage } from "../../../lib/api-config-storage";
 import { browserPresetStorage } from "../../../lib/preset-storage";
@@ -68,5 +68,16 @@ export function useBindingManager() {
     } finally { setBusy(false); }
   }
 
-  return { document, bindings, resources, error: error || bindingError, busy, update };
+  // List changes are applied to the latest stored document, not to the list on screen.
+  async function edit(scope: BindingScope, field: "worldBookIds" | "regexIds", change: BindingListEdit) {
+    if (!resources || busy) return;
+    setBusy(true); setError("");
+    try {
+      await commit((current) => editBindingList(current, scope, field, change));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Binding could not be saved.");
+    } finally { setBusy(false); }
+  }
+
+  return { document, bindings, resources, error: error || bindingError, busy, update, edit };
 }

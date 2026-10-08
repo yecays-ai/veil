@@ -103,6 +103,27 @@ export function setBindingField(
     [scope.characterId]: next }) };
 }
 
+export type BindingListEdit = { type: "toggle"; id: string } | { type: "move"; id: string; by: -1 | 1 };
+
+// List edits are expressed as intents (add/remove one id, move one id by one place) and applied
+// to the document being written, never to a copy rendered earlier, so a stale tab cannot drop
+// another tab's additions or reorder. The list the user was looking at is the effective one
+// (own override, else inherited, else unset = Default (All), which starts from empty).
+// Absolute choices (None = [], Default = undefined, a scalar) still go through setBindingField.
+export function editBindingList(
+  document: BindingDocument, scope: BindingScope, field: "worldBookIds" | "regexIds", edit: BindingListEdit,
+): BindingDocument {
+  const current = resolveBindings(document, scope.characterId ?? null, scope.appId ?? "messages")[field] ?? [];
+  if (edit.type === "toggle")
+    return setBindingField(document, scope, field, current.includes(edit.id)
+      ? current.filter((id) => id !== edit.id) : [...current, edit.id]);
+  const from = current.indexOf(edit.id), to = from + edit.by;
+  if (from < 0 || to < 0 || to >= current.length) return document;
+  const next = [...current];
+  [next[from], next[to]] = [next[to], next[from]];
+  return setBindingField(document, scope, field, next);
+}
+
 export function cleanStaleBindings(document: BindingDocument, available: {
   apiConfigIds: ReadonlySet<string>; presetIds: ReadonlySet<string>;
   worldBookIds: ReadonlySet<string>; regexIds: ReadonlySet<string>;
