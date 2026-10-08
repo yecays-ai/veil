@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageShell } from "../../page-shell";
 import { Input, Select } from "../ui/form";
@@ -30,7 +30,7 @@ function CreatePromptEditor({ preset, library, backHref }: {
   const { busy, error, run, change } = library;
   const router = useRouter();
   const operationOwner = useRef<object | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const owner = {};
     operationOwner.current = owner;
     return () => { if (operationOwner.current === owner) operationOwner.current = null; };

@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, ChevronDown, Copy, Download, Plus, Trash2 } from "lucide-react";
 import { PageShell } from "../../page-shell";
@@ -32,7 +32,7 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
   const [editingPromptId, setEditingPromptId] = useState<string>();
   const router = useRouter();
   const operationOwner = useRef<object | null>(null);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const owner = {};
     operationOwner.current = owner;
     return () => { if (operationOwner.current === owner) operationOwner.current = null; };
