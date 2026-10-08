@@ -57,6 +57,27 @@ test("a fetcher that ignores its AbortSignal is still released at the deadline; 
   assert.equal((await pending).status, "error");
 });
 
+test("a caller joining a shared request is released at its own deadline without cancelling the request", async () => {
+  clearWeatherCache();
+  clearPlaceCache();
+  let release!: (response: Response) => void, aborted = false;
+  const slow = ((_url: string, init?: RequestInit) => { init?.signal?.addEventListener("abort", () => { aborted = true; });
+    return new Promise<Response>((resolve) => { release = resolve; }); }) as unknown as typeof fetch;
+  const request = { coordinates: { latitude: 31.1, longitude: 32.2 }, timezone: "UTC" };
+  const owner = fetchCurrentWeather(request, slow, 7_000_000, 400);
+  const t0 = Date.now();
+  assert.equal((await fetchCurrentWeather(request, slow, 7_000_000, 40)).status, "error");
+  assert.ok(Date.now() - t0 < 300, "the joiner left at its own deadline");
+  assert.equal(aborted, false, "the shared request kept running");
+  release(await goodWeather());
+  assert.equal((await owner).status, "ready");
+  const place = lookupPlace("Joinville", slow, 7_000_000, 400);
+  assert.equal(await lookupPlace("Joinville", slow, 7_000_000, 40), null);
+  assert.equal(aborted, false);
+  release(Response.json({ results: [{ name: "Joinville", latitude: 1, longitude: 2, country: "X" }] }));
+  assert.ok(await place);
+});
+
 test("a place lookup that never answers times out and a later lookup starts a new request", async () => {
   clearPlaceCache();
   const stuck = (() => new Promise<Response>(() => {})) as unknown as typeof fetch;

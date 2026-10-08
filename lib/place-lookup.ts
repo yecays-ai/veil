@@ -92,7 +92,8 @@ export async function lookupPlace(
     if (now - entry.at < lifetime) return entry.match;
   }
   const pending = inflight.get(key);
-  if (pending) return pending;
+  // A joining caller keeps its own deadline; leaving early does not cancel the request others share.
+  if (pending) return withRequestTimeout(timeoutMs, () => pending).catch(() => null);
   const operation = (async (): Promise<PlaceMatch | null> => {
     if (typeof fetcher !== "function") return null;
     let match: PlaceMatch | null = null;

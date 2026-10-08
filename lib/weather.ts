@@ -127,7 +127,9 @@ export async function fetchCurrentWeather(
   const fresh = cachedWeather(request.coordinates, now);
   if (fresh) return fresh;
   const pending = inflight.get(key);
-  if (pending) return pending;
+  // A joining caller keeps its own deadline; leaving early does not cancel the request others share.
+  if (pending)
+    return withRequestTimeout(timeoutMs, () => pending).catch((): WeatherState => ({ status: "error", message: "Weather unavailable" }));
   const operation = (async (): Promise<WeatherState> => {
     if (typeof provider !== "function")
       return { status: "error", message: "Weather unavailable" };
