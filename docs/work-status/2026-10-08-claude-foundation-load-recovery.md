@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/brave-davinci-ws2ruk`；PR 创建后补链接（人工审查，不加 automerge）；涉及 `components/foundation-provider.tsx`、`tests/foundation-load-recovery.test.ts`（新）。不改 `lib/foundation-storage.ts`，不改存储格式、资源 ID 与业务语义。
+Claude；分支 `claude/brave-davinci-ws2ruk`；PR [#45](https://github.com/yecays-ai/veil/pull/45)（人工审查，不加 automerge）；涉及 `components/foundation-provider.tsx`、`tests/foundation-load-recovery.test.ts`（新）。不改 `lib/foundation-storage.ts`，不改存储格式、资源 ID 与业务语义。
 
 ## 已完成
 
