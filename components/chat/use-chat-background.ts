@@ -85,7 +85,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
       });
     }
     return () => { active = false; };
-  }, [image, storage]);
+  }, [characterId, image, storage]);
 
   // A wallpaper already known to the cache is part of the first painted frame, with its decoded bitmap.
   const url = image ? cachedBackgroundUrl(image) : null;
@@ -93,7 +93,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     if (isChatDiagnosticsEnabled()) recordChatDiagnostic("background-url-state", {
       characterId, hasImage: !!image, hasSession: !!session, cached: !!url, urlKind: url ? "object-url" : "unavailable",
     });
-  }, [characterId, image, session?.id, url]);
+  }, [characterId, image, session, session?.id, url]);
   // "late": it was not ready when it was selected, so the caller may fade it in instead of popping it in.
   return { url, blur: resolved.blur, late: url !== null && lateFor === image };
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, MessageCircle, Phone, Video, UserRound, Plus } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { useContacts } from "./use-contacts";
 import { Avatar } from "./profile-view";

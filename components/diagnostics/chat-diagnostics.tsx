@@ -25,14 +25,14 @@ const NAV_SELECTOR = 'a[href^="/messages"], a[href^="/contacts"], button[data-ch
 
 export function ChatDiagnosticsGate({ children }: { children: ReactNode }) {
   const [enabled, setEnabled] = useState(false);
-  const [checked, setChecked] = useState(false);
   useEffect(() => {
+    let mounted = true;
     const requested = new URLSearchParams(window.location.search).get("veilDiagnostics") === "1";
     const active = requested || readOptIn();
     if (requested) writeOptIn(true);
     chatDiagnosticRecorder.setEnabled(active);
-    setEnabled(active);
-    setChecked(true);
+    const timer = window.setTimeout(() => { if (mounted) setEnabled(active); }, 0);
+    return () => { mounted = false; window.clearTimeout(timer); };
   }, []);
   function toggle(next: boolean) {
     writeOptIn(next);
@@ -41,7 +41,7 @@ export function ChatDiagnosticsGate({ children }: { children: ReactNode }) {
   }
   return <>
     {children}
-    {checked && enabled && <ChatDiagnosticsObserver onDisable={() => toggle(false)} />}
+    {enabled && <ChatDiagnosticsObserver onDisable={() => toggle(false)} />}
   </>;
 }
 
