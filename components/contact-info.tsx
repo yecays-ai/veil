@@ -15,7 +15,11 @@ import { contactDisplayName, removeContact, updateContact } from "../lib/contact
 import { contactReturnTarget, type ContactReturnSource } from "../lib/contact-navigation";
 import "../app/contacts/contact-info.css";
 
-export function ContactInfo({ characterId, returnSource }: { characterId: string; returnSource?: ContactReturnSource }) {
+// While `backPending`, the return destination is not known yet (the query is still resolving),
+// so Back is shown but inert instead of navigating to the wrong place.
+export function ContactInfo({ characterId, returnSource, backPending = false }: {
+  characterId: string; returnSource?: ContactReturnSource; backPending?: boolean;
+}) {
   const { document, ready } = useFoundation();
   const contacts = useContacts();
   const router = useRouter();
@@ -62,7 +66,7 @@ export function ContactInfo({ characterId, returnSource }: { characterId: string
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Conversation could not be opened."); setBusy(false); }
   }
   async function deleteContact() {
-    if (busy) return;
+    if (busy || backPending) return;
     setBusy(true); setError("");
     try {
       await contacts.commit((current) => removeContact(current, characterId));
@@ -71,7 +75,8 @@ export function ContactInfo({ characterId, returnSource }: { characterId: string
   }
 
   if (!ready || !contacts.ready || !character || !contact || contacts.error) return <div className="contact-info contact-info-unavailable">
-    <Link href={backHref} aria-label="Back to Contacts"><ChevronLeft /> Back</Link>
+    {backPending ? <span aria-label="Back to Contacts" aria-disabled="true"><ChevronLeft /> Back</span>
+      : <Link href={backHref} aria-label="Back to Contacts"><ChevronLeft /> Back</Link>}
     <p role={contacts.error ? "alert" : undefined}>{!ready || !contacts.ready ? "Loading contact…" : contacts.error || "Contact not found."}</p>
   </div>;
   const heroBackground = draft ? draft.heroBackground : contact.heroBackground;
@@ -91,7 +96,8 @@ export function ContactInfo({ characterId, returnSource }: { characterId: string
           }} />
       </>}
       <nav className="contact-hero-nav" aria-label="Contact Info">
-        <Link className="contact-back" href={backHref} aria-label="Back to Contacts"><ChevronLeft /></Link>
+        {backPending ? <span className="contact-back" aria-label="Back to Contacts" aria-disabled="true"><ChevronLeft /></span>
+          : <Link className="contact-back" href={backHref} aria-label="Back to Contacts"><ChevronLeft /></Link>}
         {draft ? <div className="contact-edit-actions">
           <button type="button" disabled={busy} onClick={cancelEdit}>Cancel</button>
           <button type="button" disabled={busy || imageReading || !!cropSource} onClick={() => void save()}>Save</button>

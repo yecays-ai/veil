@@ -120,6 +120,21 @@ test("re-entering the same Contact Info paints the contact on the first frame wi
   } finally { await app.cleanup(); }
 });
 
+test("the pre-query fallback shows Contact Info with an inert Back, then Back targets the resolved destination", async () => {
+  const app = await mountedApp();
+  try {
+    const { ContactInfo } = await import("../components/contact-info");
+    await app.render("/contacts/peter", "from=direct", createElement(ContactInfo, { characterId: "peter", backPending: true }));
+    await app.settle(() => !!app.$(".contact-info") && !app.$(".contact-info-unavailable"));
+    const pending = app.$(".contact-back")!;
+    assert.equal(pending.tagName, "SPAN", "no link to a possibly wrong destination");
+    assert.equal(pending.getAttribute("aria-disabled"), "true");
+    assert.equal(app.$(".contact-info a[href=\"/contacts\"]"), null);
+    await app.render("/contacts/peter", "from=direct", createElement(ContactInfo, { characterId: "peter", returnSource: "direct" }));
+    assert.equal(app.$(".contact-back")!.getAttribute("href"), "/messages/peter");
+  } finally { await app.cleanup(); }
+});
+
 test("Character Back follows an in-app Universe source via history, and falls back to Characters on direct entry", async () => {
   resetNavigationOriginForTests();
   const app = await mountedApp();
