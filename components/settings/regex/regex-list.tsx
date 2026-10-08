@@ -15,17 +15,22 @@ export function RegexList() {
   const [newRuleId, setNewRuleId] = useState<string | null>(null);
   const defaults = document?.groups.find((group) => group.id === DEFAULT_REGEX_GROUP_ID);
   const custom = document?.groups.filter((group) => group.id !== DEFAULT_REGEX_GROUP_ID) ?? [];
-  async function saveRule(groupId: string, next: RegexRule) {
-    await change((current) => ({ ...current, groups: current.groups.map((group) => group.id !== groupId ? group : {
+  async function saveRule(groupId: string, next: RegexRule, expected: RegexRule) {
+    await change((current) => {
+      const saved = current.groups.find((group) => group.id === groupId)?.rules.find((rule) => rule.id === next.id);
+      if (!saved || JSON.stringify(saved) !== JSON.stringify(expected))
+        throw new Error("This Rule changed elsewhere or was deleted. Copy your draft, then reopen the editor.");
+      return { ...current, groups: current.groups.map((group) => group.id !== groupId ? group : {
       ...group, updatedAt: Date.now(), rules: group.rules.map((rule) => rule.id === next.id ? next : rule),
-    }) }));
+      }) };
+    });
   }
   return <PageShell className="settings-app regex-manager" title="Regex" backHref="/settings" backLabel="Back to Settings">
     {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
     {!document && !error && <p role="status">Loading Regex Rules…</p>}
     <section className="regex-section"><h2>Default Rules</h2>
       {defaults?.rules.map((rule) => <RegexInlineRule key={rule.id} rule={rule} busy={busy}
-        onSave={(next) => saveRule(DEFAULT_REGEX_GROUP_ID, next)} />)}
+        onSave={(next) => saveRule(DEFAULT_REGEX_GROUP_ID, next, rule)} />)}
     </section>
     <section className="regex-section"><h2>Custom Rules</h2>
       {custom.length === 0 && <p>No custom rules yet.</p>}
@@ -33,7 +38,7 @@ export function RegexList() {
         <Link href={`/settings/regex/${group.id}`}>{group.name} · Group settings</Link>
         {group.rules.map((rule) => <RegexInlineRule key={rule.id} rule={rule} busy={busy}
           initiallyOpen={rule.id === newRuleId}
-          onSave={(next) => saveRule(group.id, next)} />)}
+          onSave={(next) => saveRule(group.id, next, rule)} />)}
         <Link className="settings-button" href={`/settings/regex/${group.id}`}>Add Rule to {group.name}</Link>
       </div>)}
       <div className="settings-action-row regex-actions">

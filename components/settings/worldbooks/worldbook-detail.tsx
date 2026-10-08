@@ -12,7 +12,7 @@ import { useWorldBooks } from "./use-worldbooks";
 import { Switch } from "../ui/switch";
 
 export function WorldBookDetail({ bookId }: { bookId: string }) {
-  const library = useWorldBooks();
+  const library = useWorldBooks(bookId);
   const saved = library.document?.books.find((book) => book.id === bookId);
   if (!saved) return <PageShell className="settings-app worldbook-manager" title="WorldBook" backHref="/settings/worldbooks" backLabel="Back to WorldBooks">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "WorldBook not found." : "Loading WorldBook…"}</p>}

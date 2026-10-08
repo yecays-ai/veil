@@ -11,7 +11,7 @@ import { useRegex } from "./use-regex";
 import { Switch } from "../ui/switch";
 
 export function RegexNew() {
-  const { document, error, busy, run, change } = useRegex();
+  const { document, error, busy, run, change } = useRegex("new");
   const [draft, setDraft] = useState(newRegexDraft);
   const [editing, setEditing] = useState<RegexRule | null>(null);
   const [ruleTest, setRuleTest] = useState("");

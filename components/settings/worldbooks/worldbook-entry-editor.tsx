@@ -11,14 +11,14 @@ import { useWorldBooks } from "./use-worldbooks";
 import { Switch } from "../ui/switch";
 
 export function WorldBookEntryEditor({ bookId, entryId }: { bookId: string; entryId: string }) {
-  const library = useWorldBooks();
+  const library = useWorldBooks(`${bookId}/${entryId}`);
   const book = library.document?.books.find((item) => item.id === bookId);
   const saved = book?.entries.find((item) => item.id === entryId);
   const base = `/settings/worldbooks/${bookId}`;
   if (!book || (entryId !== "new" && !saved)) return <PageShell className="settings-app worldbook-manager" title="Entry" backHref={base} backLabel="Back to WorldBook">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Entry not found." : "Loading Entry…"}</p>}
   </PageShell>;
-  return <Editor key={entryId} bookId={bookId} entryId={entryId} saved={saved} library={library} />;
+  return <Editor key={`${bookId}/${entryId}`} bookId={bookId} entryId={entryId} saved={saved} library={library} />;
 }
 
 function Editor({ bookId, entryId, saved, library }: {

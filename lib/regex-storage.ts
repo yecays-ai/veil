@@ -7,10 +7,24 @@ import { DEFAULT_REGEX_GROUP_ID, defaultRegexGroup, withDefaultRegexGroup } from
 const KEY = "veil.regex.v1";
 export interface RegexStorage {
   load(): Promise<RegexDocument>;
-  save(document: RegexDocument): Promise<void>;
-  transact(update: (current: RegexDocument) => RegexDocument): Promise<RegexDocument>;
+  save(document: RegexDocument, expected?: RegexDocument): Promise<void>;
+  transact(update: (current: RegexDocument) => RegexDocument, expected?: RegexDocument): Promise<RegexDocument>;
 }
 export function createRegexStorage(getStorage: () => StringStorage): RegexStorage {
+  const exclusive = async <T>(operation: () => T, guarded: boolean): Promise<T> => {
+    if (typeof navigator !== "undefined" && navigator.locks)
+      return await navigator.locks.request(KEY, { ifAvailable: true }, async (lock) => {
+        if (!lock) throw new Error("Regex is being saved elsewhere. Try again.");
+        return operation();
+      });
+    if (guarded && typeof window !== "undefined")
+      throw new Error("Safe Regex editing requires browser Web Locks. Your draft has been kept.");
+    return operation();
+  };
+  const assertSnapshot = (current: RegexDocument, expected?: RegexDocument) => {
+    if (expected && JSON.stringify(current) !== JSON.stringify(validateRegexDocument(expected)))
+      throw new Error("Regex changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.");
+  };
   const load = (): RegexDocument => {
     const raw = getStorage().getItem(KEY);
     if (!raw) return emptyRegexDocument();
@@ -19,17 +33,20 @@ export function createRegexStorage(getStorage: () => StringStorage): RegexStorag
   };
   return {
     async load() { return load(); },
-    async save(document: RegexDocument) {
+    save(document: RegexDocument, expected?: RegexDocument) { return exclusive(() => {
+      assertSnapshot(load(), expected);
       getStorage().setItem(KEY, JSON.stringify(validateRegexDocument(document)));
-    },
-    async transact(update: (current: RegexDocument) => RegexDocument) {
+    }, expected !== undefined); },
+    transact(update: (current: RegexDocument) => RegexDocument, expected?: RegexDocument) { return exclusive(() => {
       const before = getStorage().getItem(KEY);
-      const next = validateRegexDocument(update(load()));
+      const current = load();
+      assertSnapshot(current, expected);
+      const next = validateRegexDocument(update(current));
       if (getStorage().getItem(KEY) !== before)
         throw new Error("Regex data changed while saving. Try again.");
       getStorage().setItem(KEY, JSON.stringify(next));
       return next;
-    },
+    }, expected !== undefined); },
   };
 }
 const rawBrowserRegexStorage = createRegexStorage(() => window.localStorage);
@@ -59,10 +76,10 @@ async function ensureBrowserDefaults() {
 }
 export const browserRegexStorage = {
   async load() { await ensureBrowserDefaults(); return rawBrowserRegexStorage.load(); },
-  async save(document: RegexDocument) { await ensureBrowserDefaults(); return rawBrowserRegexStorage.save(document); },
-  async transact(update: (current: RegexDocument) => RegexDocument) {
+  async save(document: RegexDocument, expected?: RegexDocument) { await ensureBrowserDefaults(); return rawBrowserRegexStorage.save(document, expected); },
+  async transact(update: (current: RegexDocument) => RegexDocument, expected?: RegexDocument) {
     await ensureBrowserDefaults();
-    return rawBrowserRegexStorage.transact(update);
+    return rawBrowserRegexStorage.transact(update, expected);
   },
 };
 
@@ -70,20 +87,22 @@ export async function deleteRegexGroupAndBindings(
   groupId: string,
   regex: RegexStorage,
   bindings: BindingStorage,
+  expected?: RegexDocument,
+  assertOwner: () => void = () => {},
 ): Promise<RegexDocument> {
-  const before = await regex.load();
   if (groupId === DEFAULT_REGEX_GROUP_ID) throw new Error("Default Rules cannot be deleted.");
-  const index = before.groups.findIndex((group) => group.id === groupId);
-  if (index < 0) throw new Error("Regex Group not found.");
-  await regex.transact((current) => ({ ...current,
-    groups: current.groups.filter((group) => group.id !== groupId) }));
+  let before!: RegexDocument;
+  const after = await regex.transact((current) => {
+    assertOwner();
+    if (!current.groups.some((group) => group.id === groupId)) throw new Error("Regex Group not found.");
+    before = structuredClone(current);
+    return { ...current, groups: current.groups.filter((group) => group.id !== groupId) };
+  }, expected);
   try {
     await bindings.transact((current) => withoutRegexBinding(current, groupId));
   } catch (reason) {
-    await regex.transact((current) => current.groups.some((group) => group.id === groupId) ? current : {
-      ...current,
-      groups: [...current.groups.slice(0, index), before.groups[index], ...current.groups.slice(index)],
-    });
+    try { await regex.transact(() => before, after); }
+    catch { throw new Error("Regex changed while Binding cleanup failed. Newer data was kept; review Regex and Bindings."); }
     throw reason;
   }
   return regex.load();

@@ -1,29 +1,33 @@
 # STATUS — 2026-10-08-codex-regex-worldbook-editors
 
 更新人：GPT/Codex
-更新时间：2026-10-08T13:10:11+08:00
-发现范围：GitHub API main、开放 PR #33/#34 的文件和 head 分支、main 与两个 head 的 work-status 记录及远端分支列表；本地未发布任务不可见。
+更新时间：2026-10-08T16:09:03+08:00
+发现范围：开工通过 GitHub API 检查 main、开放 PR #33/#34 的文件和 head 分支、main 与两个 head 的 work-status 记录及远端分支列表。GitHub 集成传输暂不可用后，复用既有 Git 认证以备用 Git/API 通道完成发布前发现：main 已到 b74bdd5b936c5b3cb6a82721e711cdaa8225eedc，开放 #36（Chat 首帧）和 #37（Text API / Character）。已读其任务记录；未发布本地任务不可见。
 
 ## 当前任务
 
-进行中：修复 Regex / WorldBook 编辑器的陈旧写入与异步页面所有权。
+实现和验证已完成；正在发布独立 PR。
 
 ## 谁在改哪里
 
-GPT/Codex；分支 `fix/regex-worldbook-editor-safety`；PR 尚未创建；base `d12b0e0306bfe70e24deda208d6adc337fdd42f7`。仅两个存储适配器、对应 hooks/编辑器与直接相关测试，以及本任务记录。开放 PR #33（Chat 壁纸）与 #34（Contacts 并发）无重叠；不修改其文件、Bindings 管理器、Chat 或 Theme。
+GPT/Codex；分支 fix/regex-worldbook-editor-safety；PR 尚未创建；base d12b0e0306bfe70e24deda208d6adc337fdd42f7。仅 lib/regex-storage.ts、lib/worldbook-storage.ts、components/settings/regex/、components/settings/worldbooks/、两个新行为测试以及本任务记录。发布前发现 #37 也修改共享 tests/ui-save-consistency.test.ts，已保留原回调签名并撤销本任务对该文件的修改，避免重叠。开工检查的 PR #33（Chat 壁纸）与 #34（Contacts 并发）无重叠。不修改 Bindings 管理器、Chat、Theme、格式或迁移。
 
 ## 已完成
 
-- 追踪当前实现：事务读取最新文档，却未核对旧编辑器草稿的来源版本；已删除目标可被空操作当成成功；hooks 未限制旧加载/卸载后的异步回调。
-- 已读 AGENTS、work-status 约定及模板；读取开放分支记录，当前仅有已合并交接约定的历史记录，无 Regex / WorldBook 所有权声明。
-- 采用文档快照校验和现有存储适配器边界；不改持久化格式、做迁移或扩展 Binding 系统。
+- 存储比较编辑器原始文档快照；协作客户端以 Web Locks 保护校验和提交。冲突拒绝保存/删除，明确保留草稿；浏览器无锁时拒绝带快照的写入。
+- hooks 绑定路由/lifetime，过滤旧加载、失效文件读取和等待中的保存回调；提交内部再次检查所有权，失败不会假成功跳转。
+- 删除回滚快照来自实际删除事务；清理失败时只在删除后的版本仍匹配时恢复，保留并发更新。未扩展 Binding 存储或跨域事务。
+- Regex Inline 保存使用原始 Rule 基线，阻止重复提交；折叠状态也显示写入错误。
+- 28 个新增行为场景，包括实际挂载双编辑器、失败重试、目标删除、异步路由/重入、锁冲突，以及 WorldBook Binding 顺序。
+- 20 个旧实现负对照全部出现预期断言失败，无跳过/取消；未靠缺失 API 或源字符串制造失败。
+- Node 等价包脚本：测试编译、完整测试 483/483、回归契约 36/36、重点测试 57/57、typecheck、ESLint、production build、diff 检查全部通过。npm 不可用；按仓库 skill 使用底层 Node 入口。
 
 ## 尚未验证
 
-- 实现和行为测试尚未完成；尚未运行本任务完整验证。
-- 原生浏览器跨窗口及 iPhone 未测试；未发布任务仍无法发现。
+- 尚无远端 CI/审核结果；按用户要求发布后不等待审核。已恢复备用发布通道，无凭据输出或配置更改。
+- 原生多窗口/iPhone 未验证；测试使用真实 localStorage（JSDOM）、受控锁生命周期、实际 hooks/组件与存储适配器。
+- 整库快照会保守拒绝不相关并发编辑；旧版本标签页应重载。无锁浏览器受保护的编辑被拒绝，草稿仍在。Binding 清理仍为既有跨域补偿流程。
 
 ## 下一步
 
-完成最小修复和多实例/失败行为测试，运行完整验证后创建独立 PR；禁止 automerge、不等审核、不直接合并。
-
+创建一个独立 PR，更新本记录中的链接和状态后结束；禁止 automerge，不等待审核，不直接合并。
