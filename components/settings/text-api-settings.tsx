@@ -4,8 +4,8 @@ import { PageShell } from "../page-shell";
 import { BottomSheet, ConfirmDialog } from "./ui/modal";
 import { Input, Select } from "./ui/form";
 import { Alert } from "./ui/feedback";
-import { useEffect, useState } from "react";
-import { browserApiConfigStorage } from "../../lib/api-config-storage";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ApiConfigConflictError, browserApiConfigStorage } from "../../lib/api-config-storage";
 import {
   DEFAULT_API_CONFIG_ID,
   type NamedApiConfig,
@@ -22,6 +22,7 @@ export function TextApiSettings() {
   const { bindings, ready: bindingsReady, error: bindingError, commit } = useBindings();
   const [configs, setConfigs] = useState<NamedApiConfig[]>([]);
   const [draft, setDraft] = useState<NamedApiConfig | null>(null);
+  const [baseline, setBaseline] = useState<NamedApiConfig | null>(null);
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
@@ -30,27 +31,26 @@ export function TextApiSettings() {
   const [models, setModels] = useState<string[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [discarding, setDiscarding] = useState(false);
-  useEffect(() => {
-    let active = true;
-    browserApiConfigStorage
-      .listApiConfigs()
-      .then((value) => {
-        if (active) {
-          setConfigs(value);
-          setReady(true);
-        }
-      })
-      .catch(() => {
-        if (active)
-          setError(
-            "Could not load Text APIs. Saved credentials have not been changed.",
-          );
-      });
-    return () => {
-      active = false;
-    };
+  const mounted = useRef(false), readRevision = useRef(0), running = useRef(false);
+  const refreshConfigs = useCallback(() => {
+    const request = ++readRevision.current;
+    return browserApiConfigStorage.listApiConfigs().then((value) => {
+      if (mounted.current && request === readRevision.current) { setConfigs(value); setReady(true); setError(""); }
+    }).catch(() => {
+      if (mounted.current && request === readRevision.current)
+        setError("Could not load Text APIs. Saved credentials have not been changed.");
+    });
   }, []);
-  const saved = configs.find((config) => config.id === draft?.id);
+  useEffect(() => {
+    const revisions = readRevision;
+    mounted.current = true;
+    void refreshConfigs();
+    return () => {
+      mounted.current = false;
+      revisions.current++;
+    };
+  }, [refreshConfigs]);
+  const saved = baseline;
   const unchanged =
     !!draft && !!saved && JSON.stringify(saved) === JSON.stringify(draft);
   const globalId =
@@ -58,7 +58,8 @@ export function TextApiSettings() {
       ? DEFAULT_API_CONFIG_ID
       : bindings.global.apiConfigId;
   function edit(config: NamedApiConfig | null) {
-    setDraft(config);
+    setBaseline(config && configs.some((item) => item.id === config.id) ? structuredClone(config) : null);
+    setDraft(config ? structuredClone(config) : null);
     setNotice("");
     setError("");
     setConnection("");
@@ -86,20 +87,25 @@ export function TextApiSettings() {
     setDiscarding(false);
   }
   async function run(action: string, operation: () => Promise<void>) {
-    if (busy) return;
+    if (running.current) return;
+    running.current = true;
     setBusy(action);
     setError("");
     setNotice("");
     try {
       await operation();
     } catch (err) {
+      if (err instanceof ApiConfigConflictError) await refreshConfigs();
+      if (!mounted.current) return;
+      setDeleting(false);
       setError(
         err instanceof Error
           ? err.message
           : "The operation failed. Saved settings have not been changed.",
       );
     } finally {
-      setBusy("");
+      running.current = false;
+      if (mounted.current) setBusy("");
     }
   }
   function closeEditor() {
@@ -119,9 +125,12 @@ export function TextApiSettings() {
         apiKey: draft.apiKey.trim(),
         model: draft.model.trim(),
       };
-      await browserApiConfigStorage.saveApiConfig(next);
-      setConfigs(await browserApiConfigStorage.listApiConfigs());
+      const savedNext = await browserApiConfigStorage.saveApiConfig(next, baseline);
+      readRevision.current++;
+      setConfigs((current) => current.some((item) => item.id === savedNext.id)
+        ? current.map((item) => item.id === savedNext.id ? savedNext : item) : [...current, savedNext]);
       setDraft(null);
+      setBaseline(null);
       setConnection("");
       setNotice("");
     });
@@ -348,8 +357,9 @@ export function TextApiSettings() {
                 }}
                 onConfirm={() =>
                   void run("Deleting…", async () => {
-                    await deleteApiConfigAndBindings(draft.id, browserApiConfigStorage, { transact: commit });
-                    setConfigs(await browserApiConfigStorage.listApiConfigs());
+                    await deleteApiConfigAndBindings(draft.id, browserApiConfigStorage, { transact: commit }, baseline ?? undefined);
+                    readRevision.current++;
+                    setConfigs((current) => current.filter((item) => item.id !== draft.id));
                     edit(null);
                   })
                 }
@@ -376,6 +386,7 @@ export function TextApiSettings() {
       }
     >
       {!ready && !error && <Alert>Loading Text APIs…</Alert>}
+      {!ready && error && <button className="settings-button" type="button" onClick={() => void refreshConfigs()}>Retry loading Text APIs</button>}
       {ready && !configs.length && (
         <div className="settings-empty">
           <span className="settings-card-icon" aria-hidden="true">

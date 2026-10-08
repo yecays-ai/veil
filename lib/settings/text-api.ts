@@ -1,5 +1,5 @@
 import type { BindingStorage } from "../binding-storage";
-import type { ApiConfig } from "../api-config";
+import type { ApiConfig, NamedApiConfig } from "../api-config";
 import type { ApiConfigStorage } from "../api-config-storage";
 import { completionUrl, validateApiConfig } from "../chat/provider";
 import type { BindingDocument } from "../bindings";
@@ -9,14 +9,16 @@ import { createCompletionRequestContext, logCompletionStart, logCompletionUsage,
 
 export async function deleteApiConfigAndBindings(
   id: string, storage: ApiConfigStorage, bindings: Pick<BindingStorage, "transact">,
+  expected?: NamedApiConfig,
 ): Promise<void> {
-  const previous = await storage.getApiConfig(id);
+  const previous = expected ?? await storage.getApiConfig(id);
   if (!previous) return;
-  await storage.deleteApiConfig(id);
+  await storage.deleteApiConfig(id, previous);
   try {
     await bindings.transact((current) => withoutApiConfigBinding(current, id));
   } catch (reason) {
-    if (!await storage.getApiConfig(id)) await storage.saveApiConfig(previous);
+    if (!await storage.restoreApiConfigIfAbsent(previous))
+      throw new Error("Text API changed while deletion cleanup failed. Newer data was kept.", { cause: reason });
     throw reason;
   }
 }

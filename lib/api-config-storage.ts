@@ -4,6 +4,20 @@ export const API_CONFIG_DATABASE_NAME = "veil-api-config-v1";
 export const API_CONFIG_DATABASE_VERSION = 1;
 const STORE = "configs";
 
+export class ApiConfigConflictError extends Error {
+  constructor() {
+    super("This Text API changed or was deleted elsewhere. Your draft was not saved. Reopen it to review the latest version.");
+  }
+}
+
+function checkExpected(current: ApiConfig | undefined, expected: NamedApiConfig | null | undefined) {
+  if (expected === undefined) return;
+  const fingerprint = (config: ApiConfig | null | undefined) => config
+    ? JSON.stringify(Object.entries(normalizeApiConfig(config)).sort(([a], [b]) => a.localeCompare(b))) : "null";
+  if (fingerprint(current) !== fingerprint(expected))
+    throw new ApiConfigConflictError();
+}
+
 const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
   value.onerror = () => reject(new Error("Text API storage could not be read or written."));
@@ -65,12 +79,28 @@ export class ApiConfigStorage {
       (await request<ApiConfig[]>(store.getAll())).map(normalizeApiConfig));
   }
 
-  saveApiConfig(config: ApiConfig): Promise<void> {
-    return this.transaction("readwrite", async (store) => { await request(store.put(normalizeApiConfig(config))); });
+  saveApiConfig(config: ApiConfig, expected?: NamedApiConfig | null): Promise<NamedApiConfig> {
+    return this.transaction("readwrite", async (store) => {
+      const next = normalizeApiConfig(config);
+      checkExpected(await request<ApiConfig | undefined>(store.get(next.id)), expected);
+      await request(store.put(next));
+      return next;
+    });
   }
 
-  deleteApiConfig(id: string): Promise<void> {
-    return this.transaction("readwrite", async (store) => { await request(store.delete(id)); });
+  deleteApiConfig(id: string, expected?: NamedApiConfig): Promise<void> {
+    return this.transaction("readwrite", async (store) => {
+      checkExpected(await request<ApiConfig | undefined>(store.get(id)), expected);
+      await request(store.delete(id));
+    });
+  }
+
+  restoreApiConfigIfAbsent(config: NamedApiConfig): Promise<boolean> {
+    return this.transaction("readwrite", async (store) => {
+      if (await request(store.get(config.id))) return false;
+      await request(store.put(normalizeApiConfig(config)));
+      return true;
+    });
   }
 }
 
