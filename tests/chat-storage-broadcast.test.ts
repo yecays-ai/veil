@@ -69,9 +69,11 @@ test("after unsubscribing a window hears nothing more but can still publish", as
     await first.send(session.id, "ignored by the unsubscribed window");
     await settle();
     assert.equal(secondHeard.seen.length, before);
+    const heardBefore = firstHeard.seen.filter((change) => change.domain === "messages").length;
     await second.send(session.id, "still published by the unsubscribed window");
     await settle();
-    assert(firstHeard.seen.some((change) => change.domain === "messages"), "an unsubscribed window still publishes its writes");
+    assert.equal(firstHeard.seen.filter((change) => change.domain === "messages").length, heardBefore + 1,
+      "an unsubscribed window still publishes its writes");
     firstHeard.stop();
   });
 });
@@ -108,7 +110,7 @@ test("a write that fails or is aborted sends no notification", async () => {
   });
 });
 
-test("repeated subscribe and unsubscribe keeps one channel and never doubles delivery", async () => {
+test("repeated subscribe and unsubscribe keeps one channel and one handler and never doubles delivery", async () => {
   await withChannels(async ({ channels }) => {
     const [writer, listener] = windows();
     for (let round = 0; round < 5; round++) record(listener).stop();
@@ -120,10 +122,10 @@ test("repeated subscribe and unsubscribe keeps one channel and never doubles del
     assert.equal(heard.seen.length, 1);
     assert.equal(second.seen.length, 1, "each live listener hears a change exactly once");
     heard.stop(); second.stop();
-    assert(channels.every((channel) => channel.onmessage === null), "receiving stops with the last listener");
     await writer.send(session.id, "x");
     await settle();
-    assert.equal(heard.seen.length, 1);
+    assert.equal(heard.seen.length, 1, "no listener is called after the last unsubscribe");
+    assert.equal(channels.filter((channel) => channel.onmessage !== null).length, 2, "each window keeps exactly one receive handler");
   });
 });
 
@@ -143,5 +145,17 @@ test("windows writing in turn never echo each other's changes back", async () =>
     assert.equal(heardByA.seen.length - baseA, 6);
     assert.equal(heardByB.seen.length - baseB, 6);
     heardByA.stop(); heardByB.stop();
+  });
+});
+
+test("a window with no listener still sees a remote background change in its revision", async () => {
+  await withChannels(async () => {
+    const [writer, reader] = windows();
+    const session = await writer.openSession("peter");
+    record(reader).stop(); // listened once, now has no listener
+    const before = reader.backgroundRevision();
+    await writer.updateSessionSettings(session.id, { backgroundBlur: 5 });
+    await settle();
+    assert(reader.backgroundRevision() > before, "a cached background snapshot can be validated without a listener");
   });
 });

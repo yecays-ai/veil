@@ -376,12 +376,14 @@ export class ChatStorage {
       try { listener(change); } catch { /* Persistence has already succeeded. */ }
     });
   }
-  // One channel per storage instance, opened on first use. Publishing needs it whether or not this
-  // instance ever subscribed; receiving is switched on only while a listener exists (see subscribe).
+  // One channel per storage instance, opened on first use and kept for the page's lifetime. It both
+  // publishes and receives from the moment it exists, so `backgroundRevision()` stays current for a
+  // caller that validates a cached snapshot while it has no listener.
   private openChannel(): BroadcastChannel | undefined {
     if (this.channel) return this.channel;
     if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return undefined;
     try { this.channel = new BroadcastChannel(CHAT_DATABASE_NAME); } catch { return undefined; }
+    this.channel.onmessage = this.receive;
     return this.channel;
   }
   // A received change goes to local listeners only (dispatch, never notify), so it is not re-broadcast.
@@ -399,12 +401,10 @@ export class ChatStorage {
     try { this.openChannel()?.postMessage(change); } catch { /* A closed observer channel. */ }
   }
   subscribe(listener: (change: ChatStorageChange) => void) {
-    const channel = this.openChannel();
-    if (channel) channel.onmessage = this.receive; // assignment, so repeated subscriptions never add listeners
+    this.openChannel(); // a window that only listens must receive too
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
-      if (!this.listeners.size && this.channel) this.channel.onmessage = null; // stop receiving, keep publishing
     };
   }
 
