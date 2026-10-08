@@ -36,6 +36,7 @@ function useAssetPreview(id: string | null) {
     })();
     return () => {
       active = false;
+      setFailedId(null); // a failure belongs to one read; returning to the same id starts clean
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [id]);

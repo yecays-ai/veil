@@ -47,8 +47,8 @@ async function mounted(sessionOverride: Partial<ChatSession> = {}) {
   const root = createRoot(container);
   let unmounted = false;
   const unmount = async () => { if (unmounted) return; unmounted = true; await act(async () => { root.unmount(); }); };
-  const render = () => act(async () => {
-    root.render(createElement(Component, { session: { ...session, ...sessionOverride }, onBack: () => {} }));
+  const render = (override: Partial<ChatSession> = sessionOverride) => act(async () => {
+    root.render(createElement(Component, { session: { ...session, ...override }, onBack: () => {} }));
   });
   const flush = () => act(async () => { await new Promise<void>((resolve) => setImmediate(resolve)); await new Promise<void>((resolve) => setImmediate(resolve)); });
   const alert = () => container.querySelector('[role="alert"]')?.textContent ?? null;
@@ -100,6 +100,26 @@ regressionContract("chat.background-settings-image-read-error", "async-race-safe
     assert.match(ui.alert() ?? "", /preview could not be loaded/);
     assert.equal(ui.preview(), null);
     assert.deepEqual(ui.created, []);
+    assert.deepEqual(ui.unhandled, []);
+  } finally { await ui.cleanup(); }
+});
+
+regressionContract("chat.background-settings-failure-is-per-read", "async-race-safety",
+  "a preview failure for one image does not come back when the same image is shown again", async () => {
+  const ui = await mounted();
+  try {
+    await ui.render();
+    ui.settingsReads[0].resolve({ id: "chat-background", globalChatBackgroundImage: "gA" }); await ui.flush();
+    ui.imageReads[0].read.reject(new Error("A failed")); await ui.flush();
+    assert.match(ui.alert() ?? "", /preview could not be loaded/);
+    await ui.render({ backgroundImage: "gB" }); await ui.flush();      // the shown image changes to B
+    assert.equal(ui.alert(), null, "B has not failed");
+    await ui.render({}); await ui.flush();                              // back to A, whose new read is pending
+    assert.deepEqual(ui.imageReads.map((r) => r.id), ["gA", "gB", "gA"]);
+    assert.equal(ui.alert(), null, "A's earlier failure is not replayed while its new read is pending");
+    ui.imageReads[2].read.resolve(new Blob(["a"])); await ui.flush();
+    assert.ok(ui.preview(), "A's new read succeeded and is shown");
+    assert.equal(ui.alert(), null, "no stale error next to a loaded preview");
     assert.deepEqual(ui.unhandled, []);
   } finally { await ui.cleanup(); }
 });
