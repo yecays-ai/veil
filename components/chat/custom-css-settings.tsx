@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
-import { CHAT_SESSION_CSS_EXAMPLE } from "../../lib/chat/custom-css";
+import { CHAT_SESSION_CSS_EXAMPLE, validateSessionCSS } from "../../lib/chat/custom-css";
 
 export function CustomCSSSettings({ session, onBack }: {
   session: ChatSession;
@@ -13,6 +13,8 @@ export function CustomCSSSettings({ session, onBack }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function save(css: string | null) {
+    const problems = css ? validateSessionCSS(css) : [];
+    if (problems.length) { setError(problems.join(" ")); return; }
     setBusy(true);
     setError("");
     try {
