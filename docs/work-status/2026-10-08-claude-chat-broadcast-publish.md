@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/brave-davinci-ws2ruk`；PR 创建后补链接（人工审查，不加 automerge）；涉及 `lib/chat/storage.ts`（`openChannel` / `receive` / `notify` / `subscribe`）、`tests/chat-storage-broadcast.test.ts`（新）、`tests/generation-safety.test.ts`（仅一条用例把 `BroadcastChannel` 置空）。
+Claude；分支 `claude/brave-davinci-ws2ruk`；PR [#43](https://github.com/yecays-ai/veil/pull/43)（人工审查，不加 automerge）；涉及 `lib/chat/storage.ts`（`openChannel` / `receive` / `notify` / `subscribe`）、`tests/chat-storage-broadcast.test.ts`（新）、`tests/generation-safety.test.ts`（仅一条用例把 `BroadcastChannel` 置空）。
 
 ## 已完成
 
