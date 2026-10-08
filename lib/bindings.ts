@@ -205,3 +205,10 @@ export function withoutRegexBinding(document: BindingDocument, regexId: string):
     }])),
   };
 }
+
+/** Drops the per-Character overrides of every Character the predicate selects; global bindings stay. */
+export function withoutCharacterBindings(document: BindingDocument, shouldRemove: (characterId: string) => boolean): BindingDocument {
+  if (!Object.keys(document.characters).some(shouldRemove)) return document;
+  return { ...document, characters: Object.fromEntries(Object.entries(document.characters)
+    .filter(([id]) => !shouldRemove(id))) };
+}

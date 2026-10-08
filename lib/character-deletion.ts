@@ -1,0 +1,114 @@
+import { withoutCharacterBindings, type BindingDocument } from "./bindings";
+import { browserBindingStorage } from "./binding-storage";
+import { browserContactStorage, removeContact, type ContactDocument } from "./contact-storage";
+import { chatStorage, type ChatStorage } from "./chat/storage";
+import type { ChatSession } from "./chat/types";
+import { deleteCharacter } from "./foundation";
+import type { Character, FoundationDocument } from "./foundation-types";
+import { countHereThereReferences, unbindHereThereCharacters } from "./here-there-binding";
+import { browserThemeStorage } from "./theme-storage";
+import type { ThemeDocument } from "./theme-types";
+
+type Access<D> = { load(): Promise<D>; update(update: (document: D) => D): Promise<unknown> };
+/** The stores a Character's data lives in, besides Foundation itself. */
+export type CleanupDeps = {
+  theme: Access<ThemeDocument>;
+  contacts: Access<ContactDocument>;
+  bindings: Access<BindingDocument>;
+  chat: Pick<ChatStorage, "listSessions" | "countMessages" | "deleteSession" | "removeGroupMembers">;
+};
+/** `updateTheme` should be the mounted ThemeProvider's commit, so the open page sees the change. */
+export function browserCleanupDeps(updateTheme: Access<ThemeDocument>["update"]): CleanupDeps {
+  return {
+    theme: { load: () => browserThemeStorage.load(), update: updateTheme },
+    contacts: { load: () => browserContactStorage.load(), update: (update) => browserContactStorage.transact(update) },
+    bindings: { load: () => browserBindingStorage.load(), update: (update) => browserBindingStorage.transact(update) },
+    chat: chatStorage,
+  };
+}
+
+export type CleanupStep = "widgets" | "groups" | "conversation" | "contact" | "bindings";
+export type CleanupReport = { completed: CleanupStep[]; failed: { step: CleanupStep; message: string }[] };
+export const CLEANUP_STEP_LABEL: Record<CleanupStep, string> = {
+  widgets: "Here & There widget links and comments", groups: "group memberships",
+  conversation: "private conversation", contact: "contact record", bindings: "Binding overrides",
+};
+const directSession = (sessions: readonly ChatSession[], characterId: string) =>
+  sessions.find((session) => session.type !== "group" && session.characterId === characterId);
+
+/** Everything a deletion will remove or detach, read without changing anything. */
+export type DeletionImpact = {
+  conversation: { messages: number; hasBackground: boolean } | null;
+  groups: { id: string; title: string }[];
+  contact: boolean;
+  widgets: { layout: number; presets: number };
+  bindings: boolean;
+  relations: number;
+};
+export async function previewCharacterDeletion(foundation: FoundationDocument, characterId: string, deps: CleanupDeps): Promise<DeletionImpact> {
+  const [sessions, theme, contacts, bindings] = await Promise.all([
+    deps.chat.listSessions(), deps.theme.load(), deps.contacts.load(), deps.bindings.load()]);
+  const direct = directSession(sessions, characterId);
+  return {
+    conversation: direct ? { messages: await deps.chat.countMessages(direct.id), hasBackground: !!direct.backgroundImage } : null,
+    groups: sessions.filter((session) => session.type === "group" && (session.participantIds ?? []).includes(characterId))
+      .map((session) => ({ id: session.id, title: session.title ?? "Group" })),
+    contact: contacts.contacts.some((contact) => contact.characterId === characterId),
+    widgets: countHereThereReferences(theme, characterId),
+    bindings: characterId in bindings.characters,
+    relations: foundation.universe.relations.filter((r) => r.characterAId === characterId || r.characterBId === characterId).length,
+  };
+}
+
+/**
+ * The cleanup that follows a Character's deletion. Each step is independent, keyed only by that
+ * Character's ID and idempotent, so a failed step never blocks the others and running it again is safe.
+ * Widgets go first: a Here & There remark still being generated can only be written into a widget that
+ * is linked to the Character, so once the link is cleared a late result lands nowhere.
+ */
+export async function cleanupCharacterData(characterId: string, deps: CleanupDeps): Promise<CleanupReport> {
+  const report: CleanupReport = { completed: [], failed: [] };
+  const run = async (step: CleanupStep, work: () => Promise<void>) => {
+    try { await work(); report.completed.push(step); }
+    catch (reason) { report.failed.push({ step, message: reason instanceof Error ? reason.message : String(reason) }); }
+  };
+  const is = (id: string) => id === characterId;
+  await run("widgets", async () => {
+    const theme = await deps.theme.load();
+    if (unbindHereThereCharacters(theme, is) !== theme) await deps.theme.update((current) => unbindHereThereCharacters(current, is));
+  });
+  await run("groups", async () => { await deps.chat.removeGroupMembers([characterId]); });
+  await run("conversation", async () => {
+    const direct = directSession(await deps.chat.listSessions(), characterId);
+    if (!direct) return;
+    try { await deps.chat.deleteSession(direct.id); }
+    catch (reason) { if (!(reason instanceof Error && reason.message === "Conversation not found.")) throw reason; }
+  });
+  await run("contact", async () => {
+    if ((await deps.contacts.load()).contacts.some((contact) => contact.characterId === characterId))
+      await deps.contacts.update((contacts) => removeContact(contacts, characterId));
+  });
+  await run("bindings", async () => {
+    if (characterId in (await deps.bindings.load()).characters)
+      await deps.bindings.update((bindings) => withoutCharacterBindings(bindings, is));
+  });
+  return report;
+}
+
+/**
+ * Deletes a Character. The Foundation delete is the single commit point: everything before it only
+ * reads, so if it throws, nothing was changed anywhere. After it, the Character is gone and the cleanup
+ * report says exactly which dependent steps finished; failed ones are repeated with cleanupCharacterData.
+ */
+export async function deleteCharacterWithData(options: {
+  characterId: string; baseline?: Omit<Character, "characterId">;
+  commitFoundation: (update: (document: FoundationDocument) => FoundationDocument) => Promise<unknown>;
+  deps: CleanupDeps;
+}): Promise<CleanupReport> {
+  const { characterId, baseline, commitFoundation, deps } = options;
+  const direct = directSession(await deps.chat.listSessions(), characterId);
+  if (direct?.generation)
+    throw new Error("A reply is being generated in this Character's conversation. Stop it, then delete the Character. Nothing was changed.");
+  await commitFoundation((document) => deleteCharacter(document, characterId, baseline));
+  return cleanupCharacterData(characterId, options.deps);
+}

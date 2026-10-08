@@ -61,6 +61,7 @@ async function mountedApp() {
   const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { PathnameContext, SearchParamsContext } = await import("next/dist/shared/lib/hooks-client-context.shared-runtime");
   const { FoundationProvider } = await import("../components/foundation-provider");
+  const { ThemeProvider } = await import("../components/theme-provider");
   const { browserFoundationStorage } = await import("../lib/foundation-storage");
   const { browserContactStorage } = await import("../lib/contact-storage");
   const { normalizeFoundation } = await import("../lib/foundation-types");
@@ -74,10 +75,10 @@ async function mountedApp() {
     replace() {}, forward() {}, refresh() {}, prefetch() {} };
   const root = createRoot(dom.window.document.getElementById("root")!);
   const render = (pathname: string, query: string, child: ReactNode) => act(async () => {
-    root.render(createElement(FoundationProvider, null,
+    root.render(createElement(ThemeProvider, null, createElement(FoundationProvider, null,
       createElement(AppRouterContext.Provider, { value: router as never },
         createElement(PathnameContext.Provider, { value: pathname },
-          createElement(SearchParamsContext.Provider, { value: new URLSearchParams(query) as never }, child)))));
+          createElement(SearchParamsContext.Provider, { value: new URLSearchParams(query) as never }, child))))));
   });
   const settle = async (condition: () => boolean) => {
     const deadline = Date.now() + 3000;

@@ -413,6 +413,36 @@ export class ChatStorage {
       request(tx.objectStore("sessions").getAll()),
     );
   }
+  /** Read-only message count for a conversation; never recovers or writes generation state. */
+  countMessages(sessionId: string): Promise<number> {
+    return this.transaction("readonly", (tx) =>
+      request<number>(tx.objectStore("messages").index("sessionId").count(sessionId)), ["messages"]);
+  }
+  /**
+   * Removes Characters from every group's member list. A group is never deleted, even when no member
+   * remains; its `characterId` then becomes "" instead of keeping a removed Character's ID. Messages are
+   * untouched (they carry no speaker, so none can be attributed to a removed member). Idempotent.
+   * Resolves with the ids of the groups that changed.
+   */
+  removeGroupMembers(characterIds: readonly string[]): Promise<string[]> {
+    const gone = new Set(characterIds);
+    if (!gone.size) return Promise.resolve([]);
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("sessions");
+      const sessions: ChatSession[] = await request(table.getAll());
+      const changed: string[] = [];
+      for (const session of sessions) {
+        if (session.type !== "group") continue;
+        const members = session.participantIds ?? [];
+        if (!members.some((id) => gone.has(id)) && !gone.has(session.characterId)) continue;
+        const remaining = members.filter((id) => !gone.has(id));
+        const characterId = remaining.includes(session.characterId) ? session.characterId : remaining[0] ?? "";
+        await request(table.put({ ...session, participantIds: remaining, characterId }));
+        changed.push(session.id);
+      }
+      return changed;
+    }, ["sessions"], (changed) => changed.map((sessionId) => ({ domain: "session" as const, sessionId })));
+  }
   createGroupSession(participantIds: readonly string[], title: string): Promise<ChatSession> {
     const members = [...new Set(participantIds.filter(Boolean))];
     if (members.length < 2) return Promise.reject(new Error("Choose at least two contacts."));

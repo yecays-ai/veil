@@ -52,8 +52,29 @@ export const FOUNDATION_COPY = {
     create: "Create Character",
     deleted: "Character deleted.",
     notFound: "Character not found.",
-    deleteQuestion:
-      "Delete this Character? Its relationships, canvas position and bindings will also be removed.",
+    deleteQuestion: "Delete this Character? This cannot be undone. Deleting will also remove:",
+    impactLoading: "Checking what will be removed…",
+    impact: {
+      title: "Data removed with this Character",
+      conversation: (messages: number, background: boolean) =>
+        `Its private conversation (${messages} message${messages === 1 ? "" : "s"})${background ? " and its chat background, unless another chat uses it" : ""}`,
+      groups: (titles: string[]) => `Its place in ${titles.length} group chat${titles.length === 1 ? "" : "s"} (${titles.join(", ")}). The groups and their messages are kept`,
+      contact: "Its contact record",
+      widgets: (layout: number, presets: number) => `Its Here & There link and remark in ${layout} widget${layout === 1 ? "" : "s"} on the desktop and ${presets} in saved presets. The widgets are kept`,
+      bindings: "Its Binding overrides",
+      relations: (count: number) => `${count} relationship${count === 1 ? "" : "s"}, plus its canvas position`,
+    },
+    leftovers: {
+      title: "Data from deleted Characters",
+      summary: (conversations: number, messages: number, contacts: number) =>
+        `Found data from Characters that no longer exist: ${conversations} private conversation${conversations === 1 ? "" : "s"} (${messages} message${messages === 1 ? "" : "s"}) and ${contacts} contact record${contacts === 1 ? "" : "s"}. Remove it permanently?`,
+      remove: "Remove this data",
+      keep: "Keep for now",
+      done: "Leftover data removed.",
+      partial: (failed: number) => `${failed} item${failed === 1 ? "" : "s"} could not be removed. They will be offered again on your next visit.`,
+    },
+    cleanupUnfinished: "Character deleted, but these steps did not finish. Nothing else is affected; retry to finish them:",
+    retryCleanup: "Retry cleanup",
     confirmDelete: "Confirm delete",
     universe: "Universe →",
   },
