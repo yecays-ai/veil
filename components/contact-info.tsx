@@ -26,7 +26,8 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
   const router = useRouter();
   const character = document.characters.find((item) => item.characterId === characterId);
   const contact = contacts.document.contacts.find((item) => item.characterId === characterId);
-  const [draft, setDraft] = useState<{ remark: string; heroBackground: string | null } | null>(null);
+  const [draft, setDraft] = useState<{ remark: string; heroBackground: string | null;
+    base: { remark: string | null; heroBackground: string | null } } | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [cropSource, setCropSource] = useState<string | null>(null);
   const [imageReading, setImageReading] = useState(false);
@@ -53,7 +54,7 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     if (!draft || busy || imageReading) return;
     setBusy(true); setError("");
     try {
-      await contacts.commit((current) => updateContact(current, characterId, draft));
+      await contacts.commit((current) => updateContact(current, characterId, draft, undefined, draft.base));
       setDraft(null);
     } catch (reason) { setError(reason instanceof Error ? reason.message : "Contact could not be saved."); }
     finally { setBusy(false); }
@@ -103,7 +104,8 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
           <button type="button" disabled={busy} onClick={cancelEdit}>Cancel</button>
           <button type="button" disabled={busy || imageReading || !!cropSource} onClick={() => void save()}>Save</button>
         </div> : <button type="button" className="contact-edit" disabled={pending} onClick={() => {
-          setDraft({ remark: contact.remark ?? "", heroBackground: contact.heroBackground }); setError("");
+          setDraft({ remark: contact.remark ?? "", heroBackground: contact.heroBackground,
+            base: { remark: contact.remark, heroBackground: contact.heroBackground } }); setError("");
         }}>Edit</button>}
       </nav>
       <div className="contact-hero-identity">
