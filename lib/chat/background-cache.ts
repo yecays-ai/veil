@@ -5,7 +5,8 @@ import type { ChatBackgroundSettings } from "./types";
 // creates its own from the Blob and revokes it on unmount.
 const MAX_BLOBS = 2;
 const blobs = new Map<string, Blob>();
-let settings: { value: ChatBackgroundSettings; revision: number } | null = null;
+// Revisions start at zero in every ChatStorage, so a snapshot is only valid for the instance that read it.
+let settings = new WeakMap<object, { value: ChatBackgroundSettings; revision: number }>();
 
 export function cachedBackgroundBlob(id: string): Blob | null {
   const blob = blobs.get(id);
@@ -23,15 +24,16 @@ export function rememberBackgroundBlob(id: string, blob: Blob): Blob {
 }
 
 /** The last settings read, usable only while the storage's background revision is unchanged. */
-export function cachedBackgroundSettings(currentRevision: number): ChatBackgroundSettings | null {
-  return settings && settings.revision === currentRevision ? settings.value : null;
+export function cachedBackgroundSettings(owner: object, currentRevision: number): ChatBackgroundSettings | null {
+  const snapshot = settings.get(owner);
+  return snapshot && snapshot.revision === currentRevision ? snapshot.value : null;
 }
 
 /** `readRevision` is the revision observed when the read started, so a change mid-read makes it stale. */
-export function rememberBackgroundSettings(next: ChatBackgroundSettings, readRevision: number) {
-  settings = { value: next, revision: readRevision };
+export function rememberBackgroundSettings(owner: object, next: ChatBackgroundSettings, readRevision: number) {
+  settings.set(owner, { value: next, revision: readRevision });
 }
 
 export function resetChatBackgroundCacheForTests() {
-  blobs.clear(); settings = null;
+  blobs.clear(); settings = new WeakMap();
 }

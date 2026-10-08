@@ -11,7 +11,7 @@ const DEFAULT_SETTINGS: ChatBackgroundSettings = { id: "chat-background" };
 
 export function useChatBackground(session: ChatSession | null, storage: ChatStorage = chatStorage) {
   const [settings, setSettings] = useState<ChatBackgroundSettings>(
-    () => cachedBackgroundSettings(storage.backgroundRevision()) ?? DEFAULT_SETTINGS);
+    () => cachedBackgroundSettings(storage, storage.backgroundRevision()) ?? DEFAULT_SETTINGS);
   const [fetched, setFetched] = useState<{ id: string; blob: Blob } | null>(null);
   const [owned, setOwned] = useState<{ blob: Blob; url: string } | null>(null);
   const resolved = resolveChatBackground(session, settings);
@@ -26,12 +26,15 @@ export function useChatBackground(session: ChatSession | null, storage: ChatStor
       const request = ++requestRevision;
       const readRevision = storage.backgroundRevision();
       void storage.readChatBackgroundSettings().then((next) => {
-        rememberBackgroundSettings(next, readRevision);
+        rememberBackgroundSettings(storage, next, readRevision);
         if (active && requestRevision === request) setSettings(next);
       }).catch(() => {});
     };
-    // A snapshot that is still valid already drove the first render; only read when it is not.
-    if (!cachedBackgroundSettings(storage.backgroundRevision())) refresh();
+    // A valid snapshot replaces the read; it may have been stored after this hook's first render
+    // (e.g. by another chat while the session was still loading), so apply it to state too.
+    const snapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (snapshot) setSettings(snapshot); else refresh();
     const unsubscribe = storage.subscribe((change) => {
       if (affectsChatBackground(change, sessionId)) refresh();
     });

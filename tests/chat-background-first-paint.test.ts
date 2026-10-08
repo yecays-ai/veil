@@ -95,6 +95,22 @@ test("re-entering a chat paints its own wallpaper in the first frame, without re
   } finally { await app.cleanup(); }
 });
 
+test("a snapshot stored while the session was still loading is applied once the session arrives", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    await app.mountNow(null); // first render with no session: defaults
+    assert.equal(app.url(), "");
+    // Another chat read the settings and the wallpaper meanwhile.
+    rememberBackgroundBlob("global", new Blob(["g"]));
+    rememberBackgroundSettings(app.storage, { id: "chat-background", globalChatBackgroundImage: "global" }, app.storage.backgroundRevision());
+    await app.mountNow(session);
+    assert.notEqual(app.url(), "", "the cached global wallpaper is applied, not skipped");
+    assert.equal(app.reads.settings, 0, "no settings read was needed");
+  } finally { await app.cleanup(); }
+});
+
 test("a global wallpaper is also in the first frame on re-entry, and a changed one is never shown stale", async () => {
   const app = await harness();
   try {
@@ -113,7 +129,7 @@ test("a global wallpaper is also in the first frame on re-entry, and a changed o
     // The wallpaper is replaced while no chat is mounted.
     const newId = await app.storage.saveChatImage(new Blob(["new"], { type: "image/png" }));
     await app.storage.updateGlobalChatBackground(newId);
-    assert.equal(cachedBackgroundSettings(app.storage.backgroundRevision()), null, "the settings snapshot is invalidated by the change");
+    assert.equal(cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()), null, "the settings snapshot is invalidated by the change");
     await app.mountNow(session);
     assert.equal(app.url(), "", "the replaced wallpaper is never painted from the stale snapshot");
     await app.until(() => app.url() !== "" && app.url() !== oldUrl);
@@ -131,8 +147,11 @@ test("the cache is bounded to a few Blobs and never serves a stale settings snap
   assert.equal(cachedBackgroundBlob("c"), c);
   assert.equal(rememberBackgroundBlob("a", new Blob(["again"])), a, "an id already held is reused");
   // A read that started before a change is stored with its old revision and can never be served.
-  rememberBackgroundSettings({ id: "chat-background", globalChatBackgroundImage: "old" }, 3);
-  assert.equal(cachedBackgroundSettings(4), null);
-  assert.deepEqual(cachedBackgroundSettings(3), { id: "chat-background", globalChatBackgroundImage: "old" });
+  const owner = {}, other = {};
+  rememberBackgroundSettings(owner, { id: "chat-background", globalChatBackgroundImage: "old" }, 3);
+  assert.equal(cachedBackgroundSettings(owner, 4), null);
+  assert.deepEqual(cachedBackgroundSettings(owner, 3), { id: "chat-background", globalChatBackgroundImage: "old" });
+  // Every storage counts revisions from zero, so equal revisions of another instance must not share a snapshot.
+  assert.equal(cachedBackgroundSettings(other, 3), null);
   resetChatBackgroundCacheForTests();
 });
