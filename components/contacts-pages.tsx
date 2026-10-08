@@ -38,6 +38,13 @@ function createGroupHref(characterIds: readonly string[]) {
   return `/contacts/create-group?${params.toString()}`;
 }
 
+function ContactLoadError({ error, retry }: { error: string; retry: () => Promise<void> }) {
+  return <>
+    <p role="alert">{error}</p>
+    <button type="button" className="settings-button" onClick={() => void retry()}>Retry</button>
+  </>;
+}
+
 export function ContactsHome({ mode, initialSelection = [] }: {
   mode?: ContactSelectionMode;
   initialSelection?: string[];
@@ -69,7 +76,8 @@ export function ContactsHome({ mode, initialSelection = [] }: {
     <input className="social-search" type="search" aria-label="Search contacts"
       placeholder="Search contacts..." value={query} onChange={(event) => setQuery(event.target.value)} />
     {error && <p role="alert">{error}</p>}
-    {!ready || !contactState.ready ? <p>Loading contacts…</p> : contactState.error ? <p role="alert">{contactState.error}</p>
+    {!ready || !contactState.ready ? <p>Loading contacts…</p> : contactState.error
+      ? <ContactLoadError error={contactState.error} retry={contactState.retry} />
       : contactState.document.contacts.length === 0 ? <p>No contacts yet.</p>
       : contacts.length === 0 ? <p>No matching contacts.</p> : <div className="social-list">
         {contacts.map((character) => {
@@ -128,7 +136,8 @@ export function AddContactPage() {
     <input className="social-search" type="search" aria-label="Search Characters" placeholder="Search Characters..." value={query} onChange={(event) => setQuery(event.target.value)} />
     {notice && <p role="status">{notice}</p>}
     {error && <p role="alert">{error}</p>}
-    {!ready || !contactState.ready ? <p>Loading Characters…</p> : contactState.error ? <p role="alert">{contactState.error}</p>
+    {!ready || !contactState.ready ? <p>Loading Characters…</p> : contactState.error
+      ? <ContactLoadError error={contactState.error} retry={contactState.retry} />
       : rows.length === 0 ? <p>No Characters available.</p> : <div className="social-list">
       {rows.map((character) => { const added = ids.has(character.characterId); return <div className="social-row" key={character.characterId}>
         <span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} /></span>
@@ -170,7 +179,8 @@ export function CreateGroupPage({ characterIds }: { characterIds: string[] }) {
   }
   return <PageShell title="Create Group" backHref={backHref} backLabel="Back to Contacts"
     bodyClassName="foundation-page create-group-page">
-    {!ready || !contactState.ready ? <p>Loading contacts…</p> : contactState.error ? <p role="alert">{contactState.error}</p> : <>
+    {!ready || !contactState.ready ? <p>Loading contacts…</p> : contactState.error
+      ? <ContactLoadError error={contactState.error} retry={contactState.retry} /> : <>
       <p>{members.length} contacts selected</p>
       <div className="social-list">{members.map((character) => <div className="social-row" key={character.characterId}>
         <span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} /></span>
