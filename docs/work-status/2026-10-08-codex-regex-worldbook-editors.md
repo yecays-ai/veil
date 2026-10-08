@@ -6,7 +6,7 @@
 
 ## 当前任务
 
-已完成 PR #38 CodeRabbit 跟进修复，正在推送；无 automerge、未合并。
+已完成并推送 PR #38 CodeRabbit 跟进修复；实现提交 b51ccf0e68a36d635a39ff1d61473b21f23d4648；无 automerge、未合并。
 
 ## 谁在改哪里
 
@@ -33,4 +33,4 @@ GPT/Codex；分支 fix/regex-worldbook-editor-safety；[PR #38](https://github.c
 
 ## 下一步
 
-把已验证的 CodeRabbit 修复推送到同一 PR #38 后结束；不加 automerge、不直接合并，重新审查结果尚未确认。
+本轮修复已推送到同一 PR #38，任务停止在重新审查边界；不加 automerge、不直接合并，CodeRabbit 对新提交的审核结果尚未确认。
