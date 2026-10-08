@@ -11,7 +11,7 @@
 ## 谁在改哪里
 
 Claude；分支 `claude/chat-stop-boundary`；PR https://github.com/yecays-ai/veil/pull/48；base `origin/main` 3107d8e。
-涉及：`lib/chat/engine.ts`、`components/chat/chat-room.tsx`（仅 `regenerate()` 的 finally）、`tests/chat-stop-boundary.test.ts`。
+涉及：`lib/chat/engine.ts`、`components/chat/chat-room.tsx`（仅 `regenerate()` 的 finally）、`tests/chat-stop-boundary.test.ts`、`tests/chat-regenerate-lock-ui.test.ts`。
 
 ## 已完成
 
@@ -24,7 +24,7 @@ Claude；分支 `claude/chat-stop-boundary`；PR https://github.com/yecays-ai/ve
 
 ## 尚未验证
 
-- U1 没有行为测试：它在审计中是未复现的纵深防御项，ChatRoom 的挂载测试代价大，本单未扩大范围。
+- U1 的 CodeRabbit 回归（会话短暂消失后 Regenerate 被锁死）已有挂载测试 `tests/chat-regenerate-lock-ui.test.ts`；`reply()` 的 finally 仍是原有写法（同样的守卫），不在本单范围。
 - 真实浏览器/真机未测。
 - Stop 与消息落库恰好交错时（`storage.send` 已开始但引擎已被中止），用户消息可能落库而没有回复或 stopped 气泡；内容不丢，可手动 Reply。
 - 非 Stop 的发送失败仍会留下带错误的气泡，其 Retry 同样没有用户内容；这是既有契约（`failed direct Send never starts generation`），不在本单范围。
