@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "./profile-view";
+import { clearReturnState, peekReturnState, rememberNavigationOrigin } from "../lib/navigation-origin";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { UI_COPY as U } from "../lib/ui-copy";
 import type { FoundationDocument, NodePosition } from "../lib/foundation-types";
@@ -28,6 +29,7 @@ function fitPositions(
     scale,
   };
 }
+const UNIVERSE_PATH = "/universe";
 export function RelationshipCanvas({
   document,
   move,
@@ -37,11 +39,14 @@ export function RelationshipCanvas({
   move: (id: string, p: NodePosition) => Promise<void>;
   edit: (id: string) => void;
 }) {
+  // Returning from a Character opened here restores the pan/zoom the user left.
+  const [restored] = useState(() => peekReturnState<{ view: View }>(UNIVERSE_PATH)?.view);
+  useEffect(() => clearReturnState(UNIVERSE_PATH), []);
   const router = useRouter(),
     viewport = useRef<HTMLDivElement>(null),
-    touched = useRef(false);
+    touched = useRef(!!restored);
   const [initialPositions] = useState(document.universe.nodePositions);
-  const [view, setView] = useState<View>({ x: 0, y: 0, scale: 1 }),
+  const [view, setView] = useState<View>(restored ?? { x: 0, y: 0, scale: 1 }),
     [preview, setPreview] = useState<Record<string, NodePosition>>({});
   const drag = useRef<{
       pointer: number;
@@ -228,7 +233,9 @@ export function RelationshipCanvas({
                     suppress.current = false;
                     return;
                   }
-                  router.push(`/characters/${c.characterId}`);
+                  const target = `/characters/${c.characterId}`;
+                  rememberNavigationOrigin(UNIVERSE_PATH, target, { view });
+                  router.push(target);
                 }}
                 onKeyDown={(event) => {
                   const directions: Record<string, [number, number]> = {
