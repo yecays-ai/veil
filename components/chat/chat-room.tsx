@@ -170,7 +170,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (!isChatDiagnosticsEnabled()) return;
     const nodeCount = history.current?.querySelectorAll("[data-message-id]").length ?? 0;
     recordChatDiagnostic("chat-react-commit", { characterId, hasSession: !!session, messageCount: messages.length, nodeCount });
-  }, [characterId, session?.id, !!session, messages.length]);
+  }, [characterId, session, messages.length]);
   const nearBottom = useRef(true);
   const previousSearchJumpId = useRef<string | null>(null);
   const mounted = useRef(true);

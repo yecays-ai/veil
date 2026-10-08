@@ -63,9 +63,10 @@ export function ContactsHome({ mode, initialSelection = [] }: {
   function openDirect(characterId: string) {
     if (openingId) return;
     setOpeningId(characterId); setError("");
-    const target = `/messages/${encodeURIComponent(characterId)}`;
-    recordChatDiagnostic("navigation-call", { target, characterId });
-    router.push(target);
+    recordChatDiagnostic("navigation-call", {
+      target: `/messages/${encodeURIComponent(characterId)}`, characterId,
+    });
+    router.push(`/messages/${encodeURIComponent(characterId)}`);
   }
   function toggleSelected(characterId: string) {
     setSelected((current) => current.includes(characterId)
