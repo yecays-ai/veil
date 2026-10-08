@@ -10,7 +10,7 @@ import { useWorldBooks } from "./use-worldbooks";
 import { Switch } from "../ui/switch";
 
 export function WorldBookList() {
-  const { document, error, notice, busy, run, change, removeBook, setNotice } = useWorldBooks();
+  const { document, error, notice, busy, loading, loadError, retry, run, change, removeBook, setNotice } = useWorldBooks();
   const file = useRef<HTMLInputElement>(null);
   return <PageShell className="settings-app worldbook-manager" title="WorldBooks" backHref="/settings" backLabel="Back to Settings">
     <div className="settings-action-row worldbook-actions">
@@ -29,6 +29,7 @@ export function WorldBookList() {
       });
     }} />
     {error && <Alert variant="danger">{error}</Alert>}{notice && <Alert variant="success">{notice}</Alert>}
+    {loadError && <button className="settings-button" disabled={loading} onClick={() => void retry()}>{loading ? "Retrying…" : "Retry"}</button>}
     {!document && !error && <p role="status">Loading WorldBooks…</p>}
     {document?.books.length === 0 && <p>No WorldBooks yet.</p>}
     <div className="worldbook-list">{document?.books.map((book, index) => <article className="worldbook-card" key={book.id}>

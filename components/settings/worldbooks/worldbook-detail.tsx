@@ -16,6 +16,7 @@ export function WorldBookDetail({ bookId }: { bookId: string }) {
   const saved = library.document?.books.find((book) => book.id === bookId);
   if (!saved) return <PageShell className="settings-app worldbook-manager" title="WorldBook" backHref="/settings/worldbooks" backLabel="Back to WorldBooks">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "WorldBook not found." : "Loading WorldBook…"}</p>}
+    {library.loadError && <button className="settings-button" disabled={library.loading} onClick={() => void library.retry()}>{library.loading ? "Retrying…" : "Retry"}</button>}
   </PageShell>;
   return <Detail key={bookId} saved={saved} library={library} />;
 }

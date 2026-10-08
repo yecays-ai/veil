@@ -18,6 +18,7 @@ export function PresetDetail({ presetId }: { presetId: string }) {
   const saved = library.document?.presets.find((preset) => preset.id === presetId);
   if (!saved) return <PageShell className="settings-app preset-manager" title="Preset" backHref="/settings/presets" backLabel="Back to Presets">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Preset not found." : "Loading Preset…"}</p>}
+    {library.loadError && <button className="settings-button" disabled={library.loading} onClick={() => void library.retry()}>{library.loading ? "Retrying…" : "Retry"}</button>}
   </PageShell>;
   return <DetailEditor key={presetId} saved={saved} library={library} />;
 }

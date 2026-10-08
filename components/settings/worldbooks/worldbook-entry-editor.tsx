@@ -17,6 +17,7 @@ export function WorldBookEntryEditor({ bookId, entryId }: { bookId: string; entr
   const base = `/settings/worldbooks/${bookId}`;
   if (!book || (entryId !== "new" && !saved)) return <PageShell className="settings-app worldbook-manager" title="Entry" backHref={base} backLabel="Back to WorldBook">
     {library.error ? <Alert variant="danger">{library.error}</Alert> : <p>{library.document ? "Entry not found." : "Loading Entry…"}</p>}
+    {library.loadError && <button className="settings-button" disabled={library.loading} onClick={() => void library.retry()}>{library.loading ? "Retrying…" : "Retry"}</button>}
   </PageShell>;
   return <Editor key={`${bookId}/${entryId}`} bookId={bookId} entryId={entryId} saved={saved} library={library} />;
 }
