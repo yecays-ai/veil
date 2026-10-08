@@ -9,6 +9,8 @@ import { browserPresetStorage } from "../../../lib/preset-storage";
 import { browserWorldBookStorage } from "../../../lib/worldbook-storage";
 import { browserRegexStorage } from "../../../lib/regex-storage";
 import { DEFAULT_REGEX_GROUP_ID } from "../../../lib/regex-defaults";
+import { browserBindingStorage } from "../../../lib/binding-storage";
+import { withCurrentBindingResources } from "../../../lib/binding-resource-validation";
 
 export type BindingResources = {
   api: { id: string; name: string }[];
@@ -40,10 +42,8 @@ export function useBindingManager() {
         regexIds: new Set(regex.groups.filter((item) => item.id !== DEFAULT_REGEX_GROUP_ID)
           .map((item) => item.id)),
       };
-      const cleaned = cleanStaleBindings(bindings, available);
-      if (JSON.stringify(cleaned) !== JSON.stringify(bindings))
-        await commit((current) => cleanStaleBindings(current, available));
-      if (active) setResources({
+      if (!active) return;
+      setResources({
         api: api.map((item) => ({ id: item.id, name: item.name })),
         presets: preset.presets.map((item) => ({ id: item.id, name: item.name })),
         activePresetId: preset.activePresetId,
@@ -51,6 +51,14 @@ export function useBindingManager() {
         regex: regex.groups.filter((item) => item.id !== DEFAULT_REGEX_GROUP_ID)
           .map((item) => ({ id: item.id, name: item.name })),
       });
+      // UI catalogs only decide whether to attempt reconciliation. They are never deletion
+      // authority: re-read protected catalogs inside the existing Binding write boundary.
+      const cleaned = cleanStaleBindings(bindings, available);
+      if (JSON.stringify(cleaned) !== JSON.stringify(bindings))
+        await browserBindingStorage.cleanStale((write) => withCurrentBindingResources((currentAvailable) => {
+          if (!active) throw new Error("Binding page closed. Nothing was cleaned.");
+          return write(currentAvailable);
+        }));
     })().catch((reason) => { if (active) setError(reason instanceof Error ? reason.message : "Bindings could not be loaded."); });
     return () => { active = false; };
   // Load once when Foundation becomes ready; each write re-reads its current document.

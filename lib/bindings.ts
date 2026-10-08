@@ -137,10 +137,12 @@ export function editBindingList(
   return setBindingField(document, scope, field, next);
 }
 
-export function cleanStaleBindings(document: BindingDocument, available: {
+export type AvailableBindingResources = {
   apiConfigIds: ReadonlySet<string>; presetIds: ReadonlySet<string>;
   worldBookIds: ReadonlySet<string>; regexIds: ReadonlySet<string>;
-}): BindingDocument {
+};
+
+export function cleanStaleBindings(document: BindingDocument, available: AvailableBindingResources): BindingDocument {
   const clean = (slot: BindingSlot): BindingSlot => {
     const next = { ...slot };
     if (next.apiConfigId && !available.apiConfigIds.has(next.apiConfigId))

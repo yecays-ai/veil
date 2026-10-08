@@ -79,6 +79,13 @@ export class ApiConfigStorage {
       (await request<ApiConfig[]>(store.getAll())).map(normalizeApiConfig));
   }
 
+  // Only synchronous work belongs here: the configs readonly transaction prevents another
+  // tab's API write from passing the catalog read before Binding reconciliation finishes.
+  withApiConfigs<T>(run: (configs: NamedApiConfig[]) => T): Promise<T> {
+    return this.transaction("readonly", async (store) =>
+      run((await request<ApiConfig[]>(store.getAll())).map(normalizeApiConfig)));
+  }
+
   saveApiConfig(config: ApiConfig, expected?: NamedApiConfig | null): Promise<NamedApiConfig> {
     return this.transaction("readwrite", async (store) => {
       const next = normalizeApiConfig(config);

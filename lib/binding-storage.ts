@@ -1,4 +1,4 @@
-import { normalizeBindings, type BindingDocument } from "./bindings";
+import { cleanStaleBindings, normalizeBindings, type AvailableBindingResources, type BindingDocument } from "./bindings";
 import type { StringStorage } from "./storage-types";
 
 export const BINDING_STORAGE_KEY = "veil.bindings.v1";
@@ -36,17 +36,23 @@ export function createBindingStorage(getStorage: () => StringStorage,
     }
     throw new Error("Bindings changed in another tab. Nothing was saved; try again.");
   };
-  const transact = (update: (current: BindingDocument) => BindingDocument) => {
+  const enqueue = (operation: () => BindingDocument | Promise<BindingDocument>) => {
     const run = async () => {
       const locks = getLocks();
-      return locks ? await locks.request(BINDING_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
-        : commit(update);
+      return locks ? await locks.request(BINDING_STORAGE_KEY, { mode: "exclusive" }, operation)
+        : operation();
     };
-    const operation = queue.then(run, run);
-    queue = operation.then(() => {}, () => {});
-    return operation;
+    const pending = queue.then(run, run);
+    queue = pending.then(() => {}, () => {});
+    return pending;
   };
-  return { load, transact, save: (document: BindingDocument) => transact(() => document) };
+  const transact = (update: (current: BindingDocument) => BindingDocument) => enqueue(() => commit(update));
+  // The boundary must keep resource authority protected until its synchronous write callback
+  // returns. Run it AFTER acquiring the existing Binding lock, including on retries/queued work.
+  const cleanStale = (withResources: (write: (available: AvailableBindingResources) => BindingDocument)
+    => Promise<BindingDocument>) => enqueue(() => withResources((available) =>
+      commit((current) => cleanStaleBindings(current, available))));
+  return { load, transact, cleanStale, save: (document: BindingDocument) => transact(() => document) };
 }
 export type BindingStorage = ReturnType<typeof createBindingStorage>;
 export const browserBindingStorage = createBindingStorage(() => window.localStorage);
