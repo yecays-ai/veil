@@ -17,7 +17,7 @@ test("diagnostics are silent until explicitly enabled and redact identity and co
   assert.match(output, /session-publish/);
   assert.match(output, /character-1/);
   assert.doesNotMatch(output, /peter-id|private text|token=private/);
-  assert.match(output, /messages\\/\\[character\\]/);
+  assert.match(output, /messages\/\[character\]/);
 });
 
 test("events share monotonic navigation time and clear only the active navigation", () => {
