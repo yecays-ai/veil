@@ -131,7 +131,7 @@ test("browser rollback fails closed without an origin-wide lock", async () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, "window");
   Object.defineProperty(globalThis, "window", { configurable: true, value: { navigator: {} } });
   try {
-    assert.equal(await storage.rollbackIfCurrent(JSON.stringify(document), JSON.stringify(createPresetDocument())), false);
+    await assert.rejects(storage.rollbackIfCurrent(JSON.stringify(document), JSON.stringify(createPresetDocument())), /requires browser Web Locks/);
     assert.equal(memory.getItem(KEY), JSON.stringify(document));
   } finally {
     if (descriptor) Object.defineProperty(globalThis, "window", descriptor);
