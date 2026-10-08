@@ -430,8 +430,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       if (mounted.current && currentSessionId.current === sessionId)
         setError(reason instanceof Error ? reason.message : "Message could not be regenerated.");
     } finally {
-      replyLock.current = false;
       if (mounted.current && currentSessionId.current === sessionId) {
+        replyLock.current = false;
         revealQueue.settle(sessionId, revealToken);
         setGenerating(false);
       }

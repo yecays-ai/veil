@@ -91,6 +91,10 @@ export function createChatEngine(
     return storage.send(sessionId, applyRegex(content, groups, "user", "stored",
       { character: character?.name, user: document.user.name }), quoteMessageId, attemptId);
   }
+  async function hasUnansweredUserTurn(sessionId: string) {
+    try { return (await storage.readSession(sessionId)).messages.some((m) => m.role === "user" && !m.requestedBy); }
+    catch { return true; } // Cannot tell: keep the recorded outcome rather than hide a possible pending turn.
+  }
   type Draft = { content: string; quoteMessageId?: string; onSent?: () => void };
   async function generateReply(sessionId: string, onFinalized?: (messages: readonly ChatMessage[]) => void,
     regenerateId?: string, source: CompletionSource = "manual-reply", draft?: Draft): Promise<ChatMessage | null> {
@@ -168,7 +172,15 @@ export function createChatEngine(
       try { onFinalized?.(completed); } catch { /* Presentation cannot undo a committed turn. */ }
       return completed[0];
     } catch (error) {
-      if (!attempt.id) throw error;
+      if (!attempt.id) {
+        // Stopped before any claim: nothing was persisted, so there is nothing to report either.
+        if (controller.signal.aborted) return null;
+        throw error;
+      }
+      // Stopped before the draft reached storage: there is no user turn to answer, and a stopped reply here
+      // would be an empty bubble whose Retry asks the model to answer nothing. Genuine failures stay recorded.
+      if (controller.signal.aborted && !assistant && regenerateId === undefined && draft?.content.trim()
+        && !(await hasUnansweredUserTurn(sessionId))) return null;
       const outcome = controller.signal.aborted ? "stopped" : "failed";
       // Ownership/eligibility rejection is not a provider failure or a new turn.
       if (!assistant && regenerateId !== undefined) {
