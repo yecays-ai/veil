@@ -98,6 +98,15 @@ regressionContract("chat.regenerate-lock-released-without-session", "async-race-
       assert.ok(regenerate, "message actions open");
       assert.equal(regenerate.disabled, false, "a Regenerate that ended while the room had no session must not leave the lock set");
       assert.equal(button("Stop reply"), undefined, "the room is not stuck in a generating state");
+      // An enabled button does not prove the lock is clear: Regenerate again and require a finished replacement.
+      const callsBefore = providerCalls;
+      await click(regenerate);
+      await wait(async () => (await chatStorage.readSession(session.id)).messages.some((m) => m.content === "Replacement" && m.status === "complete"));
+      await wait(() => !button("Stop reply"));
+      assert.equal(providerCalls, callsBefore + 1, "exactly one new request was made by the second Regenerate");
+      const finalMessages = (await chatStorage.readSession(session.id)).messages;
+      assert.equal(finalMessages.filter((m) => m.content === "Replacement").length, 1);
+      assert.ok(finalMessages.every((m) => m.status !== "streaming"));
     } finally {
       pendingResponses.forEach((resolve) => resolve());
       await act(async () => { root.unmount(); });

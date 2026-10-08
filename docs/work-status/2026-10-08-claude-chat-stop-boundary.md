@@ -20,7 +20,7 @@ Claude；分支 `claude/chat-stop-boundary`；PR https://github.com/yecays-ai/ve
   - A2：领取生成权之前被 Stop，`requestReply` 返回 null，不再把 AbortError 文本抛给聊天界面。
   - U1：`regenerate()` 的 finally 在仍挂载且当前会话是本次会话、或暂时没有会话时清锁；只有当前是另一个会话时不动，避免旧任务清掉新房间的锁，同时不会在会话短暂消失后卡死 Regenerate（CodeRabbit 指出的回归，已修）。
 - 测试 `tests/chat-stop-boundary.test.ts`（7 项）：A1（Stop 后无消息/无气泡/模型 0 次，迟到的 regex 结果无影响，之后新发送正常；存在未回答用户消息时保持既有 stopped 记录；真实失败仍记录）、A2、天气阶段 Stop + 迟到天气 + 立即重新生成、地点阶段 Stop + 重复 Stop、卸载式 stop 与用户 Stop 相邻只留一条终态记录。旧实现上 A1、A2 的 3 项失败。
-- Node 24：`npm test` 595/595、`npx tsc --noEmit`、`npx eslint .`、`npm run build`、`git diff --check` 通过。
+- Node 24：`npm test` 596/596、`npx tsc --noEmit`、`npx eslint .`、`npm run build`、`git diff --check` 通过。
 
 ## 尚未验证
 
