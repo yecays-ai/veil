@@ -191,3 +191,57 @@ test("Apply validates before saving and shows the reasons; render drops rejected
   assert.match(settings, /const problems = css \? validateSessionCSS\(css\) : \[\];\s*if \(problems\.length\) \{ setError\(problems\.join\(" "\)\); return; \}\s*setBusy\(true\)/);
   assert.match(readFileSync("components/chat/session-custom-css.tsx", "utf8"), /analyzeSessionCSS\(css, "\.chat-room-wrapper"\)\.css/);
 });
+
+/** CSS Nesting: `&` is the parent; a selector without `&` is `& <selector>`, one that starts with a combinator is relative to `&`. */
+function resolveNested(selector: string, parent: string): string {
+  if (selector.includes("&")) return selector.replaceAll("&", `:is(${parent})`);
+  return /^[>+~]/.test(selector.trim()) ? `:is(${parent}) ${selector}` : `:is(${parent}) ${selector}`;
+}
+
+function reachesOutsideRoot(selector: string): boolean {
+  const dom = new JSDOM(`<!doctype html><html><body><header class="x" id="before"></header>
+    <div class="chat-room-wrapper dark"><div class="card"><span class="a title"></span></div></div>
+    <p class="x" id="after"></p></body></html>`);
+  const root = dom.window.document.querySelector(SCOPE)!;
+  const outside = [...dom.window.document.querySelectorAll(selector)].some((el) => el !== root && !root.contains(el));
+  dom.window.close();
+  return outside;
+}
+
+const nestedEscapes: Record<string, { css: string; parent: string; nested: string }> = {
+  "negated parent": { css: `${SCOPE} { :not(&) { display: none } }`, parent: SCOPE, nested: ":not(&)" },
+  "negated root": { css: ":root { :not(&) { display: none } }", parent: SCOPE, nested: ":not(&)" },
+  "negated descendant parent": { css: ".card { :not(&) { display: none } }", parent: `${SCOPE} .card`, nested: ":not(&)" },
+  "ancestor of parent": { css: ".card { :has(&) { display: none } }", parent: `${SCOPE} .card`, nested: ":has(&)" },
+  "root sibling": { css: ":root { & ~ * { display: none } }", parent: SCOPE, nested: "& ~ *" },
+  "root relative sibling": { css: ":root { ~ .x { display: none } }", parent: SCOPE, nested: "~ .x" },
+  "root adjacent sibling": { css: ":root { + .x { display: none } }", parent: SCOPE, nested: "+ .x" },
+  "grouped at-rule": { css: ".card { @media (width > 1px) { :not(&) { display: none } } }", parent: `${SCOPE} .card`, nested: ":not(&)" },
+  "deeply nested root sibling": { css: ":root { &.dark { & ~ * { display: none } } }", parent: `${SCOPE}.dark`, nested: "& ~ *" },
+};
+
+test("nested rules that would reach outside the conversation root are rejected, and the oracle proves they really escape", () => {
+  for (const [name, { css, parent, nested }] of Object.entries(nestedEscapes)) {
+    // Oracle: resolving the nested selector per the nesting spec really matches elements outside the root.
+    assert.equal(reachesOutsideRoot(resolveNested(nested, parent)), true, `${name} should be a genuine escape`);
+    const result = analyzeSessionCSS(css, SCOPE);
+    assert.match(result.errors.join(" "), /Nested rule .* would reach outside this conversation/, name);
+    assert.equal(result.css.trim(), "", `${name} must not be emitted`);
+  }
+});
+
+test("ordinary nested rules stay usable and stay inside the root", () => {
+  const safe = [
+    `.card { color: red; &:hover { color: blue } .title { font-weight: 600 } > .a { margin: 0 } & ~ .b { color: red } @media (width < 400px) { padding: 0 } }`,
+    `:root { --x: 1; & .title { color: red } & > .card { margin: 0 } .a { color: blue } &:hover { color: green } &.dark { color: pink } }`,
+    `.card { & { color: red } & & { color: blue } }`.replace("& & {", "& .title {"),
+  ];
+  for (const css of safe) {
+    const result = analyzeSessionCSS(css, SCOPE);
+    assert.deepEqual(result.errors, [], css);
+    assert.ok(result.css.includes("{"), css);
+    assert.deepEqual(leaks(result.css), [], css);
+  }
+  for (const nested of ["&:hover", "& .title", "& > .card", ".a", "&.dark"])
+    assert.equal(reachesOutsideRoot(resolveNested(nested, SCOPE)), false, `${nested} stays inside the root`);
+});

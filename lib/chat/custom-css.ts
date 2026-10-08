@@ -124,7 +124,13 @@ function scopeBlock(raw: string, scope: string, keyframes: ReadonlySet<string>, 
       note(`Selector "${shorten(prelude)}" would reach outside this conversation and was removed.`);
       continue;
     }
-    out.push(`${selectors.join(", ")} {${renameAnimations(inner, keyframes)}}`);
+    const scopedList = selectors as string[];
+    const escaping = findEscapingNested(stripComments(inner), scopedList.some((item) => isRootCompound(item.slice(scope.length))));
+    if (escaping !== null) {
+      note(`Nested rule "${shorten(escaping)}" would reach outside this conversation and was removed.`);
+      continue;
+    }
+    out.push(`${scopedList.join(", ")} {${renameAnimations(inner, keyframes)}}`);
   }
   return out.join("");
 }
@@ -206,6 +212,75 @@ function reachesRootSiblings(rest: string): boolean {
   }
   while (i < rest.length && /\s/.test(rest[i])) i++;
   return rest[i] === "+" || rest[i] === "~";
+}
+
+/** True when `rest` (text after a selector's root token) is still the root's own compound selector. */
+function isRootCompound(rest: string): boolean {
+  let depth = 0;
+  for (let i = 0; i < rest.length; i++) {
+    const char = rest[i];
+    if (char === "\\") { i++; continue; }
+    if (char === '"' || char === "'") { i = skipString(rest, i); continue; }
+    if (char === "(" || char === "[") depth++;
+    else if ((char === ")" || char === "]") && depth > 0) depth--;
+    else if (depth === 0 && (/\s/.test(char) || char === ">" || char === "+" || char === "~")) return false;
+  }
+  return true;
+}
+
+/** Positions of the nesting selector `&`, ignoring strings and escapes. */
+function nestingPositions(selector: string): number[] {
+  const found: number[] = [];
+  for (let i = 0; i < selector.length; i++) {
+    const char = selector[i];
+    if (char === "\\") { i++; continue; }
+    if (char === '"' || char === "'") { i = skipString(selector, i); continue; }
+    if (char === "&") found.push(i);
+  }
+  return found;
+}
+
+/**
+ * CSS nesting resolves `&` to the parent rule. A nested selector that contains `&` anywhere but its
+ * start is no longer implicitly limited to the parent's descendants (`:not(&)`, `:has(&)`), and a
+ * sibling combinator on a parent that is the conversation root reaches its neighbours. Returns the
+ * offending nested selector list, or null when every nested rule stays inside the root.
+ */
+function findEscapingNested(body: string, parentIsRoot: boolean): string | null {
+  let i = 0;
+  while (i < body.length) {
+    const stop = scanPrelude(body, i);
+    if (stop.kind === "eof") break;
+    if (stop.kind === "close") { i = stop.end; continue; }
+    if (stop.kind === "semicolon") { i = stop.end + 1; continue; }
+    const prelude = body.slice(i, stop.end).trim();
+    const close = findBlockEnd(body, stop.end);
+    const inner = body.slice(stop.end + 1, close === -1 ? body.length : close);
+    i = close === -1 ? body.length : close + 1;
+    if (prelude.startsWith("@")) {
+      // Grouping at-rules inside a rule keep the same parent.
+      const found = findEscapingNested(inner, parentIsRoot);
+      if (found !== null) return found;
+      continue;
+    }
+    let childIsRoot = false;
+    for (const part of splitTopLevel(prelude, ",")) {
+      const selector = part.trim();
+      if (!selector) continue;
+      const amps = nestingPositions(selector);
+      if (!amps.length) {
+        if (/^[+~]/.test(selector) && parentIsRoot) return prelude;
+        continue;
+      }
+      if (amps.length > 1 || amps[0] !== 0) return prelude;
+      const rest = selector.slice(1);
+      if (parentIsRoot && reachesRootSiblings(rest)) return prelude;
+      if (parentIsRoot && isRootCompound(rest)) childIsRoot = true;
+    }
+    const found = findEscapingNested(inner, childIsRoot);
+    if (found !== null) return found;
+  }
+  return null;
 }
 
 /** Comments are insignificant to the browser; removing them keeps checks from being hidden by one. */
