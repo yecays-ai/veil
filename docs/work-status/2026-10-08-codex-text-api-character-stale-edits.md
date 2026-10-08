@@ -1,16 +1,16 @@
 # STATUS — text-api-character-stale-edits
 
 更新人：GPT/Codex
-更新时间：2026-10-08T13:35:00+08:00
+更新时间：2026-10-08T16:04:00+08:00
 发现范围：2026-10-08 实时检查 yecays-ai/veil 的 main、远程开放 PR（含草稿）、变更文件、分支以及 main/开放 PR head 上的 work-status；未发布的本地工作不可见。
 
 ## 当前任务
 
-实现已完成，验证通过，待发布独立 PR：仅修复 Text API / Character 陈旧编辑、异步状态发布和失败恢复。用户明确要求禁止 automerge，不等待审核、不直接合并。
+已完成并发布独立 PR #37：仅修复 Text API / Character 陈旧编辑、异步状态发布和失败恢复。验证通过；保持开放未合并、无 automerge 标签。用户明确要求不等待审核、不直接合并。
 
 ## 谁在改哪里
 
-- Codex；分支 `fix/text-api-character-stale-edits`；PR 尚未创建；开工 base `d12b0e0306bfe70e24deda208d6adc337fdd42f7`，发布前已无冲突 rebase 到最新 main `b74bdd5b936c5b3cb6a82721e711cdaa8225eedc`。
+- Codex；分支 `fix/text-api-character-stale-edits`；PR https://github.com/yecays-ai/veil/pull/37；开工 base `d12b0e0306bfe70e24deda208d6adc337fdd42f7`，发布前已无冲突 rebase 到最新 main `b74bdd5b936c5b3cb6a82721e711cdaa8225eedc`。
 - 生产路径：`lib/api-config-storage.ts`、`lib/settings/text-api.ts`、`lib/foundation.ts`、`components/foundation-provider.tsx`、`components/profile-pages.tsx`、`components/settings/text-api-settings.tsx`。
 - 回归：`tests/stale-editor-writes.test.ts`、`tests/stale-editor-ui.test.ts`、`tests/ui-save-consistency.test.ts`；本任务记录。
 - 开工时开放 PR #33 `fix/chat-wallpaper-decode` head `9eb876a87402dd897b818477e3a6055f8898a423`：Chat 壁纸、样式、存储及测试；#34 `claude/nifty-shannon-mkqijz` head `136a56b95ff2183e25bae58ce777d0b3b57fd3f6`：Contacts 详情/存储/并发测试；均无本次文件重叠。main 和两条 PR head 的 work-status 仅发现此前 AI handoff 记录，未发现其当前任务专属记录。
@@ -35,4 +35,4 @@
 
 ## 下一步
 
-发布此独立 PR并补入链接；不加 automerge、不等待审核、不直接合并。Character 删除资源契约另立工单。
+此任务停止在独立 PR #37；不加 automerge、不等待审核、不直接合并。Character 删除资源契约另立工单；后续审查由人工决定。
