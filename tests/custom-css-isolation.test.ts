@@ -176,10 +176,12 @@ test("fault injection: the previous implementation leaks on these inputs and the
   const legacyLeaks = (css: string) => leaks(legacyScopeSessionCSS(legacyRemoveCssImports(css), SCOPE));
   for (const name of ["uppercase import", "mixed-case import", "font-face", "unprefixed keyframes", "brace inside string",
     "brace inside comment", "sibling via body", "scope literal sibling",
-    "root pseudo-class then sibling", "scope attribute then sibling"]) {
+    "scope attribute then sibling"]) {
     assert.notDeepEqual(legacyLeaks(hostile[name]), [], `old scoper should leak: ${name}`);
     assert.deepEqual(leaks(analyzeSessionCSS(hostile[name], SCOPE).css), [], `fixed scoper must not leak: ${name}`);
   }
+  // The root-compound rewrite is new in this PR, so the old scoper never had that leak; the fixed one must still block it.
+  assert.deepEqual(leaks(analyzeSessionCSS(hostile["root pseudo-class then sibling"], SCOPE).css), []);
   assert.match(legacyRemoveCssImports('@IMPORT url("https://evil.test/x.css");'), /evil\.test/, "old import filter was case-sensitive");
 });
 
