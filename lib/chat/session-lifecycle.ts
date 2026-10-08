@@ -4,7 +4,11 @@ import type { ChatMessage, ChatSession } from "./types";
 type Snapshot = { session: ChatSession; messages: ChatMessage[] };
 type Storage = Pick<ChatStorage, "readExistingSession" | "openSession" | "readSession" | "subscribe">;
 
-/** Per-route request owner, not a shared session cache. */
+/**
+ * Per-route request owner, not a shared session cache. `seed()` is only what the route already shows
+ * (a one-shot display seed): it is republished until this owner's own read replaces it, so enabling the
+ * route never blanks a seeded first frame. It is not treated as loaded: the owner still reads storage.
+ */
 export function createChatSessionLifecycle(characterId: string, storage: Storage,
   publish: (snapshot: Snapshot | null, error: string) => void, stop: (sessionId: string) => void) {
   let active = false, enabled = false, checkedExisting = false, revision = 0;
@@ -72,6 +76,7 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
     return running;
   };
   return {
+    seed(initial: Snapshot | null) { if (!active && !snapshot) snapshot = initial; },
     mount(validCharacter: boolean) {
       if (active) return;
       active = true;

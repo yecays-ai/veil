@@ -5,6 +5,7 @@ import { CirclePlus, MessageCircle, Search, Users } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
+import { prefetchChatSession } from "../../lib/chat/session-prefetch";
 import type { ChatSession } from "../../lib/chat/types";
 import { sortChatSessions } from "../../lib/chat/session-order";
 import { CONVERSATION_DELETE_WIDTH, conversationDeleteMotion, conversationSwipeOffset, isHorizontalConversationSwipe,
@@ -148,6 +149,7 @@ export function MessagesHome() {
           <Link className={`conversation-row${draggingRowId === session.id ? " is-dragging" : ""}`}
             style={{ transform: `translateX(${offset}px)` }} data-testid={`conversation-link-${session.id}`}
             href={group ? `/messages/group/${encodeURIComponent(session.id)}` : `/messages/${encodeURIComponent(session.characterId)}`}
+            onPointerDownCapture={() => { if (!group) prefetchChatSession(session.characterId, chatStorage); }}
             onPointerDown={(event) => beginSwipe(event, session.id)}
             onPointerMove={(event) => moveSwipe(event, session.id)}
             onPointerUp={(event) => finishSwipe(event, session.id)}

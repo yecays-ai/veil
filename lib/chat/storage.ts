@@ -345,9 +345,14 @@ export class ChatStorage {
   }
 
   private chatBackgroundRevision = 0;
+  private changes = 0;
+  private changeCount = 0;
   /** Bumped by every local or cross-tab chat-background or session change; lets callers validate a snapshot without a listener. */
   backgroundRevision() { return this.chatBackgroundRevision; }
+  /** Bumped by every local or cross-tab change of any chat domain: a read taken at this value is still current while it is unchanged. */
+  changeRevision() { return this.changes; }
   private dispatch(change: ChatStorageChange) {
+    this.changes++;
     if (change.domain === "chat-background" || change.domain === "session") this.chatBackgroundRevision++;
     // Observer failures must not turn an already committed write into a failed restore.
     this.listeners.forEach((listener) => {
@@ -449,6 +454,22 @@ export class ChatStorage {
     if (snapshot && (snapshot.session.generation || snapshot.messages.some((message) => message.status === "streaming")))
       return this.readSession(snapshot.session.id);
     return snapshot;
+  }
+
+  /**
+   * Read-only look at a direct chat for a first paint. Unlike readExistingSession it never recovers a
+   * generation, so it returns null for a chat that is generating or streaming and leaves those to the owner.
+   */
+  async peekExistingSession(characterId: string): Promise<{ session: ChatSession; messages: ChatMessage[] } | null> {
+    if (!characterId) return null;
+    return this.transaction("readonly", async (tx) => {
+      const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
+      const session = directSessionFor(sessions, characterId);
+      if (!session || session.generation) return null;
+      const messages: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(session.id));
+      if (messages.some((message) => message.status === "streaming")) return null;
+      return { session, messages: messages.sort((a, b) => a.order - b.order) };
+    });
   }
 
   readWorldBookState(sessionId: string): Promise<WorldBookActivationState | null> {
