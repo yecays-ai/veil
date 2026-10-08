@@ -2,12 +2,16 @@
 
 Messages lists every existing Character. Opening a Character creates or reuses
 one session by `characterId`; there are no separate contacts or friend records.
-A deleted Character is hidden from Messages and cannot request replies. On `main` at
-`5e0b03ccf414bd0f2556a7c925203c8cd7d00321` (2026-10-08; the revision audited in
-the storage map in [README.md](../README.md)), its chat records are retained rather
-than deleted by the Character action. Claude is implementing R3 Character
-deletion and associated-data cleanup in parallel; recheck this statement against
-the final R3 diff after it merges.
+A deleted Character is hidden from Messages and cannot request replies.
+Deleting a Character also deletes its private session, messages, WorldBook state
+and any background image no other chat uses. Group sessions are kept: the
+Character is removed from `participantIds`, and a group whose `characterId` was
+that Character takes the first remaining member, or `""` when none remains
+(`""` matches no Character, so readers must not treat it as a reference).
+Sessions of Characters deleted before this cleanup existed stay until the user
+confirms their removal on the Characters page. This describes `main` at
+`8790e408ee3f0db06107a5b1c5983782f6423877` (2026-10-08, PR #46), the revision
+audited in the storage map in [README.md](../README.md).
 
 ## Send and Request Reply
 
