@@ -13,13 +13,24 @@ export interface FoundationStorage {
   transact(
     update: (document: FoundationDocument) => FoundationDocument,
   ): Promise<FoundationDocument>;
+  subscribe(listener: () => void): () => void;
 }
 export const FOUNDATION_STORAGE_KEY = "veil.foundation.v1";
+export const FOUNDATION_CHANNEL_NAME = "veil-foundation-v1";
 const KEY = FOUNDATION_STORAGE_KEY;
 export function createIndexedDBFoundationStorage(
   documents: DocumentStorage,
 ): FoundationStorage {
   const readRaw = () => documents.read(KEY);
+  const listeners = new Set<() => void>();
+  let channel: BroadcastChannel | undefined;
+  const publish = () => listeners.forEach((listener) => {
+    try { listener(); } catch { /* Persistence has already succeeded. */ }
+  });
+  const notify = () => {
+    publish();
+    try { channel?.postMessage({ type: "foundation-changed" }); } catch { /* A closed observer channel. */ }
+  };
   return {
     async load() {
       const raw = await readRaw();
@@ -33,9 +44,29 @@ export function createIndexedDBFoundationStorage(
           : normalizeFoundation(JSON.parse(before));
         const next = normalizeFoundation(update(structuredClone(current)));
         const raw = JSON.stringify(next);
-        if (await documents.replaceIfCurrent(KEY, before, raw)) return next;
+        if (await documents.replaceIfCurrent(KEY, before, raw)) {
+          notify();
+          return next;
+        }
       }
       throw new Error("Profile data changed repeatedly while saving. Try again.");
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      if (!channel && typeof BroadcastChannel !== "undefined") {
+        channel = new BroadcastChannel(FOUNDATION_CHANNEL_NAME);
+        channel.onmessage = (event) => {
+          if (event.data && typeof event.data === "object" &&
+            event.data.type === "foundation-changed") publish();
+        };
+      }
+      return () => {
+        listeners.delete(listener);
+        if (!listeners.size) {
+          channel?.close();
+          channel = undefined;
+        }
+      };
     },
   };
 }
