@@ -11,6 +11,7 @@ import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
 import { regressionContract } from "./regression-contract";
 import { browserRegexStorage } from "../lib/regex-storage";
 import { drainContinuation } from "./lifecycle-test-tools";
+import { resetChatBackgroundCacheForTests } from "../lib/chat/background-cache";
 
 regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
   "direct chat has no full-page fallback and still awaits and keys the current route identity", () => {
@@ -298,6 +299,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       catch (reason) { cleanupError = reason; }
     });
     const subscriptionsAtUnmount = activeChatSubscriptions;
+    // Wallpaper object URLs belong to a bounded cache, not to the mounted chat; releasing the cache revokes them all.
+    resetChatBackgroundCacheForTests();
     const revokedAtUnmount = [...revokedUrls];
     chatStorage.readSession = originalRead;
     chatStorage.readChatBackgroundSettings = originalBackgroundRead;
@@ -316,7 +319,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     if (!failed) {
       assert.equal(subscriptionsAtUnmount, 0, "the ChatRoom releases its session, timing and background subscriptions on unmount");
       assert.equal(cleanupError, undefined, "asset continuations settle before test globals are restored");
-      if (createdUrls.length) assert.deepEqual(revokedAtUnmount, createdUrls, "mounted chat assets are revoked on unmount");
+      if (createdUrls.length) assert.deepEqual(revokedAtUnmount, createdUrls, "every wallpaper object URL is revoked when the bounded cache is released");
     }
   }
 });

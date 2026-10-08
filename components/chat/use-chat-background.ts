@@ -1,21 +1,31 @@
 "use client";
-import { useEffect, useLayoutEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { resolveChatBackground } from "../../lib/chat/background";
 import {
-  cachedBackgroundBlob, cachedBackgroundSettings, rememberBackgroundBlob, rememberBackgroundSettings,
+  cachedBackgroundHint, cachedBackgroundSettings, cachedBackgroundUrl, rememberBackgroundBlob,
+  rememberBackgroundHint, rememberBackgroundSettings,
 } from "../../lib/chat/background-cache";
 import { affectsChatBackground, chatStorage, type ChatStorage } from "../../lib/chat/storage";
 import type { ChatBackgroundSettings, ChatSession } from "../../lib/chat/types";
 
 const DEFAULT_SETTINGS: ChatBackgroundSettings = { id: "chat-background" };
 
-export function useChatBackground(session: ChatSession | null, storage: ChatStorage = chatStorage) {
+type Options = { characterId?: string; storage?: ChatStorage };
+
+/** `characterId` lets the wallpaper be chosen before the session has been read, from what this chat last resolved to. */
+export function useChatBackground(session: ChatSession | null, { characterId, storage = chatStorage }: Options = {}) {
   const [settings, setSettings] = useState<ChatBackgroundSettings>(
     () => cachedBackgroundSettings(storage, storage.backgroundRevision()) ?? DEFAULT_SETTINGS);
-  const [fetched, setFetched] = useState<{ id: string; blob: Blob } | null>(null);
-  const [owned, setOwned] = useState<{ blob: Blob; url: string } | null>(null);
-  const resolved = resolveChatBackground(session, settings);
+  const [, setLoaded] = useState(0);
+  const hint = !session && characterId ? cachedBackgroundHint(storage, characterId, storage.backgroundRevision()) : null;
+  const resolved = resolveChatBackground(session ? session : hint ? { backgroundImage: hint.image ?? undefined, backgroundBlur: hint.blur ?? undefined } : null, settings);
   const image = resolved.image;
+
+  const sessionImage = session?.backgroundImage ?? null, sessionBlur = session?.backgroundBlur ?? null;
+  const ownerId = session?.characterId;
+  useEffect(() => {
+    if (ownerId) rememberBackgroundHint(storage, ownerId, { image: sessionImage, blur: sessionBlur }, storage.backgroundRevision());
+  }, [ownerId, sessionImage, sessionBlur, storage]);
 
   useEffect(() => {
     const sessionId = session?.id;
@@ -42,27 +52,20 @@ export function useChatBackground(session: ChatSession | null, storage: ChatStor
   }, [session?.id, storage]);
 
   useEffect(() => {
-    if (!image || cachedBackgroundBlob(image)) return;
+    if (!image || cachedBackgroundUrl(image)) return;
     let active = true;
-    void storage.readChatImage(image).then((blob) => {
+    void storage.readChatImage(image).then(async (blob) => {
       if (!active || !blob) return;
-      rememberBackgroundBlob(image, blob);
-      setFetched({ id: image, blob });
+      // Reveal the wallpaper only once the browser can paint it, so it never appears half-decoded.
+      await rememberBackgroundBlob(image, blob).ready;
+      if (active) setLoaded((count) => count + 1);
     }).catch(() => {});
     return () => { active = false; };
   }, [image, storage]);
 
-  const source = image ? (cachedBackgroundBlob(image) ?? (fetched?.id === image ? fetched.blob : null)) : null;
-  // Layout effect: an already-known Blob becomes a URL before the browser paints, with no storage hop.
-  useLayoutEffect(() => {
-    if (!source) return;
-    const url = URL.createObjectURL(source);
-    // The URL is an external resource owned by this effect; publishing it in a layout effect makes it
-    // part of the frame that is painted, which is the point of this hook.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOwned({ blob: source, url });
-    return () => URL.revokeObjectURL(url);
-  }, [source]);
-
-  return { url: owned && owned.blob === source ? owned.url : null, blur: resolved.blur };
+  // A wallpaper already known to the cache is part of the first painted frame, with its decoded bitmap.
+  const url = image ? cachedBackgroundUrl(image) : null;
+  // "late": it was not there for the first frame, so the caller may fade it in instead of popping it in.
+  const [readyAtMount] = useState(url !== null);
+  return { url, blur: resolved.blur, late: url !== null && !readyAtMount };
 }

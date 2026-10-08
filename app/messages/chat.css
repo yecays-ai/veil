@@ -194,6 +194,14 @@
   background-repeat: no-repeat;
   filter: blur(var(--chat-background-blur, 0px));
 }
+/* Only a wallpaper that arrives after the first frame fades in; a cached one is simply there. */
+.chat-room[data-chat-background="custom"][data-chat-background-entry="fade"]::before {
+  animation: chat-background-in 200ms ease-out;
+}
+@keyframes chat-background-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .chat-room[data-chat-background="custom"][data-chat-background-entry="fade"]::before { animation: none; }
+}
 .chat-background-preview { position: relative; overflow: hidden; }
 .chat-background-preview-image {
   position: absolute;

@@ -102,7 +102,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     characterId,
     ready && !!character,
   );
-  const chatBackground = useChatBackground(session);
+  const chatBackground = useChatBackground(session, { characterId });
   const empty = !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
@@ -517,6 +517,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         "--chat-background-inset": chatBackground.blur ? `${-2 * chatBackground.blur}px` : "0px",
       } as CSSProperties : undefined}
       data-chat-background={chatBackground.url ? "custom" : "default"}
+      data-chat-background-entry={chatBackground.url && chatBackground.late ? "fade" : undefined}
       data-context-menu-open={activeMessage ? "" : undefined}>
       {session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
       <header key="header" className="chat-header page-header">

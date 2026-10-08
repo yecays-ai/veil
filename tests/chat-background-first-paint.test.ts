@@ -6,7 +6,7 @@ import { act, createElement } from "react";
 import { ChatStorage } from "../lib/chat/storage";
 import type { ChatSession } from "../lib/chat/types";
 import {
-  cachedBackgroundBlob, rememberBackgroundBlob, rememberBackgroundSettings,
+  cachedBackgroundUrl, rememberBackgroundBlob, rememberBackgroundSettings,
   cachedBackgroundSettings, resetChatBackgroundCacheForTests,
 } from "../lib/chat/background-cache";
 
@@ -34,7 +34,7 @@ async function harness() {
   storage.readChatBackgroundSettings = () => { reads.settings++; return readSettings(); };
   const root = createRoot(dom.window.document.getElementById("root")!);
   function Probe({ session }: { session: ChatSession | null }) {
-    const background = useChatBackground(session, storage);
+    const background = useChatBackground(session, { characterId: "a", storage });
     return createElement("div", { id: "probe", "data-url": background.url ?? "", "data-blur": String(background.blur) });
   }
   const url = () => dom.window.document.getElementById("probe")?.getAttribute("data-url") ?? "";
@@ -87,10 +87,10 @@ test("re-entering a chat paints its own wallpaper in the first frame, without re
     const first = app.url();
     await app.leave();
     assert.equal(app.url(), "");
-    assert.deepEqual(app.revoked, [first], "the visit's object URL is revoked on unmount");
+    assert.deepEqual(app.revoked, [], "leaving a chat keeps the cached wallpaper URL (bounded cache owns it)");
     await app.mountNow(session); // the very first frame of the next visit
     assert.notEqual(app.url(), "", "wallpaper is present in the first frame");
-    assert.notEqual(app.url(), first, "each visit owns a fresh object URL");
+    assert.equal(app.url(), first, "the same object URL is reused so the browser keeps the decoded bitmap");
     assert.deepEqual(app.reads, { image: 1, settings: 1 }, "no repeated blob or settings read");
   } finally { await app.cleanup(); }
 });
@@ -136,16 +136,23 @@ test("a global wallpaper is also in the first frame on re-entry, and a changed o
   } finally { await app.cleanup(); }
 });
 
-test("the cache is bounded to a few Blobs and never serves a stale settings snapshot", () => {
+test("the cache is bounded to a few wallpapers, revokes evicted URLs, and never serves a stale settings snapshot", () => {
   resetChatBackgroundCacheForTests();
-  const a = new Blob(["a"]), b = new Blob(["b"]), c = new Blob(["c"]);
-  rememberBackgroundBlob("a", a); rememberBackgroundBlob("b", b);
-  assert.equal(cachedBackgroundBlob("a"), a); // touching "a" makes "b" the oldest
-  rememberBackgroundBlob("c", c);
-  assert.equal(cachedBackgroundBlob("b"), null, "the least recently used Blob is dropped");
-  assert.equal(cachedBackgroundBlob("a"), a);
-  assert.equal(cachedBackgroundBlob("c"), c);
-  assert.equal(rememberBackgroundBlob("a", new Blob(["again"])), a, "an id already held is reused");
+  const revoked: string[] = [];
+  const revoke = URL.revokeObjectURL;
+  URL.revokeObjectURL = (url: string) => { revoked.push(url); revoke.call(URL, url); };
+  try {
+    const a = rememberBackgroundBlob("a", new Blob(["a"])).url, b = rememberBackgroundBlob("b", new Blob(["b"])).url;
+    assert.equal(cachedBackgroundUrl("a"), a); // touching "a" makes "b" the oldest
+    const c = rememberBackgroundBlob("c", new Blob(["c"])).url;
+    assert.equal(cachedBackgroundUrl("b"), null, "the least recently used wallpaper is dropped");
+    assert.deepEqual(revoked, [b], "and its object URL is revoked");
+    assert.equal(cachedBackgroundUrl("a"), a);
+    assert.equal(cachedBackgroundUrl("c"), c);
+    assert.equal(rememberBackgroundBlob("a", new Blob(["again"])).url, a, "an id already held is reused");
+    resetChatBackgroundCacheForTests();
+    assert.deepEqual(revoked.sort(), [a, b, c].sort(), "resetting releases every remaining URL");
+  } finally { URL.revokeObjectURL = revoke; }
   // A read that started before a change is stored with its old revision and can never be served.
   const owner = {}, other = {};
   rememberBackgroundSettings(owner, { id: "chat-background", globalChatBackgroundImage: "old" }, 3);
