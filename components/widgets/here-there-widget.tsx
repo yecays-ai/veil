@@ -16,7 +16,7 @@ import { useDeviceClock } from "./use-device-clock";
 import { useWeatherState } from "./use-weather";
 import { chatStorage } from "../../lib/chat/storage";
 import type { GlobalProfileSettings } from "../../lib/chat/types";
-import { HereThereCommentAttemptGuard, hereThereCommentNeedsRefresh, ensureHereThereComment,
+import { HereThereCommentAttemptGuard, HereThereGenerationOwner, hereThereCommentNeedsRefresh, ensureHereThereComment,
   startHereThereCommentAttempt } from "../../lib/here-there-comment";
 
 function Weather({ state }: { state: WeatherState }) {
@@ -90,6 +90,7 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   const touchInteraction = useRef(false);
   const dialog = useRef<HTMLDialogElement>(null);
   const commentAttempts = useRef(new HereThereCommentAttemptGuard());
+  const generationOwner = useRef(new HereThereGenerationOwner());
   const [profileSettings, setProfileSettings] = useState<GlobalProfileSettings | null>(null);
   useEffect(() => {
     let active = true;
@@ -143,17 +144,24 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
   );
   const scheduledAt = profileSettings?.nextCommentAt;
   const characterId = character?.characterId;
+  const hereThereEnabled = !!profileSettings?.hereThereEnabled;
+  // OFF, rebind and unmount each end ownership; a later ON starts a new epoch.
+  useEffect(() => {
+    const owner = generationOwner.current;
+    return () => owner.invalidate();
+  }, [hereThereEnabled, characterId]);
   const clockReady = now !== null;
   useEffect(() => {
     if (!profileSettings?.hereThereEnabled || scheduledAt === null || scheduledAt === undefined
       || !foundationReady || !themeReady || !clockReady || !characterId) return;
     const runOpportunity = () => {
       const opportunityTime = new Date();
+      const isCurrent = generationOwner.current.begin();
       const attempt = startHereThereCommentAttempt(
         () => commentAttempts.current.begin(characterId,
           hereThereCommentNeedsRefresh(widget, opportunityTime, scheduledAt), String(scheduledAt)),
         () => ensureHereThereComment(widget, { foundation: document, characterId,
-          now: opportunityTime, hereWeather, thereWeather }, commit));
+          now: opportunityTime, hereWeather, thereWeather, isCurrent }, commit));
       if (attempt) void attempt.finally(async () => {
         commentAttempts.current.finish(characterId, String(scheduledAt));
         try { setProfileSettings(await chatStorage.readGlobalProfileSettings()); } catch { /* Retry on next mount. */ }
@@ -171,9 +179,6 @@ export function HereThereWidget({ widget }: { widget: WidgetInstance }) {
         setInputModality(touchInteraction.current ? "touch" : "keyboard");
       }}
       onKeyDownCapture={() => { touchInteraction.current = false; setInputModality("keyboard"); }}>
-      <span className="widget-eyebrow here-there-title">
-        {C.hereThere.title}
-      </span>
       <div className="here-there-sides">
         <Side
           config={document.user}

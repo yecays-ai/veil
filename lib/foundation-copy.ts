@@ -91,7 +91,6 @@ export const FOUNDATION_COPY = {
     saved: "Relationship saved.",
   },
   hereThere: {
-    title: "HERE & THERE",
     here: "Here",
     there: "There",
     noCharacter: "No Character",

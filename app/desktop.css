@@ -412,11 +412,6 @@
     padding-bottom: calc(var(--home-grid-bottom-trim) - var(--home-grid-origin-shift));
   }
 }
-.here-there-title {
-  letter-spacing: 0.12em;
-  opacity: 0.5;
-  font-size: 0.6em;
-}
 .here-there-widget {
   gap: 16px;
   scrollbar-width: none;
