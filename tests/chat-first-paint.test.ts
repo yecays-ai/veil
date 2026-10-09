@@ -11,7 +11,7 @@ import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
 import { regressionContract } from "./regression-contract";
 import { browserRegexStorage } from "../lib/regex-storage";
 import { drainContinuation } from "./lifecycle-test-tools";
-import { resetChatBackgroundCacheForTests } from "../lib/chat/background-cache";
+import { rememberBackgroundBlob, resetChatBackgroundCacheForTests } from "../lib/chat/background-cache";
 
 regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
   "direct chat has no full-page fallback and still awaits and keys the current route identity", () => {
@@ -204,6 +204,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       return url;
     }) as typeof URL.createObjectURL;
     URL.revokeObjectURL = ((url) => { revokedUrls.push(url); }) as typeof URL.revokeObjectURL;
+    const cachedDestinationBackground = rememberBackgroundBlob(pepAssetId, new Blob(["pep wallpaper"], { type: "image/png" }));
     const waitForDestinationRead = async () => {
       if (!destinationReadStarted) {
         destinationReadStarted = true;
@@ -274,7 +275,9 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     await act(async () => { releaseDestination(); releaseSecondary(); });
     await waitFor(() => container.textContent?.includes("pep history") === true &&
       container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");
-    assert.ok(imageReads.includes(pepAssetId), "the destination prepares its own selected wallpaper");
+    const destinationBackground = container.querySelector<HTMLElement>(".chat-room")?.style.getPropertyValue("--chat-background-image") ?? "";
+    assert.ok(destinationBackground.includes(cachedDestinationBackground.url),
+      "the destination publishes its own prepared wallpaper, never the previous chat's image");
     // Background settings are global, not per Character: the destination reuses the valid snapshot the
     // first chat already read instead of reading them again.
     assert.equal(backgroundReads, 1);
