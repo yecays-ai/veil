@@ -66,6 +66,24 @@ test("scoped notifications avoid unrelated session, background and profile reads
   unsubscribe();
 });
 
+test("background revision advances only for global or session background changes", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("peter");
+
+  const beforeOrdinaryUpdate = storage.backgroundRevision();
+  await storage.updateSessionSettings(session.id, { streamOnline: true, customCSS: ".chat { color: red; }" });
+  assert.equal(storage.backgroundRevision(), beforeOrdinaryUpdate,
+    "ordinary session settings do not invalidate the background snapshot");
+
+  await storage.updateSessionSettings(session.id, { backgroundBlur: 4 });
+  assert.equal(storage.backgroundRevision(), beforeOrdinaryUpdate + 1,
+    "a session background change invalidates the background snapshot");
+
+  await storage.updateGlobalChatBackgroundBlur(5);
+  assert.equal(storage.backgroundRevision(), beforeOrdinaryUpdate + 2,
+    "a global chat-background change invalidates the background snapshot");
+});
+
 test("scoped BroadcastChannel events refresh matching data in another tab", async () => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   const originalChannel = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");

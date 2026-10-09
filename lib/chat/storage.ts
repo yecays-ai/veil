@@ -385,10 +385,11 @@ export class ChatStorage {
   }
 
   private chatBackgroundRevision = 0;
-  /** Bumped by every local or cross-tab chat-background or session change; lets callers validate a snapshot without a listener. */
+  /** Bumped by local or cross-tab background changes; lets callers validate a snapshot without a listener. */
   backgroundRevision() { return this.chatBackgroundRevision; }
   private dispatch(change: ChatStorageChange) {
-    if (change.domain === "chat-background" || change.domain === "session") this.chatBackgroundRevision++;
+    if (change.domain === "chat-background" ||
+        (change.domain === "session" && change.backgroundChanged === true)) this.chatBackgroundRevision++;
     // Observer failures must not turn an already committed write into a failed restore.
     this.listeners.forEach((listener) => {
       try { listener(change); } catch { /* Persistence has already succeeded. */ }
