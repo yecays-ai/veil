@@ -3,7 +3,15 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const page = readFileSync("app/contacts/[characterId]/page.tsx", "utf8");
+const loading = readFileSync("app/contacts/[characterId]/loading.tsx", "utf8");
 const info = readFileSync("components/contact-info.tsx", "utf8");
+
+test("Contact Info route fallback reuses the real inert Contact Info surface", () => {
+  assert.match(loading, /useParams/);
+  assert.match(loading, /<ContactInfo characterId=\{characterId\} pending \/>/);
+  assert.doesNotMatch(loading, /RouteLoading/);
+  assert.match(info, /pending \? <span className="contact-back"[^>]*aria-disabled="true"/);
+});
 
 test("direct chat passes an explicit internal return source to Contact Info", () => {
   const pages = readFileSync("components/contacts-pages.tsx", "utf8");
