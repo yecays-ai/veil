@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 claude/f1-b-d-first-paint；PR 创建后补链接；涉及 components/theme-provider.tsx、components/home-screen.tsx、components/chat/messages-home.tsx、lib/chat/session-list-snapshot.ts、components/contact-info.tsx、components/chat/chat-room.tsx（仅诊断事件）、tests/navigation-reentry.test.ts、tests/messages-home-snapshot.test.ts；base 9919b3a。
+Claude；分支 claude/f1-b-d-first-paint；PR https://github.com/yecays-ai/veil/pull/83；涉及 components/theme-provider.tsx、components/home-screen.tsx、components/chat/messages-home.tsx、lib/chat/session-list-snapshot.ts、components/contact-info.tsx、components/chat/chat-room.tsx（仅诊断事件）、tests/navigation-reentry.test.ts、tests/messages-home-snapshot.test.ts；base 9919b3a。
 
 ## 已完成
 
@@ -19,7 +19,7 @@ Claude；分支 claude/f1-b-d-first-paint；PR 创建后补链接；涉及 compo
 - d：Contact Info 的 Message 在 openSession 之后、导航之前调用现有 prefetchChatSession；预取失败只是没有种子。
 - a、c：chat-room 新增诊断事件 `chat-frame`（phase: shell／published），仅在已有首帧诊断开关打开时记录，不改行为。
 - 测试：navigation-reentry 10/10（含 F1 两条、d 一条）；messages-home-snapshot＋messages-home-refresh 3/3。
-- 全套 `npm test`：见 PR 描述中的最终结果（Node v24.21.0）。已知偶发失败 CF-02（chat.unsaved-draft-explicit-retry）在未改动的 main 上也出现过。
+- 全套 `npm test`：765/765 通过（Node v24.21.0）。已知偶发失败 CF-02（chat.unsaved-draft-explicit-retry）在未改动的 main 上也出现过。
 - eslint：0 errors；6 条 warning 为既有，不在本次改动行上。
 
 ## 尚未验证
