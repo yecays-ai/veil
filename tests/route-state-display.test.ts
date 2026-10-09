@@ -120,6 +120,29 @@ test("③ a non-group session on the group route shows an invalid target, not Lo
   } finally { await h.cleanup(); }
 });
 
+test("changing the group target does not show the previous target's state while the new one loads", async () => {
+  const second = deferred<{ session: ChatSession; messages: [] }>();
+  let setId!: (id: string) => void;
+  const h = await mount({ readSession: (id) => id === "s1"
+    ? Promise.resolve({ session: privateSession("s1"), messages: [] as [] }) : second.promise },
+  async () => {
+    const { createElement, useState } = await import("react");
+    const { GroupRoom } = await import("../components/chat/group-room");
+    return function Switch() {
+      const [id, set] = useState("s1"); setId = set;
+      return createElement(GroupRoom, { sessionId: id });
+    };
+  });
+  try {
+    await waitFor(() => /not a group/i.test(h.text()), "the first target is not a group");
+    await h.act(async () => setId("s2"));
+    assert.match(h.text(), /Loading group/, "the new target is loading");
+    assert.doesNotMatch(h.text(), /not a group/i, "the previous target's verdict must not linger");
+    await h.act(async () => { second.resolve({ session: groupSession(), messages: [] }); });
+    await waitFor(() => /Members/.test(h.text()), "the new group renders");
+  } finally { await h.cleanup(); }
+});
+
 test("a real group conversation still renders its members", async () => {
   const h = await mount({ readSession: async () => ({ session: groupSession(), messages: [] }) }, groupRoom("g1"));
   try {
