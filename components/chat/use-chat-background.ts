@@ -30,6 +30,7 @@ type Options = { characterId?: string; storage?: ChatStorage };
 export function useChatBackground(session: ChatSession | null, { characterId, storage = chatStorage }: Options = {}) {
   const settingsSnapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
   const [settings, setSettings] = useState<ChatBackgroundSettings>(settingsSnapshot ?? DEFAULT_SETTINGS);
+  const [settingsReady, setSettingsReady] = useState(settingsSnapshot !== null);
   const settingsForFrame = settingsSnapshot ?? settings;
   const settingsReadyForFrame = settingsReady || settingsSnapshot !== null;
   const [lateFor, setLateFor] = useState<string | null>(null);
