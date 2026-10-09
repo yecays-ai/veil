@@ -5,7 +5,8 @@ import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
 import { CHAT_SESSION_CSS_EXAMPLE, validateSessionCSS } from "../../lib/chat/custom-css";
 
-export function CustomCSSSettings({ session, onBack }: {
+export function CustomCSSSettings({ screenRef, session, onBack }: {
+  screenRef?: React.Ref<HTMLElement>;
   session: ChatSession;
   onBack: () => void;
 }) {
@@ -33,7 +34,7 @@ export function CustomCSSSettings({ session, onBack }: {
       setBusy(false);
     }
   }
-  return <section className="chat-info-screen chat-custom-css-screen" aria-label="Custom CSS">
+  return <section ref={screenRef} className="chat-info-screen chat-custom-css-screen" role="dialog" aria-modal="true" aria-label="Custom CSS">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to Chat Info" onClick={onBack}>
         <ChevronLeft aria-hidden="true" />
@@ -54,3 +55,4 @@ export function CustomCSSSettings({ session, onBack }: {
     </div>
   </section>;
 }
+
