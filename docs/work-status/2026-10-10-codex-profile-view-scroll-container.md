@@ -1,16 +1,16 @@
 # STATUS — 2026-10-10-codex-profile-view-scroll-container
 
 更新人：Codex
-更新时间：2026-10-10T01:00:00+08:00
+更新时间：2026-10-10T01:01:00+08:00
 发现范围：2026-10-10 00:40–00:56 +08:00，核查远端 main `9919b3a`、GitHub 开放 PR 列表（空）、远端分支及其相对 main 文件清单；无其他分支修改 `components/profile-view.tsx`，`fix/nav-contact-info-reentry` 只改 `profile-pages.tsx` 等导航文件，与本修复无文件重叠。读取 ProfileView、ProfilePages、PageShell、滚动 CSS、相关测试及 work-status 规范；用 main 挂载复现。本地 Node/JSDOM 验证；没有 iPhone Safari 访问。
 
 ## 当前任务
 
-进行中：修复原始 Part 5 / F8 的 ProfileView 页面滚动容器定位。
+待审查：原始 Part 5 / F8 的 ProfileView 页面滚动容器修复已提交独立 PR。
 
 ## 谁在改哪里
 
-Codex；分支 `fix/profile-view-scroll-container`；PR 尚未创建；base main `9919b3a27465823a0e95c279b01fe3e2af8ca24e`。仅 `components/profile-view.tsx`、新增挂载测试及本 work-status。
+Codex；分支 `fix/profile-view-scroll-container`；PR https://github.com/yecays-ai/veil/pull/82；base main `9919b3a27465823a0e95c279b01fe3e2af8ca24e`。仅 `components/profile-view.tsx`、`tests/profile-view-scroll-ui.test.ts` 及本 work-status。
 
 ## 已完成
 
@@ -23,7 +23,7 @@ Codex；分支 `fix/profile-view-scroll-container`；PR 尚未创建；base main
 
 ## 尚未验证
 
-- CodeRabbit 尚未审查。
+- CodeRabbit 审查进行中。
 - CI 未运行；Vercel 额度不作为阻碍；iPhone Safari 真机未验。
 
 ## 下一步
