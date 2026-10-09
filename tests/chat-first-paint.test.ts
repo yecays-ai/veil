@@ -273,14 +273,15 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.ok(container.querySelector(".chat-composer"));
     assert.doesNotMatch(container.textContent ?? "", /peter history|pep history|Loading/);
 
+    assert.equal(scrollCalls.length, 0, "no history positioning occurs before first publication");
     const callsBeforeDestinationPublish = scrollCalls.length;
     await act(async () => { releaseDestination(); releaseSecondary(); });
     await waitFor(() => activeChatSubscriptions === 3 &&
       container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "true");
     assert.equal(container.querySelectorAll("[data-message-id]").length, 0,
       "history remains unpublished while the current Display Regex read is pending");
-    assert.equal(scrollCalls.length, callsBeforeDestinationPublish,
-      "initial positioning waits with the unpublished history");
+    assert.equal(scrollCalls.length, 0,
+      "message/reveal updates cannot scroll history while Display Regex is pending");
     await act(async () => { releaseRegex(); });
     await waitFor(() => container.textContent?.includes("pep history") === true &&
       container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");

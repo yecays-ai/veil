@@ -56,6 +56,7 @@ test("initial history uses the new session default and keeps scroll input from i
 test("initial Chat publication waits for Display Regex and positions history before paint", () => {
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
   assert.match(room, /chatBackground\.readyForFrame && regexReady/);
+  assert.match(room, /useEffect\(\(\) => \{\s*if \(!framePublished\) return;\s*if \(nearBottom\.current\.value\)\s*history\.current\?\.scrollTo\(\{ top: history\.current\.scrollHeight \}\)/);
   assert.match(room, /regexReadState\.owner === regexOwner && regexReadState\.ready/);
   assert.match(room, /const bindingReadFailed = !bindingsReady && !!bindingsError;/);
   assert.match(room, /const regexGroups = bindingReadFailed \? \[\]/);

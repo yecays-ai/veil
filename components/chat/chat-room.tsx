@@ -316,8 +316,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [framePublished, session?.id]);
   useEffect(() => {
+    if (!framePublished) return;
     if (nearBottom.current.value)
       history.current?.scrollTo({ top: history.current.scrollHeight });
+  // Publication-only changes are positioned by the layout effect above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, revealState]);
   useLayoutEffect(() => {
     if (!pendingSearchJumpId || previousSearchJumpId.current === pendingSearchJumpId) return;
