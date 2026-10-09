@@ -17,7 +17,7 @@ import {
 import { UI_COPY as U } from "../lib/ui-copy";
 
 export function HomeScreen() {
-  const { document, ready, commit, resolveImage } = useTheme();
+  const { document, ready, settled, commit, resolveImage } = useTheme();
   const layout = document.current;
   const { profile, iconLayout, dockLayout, widgets, pageCount } = layout;
   const [page, setPage] = useState(1);
@@ -165,6 +165,9 @@ export function HomeScreen() {
     }
   }
 
+  // Until the saved Theme has been read, `document` is only the built-in default; painting its desktop would flash
+  // the wrong layout before the user's own. The bootstrap colours already fill the screen, so the shell stays empty.
+  if (!settled) return <div className="home-screen desktop-home" aria-busy="true" />;
   return (
     <div className={`home-screen desktop-home ${editing ? "is-editing" : ""}`}>
       {editing && (

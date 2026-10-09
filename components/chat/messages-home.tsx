@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
 import { prefetchChatSession } from "../../lib/chat/session-prefetch";
+import { lastSessionList, rememberSessionList } from "../../lib/chat/session-list-snapshot";
 import type { ChatSession } from "../../lib/chat/types";
 import { recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
 import { sortChatSessions } from "../../lib/chat/session-order";
@@ -20,7 +21,8 @@ type Filter = "all" | "private" | "groups";
 export function MessagesHome() {
   const router = useRouter(), { document, ready } = useFoundation();
   const contacts = useContacts();
-  const [sessions, setSessions] = useState<ChatSession[]>([]), [loaded, setLoaded] = useState(false);
+  const [snapshot] = useState(() => lastSessionList(chatStorage));
+  const [sessions, setSessions] = useState<ChatSession[]>(snapshot ?? []), [loaded, setLoaded] = useState(snapshot !== null);
   const [error, setError] = useState(""), [query, setQuery] = useState(""), [filter, setFilter] = useState<Filter>("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
@@ -35,7 +37,8 @@ export function MessagesHome() {
     const load = async () => {
       const revision = ++requestRevision;
       try { const rows = await chatStorage.listSessions(); if (active && revision === requestRevision) {
-        setSessions(sortChatSessions(rows)); setLoaded(true); setError(""); }
+        const sorted = sortChatSessions(rows);
+        rememberSessionList(chatStorage, sorted); setSessions(sorted); setLoaded(true); setError(""); }
       } catch { if (active && revision === requestRevision)
         setError("Could not load conversations. Existing messages have not been changed."); }
     };

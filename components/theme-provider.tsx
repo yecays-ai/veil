@@ -24,6 +24,8 @@ import {
 type ThemeContextValue = {
   document: ThemeDocument;
   ready: boolean;
+  /** The first load has finished, successfully or not. Until then the document is only the built-in default. */
+  settled: boolean;
   commit: (update: (document: ThemeDocument) => ThemeDocument) => Promise<void>;
   resolveImage: (source: string | null) => string | null;
   updateProfile: (
@@ -50,6 +52,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     presets: [],
   });
   const [ready, setReady] = useState(false);
+  const [settled, setSettled] = useState(false);
   const [error, setError] = useState("");
   const queue = useRef<Promise<void>>(Promise.resolve());
   const mounted = useRef(false);
@@ -79,6 +82,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const retained = images.retained(saved);
         setResolvedImages(retained);
         setReady(true);
+        setSettled(true);
         setError("");
         const assetsStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
         if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-start");
@@ -110,6 +114,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         if (!active || request !== revision) return;
         writable.current = false;
         setReady(false);
+        setSettled(true);
         setError(reason instanceof Error ? reason.message : "Could not load appearance.");
         throw reason;
       }
@@ -215,6 +220,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       value={{
         document,
         ready,
+        settled,
         commit,
         resolveImage: (source) => {
           if (!source) return null;

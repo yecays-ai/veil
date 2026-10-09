@@ -195,6 +195,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     const nodeCount = history.current?.querySelectorAll("[data-message-id]").length ?? 0;
     recordChatDiagnostic("chat-react-commit", { characterId, hasSession: !!session, messageCount: messages.length, nodeCount });
   }, [characterId, session, messages.length]);
+  // Diagnostics only: when the shell turned into the published frame, to tell the route wait from the frame wait.
+  const hasSession = !!session;
+  useLayoutEffect(() => {
+    if (isChatDiagnosticsEnabled()) recordChatDiagnostic("chat-frame", { characterId, phase: framePublished ? "published" : "shell", hasSession });
+  }, [characterId, framePublished, hasSession]);
   const nearBottom = useRef<{ characterId: string; sessionId: string | undefined; value: boolean }>({
     characterId, sessionId: undefined, value: true,
   });
