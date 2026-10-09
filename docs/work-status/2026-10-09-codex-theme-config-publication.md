@@ -1,12 +1,12 @@
 # STATUS — 2026-10-09-codex-theme-config-publication
 
 更新人：Codex
-更新时间：2026-10-10T00:15:00+08:00
+更新时间：2026-10-10T00:27:00+08:00
 发现范围：2026-10-09 23:40–23:57 +08:00，检查远端 main `33a6cf7`、开放 PR #78 的 head、diff 与工作记录，以及远端分支列表。#78 仅修 scrollTo 测试类型，无本单文件重叠；已合并的 #75/#77 是《前端》F7/F8，与本单原始 Part 5 / F7 来源不同。读取 main 的 AGENTS/work-status 规范及相关主题代码、测试；本地隔离快照验证，无浏览器或 iPhone 真机访问。未对未发布的本地工作作全局所有权推断。
 
 ## 当前任务
 
-待补丁复审：原始 Part 5 / F7 已修待验；CodeRabbit 的一条图片重载回归意见已补丁，等待复核。不修改总账中其他同名 F7。
+已完成施工，等待人工合并：原始 Part 5 / F7 已修待验。CodeRabbit 一条图片重载回归意见已补丁，复审没有有效意见，原线程已 resolved；不修改总账中其他同名 F7。
 
 ## 谁在改哪里
 
@@ -26,8 +26,9 @@ Codex；分支 `fix/theme-config-publication`；PR https://github.com/yecays-ai/
 
 - 起始 main 的 scrollTo 重载类型错误曾阻挡 TypeScript；#78 已合并，原样同步后该阻挡解除。本单没有独立修改该夹具。
 - 全套首跑聊天 Retry 测试一次失败；单独重跑 11/11 与全套复跑通过，未修改该测试或聊天逻辑。
-- CodeRabbit 一条有效评论补丁待复审，尚未 resolved；CI 未运行，Vercel 自动部署额度失败，不声明 CI/部署通过；iPhone Safari 真机未验。
+- CodeRabbit 完整审查提出一条有效评论，补丁 `8b4b32c` 经增量复审（`a2b5710` → `8b4b32c`）无新的有效意见，CodeRabbit 状态 success；原线程在复审和行为验证后由 Codex 标记 resolved，未解决线程 0。
+- CI 未运行，Vercel 自动部署额度失败，不声明 CI/部署通过；iPhone Safari 真机未验。全套既有 navigation-feedback 失败仍存在。
 
 ## 下一步
 
-等待 CodeRabbit 并处理有效意见；保持 PR open、不加 automerge、人工合并。
+停止施工；PR #79 保持 open、不加 automerge，等待用户人工合并及 iPhone Safari 验收。
