@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/audit-ledger-merge`；PR 见本分支对应的 pull request（base main）。
+Claude；分支 `claude/audit-ledger-merge`；PR https://github.com/yecays-ai/veil/pull/68（base main）。
 涉及：新增 `docs/AUDIT_LEDGER.md`，删除根目录 `AUDIT_LEDGER.md`，新增本记录。
 
 ## 已完成
