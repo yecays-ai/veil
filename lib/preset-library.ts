@@ -89,7 +89,7 @@ export function promptEnabled(preset: Preset, identifier: string) {
   const prompt = preset.prompts.find((item) => item.identifier === identifier);
   if (!prompt) return false;
   const order = preset.promptOrder.find((item) => item.identifier === identifier);
-  return prompt.enabled && (order?.enabled ?? true);
+  return prompt.enabled && (order?.enabled ?? false);
 }
 
 export function setPromptEnabled(preset: Preset, identifier: string, enabled: boolean): Preset {
@@ -98,7 +98,9 @@ export function setPromptEnabled(preset: Preset, identifier: string, enabled: bo
     throw new Error("This Prompt no longer exists.");
   return validatePreset({ ...preset,
     prompts: preset.prompts.map((item) => item.identifier === identifier ? { ...item, enabled } : item),
-    promptOrder: preset.promptOrder.map((item) => item.identifier === identifier ? { ...item, enabled } : item),
+    promptOrder: preset.promptOrder.some((item) => item.identifier === identifier)
+      ? preset.promptOrder.map((item) => item.identifier === identifier ? { ...item, enabled } : item)
+      : enabled ? [...preset.promptOrder, { identifier, enabled: true }] : preset.promptOrder,
   });
 }
 
@@ -111,7 +113,7 @@ export function movePrompt(preset: Preset, identifier: string, direction: -1 | 1
   const enabled = new Map(preset.promptOrder.map((entry) => [entry.identifier, entry.enabled]));
   const promptOrder = displayed.map((entry) => ({
     identifier: entry.identifier,
-    enabled: enabled.get(entry.identifier) ?? entry.enabled,
+    enabled: enabled.get(entry.identifier) ?? false,
   }));
   return validatePreset({ ...preset, promptOrder });
 }
@@ -142,3 +144,4 @@ export function exportPreset(preset: Preset): string {
 export function newPreset(document: PresetDocument): PresetDocument {
   return copyPreset(document, createBuiltinPreset().id, "New Preset");
 }
+
