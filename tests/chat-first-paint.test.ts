@@ -131,6 +131,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   ] });
   const originalLoad = browserFoundationStorage.load;
   const originalReadExisting = chatStorage.readExistingSession;
+  const originalSessionRead = chatStorage.readSession;
   const originalBackgroundRead = chatStorage.readChatBackgroundSettings;
   const originalProfileRead = chatStorage.readGlobalProfileSettings;
   const originalImageRead = chatStorage.readChatImage;
@@ -148,6 +149,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   const backgroundResponses: Array<(settings: Awaited<ReturnType<typeof chatStorage.readChatBackgroundSettings>>) => void> = [];
   const assetReads: Promise<Blob | null>[] = [];
   let destinationReads = 0, backgroundReads = 0, profileReads = 0, regexReads = 0;
+  let destinationReadStarted = false;
   let activeChatSubscriptions = 0;
   const imageReads: string[] = [], createdUrls: string[] = [], revokedUrls: string[] = [];
   const container = dom.window.document.getElementById("root")!;
@@ -202,9 +204,20 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       return url;
     }) as typeof URL.createObjectURL;
     URL.revokeObjectURL = ((url) => { revokedUrls.push(url); }) as typeof URL.revokeObjectURL;
+    const waitForDestinationRead = async () => {
+      if (!destinationReadStarted) {
+        destinationReadStarted = true;
+        destinationReads++;
+        await destinationPending;
+      }
+    };
     chatStorage.readExistingSession = async (id) => {
-      if (id === "pep") { destinationReads++; await destinationPending; }
+      if (id === "pep") await waitForDestinationRead();
       return originalReadExisting.call(chatStorage, id);
+    };
+    chatStorage.readSession = async (id) => {
+      if (id === destination.id) await waitForDestinationRead();
+      return originalSessionRead.call(chatStorage, id);
     };
     const initial = await DirectChatPage({ params: Promise.resolve({ characterId: "peter" }) });
     function Navigation() {
@@ -234,7 +247,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.equal(composer().disabled, false);
 
     await act(async () => { container.querySelector("button")!.click(); });
-    await waitFor(() => destinationReads === 1 && profileReads === 2 && regexReads === 2);
+    await waitFor(() => destinationReads === 1);
+    await waitFor(() => profileReads === 2 && regexReads === 2);
     assert.equal(backgroundReads, 1, "background settings were prepared once in parallel with the session");
     assert.equal(activeChatSubscriptions, 2, "pending navigation keeps only the destination session and global timing subscriptions");
     assert.equal(container.querySelector(".chat-contact-summary")?.textContent, "Chat",
@@ -309,6 +323,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     resetChatBackgroundCacheForTests();
     const revokedAtUnmount = [...revokedUrls];
     chatStorage.readExistingSession = originalReadExisting;
+    chatStorage.readSession = originalSessionRead;
     chatStorage.readChatBackgroundSettings = originalBackgroundRead;
     chatStorage.readGlobalProfileSettings = originalProfileRead;
     chatStorage.readChatImage = originalImageRead;
