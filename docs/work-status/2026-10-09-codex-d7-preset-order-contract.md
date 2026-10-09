@@ -6,11 +6,11 @@
 
 ## 当前任务
 
-第四刀 D7 有界修复：本地回归与构建通过，准备独立 PR，等待 CodeRabbit 和人工 review；不自动合并。
+第四刀 D7 有界修复：本地回归与构建通过，PR #65 已创建，等待 CodeRabbit 和人工 review；不自动合并。
 
 ## 谁在改哪里
 
-Codex；独立分支 `fix/d7-preset-order-contract`；base 为上述 main。仅涉及 `lib/preset-library.ts`、`components/settings/presets/preset-detail.tsx`、`tests/preset-editor-ui.test.ts`、新增 `tests/preset-d7-contract.test.ts` 与本记录。未修改 D6、Theme、WorldBook、聊天 prompt 组装器或工作流。
+Codex；独立分支 `fix/d7-preset-order-contract`；base 为上述 main；PR https://github.com/yecays-ai/veil/pull/65，等待 CodeRabbit/人工 review。仅涉及 `lib/preset-library.ts`、`components/settings/presets/preset-detail.tsx`、`tests/preset-editor-ui.test.ts`、新增 `tests/preset-d7-contract.test.ts` 与本记录。未修改 D6、Theme、WorldBook、聊天 prompt 组装器或工作流。
 
 ## 已完成
 
@@ -34,4 +34,4 @@ Codex；独立分支 `fix/d7-preset-order-contract`；base 为上述 main。仅�
 
 ## 下一步
 
-创建基于最新 main 的单独 PR；等待 CodeRabbit 与人工 review，不加 automerge，不合并。
+等待 PR #65 的 CodeRabbit 与人工 review；CI 因账户计费限制未运行。不加 automerge，不合并。
