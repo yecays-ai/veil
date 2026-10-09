@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/preset-picker-accept-experiment`；基于 #62 的 head `2ea861c`（D6 修复代码），PR 以 `fix/d6-preset-import-id-contract` 为 base，因此 diff 只含本实验。未修改 #62 的分支或提交。
+Claude；分支 `claude/preset-picker-accept-experiment`；基于 #62 的 head `2ea861c`（D6 修复代码），PR https://github.com/yecays-ai/veil/pull/64 ，以 `fix/d6-preset-import-id-contract` 为 base，因此 diff 只含本实验。未修改 #62 的分支或提交。
 触及：`components/settings/presets/preset-list.tsx`（仅移除文件输入的 `accept` 属性）、新增 `tests/preset-import-file-input.test.ts`、本记录。
 
 ## 已完成
