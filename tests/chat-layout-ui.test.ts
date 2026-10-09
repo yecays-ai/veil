@@ -195,14 +195,23 @@ test("iOS keyboard handling keeps header and history on the stable chat canvas",
 });
 
 
-test("mobile shell follows the dynamic viewport in Safari and standalone mode", () => {
+test("mobile Safari uses dynamic viewport while standalone keeps full-screen geometry", () => {
   assert.match(mobile, /--phone-screen-height:\s*100dvh/);
   assert.match(mobile, /@media[\s\S]*?html,\s*body\s*\{[^}]*height:\s*100dvh/);
   assert.match(mobile, /@media[\s\S]*?\.app-root\s*\{[^}]*height:\s*100dvh/);
-  assert.match(mobile, /html\[data-mobile-standalone="true"\]\s*\{[^}]*height:\s*100dvh/);
+  const standalone = mobile.slice(mobile.indexOf('html[data-mobile-standalone="true"]'));
+  assert.match(standalone, /--phone-screen-height:\s*100lvh/);
+  assert.match(standalone, /html\[data-mobile-standalone="true"\]\s*\{[^}]*height:\s*100lvh/);
   assert.match(
-    mobile,
-    /html\[data-mobile-standalone="true"\]\s+body,\s*html\[data-mobile-standalone="true"\]\s+\.app-root\s*\{[^}]*height:\s*100dvh/,
+    standalone,
+    /html\[data-mobile-standalone="true"\]\s+body,\s*html\[data-mobile-standalone="true"\]\s+\.app-root\s*\{[^}]*height:\s*100lvh/,
   );
-  assert.doesNotMatch(mobile, /100lvh/);
+  assert.doesNotMatch(standalone, /100dvh/);
+});
+
+test("standalone diagnostics never render an Enable DIAG overlay", () => {
+  const diagnostics = readFileSync("components/diagnostics/chat-diagnostics.tsx", "utf8");
+  assert.doesNotMatch(diagnostics, /Enable DIAG|StandaloneDiagnosticsOptIn/);
+  assert.match(diagnostics, /get\("veilDiagnostics"\) === "1"/);
+  assert.match(diagnostics, /<DiagnosticsPanel onDisable=\{onDisable\} \/>/);
 });
