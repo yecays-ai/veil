@@ -184,6 +184,63 @@ test("a settings read timeout releases the frame and a late result still applies
   } finally { await app.cleanup(); }
 });
 
+test("a failed settings read is not remembered as the default background", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    const image = await app.storage.saveChatImage(new Blob(["global"], { type: "image/png" }));
+    await app.storage.updateGlobalChatBackground(image);
+    const readSettings = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let failing = true;
+    app.storage.readChatBackgroundSettings = () => failing ? Promise.reject(new Error("IDB unavailable")) : readSettings();
+    await app.mountNow(session);
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "the bounded frame still releases to the Theme background");
+    assert.equal(cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()), null, "an unknown result is not cached as a choice");
+    failing = false;
+    await app.leave();
+    await app.mountNow(session);
+    await app.until(() => app.url() !== "");
+    assert.equal(app.frameReady(), "true", "the next visit reads again and shows the chosen global wallpaper");
+  } finally { await app.cleanup(); }
+});
+
+test("an explicit default background publishes as soon as the settings resolve, and not before", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    const readSettings = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let release!: (value: Awaited<ReturnType<typeof app.storage.readChatBackgroundSettings>>) => void;
+    app.storage.readChatBackgroundSettings = () => new Promise((resolve) => { release = resolve; });
+    await app.mountNow(session);
+    assert.equal(app.frameReady(), "false", "nothing is published while the settings are still unknown");
+    release(await readSettings()); // the stored settings choose no global wallpaper
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "no global or chat wallpaper is chosen, so the Theme background shows");
+  } finally { await app.cleanup(); }
+});
+
+test("a late global settings result does not replace the chat's own wallpaper", async () => {
+  const app = await harness();
+  try {
+    const { session } = await sessionWithWallpaper(app.storage, "own");
+    const global = await app.storage.saveChatImage(new Blob(["global"], { type: "image/png" }));
+    await app.storage.updateGlobalChatBackground(global);
+    const lateSettings = await app.storage.readChatBackgroundSettings();
+    let release!: (value: Awaited<ReturnType<typeof app.storage.readChatBackgroundSettings>>) => void;
+    app.storage.readChatBackgroundSettings = () => new Promise((resolve) => { release = resolve; });
+    await app.mountNow(session);
+    await app.until(() => app.url() !== "");
+    const own = app.url();
+    release(lateSettings);
+    // The hook caches the result before it updates readiness, so this proves the late result was applied, not the 1200 ms fallback.
+    await app.until(() => cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()) === lateSettings);
+    assert.equal(app.url(), own, "the character's wallpaper still wins after the global settings arrive");
+  } finally { await app.cleanup(); }
+});
+
 test("a superseding settings refresh completes readiness before the fallback timeout", async () => {
   const app = await harness();
   try {
