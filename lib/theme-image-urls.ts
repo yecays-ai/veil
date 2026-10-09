@@ -5,15 +5,21 @@ export class ThemeImageUrls {
   private revision = 0;
   private disposed = false;
   private urls: Record<string, string> = {};
+  private pendingUrls = new Set<string>();
 
   constructor(private readBlob: (id: string) => Promise<Blob | null>,
     private create: (blob: Blob) => string = (blob) => URL.createObjectURL(blob),
     private revoke: (url: string) => void = (url) => URL.revokeObjectURL(url)) {}
 
-  invalidate() { this.revision++; }
+  invalidate() {
+    this.revision++;
+    this.pendingUrls.forEach(this.revoke);
+    this.pendingUrls.clear();
+  }
 
   async sync(document: ThemeDocument): Promise<Record<string, string> | null> {
-    const revision = ++this.revision;
+    this.invalidate();
+    const revision = this.revision;
     const next: Record<string, string> = {};
     const current = document.current.profile;
     const ids = new Set(
@@ -30,6 +36,7 @@ export class ThemeImageUrls {
         if (!isCurrent() || !blob) return null;
         const url = this.create(blob);
         created.push(url);
+        this.pendingUrls.add(url);
         return [reference, url] as const;
       }));
       if (!isCurrent()) return null;
@@ -37,9 +44,12 @@ export class ThemeImageUrls {
       for (const [reference, url] of Object.entries(this.urls))
         if (!next[reference]) this.revoke(url);
       this.urls = next;
+      created.forEach((url) => this.pendingUrls.delete(url));
       created.length = 0;
       return next;
-    } finally { created.forEach(this.revoke); }
+    } finally {
+      created.forEach((url) => { if (this.pendingUrls.delete(url)) this.revoke(url); });
+    }
   }
 
   dispose() {
