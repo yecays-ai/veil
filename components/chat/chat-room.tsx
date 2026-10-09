@@ -565,7 +565,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
-  const typingIndicator = typing && <div className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing">
+  const typingIndicator = framePublished && typing && <div className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing">
     <div className="chat-avatar-column chat-msg-avatar"><ChatAvatar profile={character} /></div><div className="chat-message">
       <p className="chat-bubble chat-bubble-role-assistant"><span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span></p>
     </div>
