@@ -1,36 +1,36 @@
 # STATUS — Part 5 / F3 Chat overlay focus
 
 更新人：Codex
-更新时间：2026-10-09T21:15:00+08:00
-发现范围：2026-10-09；最初本地基线 `755c59f68e2199657853514c4be8aa7025596394`；发布前复核 PR #73 最新基线为 `0ee3e2d8ebb07dda12ef3759673aad1b4c40cd71`（#72）。#72 在任务进行中合并，更新 `app/mobile-foundation.css`、`components/diagnostics/chat-diagnostics.tsx` 与 `tests/chat-layout-ui.test.ts`；PR 分支以 #72 后的 main 为基线，并保留其测试断言，只加适配 Chat Info 子页面 ref 的两项断言。#36 已关闭并由 #70 替代；其改动和状态记录为会话预取/首帧，不含焦点边界。开放 PR #73 已创建；PR 搜索未发现其他焦点边界改动。
+更新时间：2026-10-09T21:46:00+08:00
 
 ## 当前任务
 
-Part 5 / F3：已修，CodeRabbit 发现 1 个回归点，补丁已提交 PR #73，待补丁复审；禁止自动合并。
+Part 5 / F3：已修，待 CodeRabbit 意见整改。新增焦点恢复意见已补丁提交并通过本地回归，等待复审；PR #73 open，禁止自动合并。本来源编号不覆盖仓库总账中背景问题的 F3。
 
 ## 谁在改哪里
 
-Codex；分支 `fix/chat-overlay-focus-boundaries`，PR [#73](https://github.com/yecays-ai/veil/pull/73)，以最新 main `0ee3e2d` 为基线。范围为 ChatRoom、Chat Info 的三个子页面根节点、ConfirmDialog、布局契约断言和定向挂载测试。
+Codex；分支 `fix/chat-overlay-focus-boundaries`，PR [#73](https://github.com/yecays-ai/veil/pull/73)。本次修订基于 PR head `dd527769`，PR 对账基线 `0ee3e2d8ebb07dda12ef3759673aad1b4c40cd71`。本地树为原始 `755c59f` 加 #72 已合并文件更新及本 PR 修改。修改路径：`components/chat/chat-room.tsx`、`tests/chat-overlay-focus.test.ts`、`tests/chat-layout-ui.test.ts`、本状态记录。
+
+2026-10-09 21:44 +08:00 通过 GitHub 集成读取 PR #73 最新代码/行内评论、开放 PR（含 drafts）及 #75 的文件和 diff。#75 也修改 ChatRoom，但范围为 Display Regex 和初始 history 定位，与本次 Chat Info 点击入口、overlay 焦点来源记录不重叠；未接管其改动。#36 已关闭并由 #70 替代，未修改。
 
 ## 已完成
 
-- 只读确认 Chat Info、Message Actions、删除/清空确认框此前都没有焦点进入、Tab 限制或恢复；ConfirmDialog 只有 `aria-modal`，没有 Escape 行为。
-- 实现 Chat Info、消息菜单、确认框的焦点进入、Tab/Shift+Tab 环绕、背景 `inert`、合理焦点恢复和 Escape 取消；Chat Info 子页面切换时将焦点转入当前页面，动态读取当前覆盖层根节点。
-- 挂载回归测试通过：真实 ChatRoom + React StrictMode + JSDOM 键盘事件；覆盖 Chat Info 与搜索子页面、Message Actions、清空/删除确认、Esc 不删除、确认仍删除、覆盖层切换和原焦点触发器被卸载时回退。
-- `node node_modules/typescript/bin/tsc --project tsconfig.tests.json`：通过。
-- `node scripts/run-tests.mjs`：743/743 通过；本地测试树已纳入 #72 合并的移动布局与 DIAG 改动，与 PR #73 的 `0ee3e2d` 基线一致。
-- `node node_modules/typescript/bin/tsc --noEmit`：通过。
-- `node node_modules/eslint/bin/eslint.js .`：0 errors，3 条既有 `components/chat/use-chat-background.ts` warnings。
-- `git diff --check`：通过。
+- 三类 overlay 的焦点进入、Tab/Shift+Tab 限制、底层 inert、恢复与确认弹窗 Escape 取消已有挂载覆盖。
+- CodeRabbit 上一条嵌套 dialog Escape 意见已确认 addressed/resolved；外层仍让嵌套 dialog 自己取消。
+- 确认新 finding：ChatInfoScreen 子 layout effect 先聚焦 Back，随后 ChatRoom 才捕获 activeElement，原触发器被误记。
+- 在打开 Chat Info 的点击入口、setState 前记录原焦点；父 layout effect 保留这一记录，不覆盖成子页面控件。确认框切换后仍保留 Chat Info 原触发器；连接性检查和安全回退继续工作。
+- 新增真实挂载 ChatRoom + StrictMode 回归：另一个按钮激活设置入口，Chat Info 收到焦点，关闭后恢复到该按钮。修复前断言失败，修复后通过。现有子页面、确认框、Escape、触发器卸载用例也通过。
+- 更新布局测试中依赖旧 onClick 字面写法的断言；实际打开和焦点恢复由挂载交互验证。
+- 测试 TypeScript 编译、应用 `tsc --noEmit`、`git diff --check` 通过。
+- 全套本地测试复跑 743/743 通过。首轮一项无关生成测试失败；该测试文件单独复跑 11/11、全套复跑均通过，未修改其代码。
+- ESLint 0 errors，3 条既有 `components/chat/use-chat-background.ts` warnings；本次三个代码/测试文件定向 lint 无问题。
 
 ## 尚未验证
 
-- GitHub Actions/CI 未运行；本次验收按本地测试与 CodeRabbit。
-- iPhone Safari 软键盘、VoiceOver 和真实触屏焦点表现尚未验证。
-- CodeRabbit 在 PR #73 指出：ChatRoom 捕获阶段的 Escape handler 会抢先阻止嵌套 dialog（如 ImageCropDialog）收到 Escape。已增加嵌套 dialog 所有权检查；只有 Escape 不属于嵌套 dialog 时才由当前 Chat overlay 关闭。
-- 新增 mounted ChatRoom 回归断言：嵌套 dialog 的 Escape handler 收到未被外层 preventDefault 的事件，且 Chat Info 仍保持打开；本地定向测试通过。当前 PR head 已更新，等待 CodeRabbit 补丁复审。
+- 新焦点恢复补丁尚待 CodeRabbit 复审；原评论不由 Codex 自行核销。
+- GitHub Actions/CI 未运行；Vercel preview 受免费部署额度限制，本次验收为本地测试 + CodeRabbit。
+- iPhone Safari 软键盘、VoiceOver 和真实设备焦点表现未验证。
 
 ## 下一步
 
-等待 PR #73 的 CodeRabbit 最终审查；仅处理本单范围内的意见，不自动合并。
-
+等待 PR #73 本次补丁复审。用户自行决定合并，之后再进行真机验收。
