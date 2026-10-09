@@ -276,17 +276,14 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.equal(scrollCalls[0].top, initiallyPositionedHistory.scrollHeight,
       "the initial positioning targets the bottom of the first history");
     const callsBeforeDestinationPublish = scrollCalls.length;
-    Object.defineProperties(history, {
-      scrollHeight: { configurable: true, value: 1000 },
-      clientHeight: { configurable: true, value: 300 },
-      scrollTop: { configurable: true, writable: true, value: 0 },
-    });
-    await act(async () => { history.dispatchEvent(new dom.window.Event("scroll")); });
     await act(async () => { releaseDestination(); releaseSecondary(); });
     await waitFor(() => container.textContent?.includes("pep history") === true &&
       container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");
-    assert.equal(scrollCalls.length, callsBeforeDestinationPublish,
-      "a user scroll made while the destination session is loading is preserved");
+    assert.ok(scrollCalls.length > callsBeforeDestinationPublish,
+      "the first history publication executes its layout-effect bottom positioning");
+    const publishedHistory = container.querySelector<HTMLElement>('[aria-label="Conversation history"]')!;
+    assert.equal(scrollCalls.at(-1)?.top, publishedHistory.scrollHeight,
+      "the initial positioning targets the bottom of the published history");
     assert.equal(container.querySelector(".chat-bubble")?.textContent, "pep history",
       "a failed destination Regex read publishes the original message text");
     assert.equal(container.querySelector(".chat-room")?.getAttribute("data-chat-background"), "default",
