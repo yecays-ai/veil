@@ -91,6 +91,7 @@ Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收�
 | D8 | Theme 导出包可能超过自身导入限制（典型约 3.3 MB 导出 > 导入端 3,000,000 字符，导出后无法重新导入） | — | 明确后移（既有审计决定；后续归属待定，不并入 D2）。本行 D8 与其他板块的 D8 不是同一问题 |
 
 ## 板块五：界面 / 导航 / 前端渲染
+说明：本板块 F1–F8 来自《前端》审计（Theme 首帧、Chat 首帧、缓存与异步生命周期）。《6刀》Part 5 报告另有自己的一套 F1–F11 与 R1–R4，两者编号相同但不是同一批问题：Part 5 的 F1–F8 按 PR 标题推断大致对应 #58（Chats 旧刷新覆盖）、#71（设置错误归属）、#73（浮层焦点）、#76（消息键盘操作）、#69（Custom CSS 保存归属）、#79（Theme 资源延迟发布）、#82（资料页滚动容器），F5（搜索定位）待确认；以上对应关系未经 Lan 或原审计确认。
 | ID | 问题 | PR | 状态 |
 |---|---|---|---|
 | F1 | Theme 先发布默认主题再切换（冷启动）：已保存 Theme 先发布、其当前图片 URL 后准备，服务端与首次客户端输出用默认主题（《前端》F1） | #61 #79 #83 | 已验证修复（接受残余）：Lan 10/10 真机逐帧录屏——重开后依次为白色加载底色、已保存布局（刻意换过位置后仍是换后的位置，不再先出默认布局）、壁纸，壁纸比桌面晚零点几秒，Lan 接受；修前 Lan 曾观察到默认布局先出现；录屏未入库。#83 起主题读完前不画默认桌面。原证据：加入有界的当前资源准备边界和 hydration 前已验证的 CSS bootstrap；自动测试覆盖延迟图片发布；iPhone 首帧对比待做 |
@@ -109,13 +110,13 @@ Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收�
 | U6 | standalone 主屏幕模式 Dock 上移（#56） | #56 | #56 已合并；Dock 回归是否已修待确认 |
 | U7 | Overlay 下输入框可聚焦；错误提示被盖住；Home 编辑模式有无效按钮；离页保护不统一 | — | 未修 |
 | U8 | 键盘弹出时 header 飞走（iOS） | — | 搁置（Lan 决定） |
-| F9 | 图片裁剪时切换图片，旧状态残留 | — | 待整改（来源：GPT 第五刀进度图，未在仓库核对） |
-| F10 | 4 种错误的加载/空状态提示 | — | 待整改（来源：GPT 第五刀进度图，未在仓库核对） |
-| F11 | Home 编辑页两个无效按钮 | — | 待整改：原审计只要求标记为不可用或暂时移除，不需开发新功能（来源：GPT 第五刀进度图，未在仓库核对） |
-| 第五刀-R1 | 联系人、群聊等页面身份切换状态 | — | 待核实（架构风险，不等于已确认 Bug；来源：GPT 第五刀进度图；与板块三 R1 无关） |
-| 第五刀-R2 | 编辑器未保存时离开页面 | — | 待核实（同上） |
-| 第五刀-R3 | 隐藏的 Home 小组件仍持续运行 | — | 待核实（同上；与板块一 R3 无关） |
-| 第五刀-R4 | 返回导航时搜索、滚动、草稿状态 | — | 待定义与验证（同上） |
+| F9 | ImageCropDialog 切换图片后保留旧的加载状态、尺寸、缩放与位置，Save Crop 仍可用（原文标题：Crop readiness and dimensions survive a source replacement；Medium；`components/image-crop-dialog.tsx`） | — | 待整改。证据级别：Mounted reproduction——加载图片 A 后弹窗保持挂载并切换为 B，B 尚未加载或加载失败时旧 loaded、尺寸、zoom、position 仍保留，Save Crop 继续可用。原始建议：切换 source 时重置加载状态与几何参数，失败时清除 ready，并拒绝旧加载事件。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
+| F10 | 四种页面状态错误暗示加载中、不存在或失败（原文标题：Several route states incorrectly imply loading, absence, or failure；Low） | — | 待整改。四种情况均为 Mounted reproduction：① `MessagesHome` 首次列表读取失败时错误与 Loading 同时持续显示；② `MessagesHome` 空列表或搜索无匹配时缺少说明；③ `GroupRoom` 读取到非群聊 session 时永久显示 Loading；④ `BindingEditor` 在 Foundation 尚未加载时先错误显示 Binding target not found。原始建议：区分 pending、failed、empty、no-match、invalid identity。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
+| F11 | Home 编辑模式存在两个可用但无效的按钮：Add Widget、Edit Pages（原文标题：Home exposes enabled actions that do nothing；Low；`components/home-edit-shell.tsx`） | — | 待整改：按钮显示可用但没有处理函数，点击无反应。证据级别：Mounted reproduction + code-confirmed。原始建议：标记不可用或暂时隐藏，无需开发对应功能。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
+| 第五刀-R1 | 身份与查询状态的边界依赖路由重新挂载（原文标题：Some identity and query-state boundaries depend on router remount behavior；Medium；涉及 ContactsHome、ContactInfo、GroupRoom） | — | 待核实：已观察到挂载中的 ContactsHome 更换初始选择后仍保留旧选择；Part 2 另有 ContactInfo 草稿复用证据。限制：真实 Next.js 路由是否复用这些组件尚未验证。性质：有组件级证据的架构风险，不能直接认定真实导航必然出错。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。（与板块三 R1 无关） |
+| 第五刀-R2 | 未保存离开页面的保护不统一（原文标题：Unsaved-navigation protection is inconsistent；Medium） | — | 待核实（架构风险）。《VEIL 当前未完成清单》另记为“Preset 有部分保护，WorldBook/Regex 没统一规则；自动保存、弹确认还是允许丢，以后拍产品规则，不急”。来源：《6刀.docx》Part 5（仅核对到原标题与严重程度，详细证据未摘录）；Part 5 内编号，与板块一/三的 R2 无关 |
+| 第五刀-R3 | 屏幕外的 Home 页面仍保留活动的小组件工作（原文标题：Offscreen Home pages retain active widget work；Medium） | — | 待核实（架构风险）。《VEIL 当前未完成清单》另记为“Clock 这类轻量的继续跑无所谓；会请求天气/API/抢 Here & There 机会的隐藏 widget 倾向暂停；以后拍产品规则，不急”。来源：《6刀.docx》Part 5（仅核对到原标题与严重程度）；与板块一 R3 无关 |
+| 第五刀-R4 | 返回导航时滚动与临时状态的预期不明确（原文标题：Back-navigation scroll and transient-state expectations are not explicit；Low；涉及 PageShell 滚动、Chats/Contacts 搜索筛选、Chat 草稿与选择状态） | — | 待定义与验证：潜在表现为返回后搜索条件、滚动位置或未发送草稿可能丢失。证据级别：Risk only；真实浏览器 Back/Forward 尚未验证。原始建议：先定义返回行为，再做真实路由验收；不默认引入全局状态持久化或 keepalive。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
 冻结：#36（Chat 首帧）。Chat 首屏设计方案：先在 iPhone 量，再决定；一轮测量，出结论即止，不往 React/Next 内部深钻。
 
 ## 板块六：测试 / CI / 维护
