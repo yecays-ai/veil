@@ -1,4 +1,4 @@
-import { themeImageAssetIds, type ThemeDocument } from "./theme-types";
+import { themeImageAssetId, type ThemeDocument } from "./theme-types";
 
 // One mounted Provider owns these URLs; overlapping reads never share unfinished URLs.
 export class ThemeImageUrls {
@@ -15,18 +15,25 @@ export class ThemeImageUrls {
   async sync(document: ThemeDocument): Promise<Record<string, string> | null> {
     const revision = ++this.revision;
     const next: Record<string, string> = {};
+    const current = document.current.profile;
+    const ids = new Set(
+      [current.wallpaper.source, current.dock.image, ...Object.values(current.icons)]
+        .map(themeImageAssetId).filter((id): id is string => id !== null),
+    );
+    const isCurrent = () => !this.disposed && revision === this.revision;
     const created: string[] = [];
-    const current = () => !this.disposed && revision === this.revision;
     try {
-      for (const id of themeImageAssetIds(document)) {
-        if (!current()) return null;
+      const prepared = await Promise.all([...ids].map(async (id) => {
         const reference = `appearance-asset:${id}`;
-        if (this.urls[reference]) { next[reference] = this.urls[reference]; continue; }
+        if (this.urls[reference]) return [reference, this.urls[reference]] as const;
         const blob = await this.readBlob(id).catch(() => null);
-        if (!current()) return null;
-        if (blob) { next[reference] = this.create(blob); created.push(next[reference]); }
-      }
-      if (!current()) return null;
+        if (!isCurrent() || !blob) return null;
+        const url = this.create(blob);
+        created.push(url);
+        return [reference, url] as const;
+      }));
+      if (!isCurrent()) return null;
+      for (const entry of prepared) if (entry) next[entry[0]] = entry[1];
       for (const [reference, url] of Object.entries(this.urls))
         if (!next[reference]) this.revoke(url);
       this.urls = next;

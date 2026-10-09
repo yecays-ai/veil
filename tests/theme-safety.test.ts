@@ -25,6 +25,33 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+test("current Theme preparation does not wait for images held only by unused presets", async () => {
+  const pendingPreset = deferred<Blob | null>();
+  const currentId = "a".repeat(64), presetId = "b".repeat(64);
+  const saved = document();
+  saved.current.profile.wallpaper.source = `appearance-asset:${currentId}`;
+  const preset = defaultSnapshot();
+  preset.profile.wallpaper.source = `appearance-asset:${presetId}`;
+  saved.presets.push({ id: "unused", name: "Unused", snapshot: preset });
+  const reads: string[] = [];
+  const urls = new ThemeImageUrls(async (id) => {
+    reads.push(id);
+    return id === presetId ? pendingPreset.promise : new Blob([id], { type: "image/png" });
+  });
+  const preparing = urls.sync(saved);
+  const settledBeforePreset = await Promise.race([
+    preparing.then(() => true),
+    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 30)),
+  ]);
+  pendingPreset.resolve(null);
+  const result = await preparing;
+  assert.equal(settledBeforePreset, true, "the current Theme must publish independently of preset assets");
+  assert.deepEqual(reads, [currentId]);
+  assert.ok(result?.[`appearance-asset:${currentId}`]);
+  assert.equal(result?.[`appearance-asset:${presetId}`], undefined);
+  urls.dispose();
+});
+
 test("Theme loading is read-only; failed hydration cannot publish defaults or collect saved images", async () => {
   const { storage, images, themes } = fixture();
   await themes.save(document());
