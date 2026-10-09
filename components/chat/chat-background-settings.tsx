@@ -43,7 +43,8 @@ function useAssetPreview(id: string | null) {
   return { url, failed: id !== null && failedId === id };
 }
 
-export function ChatBackgroundSettings({ session, onBack }: {
+export function ChatBackgroundSettings({ screenRef, session, onBack }: {
+  screenRef?: React.Ref<HTMLElement>;
   session: ChatSession;
   onBack: () => void;
 }) {
@@ -119,7 +120,7 @@ export function ChatBackgroundSettings({ session, onBack }: {
     }
   }
 
-  return <section className="chat-info-screen" aria-label="Chat Background">
+  return <section ref={screenRef} className="chat-info-screen" role="dialog" aria-modal="true" aria-label="Chat Background">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to Chat Info" onClick={onBack}>
         <ChevronLeft aria-hidden="true" />
@@ -165,3 +166,4 @@ export function ChatBackgroundSettings({ session, onBack }: {
       onSave={saveCrop} onCancel={() => setCrop(null)} />}
   </section>;
 }
+
