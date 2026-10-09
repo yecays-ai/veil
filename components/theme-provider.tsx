@@ -64,38 +64,47 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     mounted.current = true;
     let active = true;
     let revision = 0;
+    let imageTimeout: ReturnType<typeof setTimeout> | undefined;
     const images = new ThemeImageUrls((id) => browserAppearanceImageStorage.readBlob(id));
     const load = async () => {
       const request = ++revision;
+      clearTimeout(imageTimeout);
       images.invalidate();
       try {
         const saved = await browserThemeStorage.load();
         if (!active || request !== revision) return;
         writable.current = true;
-        const assetsStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
-        if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-start");
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        let timedOut = false;
-        const urls = await Promise.race([
-          images.sync(saved),
-          new Promise<null>((resolve) => {
-            timeoutId = setTimeout(() => {
-              timedOut = true;
-              images.invalidate();
-              resolve(null);
-            }, 1000);
-          }),
-        ]).finally(() => { if (timeoutId) clearTimeout(timeoutId); });
-        if (!active || request !== revision) return;
-        const prepared = urls ?? {};
-        // Theme data and its bounded current-image set share one publication boundary.
+        // Saved configuration is usable independently of its image resources.
         setDocument(saved);
-        setResolvedImages(prepared);
+        const retained = images.retained(saved);
+        setResolvedImages(retained);
         setReady(true);
         setError("");
-        if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-ready", {
-          resolvedCount: Object.keys(prepared).length,
-          durationMs: performance.now() - assetsStartedAt, ready: true, timedOut,
+        const assetsStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
+        if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-start");
+        let timedOut = false;
+        const publishImages = (urls: Record<string, string> | null) => {
+          if (!active || request !== revision) return;
+          clearTimeout(imageTimeout);
+          const prepared = urls ?? retained;
+          setResolvedImages(prepared);
+          if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-ready", {
+            resolvedCount: Object.keys(prepared).length,
+            durationMs: performance.now() - assetsStartedAt, ready: true, timedOut,
+          });
+        };
+        imageTimeout = setTimeout(() => {
+          if (!active || request !== revision) return;
+          timedOut = true;
+          images.invalidate();
+          publishImages(null);
+        }, 1000);
+        void images.sync(saved).then((urls) => {
+          if (!timedOut) publishImages(urls);
+        }).catch((reason) => {
+          if (!active || request !== revision || timedOut) return;
+          publishImages(null);
+          setError(reason instanceof Error ? reason.message : "Could not load appearance images.");
         });
       } catch (reason) {
         if (!active || request !== revision) return;
@@ -128,6 +137,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       mounted.current = false;
       writable.current = false;
       revision++;
+      clearTimeout(imageTimeout);
       refresh.current = null;
       recover.current = null;
       images.dispose();
