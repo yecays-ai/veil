@@ -52,6 +52,7 @@ import { resolveBindings } from "../../lib/bindings";
 import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
+import { createRegexReadGuard } from "../../lib/chat/regex-read-guard";
 import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/search";
 import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
@@ -88,30 +89,43 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
   const contact = contacts.document.contacts.find((item) => item.characterId === characterId);
   const contactName = character ? contactDisplayName(contact, character.name) : "";
-  const [regexGroups, setRegexGroups] = useState<RegexGroup[]>([]);
+  const [regexReadState, setRegexReadState] = useState<{
+    owner: string; groups: RegexGroup[]; ready: boolean;
+  }>({ owner: "", groups: [], ready: false });
+  const [regexReadGuard] = useState(() => createRegexReadGuard());
   const regexIds = resolveBindings(bindings, characterId, "messages").regexIds;
   const regexKey = regexIds?.join("\u0000") ?? "*";
+  const regexOwner = `${characterId}\u0000${regexKey}`;
+  const regexGroups = regexReadState.owner === regexOwner ? regexReadState.groups : [];
+  const regexReady = bindingsReady && regexReadState.owner === regexOwner && regexReadState.ready;
   useEffect(() => {
     if (!bindingsReady) return;
     let active = true;
     const loadStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
     if (loadStartedAt !== null) recordChatDiagnostic("regex-read-start", { characterId });
-    const load = () => void browserRegexStorage.load().then((saved) => {
-      const resolved = resolveRegexGroups(saved, regexIds);
-      if (active) {
-        if (loadStartedAt !== null) recordChatDiagnostic("regex-ready", { characterId, rulesCount: resolved.length, durationMs: performance.now() - loadStartedAt });
-        setRegexGroups(resolved);
-      }
-    }).catch(() => {
-      if (active) {
-        if (loadStartedAt !== null) recordChatDiagnostic("regex-failed", { characterId, error: true, durationMs: performance.now() - loadStartedAt });
-        setRegexGroups([]);
-      }
-    });
+    const load = () => {
+      const revision = regexReadGuard.next();
+      void browserRegexStorage.load().then((saved) => {
+        const resolved = resolveRegexGroups(saved, regexIds);
+        if (active && regexReadGuard.isCurrent(revision)) {
+          if (loadStartedAt !== null) recordChatDiagnostic("regex-ready", { characterId, rulesCount: resolved.length, durationMs: performance.now() - loadStartedAt });
+          setRegexReadState({ owner: regexOwner, groups: resolved, ready: true });
+        }
+      }).catch(() => {
+        if (active && regexReadGuard.isCurrent(revision)) {
+          if (loadStartedAt !== null) recordChatDiagnostic("regex-failed", { characterId, error: true, durationMs: performance.now() - loadStartedAt });
+          setRegexReadState({ owner: regexOwner, groups: [], ready: true });
+        }
+      });
+    };
     load();
     window.addEventListener("storage", load);
-    return () => { active = false; window.removeEventListener("storage", load); };
-  // The key tracks the resolved ordered IDs without reloading on unrelated renders.
+    return () => {
+      active = false;
+      regexReadGuard.invalidate();
+      window.removeEventListener("storage", load);
+    };
+  // The key tracks the Character identity and resolved ordered IDs without reloading on unrelated renders.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bindingsReady, characterId, regexKey]);
   const { session, messages, loadError } = useChatSession(
@@ -120,7 +134,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
   const chatBackground = useChatBackground(session, { characterId });
   const [publishedSessionId, setPublishedSessionId] = useState<string | null>(null);
-  const frameReady = !!loadError || (!!session && chatBackground.readyForFrame);
+  const frameReady = !!loadError || (!!session && chatBackground.readyForFrame && regexReady);
   useEffect(() => {
     if (session && frameReady && publishedSessionId !== session.id) setPublishedSessionId(session.id);
   }, [session, frameReady, publishedSessionId]);
@@ -180,6 +194,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     recordChatDiagnostic("chat-react-commit", { characterId, hasSession: !!session, messageCount: messages.length, nodeCount });
   }, [characterId, session, messages.length]);
   const nearBottom = useRef(true);
+  const initialPositionedSession = useRef<string | null>(null);
   const previousSearchJumpId = useRef<string | null>(null);
   const mounted = useRef(true);
   const shell = useRef<HTMLDivElement>(null);
@@ -288,6 +303,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       setConfirmDelete(null); setMultiSelect(false); setSelectedIds(new Set()); }
     catch (e) { setError(e instanceof Error ? e.message : "Messages could not be deleted."); }
   }
+  useLayoutEffect(() => {
+    if (!framePublished || !session || initialPositionedSession.current === session.id) return;
+    initialPositionedSession.current = session.id;
+    if (nearBottom.current)
+      history.current?.scrollTo({ top: history.current.scrollHeight });
+  }, [framePublished, session?.id]);
   useEffect(() => {
     if (nearBottom.current)
       history.current?.scrollTo({ top: history.current.scrollHeight });
