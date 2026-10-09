@@ -85,6 +85,24 @@ regressionContract("chat.overlay-focus-boundary", "render-lifecycle",
       const back = info.querySelector<HTMLButtonElement>('[aria-label="Back to conversation"]')!;
       assert.equal(dom.window.document.activeElement === back, true, "opening Chat Info moves focus off the composer");
       assert.equal(composer.form?.hasAttribute("inert"), true, "the obscured composer is inert");
+      const nestedDialog = dom.window.document.createElement("dialog");
+      const nestedDialogButton = dom.window.document.createElement("button");
+      nestedDialogButton.textContent = "Cancel crop";
+      nestedDialog.append(nestedDialogButton);
+      info.append(nestedDialog);
+      let nestedEscapeReached = false;
+      let nestedEscapeWasAlreadyPrevented = false;
+      nestedDialogButton.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        nestedEscapeReached = true;
+        nestedEscapeWasAlreadyPrevented = event.defaultPrevented;
+        event.preventDefault(); // Represents the nested dialog's own cancel handling.
+      });
+      nestedDialogButton.focus();
+      await press(nestedDialogButton, "Escape");
+      assert.equal(nestedEscapeReached, true, "Escape from a nested dialog reaches that dialog's own handler");
+      assert.equal(nestedEscapeWasAlreadyPrevented, false, "Chat Info does not consume nested dialog Escape first");
+      assert.ok(container.querySelector('[aria-label="Chat Info"]'), "nested Escape leaves Chat Info open");
       await click(info.querySelector<HTMLButtonElement>(".chat-info-row")!);
       await waitFor(() => !!container.querySelector('[aria-label="Search Chat History"]'));
       const searchBack = container.querySelector<HTMLButtonElement>('[aria-label="Back to Chat Info"]')!;
