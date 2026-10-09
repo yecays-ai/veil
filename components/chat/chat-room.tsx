@@ -755,7 +755,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               </p>
               {!multiSelect && message.status !== "streaming" && <button type="button"
                 className="chat-message-actions-trigger"
-                aria-label={`Message actions for message ${message.order + 1} from ${message.role === "user" ? "You" : message.role === "assistant" ? character.name : "System"}`}
+                aria-label={`Message actions for message ${message.order} from ${message.role === "user" ? "You" : message.role === "assistant" ? character.name : "System"}`}
                 aria-describedby={`chat-message-content-${message.id}`}
                 aria-haspopup="menu" aria-expanded={activeMessage?.id === message.id}
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
