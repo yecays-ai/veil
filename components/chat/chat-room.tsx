@@ -375,7 +375,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     };
   }, [activeMessage, menuAnchor]);
 
-  function openActions(e: React.MouseEvent<HTMLElement>, message: ChatMessage) {
+  function openActions(e: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>, message: ChatMessage) {
     if (multiSelect || message.status === "streaming") return;
     const selection = window.getSelection();
     if (nativeSelectionActive.current ||
@@ -774,7 +774,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               {isGroupStart && <ChatAvatar profile={character} />}
             </div>}
             <div className="chat-message">
-              <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown`}
+              <p id={`chat-message-content-${message.id}`} className={`chat-bubble chat-bubble-role-${message.role} chat-markdown`}
                 onAnimationEnd={() => { if (highlightedMessageId === message.id) setHighlightedMessageId(null); }}
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
                 onContextMenu={() => { nativeSelectionActive.current = true; }}
@@ -786,6 +786,19 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                     { character: character.name, user: document.user.name }) : parsed.content) ||
                   (message.status === "streaming" && generationActive ? "…" : "")}
               </p>
+              {!multiSelect && message.status !== "streaming" && <button type="button"
+                className="chat-message-actions-trigger"
+                aria-label={`Message actions for message ${message.order} from ${message.role === "user" ? "You" : message.role === "assistant" ? character.name : "System"}`}
+                aria-describedby={`chat-message-content-${message.id}`}
+                aria-haspopup="menu" aria-expanded={activeMessage?.id === message.id}
+                onPointerDown={() => { nativeSelectionActive.current = false; }}
+                onClick={(e) => openActions(e, message)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    openActions(e, message);
+                  }
+                }}><Ellipsis aria-hidden="true" /></button>}
               <MessageFooter messageId={message.id} />
               <span className="chat-message-meta">
                 {message.status === "streaming" && !generationActive && (
