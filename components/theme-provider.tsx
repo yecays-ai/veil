@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -71,18 +72,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const saved = await browserThemeStorage.load();
         if (!active || request !== revision) return;
         writable.current = true;
-        setDocument(saved);
-        setReady(true);
-        setError("");
         const assetsStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
         if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-start");
-        const urls = await images.sync(saved);
-        if (active && request === revision && urls) {
-          setResolvedImages(urls);
-          if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-ready", {
-            resolvedCount: Object.keys(urls).length, durationMs: performance.now() - assetsStartedAt, ready: true,
-          });
-        }
+        let timeoutId: ReturnType<typeof setTimeout> | undefined;
+        let timedOut = false;
+        const urls = await Promise.race([
+          images.sync(saved),
+          new Promise<null>((resolve) => {
+            timeoutId = setTimeout(() => {
+              timedOut = true;
+              images.invalidate();
+              resolve(null);
+            }, 1000);
+          }),
+        ]).finally(() => { if (timeoutId) clearTimeout(timeoutId); });
+        if (!active || request !== revision) return;
+        const prepared = urls ?? {};
+        // Theme data and its bounded current-image set share one publication boundary.
+        setDocument(saved);
+        setResolvedImages(prepared);
+        setReady(true);
+        setError("");
+        if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-ready", {
+          resolvedCount: Object.keys(prepared).length,
+          durationMs: performance.now() - assetsStartedAt, ready: true, timedOut,
+        });
       } catch (reason) {
         if (!active || request !== revision) return;
         writable.current = false;
@@ -162,6 +176,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     queue.current = operation.catch(() => {});
     return operation;
   }
+
+  useLayoutEffect(() => {
+    if (ready) globalThis.document.getElementById("veil-theme-bootstrap")?.remove();
+  }, [ready, document]);
 
   const profile = document.current.profile;
   const fonts = {

@@ -91,6 +91,26 @@ test("Theme snapshot and ready stay unpublished until its current image URL is p
   }
 });
 
+test("a slow current image is bounded and falls back without blocking Theme ready", async () => {
+  const originalLoad = browserThemeStorage.load;
+  const originalRead = browserAppearanceImageStorage.readBlob;
+  const saved = JSON.parse(stored("#112233")) as ThemeDocument;
+  saved.current.profile.wallpaper.source = `appearance-asset:${"c".repeat(64)}`;
+  browserThemeStorage.load = async () => saved;
+  browserAppearanceImageStorage.readBlob = () => new Promise<Blob | null>(() => {});
+  try {
+    await mounted(async ({ container, theme }) => {
+      await waitFor(() => output(container).dataset.ready === "true");
+      assert.equal(output(container).dataset.accent, "#112233");
+      assert.equal(theme().resolveImage(saved.current.profile.wallpaper.source), null,
+        "the theme uses its normal wallpaper fallback after the bounded image wait");
+    });
+  } finally {
+    browserThemeStorage.load = originalLoad;
+    browserAppearanceImageStorage.readBlob = originalRead;
+  }
+});
+
 // The provider calls these properties, so a test can fail or slow its reads without a second storage.
 function instrument(options: { loads?: Array<() => Promise<ThemeDocument>> } = {}) {
   const original = { load: browserThemeStorage.load, transact: browserThemeStorage.transact };
