@@ -27,7 +27,7 @@ Codex；分支 `fix/theme-config-publication`；PR https://github.com/yecays-ai/
 
 ## 尚未验证
 
-- CI 未运行；Vercel 自动部署因免费额度限制失败；iPhone Safari 真机未验。全套中 navigation-feedback 的既有 RouteLoading 断言仍有 1 项失败。
+- CI 未运行；Vercel 自动部署因免费额度限制失败；iPhone Safari 真机未验。
 
 ## 下一步
 
