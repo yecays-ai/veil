@@ -6,6 +6,7 @@ import { act, createElement } from "react";
 import type { createRoot as CreateRoot } from "react-dom/client";
 import { ThemeProvider, useTheme } from "../components/theme-provider";
 import { browserThemeStorage } from "../lib/theme-storage";
+import { browserAppearanceImageStorage } from "../lib/appearance-image-storage";
 import { defaultSnapshot, type ThemeDocument } from "../lib/theme-types";
 
 const KEY = "companion-phone.appearance.v1";
@@ -61,6 +62,34 @@ const retryButton = (container: HTMLElement) =>
   [...container.querySelectorAll("button")].find((button) => button.textContent === "Retry");
 const accentUpdate = (accent: string) => (theme: Theme) => theme.updateProfile((profile) => ({
   ...profile, colors: { ...profile.colors, accent } }));
+
+test("Theme snapshot and ready stay unpublished until its current image URL is prepared", async () => {
+  const originalLoad = browserThemeStorage.load;
+  const originalRead = browserAppearanceImageStorage.readBlob;
+  const pending = deferred<Blob | null>();
+  const saved = JSON.parse(stored("#112233")) as ThemeDocument;
+  const source = `appearance-asset:${"a".repeat(64)}`;
+  saved.current.profile.wallpaper.source = source;
+  let reads = 0;
+  browserThemeStorage.load = async () => saved;
+  browserAppearanceImageStorage.readBlob = () => { reads++; return pending.promise; };
+  try {
+    await mounted(async ({ container, theme }) => {
+      assert.equal(output(container).dataset.ready, "false");
+      await waitFor(() => reads === 1);
+      assert.equal(output(container).dataset.ready, "false", "ready must wait for the selected current image read");
+      assert.equal(output(container).dataset.accent, defaultSnapshot().profile.colors.accent,
+        "the saved Theme document and ready state publish together");
+      await act(async () => { pending.resolve(new Blob(["theme"], { type: "image/png" })); });
+      await waitFor(() => output(container).dataset.ready === "true");
+      assert.equal(output(container).dataset.accent, "#112233");
+      assert.ok(theme().resolveImage(source), "the prepared current image URL is available at the same publication");
+    });
+  } finally {
+    browserThemeStorage.load = originalLoad;
+    browserAppearanceImageStorage.readBlob = originalRead;
+  }
+});
 
 // The provider calls these properties, so a test can fail or slow its reads without a second storage.
 function instrument(options: { loads?: Array<() => Promise<ThemeDocument>> } = {}) {
