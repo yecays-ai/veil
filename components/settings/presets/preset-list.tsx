@@ -17,7 +17,7 @@ export function PresetList() {
         await change(newPreset);
       })}><Plus size={17} />New Preset</button>
     </div>
-    <input ref={file} type="file" accept=".json,application/json" hidden onChange={(event) => {
+    <input ref={file} type="file" hidden onChange={(event) => {
       const selected = event.target.files?.[0]; event.target.value = "";
       if (selected) void run(async () => {
         const json = await selected.text();
