@@ -92,7 +92,11 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     if (!session?.id) return;
     const snapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (snapshot) { setSettings(snapshot); setSettingsReady(true); }
+    if (snapshot) {
+      settingsRevision.current++;
+      setSettings(snapshot);
+      setSettingsReady(true);
+    }
   }, [session?.id, storage]);
 
   useEffect(() => {
