@@ -2,7 +2,7 @@
 
 更新人：Claude
 更新时间：2026-10-09T19:56Z
-发现范围：基于 origin/main 575132e（#84 已合并）；只读了 AGENTS.md 与 .github/workflows 的文件名；未重新枚举其他开放 PR，本任务只改 AGENTS.md 与本记录。
+发现范围：观察时间 2026-10-09T20:12Z（UTC）；基于 origin/main 575132ea1d007574e3f1cc7e89e9b3af08328674（#84 已合并）；远程开放 PR 已枚举，当时只有本 PR（#85）；只读了 AGENTS.md 与 .github/workflows 的文件名；无访问限制，GitHub 读取均成功；本任务只改 AGENTS.md 与本记录。
 
 ## 当前任务
 
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 claude/agents-md-rules；PR https://github.com/yecays-ai/veil/pull/85；涉及 AGENTS.md、docs/work-status/2026-10-10-claude-agents-md-rules.md；base 575132e。
+Claude；分支 claude/agents-md-rules；PR https://github.com/yecays-ai/veil/pull/85；涉及 AGENTS.md、docs/work-status/2026-10-10-claude-agents-md-rules.md；base 575132ea1d007574e3f1cc7e89e9b3af08328674。
 
 ## 已完成
 
