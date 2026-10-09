@@ -5,7 +5,11 @@ import type { ChatBackgroundSettings } from "./types";
 // decoded bitmap per URL, so re-entering a chat paints the wallpaper without decoding it again (a fresh
 // URL per visit made it decode after the first frame, which showed as the wallpaper "popping in").
 // Eviction revokes the URL, so the set is bounded and nothing outlives it.
+// The bound is a count, not a byte budget: each Blob is at most the 25 MiB the chat image store accepts, and the
+// decoded bitmaps are held by the browser, which may drop them. Their real cost on a device is unmeasured.
 const MAX_ENTRIES = 2;
+// `decoded` means decode() succeeded (or there is no Image to decode with). A failed decode is never
+// `decoded`: `ready` rejects for it, so callers fall back instead of treating the URL as paintable.
 type Entry = { blob: Blob; url: string; image: HTMLImageElement | null; ready: Promise<void>; decoded: boolean };
 const entries = new Map<string, Entry>();
 let settings = new WeakMap<object, { value: ChatBackgroundSettings; revision: number }>();
@@ -15,7 +19,7 @@ function release(entry: Entry) {
   URL.revokeObjectURL(entry.url);
 }
 
-/** The object URL of a cached wallpaper that has finished decoding (most recently used), or null. */
+/** The object URL of a cached wallpaper that decoded successfully (most recently used), or null. */
 export function cachedBackgroundUrl(id: string): string | null {
   const entry = entries.get(id);
   if (!entry) return null;
@@ -23,15 +27,18 @@ export function cachedBackgroundUrl(id: string): string | null {
   return entry.decoded ? entry.url : null;
 }
 
-/** A wallpaper that was read but is still decoding: callers wait for it instead of reading the Blob again. */
+/**
+ * A wallpaper that was read but has not decoded successfully: callers wait for it instead of reading the Blob again.
+ * For one whose decode failed the promise is already rejected, so they fall back at once.
+ */
 export function pendingBackgroundReady(id: string): Promise<void> | null {
   const entry = entries.get(id);
   return entry && !entry.decoded ? entry.ready : null;
 }
 
 /**
- * Keeps the Blob behind one object URL and starts decoding it. `ready` settles once the browser can paint
- * the image (or failed to decode it, which just means a normal paint), so callers can reveal it decoded.
+ * Keeps the Blob behind one object URL and starts decoding it. `ready` resolves once the browser has decoded
+ * the image and rejects if the decode failed, so callers reveal it only when it decoded and otherwise fall back.
  */
 export function rememberBackgroundBlob(id: string, blob: Blob): { url: string; ready: Promise<void> } {
   const existing = entries.get(id);
@@ -42,8 +49,9 @@ export function rememberBackgroundBlob(id: string, blob: Blob): { url: string; r
     const image = new Image();
     image.src = url;
     entry.image = image;
-    // Settles on success or failure: a failed decode just means a normal paint, not a stuck wallpaper.
-    entry.ready = (image.decode ? image.decode() : Promise.resolve()).catch(() => {}).then(() => { entry.decoded = true; });
+    // Success marks it decoded; failure rejects `ready` and never marks it, so a bad image is not shown as ready.
+    entry.ready = (image.decode ? image.decode() : Promise.resolve()).then(() => { entry.decoded = true; });
+    entry.ready.catch(() => {}); // callers handle the rejection; an unobserved failed entry must not be unhandled
   }
   entries.set(id, entry);
   while (entries.size > MAX_ENTRIES) {

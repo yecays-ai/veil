@@ -6,11 +6,11 @@ import { act, createElement } from "react";
 import { ChatStorage } from "../lib/chat/storage";
 import type { ChatSession } from "../lib/chat/types";
 import {
-  cachedBackgroundUrl, rememberBackgroundBlob, rememberBackgroundSettings,
+  cachedBackgroundUrl, pendingBackgroundReady, rememberBackgroundBlob, rememberBackgroundSettings,
   cachedBackgroundSettings, resetChatBackgroundCacheForTests,
 } from "../lib/chat/background-cache";
 
-async function harness(options: { fakeImage?: boolean } = {}) {
+async function harness(options: { fakeImage?: boolean | "fail" } = {}) {
   resetChatBackgroundCacheForTests();
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
   const descriptors = new Map<string, PropertyDescriptor | undefined>();
@@ -24,7 +24,10 @@ async function harness(options: { fakeImage?: boolean } = {}) {
   install("BroadcastChannel", undefined); // an open channel would keep the test process alive
   const decodes: Array<() => void> = [];
   if (options.fakeImage) // a browser image whose decode finishes only when the test says so
-    install("Image", class { src = ""; decode() { return new Promise<void>((resolve) => { decodes.push(resolve); }); } });
+    install("Image", class { src = ""; decode() {
+      if (options.fakeImage === "fail") return Promise.reject(new Error("The image could not be decoded."));
+      return new Promise<void>((resolve) => { decodes.push(resolve); });
+    } });
   const { createRoot } = await import("react-dom/client");
   const { useChatBackground } = await import("../components/chat/use-chat-background");
   const storage = new ChatStorage(() => new IDBFactory());
@@ -323,6 +326,39 @@ test("a mount after a background change does not join a settings read that began
     await app.until(() => cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()) !== null);
     assert.equal(cachedBackgroundSettings(app.storage, app.storage.backgroundRevision())?.globalChatBackgroundImage, imageId,
       "the snapshot for the current revision comes from a read that started at that revision");
+  } finally { await app.cleanup(); }
+});
+
+test("a failed decode is never reported as decoded and its waiters are told it failed", async () => {
+  resetChatBackgroundCacheForTests();
+  const saved = Object.getOwnPropertyDescriptor(globalThis, "Image");
+  Object.defineProperty(globalThis, "Image", { configurable: true, writable: true,
+    value: class { src = ""; decode() { return Promise.reject(new Error("EncodingError")); } } });
+  try {
+    const { ready } = rememberBackgroundBlob("bad", new Blob(["not an image"]));
+    await assert.rejects(ready);
+    assert.equal(cachedBackgroundUrl("bad"), null, "a failed decode is not served as a ready wallpaper");
+    await assert.rejects(pendingBackgroundReady("bad")!, "a second caller is told it failed instead of waiting or re-reading");
+    Object.defineProperty(globalThis, "Image", { configurable: true, writable: true,
+      value: class { src = ""; decode() { return Promise.resolve(); } } });
+    const good = rememberBackgroundBlob("good", new Blob(["image"]));
+    await good.ready;
+    assert.equal(cachedBackgroundUrl("good"), good.url, "a successful decode is served");
+  } finally {
+    if (saved) Object.defineProperty(globalThis, "Image", saved); else Reflect.deleteProperty(globalThis, "Image");
+    resetChatBackgroundCacheForTests();
+  }
+});
+
+test("a wallpaper whose decode fails releases the first frame to the Theme background without waiting", async () => {
+  const app = await harness({ fakeImage: "fail" });
+  try {
+    const { session } = await sessionWithWallpaper(app.storage);
+    await app.mountNow(session);
+    const started = Date.now();
+    await app.until(() => app.frameReady() === "true");
+    assert.ok(Date.now() - started < 1000, "released by the failure itself, not by the 1200 ms timeout");
+    assert.equal(app.url(), "", "the undecodable wallpaper is never exposed");
   } finally { await app.cleanup(); }
 });
 
