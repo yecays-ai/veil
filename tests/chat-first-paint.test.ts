@@ -120,7 +120,10 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   // This single-tab DOM fixture has no peer tab; Node's native channel keeps the worker alive.
   install("BroadcastChannel", undefined);
   const scrollCalls: ScrollToOptions[] = [];
-  dom.window.HTMLElement.prototype.scrollTo = function (options?: ScrollToOptions) { scrollCalls.push(options ?? {}); };
+  // Matches both DOM overloads, scrollTo(options) and scrollTo(x, y), so the fixture type-checks.
+  dom.window.HTMLElement.prototype.scrollTo = function (options?: ScrollToOptions | number, y?: number) {
+    scrollCalls.push(typeof options === "object" ? options : { top: y });
+  };
 
   // Import after DOM setup so ReactDOM and Next Link detect a mounted client environment.
   const { createRoot } = await import("react-dom/client");
