@@ -232,7 +232,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     chatInfoOpen ? "chat-info" : activeMessage ? "message-actions" : null;
   useLayoutEffect(() => {
     const previous = previousOverlay.current;
-    if (overlayKind && overlayKind !== previous) {
+    if (overlayKind && overlayKind !== previous &&
+      !(overlayKind === "chat-info" && overlayFocusOrigin.current.has("chat-info"))) {
       overlayFocusOrigin.current.set(overlayKind,
         globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null);
     }
@@ -684,7 +685,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </Link> : <strong className="chat-contact-summary page-title">Chat</strong>}
         <button ref={settingsTrigger} type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
           title="Conversation settings"
-          onClick={() => setChatInfoOpen(true)}><Ellipsis aria-hidden="true" /></button>
+          onClick={() => {
+            overlayFocusOrigin.current.set("chat-info",
+              globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null);
+            setChatInfoOpen(true);
+          }}><Ellipsis aria-hidden="true" /></button>
       </header>
       <div
         key="history"
