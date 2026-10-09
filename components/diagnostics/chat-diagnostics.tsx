@@ -67,6 +67,11 @@ export function ChatDiagnosticsGate({ children }: { children: ReactNode }) {
   function toggle(next: boolean) {
     writeOptIn(next, standalone);
     chatDiagnosticRecorder.setEnabled(next);
+    if (!next) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("veilDiagnostics");
+      window.history.replaceState(window.history.state, "", url);
+    }
     setEnabled(next);
   }
   return <>
@@ -169,9 +174,9 @@ function DiagnosticsPanel({ onDisable }: { onDisable: () => void }) {
   const [open, setOpen] = useState(false);
   const [, refresh] = useState(0);
   useEffect(() => {
-    const timer = window.setInterval(() => refresh((value) => value + 1), 100);
+    const timer = window.setInterval(() => refresh((value) => value + 1), open ? 100 : 500);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [open]);
   const current = chatDiagnosticRecorder.currentNavigation();
   async function copy() {
     const output = chatDiagnosticRecorder.exportCurrentNavigation();
