@@ -119,7 +119,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   install("IS_REACT_ACT_ENVIRONMENT", true);
   // This single-tab DOM fixture has no peer tab; Node's native channel keeps the worker alive.
   install("BroadcastChannel", undefined);
-  dom.window.HTMLElement.prototype.scrollTo = () => {};
+  const scrollCalls: ScrollToOptions[] = [];
+  dom.window.HTMLElement.prototype.scrollTo = function (options?: ScrollToOptions) { scrollCalls.push(options ?? {}); };
 
   // Import after DOM setup so ReactDOM and Next Link detect a mounted client environment.
   const { createRoot } = await import("react-dom/client");
@@ -143,6 +144,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   const destinationPending = new Promise<void>((resolve) => { releaseDestination = resolve; });
   let releaseSecondary!: () => void;
   const secondaryPending = new Promise<void>((resolve) => { releaseSecondary = resolve; });
+  let releaseRegex!: () => void;
+  const regexPending = new Promise<void>((resolve) => { releaseRegex = resolve; });
   let releasePeterAsset!: () => void;
   const peterAssetPending = new Promise<void>((resolve) => { releasePeterAsset = resolve; });
   let holdBackgroundRefreshes = false;
@@ -171,7 +174,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     };
     browserRegexStorage.load = async () => {
       regexReads++;
-      await secondaryPending;
+      await regexPending;
+      if (regexReads === 2) throw new Error("Display Regex could not be read.");
       return originalRegexLoad.call(browserRegexStorage);
     };
     chatStorage.subscribe = (listener) => {
@@ -269,9 +273,25 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.ok(container.querySelector(".chat-composer"));
     assert.doesNotMatch(container.textContent ?? "", /peter history|pep history|Loading/);
 
+    assert.equal(scrollCalls.length, 0, "no history positioning occurs before first publication");
+    const callsBeforeDestinationPublish = scrollCalls.length;
     await act(async () => { releaseDestination(); releaseSecondary(); });
+    await waitFor(() => activeChatSubscriptions === 3 &&
+      container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "true");
+    assert.equal(container.querySelectorAll("[data-message-id]").length, 0,
+      "history remains unpublished while the current Display Regex read is pending");
+    assert.equal(scrollCalls.length, 0,
+      "message/reveal updates cannot scroll history while Display Regex is pending");
+    await act(async () => { releaseRegex(); });
     await waitFor(() => container.textContent?.includes("pep history") === true &&
       container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");
+    assert.ok(scrollCalls.length > callsBeforeDestinationPublish,
+      "the first history publication executes its layout-effect bottom positioning");
+    const publishedHistory = container.querySelector<HTMLElement>('[aria-label="Conversation history"]')!;
+    assert.equal(scrollCalls.at(-1)?.top, publishedHistory.scrollHeight,
+      "the initial positioning targets the bottom of the published history");
+    assert.equal(container.querySelector(".chat-bubble")?.textContent, "pep history",
+      "a failed destination Regex read publishes the original message text");
     assert.equal(container.querySelector(".chat-room")?.getAttribute("data-chat-background"), "default",
       "the session contract uses the Theme background without a selected chat wallpaper");
     // Background settings are global, not per Character: the destination reuses the valid snapshot the
@@ -322,6 +342,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   } finally {
     releaseDestination();
     releaseSecondary();
+    releaseRegex();
     releasePeterAsset();
     let cleanupError: unknown;
     await act(async () => {
