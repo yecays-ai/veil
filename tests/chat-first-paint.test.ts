@@ -28,8 +28,9 @@ regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
   for (const ref of ["shell", "history", "composerBar", "composer"])
     assert.match(pending, new RegExp(`ref=\\{${ref}\\}`));
   assert.match(pending, /<textarea[^>]*[\s\S]*?disabled placeholder="Message…"/);
-  assert.match(room, /aria-busy=\{!session && !loadError\}/);
-    assert.match(readFileSync("components/chat/use-chat-background.ts", "utf8"), /if \(!sessionId\) return/);
+  assert.match(room, /aria-busy=\{!framePublished\}/);
+  assert.match(room, /framePublished && groupedMessages\.map/);
+  assert.match(readFileSync("components/chat/use-chat-background.ts", "utf8"), /BACKGROUND_PREPARE_LIMIT_MS/);
     assert.match(room, /if \(!bindingsReady\) return/);
 });
 
@@ -222,10 +223,11 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       }
     };
     await act(async () => { root.render(createElement(Navigation)); });
-    await waitFor(() => container.textContent?.includes("peter history") === true);
-    await waitFor(() => imageReads.includes(peterAssetId) && regexReads === 1);
+    await waitFor(() => imageReads.includes(peterAssetId) && regexReads === 1 && backgroundReads === 1);
     assert.equal(container.querySelectorAll("[data-message-id]").length, 0,
       "current chat messages must stay unpublished until the selected background is prepared");
+    assert.equal(container.querySelector(".chat-contact-summary")?.textContent, "Chat",
+      "the generic header remains until the current frame can publish");
     assert.deepEqual([backgroundReads, profileReads, regexReads], [1, 1, 1]);
     assert.equal(activeChatSubscriptions, 3, "the validated session, background, and global timing owner each subscribe once");
     const composer = () => container.querySelector<HTMLTextAreaElement>("#chat-input")!;
@@ -233,7 +235,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
 
     await act(async () => { container.querySelector("button")!.click(); });
     await waitFor(() => destinationReads === 1 && profileReads === 2 && regexReads === 2);
-    assert.equal(backgroundReads, 1, "background settings are not read while the destination session is unavailable");
+    assert.equal(backgroundReads, 1, "background settings were prepared once in parallel with the session");
     assert.equal(activeChatSubscriptions, 2, "pending navigation keeps only the destination session and global timing subscriptions");
     assert.equal(container.querySelector(".chat-contact-summary")?.textContent, "Chat",
       "the destination keeps its stable header until its own frame is ready");
@@ -249,8 +251,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.doesNotMatch(container.textContent ?? "", /peter history|pep history|Loading/);
 
     await act(async () => { releaseDestination(); releaseSecondary(); });
-    await waitFor(() => container.textContent?.includes("pep history") === true);
     await waitFor(() => imageReads.includes(pepAssetId) && container.querySelector<HTMLElement>(".chat-room")?.dataset.chatBackground === "custom");
+    assert.match(container.textContent ?? "", /pep history/);
     // Background settings are global, not per Character: the destination reuses the valid snapshot the
     // first chat already read instead of reading them again.
     assert.equal(backgroundReads, 1);
