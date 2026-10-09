@@ -131,6 +131,10 @@ test("Messages conversation rows keep navigation and expose only a confirmed Del
   assert.match(home, /<div className="conversation-swipe-row"[^>]*data-conversation-row=\{session\.id\}/);
   assert.match(home, /className=\{`conversation-delete-action[\s\S]*?<span className="conversation-delete-label"[\s\S]*?>Delete<\/span>[\s\S]*?<\/button>/);
   assert.match(home, /href=\{group \? `\/messages\/group/);
+  assert.match(home, /onPointerDownCapture=\{\(event\) => \{[\s\S]*prefetchChatSession\(session\.characterId, chatStorage\)/,
+    "direct rows prefetch on press while retaining the existing pointer swipe handlers");
+  assert.match(home, /if \(!group && event\.isPrimary && event\.button === 0\)/,
+    "group rows and non-primary presses do not prefetch a direct session");
   assert.match(home, /onPointerDown=\{\(event\) => beginSwipe/);
   assert.match(home, /onPointerMove=\{\(event\) => moveSwipe/);
   assert.match(home, /onPointerUp=\{\(event\) => finishSwipe/);

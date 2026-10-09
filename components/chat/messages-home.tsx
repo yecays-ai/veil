@@ -5,6 +5,7 @@ import { CirclePlus, MessageCircle, Search, Users } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
+import { prefetchChatSession } from "../../lib/chat/session-prefetch";
 import type { ChatSession } from "../../lib/chat/types";
 import { recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
 import { sortChatSessions } from "../../lib/chat/session-order";
@@ -154,6 +155,10 @@ export function MessagesHome() {
           <Link className={`conversation-row${draggingRowId === session.id ? " is-dragging" : ""}`}
             style={{ transform: `translateX(${offset}px)` }} data-testid={`conversation-link-${session.id}`}
             href={group ? `/messages/group/${encodeURIComponent(session.id)}` : `/messages/${encodeURIComponent(session.characterId)}`}
+            onPointerDownCapture={(event) => {
+              if (!group && event.isPrimary && event.button === 0)
+                void prefetchChatSession(session.characterId, chatStorage);
+            }}
             onClick={(event) => {
               if (!event.defaultPrevented && !group) recordChatDiagnostic("navigation-call", {
                 target: `/messages/${encodeURIComponent(session.characterId)}`, characterId: session.characterId,
