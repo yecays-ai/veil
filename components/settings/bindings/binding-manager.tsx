@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState } from "react";
+import { useFoundation } from "../../foundation-provider";
 import { ChevronRight } from "lucide-react";
 import { PageShell } from "../../page-shell";
 import { Alert } from "../ui/feedback";
@@ -82,6 +83,7 @@ export function BindingHome() {
 
 export function BindingEditor({ characterId, appId }: { characterId?: string; appId?: string }) {
   const manager = useBindingManager();
+  const { ready: foundationReady } = useFoundation();
   const { document, bindings, resources, error, busy, loadError, loading, retry, update, edit } = manager;
   const [openField, setOpenField] = useState<ManagedBindingField | null>(null);
   const character = characterId ? document.characters.find((item) => item.characterId === characterId) : undefined;
@@ -91,7 +93,8 @@ export function BindingEditor({ characterId, appId }: { characterId?: string; ap
   const title = app ? app.label : character ? character.name : "Global Defaults";
   const backHref = app ? `/settings/bindings/${encodeURIComponent(characterId!)}`
     : character ? "/settings/bindings" : "/settings/bindings";
-  const invalid = (!!characterId && !character) || (!!appId && !app);
+  // Before Foundation is ready a missing Character only means "not loaded yet", not "not found".
+  const invalid = (foundationReady && !!characterId && !character) || (!!appId && !app);
   const binding = characterId ? bindings.characters[characterId] : undefined;
   const own: BindingSlot = app ? binding?.apps[app.id] ?? {} : character ? binding?.defaults ?? {}
     : bindings.global;

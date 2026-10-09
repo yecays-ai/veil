@@ -152,7 +152,7 @@ test("Messages conversation rows keep navigation and expose only a confirmed Del
 
 test("Chats waits for session loading only and resolves direct names after Foundation and Contacts", () => {
   const home = readFileSync("components/chat/messages-home.tsx", "utf8");
-  assert.match(home, /!loaded \? <p className="chat-notice">Loading conversations…<\/p>/);
+  assert.match(home, /!loaded \? !error && <p className="chat-notice">Loading conversations…<\/p>/);
   assert.doesNotMatch(home, /!ready \|\| !loaded/);
   assert.match(home, /const namesReady = ready && contacts\.ready/);
   assert.match(home, /if \(session\.type === "group"\) return session\.title \?\? "Group"/);
