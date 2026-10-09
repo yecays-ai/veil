@@ -106,6 +106,7 @@ export function createChatEngine(
     let assistant: ChatMessage | undefined;
     let rawContent = "", finishReason: string | undefined;
     let iterator: AsyncIterator<string> | undefined;
+    let draftSaved = false;
     try {
       // Validate prerequisites before any ownership or pending-message claim; failures here
       // leave no attempt, claim or failed assistant behind.
@@ -121,6 +122,7 @@ export function createChatEngine(
       });
       if (draft?.content.trim()) {
         await awaited(sendMessage(sessionId, draft.content, draft.quoteMessageId, attempt.id, controller.signal).then(() => {
+          draftSaved = true;
           try { draft.onSent?.(); } catch { /* Saved user content remains authoritative. */ }
         }), controller.signal);
         controller.signal.throwIfAborted();
@@ -181,6 +183,9 @@ export function createChatEngine(
       // would be an empty bubble whose Retry asks the model to answer nothing. Genuine failures stay recorded.
       if (controller.signal.aborted && !assistant && regenerateId === undefined && draft?.content.trim()
         && !(await hasUnansweredUserTurn(sessionId))) return null;
+      // No persisted question exists for a failed reply to retry. Leave the draft
+      // with its caller and all earlier inputs unclaimed, rather than saving an empty attempt.
+      if (!controller.signal.aborted && !assistant && draft?.content.trim() && !draftSaved) throw error;
       const outcome = controller.signal.aborted ? "stopped" : "failed";
       // Ownership/eligibility rejection is not a provider failure or a new turn.
       if (!assistant && regenerateId !== undefined) {

@@ -81,8 +81,9 @@ test("failed direct Send never starts generation", async () => {
   let requests = 0;
   storage.send = async () => { throw new Error("save failed"); };
   const engine = createChatEngine(storage, async () => document, async function* () { requests++; yield "unexpected"; });
-  assert.match((await engine.requestReply(session.id, undefined, "manual-reply", { content: "draft" }))?.error ?? "", /save failed/);
+  await assert.rejects(engine.requestReply(session.id, undefined, "manual-reply", { content: "draft" }), /save failed/);
   assert.equal(requests, 0);
+  assert.deepEqual((await storage.readSession(session.id)).messages, [], "an unsaved question cannot leave a contextless Retry bubble");
 });
 
 test("streaming visibility changes only preview, not completed, stopped or failed text", () => {

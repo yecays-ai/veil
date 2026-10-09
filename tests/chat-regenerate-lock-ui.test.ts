@@ -162,10 +162,12 @@ async function mountedRoom() {
   const original = {
     load: browserFoundationStorage.load, api: browserApiConfigStorage.getApiConfig,
     send: chatEngine.send, reply: chatEngine.requestReply,
+    storageSend: chatStorage.send, fetch: globalThis.fetch,
   };
   browserFoundationStorage.load = async () => current;
   browserApiConfigStorage.getApiConfig = async () => ({ ...TEST_API_CONFIG, name: "Test", provider: "Custom" });
   const a = await chatStorage.openSession("a"), b = await chatStorage.openSession("b");
+  await chatStorage.clearSession(a.id); await chatStorage.clearSession(b.id);
   const root = createRoot(dom.window.document.getElementById("root")!);
   const held: Array<() => void> = [];
   const hold = <T,>() => {
@@ -193,8 +195,8 @@ async function mountedRoom() {
       target.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
     });
   };
-  const render = async (characterId: string) => {
-    await act(async () => { root.render(createElement(FoundationProvider, null, createElement(ChatRoom, { characterId }))); });
+  const render = async (characterId: string, key?: string) => {
+    await act(async () => { root.render(createElement(FoundationProvider, null, createElement(ChatRoom, { characterId, key }))); });
     await wait(() => !!input() && !input()!.disabled);
   };
   const refresh = async (document: typeof full) => {
@@ -210,14 +212,79 @@ async function mountedRoom() {
     browserFoundationStorage.load = original.load;
     browserApiConfigStorage.getApiConfig = original.api;
     chatEngine.send = original.send; chatEngine.requestReply = original.reply;
+    chatStorage.send = original.storageSend; globalThis.fetch = original.fetch;
     dom.window.close();
     for (const [name, descriptor] of descriptors) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else Reflect.deleteProperty(globalThis, name);
     }
   };
-  return { a, b, full, withoutA, chatEngine, chatStorage, input, button, click, type, render, refresh, settle, hold, wait, close };
+  return { a, b, full, withoutA, chatEngine, chatStorage, dom, input, button, click, type, render, refresh, settle, hold, wait, close };
 }
+
+regressionContract("chat.unsaved-draft-explicit-retry", "async-race-safety",
+  "CF-02: Retry after draft-save failure answers the original question exactly once", async () => {
+    const ui = await mountedRoom(); const send = ui.chatStorage.send.bind(ui.chatStorage);
+    const prompts: Array<{ role: string; content: string }[]> = []; let fail = true;
+    try {
+      ui.chatStorage.send = async (...args) => {
+        if (fail) { fail = false; throw new Error("Draft save unavailable"); }
+        return send(...args);
+      };
+      globalThis.fetch = async (_url, init) => {
+        prompts.push(JSON.parse(String(init?.body)).messages);
+        return Response.json({ choices: [{ message: { content: "Answer" }, finish_reason: "stop" }] });
+      };
+      await ui.render("a"); await ui.type("Original question"); await ui.click("Request Reply");
+      await ui.wait(() => !ui.chatEngine.isGenerating(ui.a.id) && ui.dom.window.document.body.textContent!.includes("Draft save unavailable"));
+      assert.ok(ui.button("Retry draft"), "a failed unsaved question has an explicit Retry");
+      assert.equal(prompts.length, 0);
+      await ui.type("Newer unsaved text"); await ui.click("Retry draft");
+      await ui.wait(() => !ui.chatEngine.isGenerating(ui.a.id) && !ui.button("Stop reply"));
+      assert.equal(prompts.length, 1);
+      assert.equal(prompts[0].filter((m) => m.role === "user" && m.content.includes("Original question")).length, 1);
+      const messages = (await ui.chatStorage.readSession(ui.a.id)).messages;
+      assert.deepEqual(messages.filter((m) => m.role === "user").map((m) => m.content), ["Original question"]);
+      assert.equal(messages.filter((m) => m.role === "assistant").length, 1);
+      assert.equal(ui.input()?.value, "Newer unsaved text", "Retry cannot clear a later edit");
+    } finally { await ui.close(); }
+  });
+
+for (const boundary of ["navigation", "page-remount"])
+  regressionContract(`chat.unsaved-draft-${boundary}-boundary`, "async-race-safety",
+    "CF-02: unsaved recovery is page-local and cannot expose a contextless persisted Retry", async () => {
+      const ui = await mountedRoom();
+      try {
+        ui.chatStorage.send = async () => { throw new Error("Draft save unavailable"); };
+        await ui.render("a"); await ui.type("Original question"); await ui.click("Request Reply");
+        await ui.wait(() => !ui.chatEngine.isGenerating(ui.a.id) && ui.dom.window.document.body.textContent!.includes("Draft save unavailable"));
+        assert.ok(ui.button("Retry draft"));
+        if (boundary === "navigation") await ui.render("b");
+        await ui.render("a", boundary === "page-remount" ? "fresh-page" : undefined);
+        assert.equal(ui.button("Retry draft"), undefined);
+        assert.deepEqual((await ui.chatStorage.readSession(ui.a.id)).messages, []);
+      } finally { await ui.close(); }
+    });
+
+for (const edited of [false, true])
+  regressionContract(`chat.saved-reply-draft-${edited ? "preserves-edit" : "clears-on-return"}`, "async-race-safety",
+    "CF-03: a late Reply save clears only its own draft revision after the session returns", async () => {
+      const ui = await mountedRoom(); const gate = ui.hold<void>();
+      const send = ui.chatStorage.send.bind(ui.chatStorage); let saved = false;
+      try {
+        ui.chatStorage.send = async (...args) => { const message = await send(...args); saved = true; await gate.promise; return message; };
+        await ui.render("a"); await ui.type("Reply draft"); await ui.click("Request Reply");
+        await ui.wait(() => saved);
+        if (edited) { await ui.type("Changed"); await ui.type("Reply draft"); }
+        await ui.refresh(ui.withoutA); await ui.wait(() => !ui.input() || !!ui.input()?.disabled);
+        await ui.wait(() => !ui.chatEngine.isGenerating(ui.a.id));
+        await ui.settle(gate, undefined);
+        await ui.refresh(ui.full); await ui.wait(() => !!ui.input() && !ui.input()!.disabled);
+        assert.equal(ui.input()?.value, edited ? "Reply draft" : "", "cleanup respects edit version, even for identical text");
+        if (!edited) { assert.equal(ui.button("Send")?.disabled, true); await ui.click("Send"); }
+        assert.equal((await ui.chatStorage.readSession(ui.a.id)).messages.filter((m) => m.role === "user").length, 1);
+      } finally { await ui.close(); }
+    });
 
 regressionContract("chat.reply-lock-released-without-session", "async-race-safety",
   "Reply finishing while the room temporarily lacks a session releases its own lock", async () => {

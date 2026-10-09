@@ -300,10 +300,10 @@ export class ChatStorage {
             req.result.close();
             return;
           }
-          req.result.onversionchange = () => {
-            req.result.close();
-            this.database = undefined;
-          };
+          const database = req.result;
+          const invalidate = () => { if (this.database === opening) this.database = undefined; };
+          database.onclose = invalidate;
+          database.onversionchange = () => { database.close(); invalidate(); };
           resolve(req.result);
         };
         req.onerror = () => {
@@ -332,9 +332,27 @@ export class ChatStorage {
     signal?: AbortSignal,
   ): Promise<T> {
     signal?.throwIfAborted();
-    const db = await this.open();
+    const opening = this.open();
+    const db = await opening;
     signal?.throwIfAborted();
-    const tx = db.transaction(stores, mode);
+    let tx: IDBTransaction;
+    const invalid = (error: unknown) => error instanceof Error && error.name === "InvalidStateError";
+    const discard = (database: IDBDatabase, cached: Promise<IDBDatabase>) => {
+      if (this.database === cached) this.database = undefined;
+      database.close();
+    };
+    try { tx = db.transaction(stores, mode); }
+    catch (error) {
+      if (!invalid(error)) throw error;
+      discard(db, opening);
+      const recovery = this.open(), recovered = await recovery;
+      signal?.throwIfAborted();
+      try { tx = recovered.transaction(stores, mode); }
+      catch (retryError) {
+        if (invalid(retryError)) discard(recovered, recovery);
+        throw retryError;
+      }
+    }
     const cancel = () => { try { tx.abort(); } catch { /* Already committed. */ } };
     signal?.addEventListener("abort", cancel, { once: true });
     const done = new Promise<void>((resolve, reject) => {
