@@ -4,7 +4,7 @@
   (display-mode: standalone) and (hover: none) and (pointer: coarse) {
   :root {
     --phone-screen-width: 100vw;
-    --phone-screen-height: 100lvh;
+    --phone-screen-height: 100dvh;
     --phone-screen-radius: 0px;
     --phone-frame-size: 0px;
     --phone-frame-radius: 0px;
@@ -20,13 +20,13 @@
   html,
   body {
     width: 100%;
-    height: 100lvh;
+    height: 100dvh;
     overflow: hidden;
     background: #fafafa;
   }
   .app-root {
     width: 100vw;
-    height: 100lvh;
+    height: 100dvh;
     min-height: 0;
     padding: 0;
     display: flex;
@@ -60,7 +60,7 @@
 /* Older iOS exposes navigator.standalone rather than the media query. */
 html[data-mobile-standalone="true"] {
   --phone-screen-width: 100vw;
-  --phone-screen-height: 100lvh;
+  --phone-screen-height: 100dvh;
   --phone-screen-radius: 0px;
   --phone-frame-size: 0px;
   --phone-frame-radius: 0px;
@@ -73,14 +73,14 @@ html[data-mobile-standalone="true"] {
   --home-grid-top-offset: calc(var(--app-safe-top) + 16px);
   --home-dock-lift: var(--app-safe-bottom);
   width: 100%;
-  height: 100lvh;
+  height: 100dvh;
   overflow: hidden;
   background: #fafafa;
 }
 html[data-mobile-standalone="true"] body,
 html[data-mobile-standalone="true"] .app-root {
   width: 100vw;
-  height: 100lvh;
+  height: 100dvh;
   min-height: 0;
   margin: 0;
   padding: 0;

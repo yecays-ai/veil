@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createChatDiagnosticRecorder } from "../lib/diagnostics/chat-first-paint";
+import { createChatDiagnosticRecorder, readChatDiagnosticsOptIn, writeChatDiagnosticsOptIn } from "../lib/diagnostics/chat-first-paint";
+
+test("diagnostic opt-in can use isolated storage for standalone mode", () => {
+  const values = new Map<string, string>();
+  const storage = {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); },
+    removeItem: (key: string) => { values.delete(key); },
+  };
+  assert.equal(readChatDiagnosticsOptIn(storage, "diag"), false);
+  writeChatDiagnosticsOptIn(storage, "diag", true);
+  assert.equal(readChatDiagnosticsOptIn(storage, "diag"), true);
+  writeChatDiagnosticsOptIn(storage, "diag", false);
+  assert.equal(readChatDiagnosticsOptIn(storage, "diag"), false);
+});
 
 test("diagnostics are silent until explicitly enabled and redact identity and content", () => {
   let now = 10;

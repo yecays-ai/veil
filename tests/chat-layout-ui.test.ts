@@ -7,6 +7,7 @@ const css = readFileSync("app/messages/chat.css", "utf8");
 const globalCss = readFileSync("app/globals.css", "utf8");
 const layout = readFileSync("app/layout.tsx", "utf8");
 const appearance = readFileSync("app/appearance.css", "utf8");
+const mobile = readFileSync("app/mobile-foundation.css", "utf8");
 
 function rule(selector: string): string {
   const pattern = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -191,4 +192,10 @@ test("iOS keyboard handling keeps header and history on the stable chat canvas",
   assert.match(room, /--chat-keyboard-inset/);
   assert.match(css, /\.chat-header\s*\{[^}]*min-height:\s*calc\(var\(--chat-safe-top, var\(--app-safe-top\)\) \+ 62px\)/);
   assert.match(css, /\.chat-composer\s*\{[^}]*bottom:\s*var\(--chat-keyboard-inset/);
+});
+
+
+test("mobile shell follows the dynamic viewport in Safari and standalone mode", () => {
+  assert.match(mobile, /--phone-screen-height:\s*100dvh/);
+  assert.doesNotMatch(mobile, /100lvh/);
 });

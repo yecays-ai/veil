@@ -6,43 +6,71 @@ import { useFoundation } from "../foundation-provider";
 import { useContacts } from "../use-contacts";
 import { useBindings } from "../use-bindings";
 import { useTheme } from "../theme-provider";
-import { chatDiagnosticRecorder, recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
+import {
+  chatDiagnosticRecorder,
+  readChatDiagnosticsOptIn,
+  recordChatDiagnostic,
+  writeChatDiagnosticsOptIn,
+} from "../../lib/diagnostics/chat-first-paint";
 
 const ENABLE_KEY = "veil.chat-first-paint-diagnostics";
 let memoryOptIn = false;
-function readOptIn() {
-  try { return window.sessionStorage.getItem(ENABLE_KEY) === "1"; }
-  catch { return memoryOptIn; }
+function isStandaloneWindow() {
+  const apple = (navigator as Navigator & { standalone?: boolean }).standalone;
+  return window.matchMedia("(display-mode: standalone)").matches || apple === true;
 }
-function writeOptIn(enabled: boolean) {
+function readOptIn(standalone: boolean) {
+  try {
+    return readChatDiagnosticsOptIn(
+      standalone ? window.localStorage : window.sessionStorage, ENABLE_KEY,
+    );
+  } catch { return memoryOptIn; }
+}
+function writeOptIn(enabled: boolean, standalone: boolean) {
   memoryOptIn = enabled;
   try {
-    if (enabled) window.sessionStorage.setItem(ENABLE_KEY, "1");
-    else window.sessionStorage.removeItem(ENABLE_KEY);
+    writeChatDiagnosticsOptIn(
+      standalone ? window.localStorage : window.sessionStorage, ENABLE_KEY, enabled,
+    );
   } catch { /* In-memory opt-in still works for this document. */ }
 }
 const NAV_SELECTOR = 'a[href^="/messages"], a[href^="/contacts"], button[data-chat-navigation]';
 
 export function ChatDiagnosticsGate({ children }: { children: ReactNode }) {
   const [enabled, setEnabled] = useState(false);
+  const [standalone, setStandalone] = useState(false);
   useEffect(() => {
     let mounted = true;
+    const inStandalone = isStandaloneWindow();
     const requested = new URLSearchParams(window.location.search).get("veilDiagnostics") === "1";
-    const active = requested || readOptIn();
-    if (requested) writeOptIn(true);
+    const active = requested || readOptIn(inStandalone);
+    setStandalone(inStandalone);
+    if (requested) writeOptIn(true, inStandalone);
     chatDiagnosticRecorder.setEnabled(active);
     const timer = window.setTimeout(() => { if (mounted) setEnabled(active); }, 0);
     return () => { mounted = false; window.clearTimeout(timer); };
   }, []);
   function toggle(next: boolean) {
-    writeOptIn(next);
+    writeOptIn(next, standalone);
     chatDiagnosticRecorder.setEnabled(next);
     setEnabled(next);
   }
   return <>
     {children}
-    {enabled && <ChatDiagnosticsObserver onDisable={() => toggle(false)} />}
+    {enabled
+      ? <ChatDiagnosticsObserver onDisable={() => toggle(false)} />
+      : standalone && <StandaloneDiagnosticsOptIn onEnable={() => toggle(true)} />}
   </>;
+}
+
+function StandaloneDiagnosticsOptIn({ onEnable }: { onEnable: () => void }) {
+  return <button type="button" data-chat-diagnostics="" onClick={onEnable} style={{
+    position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 2px)",
+    right: "calc(env(safe-area-inset-right, 0px) + 4px)", zIndex: 2147483000,
+    minHeight: 28, padding: "3px 9px", border: "1px solid #ffffff66",
+    borderRadius: 14, color: "#fff", background: "#111d",
+    font: "11px system-ui, sans-serif",
+  }}>Enable DIAG</button>;
 }
 
 function ChatDiagnosticsObserver({ onDisable }: { onDisable: () => void }) {
@@ -140,7 +168,7 @@ function DiagnosticsPanel({ onDisable }: { onDisable: () => void }) {
       const textarea = document.createElement("textarea");
       textarea.value = output;
       textarea.setAttribute("readonly", "");
-      textarea.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0";
+      textarea.style.cssText = "position:fixed;left:0;top:0;width:1px;height:1px;opacity:0.01;z-index:-1";
       document.body.appendChild(textarea);
       textarea.select();
       const copied = document.execCommand("copy");

@@ -117,6 +117,19 @@ export function createChatDiagnosticRecorder(now: () => number = () => performan
   };
 }
 
+export function readChatDiagnosticsOptIn(
+  storage: Pick<Storage, "getItem">, key: string,
+): boolean {
+  return storage.getItem(key) === "1";
+}
+
+export function writeChatDiagnosticsOptIn(
+  storage: Pick<Storage, "setItem" | "removeItem">, key: string, enabled: boolean,
+): void {
+  if (enabled) storage.setItem(key, "1");
+  else storage.removeItem(key);
+}
+
 export const chatDiagnosticRecorder = createChatDiagnosticRecorder();
 export const recordChatDiagnostic = chatDiagnosticRecorder.record;
 export const isChatDiagnosticsEnabled = chatDiagnosticRecorder.isEnabled;
