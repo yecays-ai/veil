@@ -76,7 +76,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         writable.current = true;
         // Saved configuration is usable independently of its image resources.
         setDocument(saved);
-        setResolvedImages({});
+        const retained = images.retained(saved);
+        setResolvedImages(retained);
         setReady(true);
         setError("");
         const assetsStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
@@ -85,7 +86,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         const publishImages = (urls: Record<string, string> | null) => {
           if (!active || request !== revision) return;
           clearTimeout(imageTimeout);
-          const prepared = urls ?? {};
+          const prepared = urls ?? retained;
           setResolvedImages(prepared);
           if (assetsStartedAt !== null) recordChatDiagnostic("theme-image-urls-ready", {
             resolvedCount: Object.keys(prepared).length,

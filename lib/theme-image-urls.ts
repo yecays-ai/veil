@@ -1,5 +1,13 @@
 import { themeImageAssetId, type ThemeDocument } from "./theme-types";
 
+function currentImageIds(document: ThemeDocument) {
+  const current = document.current.profile;
+  return new Set(
+    [current.wallpaper.source, current.dock.image, ...Object.values(current.icons)]
+      .map(themeImageAssetId).filter((id): id is string => id !== null),
+  );
+}
+
 // One mounted Provider owns these URLs; overlapping reads never share unfinished URLs.
 export class ThemeImageUrls {
   private revision = 0;
@@ -17,15 +25,20 @@ export class ThemeImageUrls {
     this.pendingUrls.clear();
   }
 
+  retained(document: ThemeDocument): Record<string, string> {
+    const next: Record<string, string> = {};
+    for (const id of currentImageIds(document)) {
+      const reference = `appearance-asset:${id}`;
+      if (this.urls[reference]) next[reference] = this.urls[reference];
+    }
+    return next;
+  }
+
   async sync(document: ThemeDocument): Promise<Record<string, string> | null> {
     this.invalidate();
     const revision = this.revision;
     const next: Record<string, string> = {};
-    const current = document.current.profile;
-    const ids = new Set(
-      [current.wallpaper.source, current.dock.image, ...Object.values(current.icons)]
-        .map(themeImageAssetId).filter((id): id is string => id !== null),
-    );
+    const ids = currentImageIds(document);
     const isCurrent = () => !this.disposed && revision === this.revision;
     const created: string[] = [];
     try {

@@ -268,6 +268,38 @@ test("repeated mounted loads reuse current URLs, ignore preset images, and relea
   });
 });
 
+test("reloading retains still-used published images while new assets are pending or time out", async () => {
+  await imageFixture(async ({ created, revoked, setRead, setDocument }) => {
+    const pending = deferred<Blob | null>();
+    const initial = withImage("#112233", "a");
+    initial.current.profile.dock.image = asset("b");
+    setDocument(initial);
+    await mounted(async ({ container, dom, theme }) => {
+      await waitFor(() => !!theme().resolveImage(asset("b")));
+      const wallpaper = theme().resolveImage(asset("a"));
+      const oldDock = theme().resolveImage(asset("b"));
+      const saved = withImage("#445566", "a");
+      saved.current.profile.dock.image = asset("c");
+      setDocument(saved);
+      setRead(() => pending.promise);
+      await peerChanged(dom);
+      assert.equal(output(container).dataset.accent, "#445566");
+      assert.equal(theme().resolveImage(asset("a")), wallpaper, "the still-used wallpaper never disappears during the new read");
+      assert.ok(container.querySelector('[data-testid="home-wallpaper"]'));
+      assert.equal(theme().resolveImage(asset("b")), null, "removed assets are not exposed by the retained map");
+      assert.equal(theme().resolveImage(asset("c")), null);
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1050)); });
+      assert.equal(theme().resolveImage(asset("a")), wallpaper, "timeout preserves the still-used published URL");
+      await act(async () => { pending.reject(new Error("late image failure")); });
+      assert.equal(theme().resolveImage(asset("a")), wallpaper);
+      assert.equal(output(container).dataset.ready, "true");
+      assert.deepEqual(created, [wallpaper, oldDock]);
+      assert.deepEqual(revoked, []);
+    });
+    assert.deepEqual(revoked, created);
+  });
+});
+
 test("Strict Mode and unmount invalidate pending reads and revoke partial URLs before they finish", async () => {
   await imageFixture(async ({ created, revoked, setRead, setDocument }) => {
     const pending = deferred<Blob | null>();
