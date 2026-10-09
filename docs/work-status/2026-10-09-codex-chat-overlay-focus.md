@@ -2,6 +2,7 @@
 
 更新人：Codex
 更新时间：2026-10-09T21:50:26+08:00
+发现范围：2026-10-09 21:44 +08:00 通过 GitHub 集成读取 PR #73 最新代码/行内评论、开放 PR（含 drafts）及 #75 的文件和 diff。#75 也修改 ChatRoom，但范围为 Display Regex 和初始 history 定位，与本次 Chat Info 点击入口、overlay 焦点来源记录不重叠；未接管其改动。#36 已关闭并由 #70 替代，未修改。 本地检查范围：本地树为原始 `755c59f` 加 #72 已合并文件更新及本 PR 修改。 访问及验证限制：远端信息通过 GitHub 集成读取；本地检查覆盖上述测试树，GitHub Actions/CI 未运行，Vercel preview 受免费部署额度限制，iPhone Safari、VoiceOver 和真实设备焦点表现未验证。
 
 ## 当前任务
 
@@ -9,9 +10,7 @@ Part 5 / F3：已修，待 CodeRabbit 意见整改。新增焦点恢复意见已
 
 ## 谁在改哪里
 
-Codex；分支 `fix/chat-overlay-focus-boundaries`，PR [#73](https://github.com/yecays-ai/veil/pull/73)。本次修订基于 PR head `dd527769`，PR 对账基线 `0ee3e2d8ebb07dda12ef3759673aad1b4c40cd71`。本地树为原始 `755c59f` 加 #72 已合并文件更新及本 PR 修改。修改路径：`components/chat/chat-room.tsx`、`tests/chat-overlay-focus.test.ts`、`tests/chat-layout-ui.test.ts`、本状态记录。
-
-2026-10-09 21:44 +08:00 通过 GitHub 集成读取 PR #73 最新代码/行内评论、开放 PR（含 drafts）及 #75 的文件和 diff。#75 也修改 ChatRoom，但范围为 Display Regex 和初始 history 定位，与本次 Chat Info 点击入口、overlay 焦点来源记录不重叠；未接管其改动。#36 已关闭并由 #70 替代，未修改。
+Codex；分支 `fix/chat-overlay-focus-boundaries`，PR [#73](https://github.com/yecays-ai/veil/pull/73)。本次修订基于 PR head `dd527769`，PR 对账基线 `0ee3e2d8ebb07dda12ef3759673aad1b4c40cd71`。修改路径：`components/chat/chat-room.tsx`、`tests/chat-overlay-focus.test.ts`、`tests/chat-layout-ui.test.ts`、本状态记录。
 
 ## 已完成
 
