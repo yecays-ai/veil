@@ -50,8 +50,10 @@ R3 产品决策：删除角色 = 关于该角色的所有记录都删。
 | C3（板块二） | 添加联系人无进行中保护、写入失败无反馈 | #49 | 已修待验 |
 | C4 | 加载失败后没有 Retry（Foundation、Binding/Preset/Regex/WorldBook、Contacts） | #45 #51 #52 | 已修待验 |
 | U3 | 离开聊天室/换角色/卸载会取消本地生成，并留下持久的 “Reply stopped” 气泡；重进不恢复 | — | 接受（当前行为）：Lan 于 2026-10-10 确认接受“离开聊天室/换角色/卸载即取消本地生成”这一产品行为，本行即为该决策的书面记录（此前仓库内没有出处）；不当作缺陷整改 |
+
 Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收起后 200ms 轮询继续运行直到卸载；D2 同步卸载后 chat session lifecycle 多一次只读读取（与冻结的 #36 同文件，等其结论）；D3 角色删除善后期间短暂显示 “Character not found.”；E1 AvatarEditor 连续选图的竞态（仅键盘/读屏可达）；E2 删除预览“打开-取消-重开”用旧结果；E3 `saveBubbleTiming` 无版本保护；E4 Preset 导入在忙碌时静默丢文件（几乎不可触发）；E5 删除最后一个角色后历史残留不提示清理；E6 `readImage` 无超时；E7 Foundation 刷新的窄微任务窗口；U2 模型流读取错误以浏览器原文显示在失败气泡；#55-L1 同一角色的会话被替换时旧操作不释放锁（未复现）。
-待对账（沿用旧账，不得写成已修）：#21 遗留的“关闭后旧结果仍提交”——Here & There 部分由 #54 覆盖（见板块三 D8），其余待对账；天气缓存过期不自动刷新——第二板块核销时代码已含带退避与清理的刷新，待对账确认；多个小组件抢评论机会的规则未定；Chats 预览旧刷新覆盖新刷新——#58（板块三 D7c，同时是 Part 5 F1，同一修复，不重复计数）；Custom CSS 旧保存关掉新编辑器——#69（Part 5 F6，已合并）；裁剪换图残留上一张状态——Part 5 F9（待整改，未在当前 main 复验）。
+
+待对账（沿用旧账，不得写成已修）：#21 遗留的“关闭后旧结果仍提交”——Here & There 部分由 #54 覆盖（见板块三 D8），其余待对账；天气缓存过期不自动刷新——第二板块核销时代码已含带退避与清理的刷新，待对账确认；多个小组件抢评论机会的规则未定；Chats 预览旧刷新覆盖新刷新——#58（板块三 D7c，同时是 Part 5 F1，同一修复，不重复计数）；Custom CSS 旧保存关掉新编辑器——#69（Part 5 F6，已合并）；裁剪换图残留上一张状态——Part 5 F9（#86 已修待验，合并前 main 上仍存在；自动化测试证据，未做真机验证）。
 
 ## 板块三：聊天核心（阶段性结案，人工验收开放）
 剩余确认 High 0、Medium 0。
@@ -91,7 +93,7 @@ Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收�
 | D8 | Theme 导出包可能超过自身导入限制（典型约 3.3 MB 导出 > 导入端 3,000,000 字符，导出后无法重新导入） | — | 明确后移（既有审计决定；后续归属待定，不并入 D2）。本行 D8 与其他板块的 D8 不是同一问题 |
 
 ## 板块五：界面 / 导航 / 前端渲染
-说明：本板块 F1–F8 来自《前端》审计（Theme 首帧、Chat 首帧、缓存与异步生命周期）。《6刀》Part 5 报告另有自己的一套 F1–F11 与 R1–R4，编号相同但不是同一批问题，引用时必须写明命名空间（“《前端》F3”或“Part 5 F3”，不得只写 F3）。经第五刀窗口核对 GitHub PR 标题及合并状态，Part 5 F1–F8 依次对应：F1→#58（Chats 旧刷新覆盖；与板块三 D7c 是同一修复，不重复计数）、F2→#71（设置错误归属）、F3→#73（浮层焦点边界）、F4→#76（消息键盘操作）、F5→#57（搜索跳转后目标消息被 pacing 隐藏，已修，不得重复开单）、F6→#69（Custom CSS 保存归属）、F7→#79（Theme 资源延迟发布）、F8→#82（资料页滚动容器）；八个 PR 均已合并。这只确认了 PR 与合并状态，不代表这八项已通过人工验收，也不改变其验收状态。Part 5 F9–F11 尚未在当前 main 重新检查，保持“待整改”；Part 5 R1–R4 保持原始证据等级与未验证边界，不自动转为施工任务。
+说明：本板块 F1–F8 来自《前端》审计（Theme 首帧、Chat 首帧、缓存与异步生命周期）。《6刀》Part 5 报告另有自己的一套 F1–F11 与 R1–R4，编号相同但不是同一批问题，引用时必须写明命名空间（“《前端》F3”或“Part 5 F3”，不得只写 F3）。经第五刀窗口核对 GitHub PR 标题及合并状态，Part 5 F1–F8 依次对应：F1→#58（Chats 旧刷新覆盖；与板块三 D7c 是同一修复，不重复计数）、F2→#71（设置错误归属）、F3→#73（浮层焦点边界）、F4→#76（消息键盘操作）、F5→#57（搜索跳转后目标消息被 pacing 隐藏，已修，不得重复开单）、F6→#69（Custom CSS 保存归属）、F7→#79（Theme 资源延迟发布）、F8→#82（资料页滚动容器）；八个 PR 均已合并。这只确认了 PR 与合并状态，不代表这八项已通过人工验收，也不改变其验收状态。Part 5 F9 已在 270f726 复现并由 #86 修复（待合并与验证，见板块五 F9 行）；Part 5 F10–F11 尚未在当前 main 重新检查，保持“待整改”；Part 5 R1–R4 保持原始证据等级与未验证边界，不自动转为施工任务。
 | ID | 问题 | PR | 状态 |
 |---|---|---|---|
 | F1 | Theme 先发布默认主题再切换（冷启动）：已保存 Theme 先发布、其当前图片 URL 后准备，服务端与首次客户端输出用默认主题（《前端》F1） | #61 #79 #83 | 已验证修复（人工验收，证据未入库，账本不能独立复核；接受残余）：Lan 自述 2026-10-10 真机逐帧观察录屏——重开后依次为白色加载底色、已保存布局（刻意换过位置后仍是换后的位置，不再先出默认布局）、壁纸，壁纸比桌面晚零点几秒，Lan 接受；修前 Lan 曾观察到默认布局先出现；录屏未入库，未随 PR 提交。#83 起主题读完前不画默认桌面。原证据：加入有界的当前资源准备边界和 hydration 前已验证的 CSS bootstrap；自动测试覆盖延迟图片发布；iPhone 首帧对比待做 |
@@ -110,7 +112,7 @@ Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收�
 | U6 | standalone 主屏幕模式 Dock 上移（#56） | #56 | #56 已合并；Dock 回归是否已修待确认 |
 | U7 | Overlay 下输入框可聚焦；错误提示被盖住；Home 编辑模式有无效按钮；离页保护不统一 | — | 部分修复，已按归属拆分：错误提示被盖住 → Part 5 F2（#71，已合并，人工验收未记录）；Overlay 下输入框可聚焦（浮层焦点）→ Part 5 F3（#73，已合并，人工验收未记录；Lan 决定焦点规范不纳入）；Home 无效按钮 → Part 5 F11（待整改，未在当前 main 复验）；离页保护不统一 → 第五刀-R2（待核实） |
 | U8 | 键盘弹出时 header 飞走（iOS） | — | 搁置（Lan 决定） |
-| F9 | ImageCropDialog 切换图片后保留旧的加载状态、尺寸、缩放与位置，Save Crop 仍可用（原文标题：Crop readiness and dimensions survive a source replacement；Medium；`components/image-crop-dialog.tsx`） | — | 待整改。证据级别：Mounted reproduction——加载图片 A 后弹窗保持挂载并切换为 B，B 尚未加载或加载失败时旧 loaded、尺寸、zoom、position 仍保留，Save Crop 继续可用。原始建议：切换 source 时重置加载状态与几何参数，失败时清除 ready，并拒绝旧加载事件。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
+| F9 | ImageCropDialog 切换图片后保留旧的加载状态、尺寸、缩放与位置，Save Crop 仍可用（原文标题：Crop readiness and dimensions survive a source replacement；Medium；`components/image-crop-dialog.tsx`） | — | 已修待验（[#86](https://github.com/yecays-ai/veil/pull/86)，待 Lan 合并；见 work-status `2026-10-10-claude-p5-f9-crop-source-reset`；自动化测试 JSDOM 已覆盖，未做真机验证；调用方现有模态流程下本就难以触发，属组件契约缺陷）。原审计证据级别：Mounted reproduction——加载图片 A 后弹窗保持挂载并切换为 B，B 尚未加载或加载失败时旧 loaded、尺寸、zoom、position 仍保留，Save Crop 继续可用。原始建议：切换 source 时重置加载状态与几何参数，失败时清除 ready，并拒绝旧加载事件。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
 | F10 | 四种页面状态错误暗示加载中、不存在或失败（原文标题：Several route states incorrectly imply loading, absence, or failure；Low） | — | 待整改。四种情况均为 Mounted reproduction：① `MessagesHome` 首次列表读取失败时错误与 Loading 同时持续显示；② `MessagesHome` 空列表或搜索无匹配时缺少说明；③ `GroupRoom` 读取到非群聊 session 时永久显示 Loading；④ `BindingEditor` 在 Foundation 尚未加载时先错误显示 Binding target not found。原始建议：区分 pending、failed、empty、no-match、invalid identity。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
 | F11 | Home 编辑模式存在两个可用但无效的按钮：Add Widget、Edit Pages（原文标题：Home exposes enabled actions that do nothing；Low；`components/home-edit-shell.tsx`） | — | 待整改：按钮显示可用但没有处理函数，点击无反应。证据级别：Mounted reproduction + code-confirmed。原始建议：标记不可用或暂时隐藏，无需开发对应功能。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。 |
 | 第五刀-R1 | 身份与查询状态的边界依赖路由重新挂载（原文标题：Some identity and query-state boundaries depend on router remount behavior；Medium；涉及 ContactsHome、ContactInfo、GroupRoom） | — | 待核实：已观察到挂载中的 ContactsHome 更换初始选择后仍保留旧选择；Part 2 另有 ContactInfo 草稿复用证据。限制：真实 Next.js 路由是否复用这些组件尚未验证。性质：有组件级证据的架构风险，不能直接认定真实导航必然出错。来源：《6刀.docx》Part 5 前端/导航审计报告原文（由 Lan 摘录提供）。Part 5 内编号，与本表 F1–F8（《前端》审计）不是同一批；这是补全审计来源，不代表当前 main 已重新验证，不新增编号、不扩大整改范围、不自动开工单。（与板块三 R1 无关） |

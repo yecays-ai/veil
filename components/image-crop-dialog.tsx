@@ -18,15 +18,7 @@ const SHAPES: Record<
   wide: { viewport: { width: 240, height: 96 }, output: { width: 900, height: 360 } },
 };
 
-export function ImageCropDialog({
-  source,
-  shape = "square",
-  title = "Adjust image",
-  alt = "Image crop preview",
-  onSave,
-  onUseOriginal,
-  onCancel,
-}: {
+type ImageCropDialogProps = {
   source: string;
   shape?: CropShape;
   title?: string;
@@ -34,7 +26,23 @@ export function ImageCropDialog({
   onSave: (value: string) => void | Promise<void>;
   onUseOriginal?: () => void | Promise<void>;
   onCancel: () => void;
-}) {
+};
+
+// Everything below the dialog (load state, natural size, zoom, position, drag, the <img> and its
+// load/error events) belongs to one source. Keying by source drops all of it when the source changes.
+export function ImageCropDialog(props: ImageCropDialogProps) {
+  return <CropDialogBody key={props.source} {...props} />;
+}
+
+function CropDialogBody({
+  source,
+  shape = "square",
+  title = "Adjust image",
+  alt = "Image crop preview",
+  onSave,
+  onUseOriginal,
+  onCancel,
+}: ImageCropDialogProps) {
   const dialog = useRef<HTMLDialogElement>(null),
     image = useRef<HTMLImageElement>(null),
     drag = useRef<{
@@ -161,7 +169,10 @@ export function ImageCropDialog({
             });
             setLoaded(true);
           }}
-          onError={() => setError("This image could not be loaded.")}
+          onError={() => {
+            setLoaded(false);
+            setError("This image could not be loaded.");
+          }}
           style={{
             width: dimensions.width * geometry.scale,
             height: dimensions.height * geometry.scale,
