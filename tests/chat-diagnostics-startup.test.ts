@@ -26,9 +26,10 @@ for (const mode of ["query", "session", "standalone", "disabled"] as const)
     const html = renderToString(tree());
     assert.equal(chatDiagnosticRecorder.isEnabled(), false, "server rendering cannot opt in");
     const dom = new JSDOM(`<div id="root">${html}</div>`, {
-      url: `http://localhost/messages/private-character${mode === "query" ? "?veilDiagnostics=1" : ""}`,
+      url: `http://localhost/messages/private-character${mode === "query" ? "?keep=1&veilDiagnostics=1&other=two#section" : ""}`,
       pretendToBeVisual: true,
     });
+    if (mode === "query") dom.window.history.replaceState({ preserved: "state" }, "", dom.window.location.href);
     const descriptors = new Map<string, PropertyDescriptor | undefined>();
     const install = (name: string, value: unknown) => {
       descriptors.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
@@ -71,6 +72,13 @@ for (const mode of ["query", "session", "standalone", "disabled"] as const)
         await act(async () => { [...dom.window.document.querySelectorAll("button")].find((button) => button.textContent === "Stop")!.click(); });
         assert.equal(chatDiagnosticRecorder.isEnabled(), false);
         assert.equal((mode === "standalone" ? dom.window.localStorage : dom.window.sessionStorage).getItem(key), null);
+        if (mode === "query") {
+          assert.equal(dom.window.location.pathname, "/messages/private-character");
+          assert.equal(dom.window.location.search, "?keep=1&other=two");
+          assert.equal(dom.window.location.hash, "#section");
+          assert.equal(JSON.stringify(dom.window.history.state), JSON.stringify({ preserved: "state" }));
+          assert.equal(new URLSearchParams(dom.window.location.search).get("veilDiagnostics"), null);
+        }
       }
     } finally {
       if (root) await act(async () => root!.unmount());
