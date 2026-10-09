@@ -1,10 +1,21 @@
 import { normalizeSnapshot, record, type ThemeSnapshot } from "./theme-types";
 
 const SCHEMA = "companion-phone.theme";
+
+function portableThemeSnapshot(snapshot: ThemeSnapshot): ThemeSnapshot {
+  const normalized = normalizeSnapshot(snapshot);
+  return {
+    ...normalized,
+    widgets: normalized.widgets.map((widget) => widget.type === "here-there"
+      ? { ...widget, config: { hour12: widget.config.hour12, showSeconds: widget.config.showSeconds } }
+      : widget),
+  };
+}
+
 export function exportTheme(snapshot: ThemeSnapshot): string {
   // Only whitelisted decoration fields; uploads are embedded as data URLs.
   return JSON.stringify(
-    { schema: SCHEMA, version: 1, snapshot: normalizeSnapshot(snapshot) },
+    { schema: SCHEMA, version: 1, snapshot: portableThemeSnapshot(snapshot) },
     null,
     2,
   );
@@ -28,3 +39,4 @@ export function importTheme(json: string): ThemeSnapshot {
   }
   return normalizeSnapshot(raw.snapshot);
 }
+
