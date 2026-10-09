@@ -144,6 +144,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   const destinationPending = new Promise<void>((resolve) => { releaseDestination = resolve; });
   let releaseSecondary!: () => void;
   const secondaryPending = new Promise<void>((resolve) => { releaseSecondary = resolve; });
+  let releaseRegex!: () => void;
+  const regexPending = new Promise<void>((resolve) => { releaseRegex = resolve; });
   let releasePeterAsset!: () => void;
   const peterAssetPending = new Promise<void>((resolve) => { releasePeterAsset = resolve; });
   let holdBackgroundRefreshes = false;
@@ -172,7 +174,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     };
     browserRegexStorage.load = async () => {
       regexReads++;
-      await secondaryPending;
+      await regexPending;
       if (regexReads === 2) throw new Error("Display Regex could not be read.");
       return originalRegexLoad.call(browserRegexStorage);
     };
@@ -273,6 +275,13 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
 
     const callsBeforeDestinationPublish = scrollCalls.length;
     await act(async () => { releaseDestination(); releaseSecondary(); });
+    await waitFor(() => activeChatSubscriptions === 3 &&
+      container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "true");
+    assert.equal(container.querySelectorAll("[data-message-id]").length, 0,
+      "history remains unpublished while the current Display Regex read is pending");
+    assert.equal(scrollCalls.length, callsBeforeDestinationPublish,
+      "initial positioning waits with the unpublished history");
+    await act(async () => { releaseRegex(); });
     await waitFor(() => container.textContent?.includes("pep history") === true &&
       container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");
     assert.ok(scrollCalls.length > callsBeforeDestinationPublish,
@@ -332,6 +341,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   } finally {
     releaseDestination();
     releaseSecondary();
+    releaseRegex();
     releasePeterAsset();
     let cleanupError: unknown;
     await act(async () => {
