@@ -6,16 +6,20 @@
 
 ## 当前任务
 
-只修复该测试夹具的类型错误；不改任何生产代码。
+待审查：只修复该测试夹具的类型错误；不改任何生产代码。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/fix-scrollto-test-types`；PR 见本分支对应的 pull request（base main）。仅修改 `tests/chat-first-paint.test.ts` 的 `scrollTo` 夹具签名，使其同时匹配 DOM 的两个重载。
+Claude；分支 `claude/fix-scrollto-test-types`；PR https://github.com/yecays-ai/veil/pull/78（base main）。仅修改 `tests/chat-first-paint.test.ts` 的 `scrollTo` 夹具签名，使其同时匹配 DOM 的两个重载。
 
 ## 已完成
 
 - `scrollTo` 夹具改为接受 `ScrollToOptions | number` 与可选 `y`，记录行为不变（对象形式记录原对象）。
-- 测试编译与应用 `tsc --noEmit` 均通过；`chat-first-paint` 4/4 通过。
+- 验证环境：Node v24.21.0，TypeScript 5.9.3（`npx tsc --version`）。
+- `npx tsc --project tsconfig.tests.json`：通过，退出码 0（修复前在 main 上退出码 2）。
+- `npx tsc --noEmit`：通过，退出码 0。
+- `node --test node_modules/.cache/veil-desktop-tests/tests/chat-first-paint.test.js`：4/4 通过（跑了两次）。
+- `npm test`（含上面的编译步骤）：751 项，750 通过，1 失败（`navigation-feedback`，见下）；`npx eslint .`：0 error。
 
 ## 尚未验证
 
