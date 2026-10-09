@@ -45,7 +45,7 @@ test("inline controls synchronize enable and order while built-in controls stay 
   assert.match(detail, /<Switch aria-label=\{`Enable Prompt \$\{entry\.name\}`\} checked=\{enabled\}/);
   assert.match(detail, /togglePrompt\(entry\.identifier, nextEnabled\)/);
   assert.match(detail, /prompts: current\.prompts\.map/);
-  assert.match(detail, /promptOrder: current\.promptOrder\.map/);
+  assert.match(detail, /setDraft\(\(current\) => setPromptEnabled\(current, identifier, enabled\)\)/);
   assert.match(detail, /setDraft\(movePrompt\(draft, entry\.identifier, -1\)\)/);
   assert.match(detail, /disabled=\{readOnly \|\| busy/);
   assert.match(detail, /fieldset disabled=\{readOnly \|\| busy\}/);

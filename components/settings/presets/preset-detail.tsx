@@ -9,7 +9,7 @@ import { Alert } from "../ui/feedback";
 import { ConfirmDialog } from "../ui/modal";
 import { presetFingerprint, type Preset, type PresetPrompt } from "../../../lib/preset";
 import { buildDisplayedPrompts, copyPreset, deletePrompt, exportPreset, movePrompt,
-  promptEnabled, setActivePreset, updatePreset } from "../../../lib/preset-library";
+  promptEnabled, setActivePreset, setPromptEnabled, updatePreset } from "../../../lib/preset-library";
 import { usePresetLibrary } from "./use-preset-library";
 import { Switch } from "../ui/switch";
 
@@ -56,10 +56,7 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
     if (identifier !== next.identifier) setEditingPromptId(next.identifier);
   }
   function togglePrompt(identifier: string, enabled: boolean) {
-    setDraft((current) => ({ ...current,
-      prompts: current.prompts.map((entry) => entry.identifier === identifier ? { ...entry, enabled } : entry),
-      promptOrder: current.promptOrder.map((entry) => entry.identifier === identifier ? { ...entry, enabled } : entry),
-    }));
+    setDraft((current) => setPromptEnabled(current, identifier, enabled));
   }
   const overlay = deletingPrompt ? <ConfirmDialog title="Delete Prompt?" confirmLabel="Delete" busy={busy}
     onCancel={() => setDeletingPrompt(undefined)} onConfirm={() => {
