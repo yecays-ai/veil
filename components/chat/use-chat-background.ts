@@ -94,7 +94,9 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (snapshot) {
       settingsRevision.current++;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSettings(snapshot);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSettingsReady(true);
     }
   }, [session?.id, storage]);
