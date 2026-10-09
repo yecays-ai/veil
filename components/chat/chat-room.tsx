@@ -113,6 +113,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [generating, setGenerating] = useState(false);
   const generationActive = generating || !!session?.generation;
   const [error, setError] = useState("");
+  const [failedDraft, setFailedDraft] = useState<{ sessionId: string; content: string; quote: ChatMessage | null; editVersion: number } | null>(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
   const sendingLock = useRef(false);
@@ -129,6 +130,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useEffect(() => {
     replyLock.current = false; sendingLock.current = false;
     setGenerating(false); setSending(false); setError("");
+    setFailedDraft(null);
   }, [characterId]);
   const { queue: revealQueue, state: revealState } = useBubbleReveal(
     currentSessionId.current, messages, session?.streamOnline === true, !!loadError,
@@ -382,6 +384,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (!session || session.characterId !== characterId || generationActive || chatEngine.isGenerating(session.id) || sendingLock.current || !draft.trim() || loadError) return;
     const sessionId = session.id;
     setError("");
+    setFailedDraft(null);
     try {
       await persistDraft(draft, sessionId, true);
     } catch (e) {
@@ -391,32 +394,40 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         );
     }
   }
-  async function reply(source: "manual-reply" | "keyboard-auto-reply" = "manual-reply") {
+  async function reply(source: "manual-reply" | "keyboard-auto-reply" = "manual-reply", retry?: NonNullable<typeof failedDraft>) {
     if (!session || session.characterId !== characterId || replyLock.current || sendingLock.current ||
       generationActive || chatEngine.isGenerating(session.id) || loadError) return;
     const sessionId = session.id;
+    if (retry && retry.sessionId !== sessionId) return;
+    const content = retry?.content ?? draft, quote = retry ? retry.quote : quotingMessage;
+    const editVersion = retry?.editVersion ?? draftEditVersion.current;
+    let saved = false;
     replyLock.current = true;
     let revealToken: number | undefined;
     setGenerating(true);
     setError("");
+    setFailedDraft(null);
     nearBottom.current = true;
     try {
       revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleTiming);
-      const token = revealToken, content = draft, quote = quotingMessage;
+      const token = revealToken;
       await chatEngine.requestReply(sessionId, (completed) => {
         if (mounted.current && currentSessionId.current === sessionId)
           revealQueue.complete(sessionId, completed, performance.now(), token);
       }, source, { content, quoteMessageId: quote?.id, onSent: () => {
+        saved = true;
         if (mounted.current && currentSessionId.current === sessionId) {
           setDraft((current) => current === content ? "" : current);
           setQuotingMessage((current) => current?.id === quote?.id ? null : current);
         }
       } });
     } catch (e) {
-      if (mounted.current && currentSessionId.current === sessionId)
+      if (mounted.current && currentSessionId.current === sessionId) {
+        if (!saved && content.trim()) setFailedDraft({ sessionId, content, quote, editVersion });
         setError(
           e instanceof Error ? e.message : "Reply could not be requested.",
         );
+      }
     } finally {
       revealQueue.settle(sessionId, revealToken);
       const current = currentSessionId.current;
@@ -435,6 +446,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     nearBottom.current = true;
     const revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleTiming);
     setError("");
+    setFailedDraft(null);
     try {
       const action = continuing ? chatEngine.continueMessage : chatEngine.regenerateMessage;
       await action(message.id, (completed) => {
@@ -645,6 +657,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
           {error || loadError}
+          {failedDraft?.sessionId === currentSessionId.current && failedDraft && <button type="button"
+            aria-label="Retry draft" disabled={generationActive || sending || !!loadError}
+            onClick={() => void reply("manual-reply", failedDraft)}>Retry</button>}
         </p>
       )}
       {feedback && <div className="chat-feedback-toast" role="status">{feedback}</div>}

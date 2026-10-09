@@ -63,14 +63,16 @@ test("A1: Stop before the draft is saved leaves no user turn and no empty stoppe
   assert.deepEqual(final.messages.map((m) => [m.role, m.content, m.status]), [["user", "Second draft", "sent"], ["assistant", "fresh reply", "complete"]]);
 });
 
-test("A1: a genuine failure before the draft is saved is still recorded for the user", async () => {
+test("CF-02: a genuine pre-save failure leaves no contextless failed bubble or claimed input", async () => {
   const { storage, session, document } = await setup();
   const p = probe(), counters = { calls: 0, reached: p.reached };
   const engine = engineWithHeldRegex(storage, document, () => Promise.reject(new Error("regex store unavailable")), counters, p.reach);
-  const failed = await engine.requestReply(session.id, undefined, "manual-reply", { content: "Draft" });
-  assert.match(failed?.error ?? "", /regex store unavailable/, "existing contract (see 'failed direct Send never starts generation')");
+  await storage.send(session.id, "Earlier question");
+  await assert.rejects(engine.requestReply(session.id, undefined, "manual-reply", { content: "Draft" }), /regex store unavailable/);
   assert.equal(counters.calls, 0);
   assert.equal((await storage.readSession(session.id)).session.generation, undefined);
+  const messages = (await storage.readSession(session.id)).messages;
+  assert.equal(messages.length, 1); assert.equal(messages[0].requestedBy, undefined);
 });
 
 test("A1: Stop with an earlier unanswered user message still records the stopped attempt", async () => {
