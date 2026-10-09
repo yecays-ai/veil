@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `fix/chat-message-keyboard-actions`；PR 尚未创建；基线 main `30437ae`。范围：`components/chat/chat-room.tsx`、`app/messages/chat.css`、`tests/chat-message-keyboard.test.ts`、本状态记录。
+Codex；分支 `fix/chat-message-keyboard-actions`；PR [#76](https://github.com/yecays-ai/veil/pull/76)；基线 main `30437ae`。范围：`components/chat/chat-room.tsx`、`app/messages/chat.css`、`tests/chat-message-keyboard.test.ts`、本状态记录。
 
 ## 已完成
 
@@ -19,14 +19,15 @@ Codex；分支 `fix/chat-message-keyboard-actions`；PR 尚未创建；基线 ma
 - Enter / Space 经原有 openActions 打开菜单，Space 阻止默认滚动；streaming 与多选不显示入口，原有保护和 action 禁用规则保留。
 - 定向挂载测试修复前缺少入口而失败，修复后通过；覆盖多消息、键盘、Copy/Quote、焦点进入/恢复/入口卸载回退、点击/触屏事件、文本选择、streaming 与多选限制。JSDOM 的默认 Tab 和原生按钮激活由测试模拟，实际键盘事件由挂载组件接收。
 
-## 尚未验证
-
 - 应用与测试 TypeScript、Lint（0 errors / 3 条既有 use-chat-background warnings）、git diff --check 通过。
 - 定向 F4、原有 F3 焦点与消息入口测试 5/5 通过；完整本地测试 744/745 通过。唯一失败为 navigation-feedback.test.ts 的 RouteLoading 断言与 main 已合并 ContactInfo 加载页不符；该测试独立复跑同样失败。相关路由和测试均与 main 相同，本单未修改，不宣称全套绿色。
+
+## 尚未验证
+
 - CodeRabbit 尚未审查。
 - GitHub Actions/CI 未运行；Vercel 免费额度限制不作为合并阻碍。
 - iPhone Safari、VoiceOver、真实键盘与原生长按选择/触屏布局待验。
 
 ## 下一步
 
-完成本地检查，提交仅包含 Part 5 / F4 的独立 PR，接受 CodeRabbit 审查；人工决定合并。
+等待 PR #76 的 CodeRabbit 审查，仅整改 F4 有效意见；人工决定合并。
