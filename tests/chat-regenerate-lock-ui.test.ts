@@ -266,6 +266,26 @@ for (const boundary of ["navigation", "page-remount"])
       } finally { await ui.close(); }
     });
 
+for (const edited of [false, true])
+  regressionContract(`chat.saved-reply-draft-${edited ? "preserves-edit" : "clears-on-return"}`, "async-race-safety",
+    "CF-03: a late Reply save clears only its own draft revision after the session returns", async () => {
+      const ui = await mountedRoom(); const gate = ui.hold<void>();
+      const send = ui.chatStorage.send.bind(ui.chatStorage); let saved = false;
+      try {
+        ui.chatStorage.send = async (...args) => { const message = await send(...args); saved = true; await gate.promise; return message; };
+        await ui.render("a"); await ui.type("Reply draft"); await ui.click("Request Reply");
+        await ui.wait(() => saved);
+        if (edited) { await ui.type("Changed"); await ui.type("Reply draft"); }
+        await ui.refresh(ui.withoutA); await ui.wait(() => !ui.input() || !!ui.input()?.disabled);
+        await ui.wait(() => !ui.chatEngine.isGenerating(ui.a.id));
+        await ui.settle(gate, undefined);
+        await ui.refresh(ui.full); await ui.wait(() => !!ui.input() && !ui.input()!.disabled);
+        assert.equal(ui.input()?.value, edited ? "Reply draft" : "", "cleanup respects edit version, even for identical text");
+        if (!edited) { assert.equal(ui.button("Send")?.disabled, true); await ui.click("Send"); }
+        assert.equal((await ui.chatStorage.readSession(ui.a.id)).messages.filter((m) => m.role === "user").length, 1);
+      } finally { await ui.close(); }
+    });
+
 regressionContract("chat.reply-lock-released-without-session", "async-race-safety",
   "Reply finishing while the room temporarily lacks a session releases its own lock", async () => {
     const ui = await mountedRoom();

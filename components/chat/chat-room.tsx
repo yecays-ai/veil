@@ -417,8 +417,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       }, source, { content, quoteMessageId: quote?.id, onSent: () => {
         saved = true;
         if (mounted.current && currentSessionId.current === sessionId) {
-          setDraft((current) => current === content ? "" : current);
-          setQuotingMessage((current) => current?.id === quote?.id ? null : current);
+          if (draftEditVersion.current === editVersion) {
+            setDraft((current) => current === content ? "" : current);
+            setQuotingMessage((current) => current?.id === quote?.id ? null : current);
+          }
+        } else if (mounted.current) {
+          savedDraftAwaitingSession.current = { sessionId, content, editVersion };
         }
       } });
     } catch (e) {
