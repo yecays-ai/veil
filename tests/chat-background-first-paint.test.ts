@@ -161,6 +161,25 @@ test("a wallpaper is not exposed before it has decoded, and re-entering while it
   } finally { await app.cleanup(); }
 });
 
+test("a settings read timeout releases the frame and a late result still applies", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    const image = await app.storage.saveChatImage(new Blob(["global"], { type: "image/png" }));
+    await app.storage.updateGlobalChatBackground(image);
+    const readSettings = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let release!: (value: Awaited<ReturnType<typeof app.storage.readChatBackgroundSettings>>) => void;
+    app.storage.readChatBackgroundSettings = () => new Promise((resolve) => { release = resolve; });
+    await app.mountNow(session);
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "timed-out settings publish with the Theme background fallback");
+    release(await readSettings());
+    await app.until(() => app.url() !== "");
+    assert.equal(app.frameReady(), "true", "the late settings result updates the selected wallpaper");
+  } finally { await app.cleanup(); }
+});
+
 test("a wallpaper read that never settles releases the frame to the theme background", async () => {
   const app = await harness();
   try {

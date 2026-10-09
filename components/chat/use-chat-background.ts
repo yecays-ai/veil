@@ -11,6 +11,7 @@ import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagno
 
 const DEFAULT_SETTINGS: ChatBackgroundSettings = { id: "chat-background" };
 const BACKGROUND_PREPARE_LIMIT_MS = 1200;
+const SETTINGS_PREPARE_LIMIT_MS = 1200;
 const pendingSettingsReads = new WeakMap<ChatStorage, Promise<ChatBackgroundSettings>>();
 
 function readBackgroundSettings(storage: ChatStorage) {
@@ -56,15 +57,35 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
       const readRevision = storage.backgroundRevision();
       void readBackgroundSettings(storage).then((next) => {
         rememberBackgroundSettings(storage, next, readRevision);
-        if (active && request === settingsRevision.current) { setSettings(next); setSettingsReady(true); }
+        if (active && request === settingsRevision.current) {
+          if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+          setSettings(next);
+          setSettingsReady(true);
+        }
       }).catch(() => {
-        if (active && request === settingsRevision.current) setSettingsReady(true);
+        if (active && request === settingsRevision.current) {
+          if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+          setSettingsReady(true);
+        }
       });
     };
     const snapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (snapshot) { setSettings(snapshot); setSettingsReady(true); } else refresh();
-    return () => { active = false; settingsRevision.current++; };
+    let fallbackTimer: number | undefined;
+    if (snapshot) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSettings(snapshot);
+      setSettingsReady(true);
+    } else {
+      fallbackTimer = window.setTimeout(() => {
+        if (active) setSettingsReady(true);
+      }, SETTINGS_PREPARE_LIMIT_MS);
+      refresh();
+    }
+    return () => {
+      active = false;
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      settingsRevision.current++;
+    };
   }, [storage]);
 
   useEffect(() => {
@@ -83,7 +104,10 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
       const readRevision = storage.backgroundRevision();
       void readBackgroundSettings(storage).then((next) => {
         rememberBackgroundSettings(storage, next, readRevision);
-        if (active && request === settingsRevision.current) setSettings(next);
+        if (active && request === settingsRevision.current) {
+          setSettings(next);
+          setSettingsReady(true);
+        }
       }).catch(() => {});
     };
     const unsubscribe = storage.subscribe((change) => {

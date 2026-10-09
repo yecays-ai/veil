@@ -683,7 +683,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </div>
           </Fragment>
         );})}
-        {!typingBeforeId && typingIndicator}
+        {framePublished && !typingBeforeId && typingIndicator}
       </div>
       {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
