@@ -96,7 +96,7 @@ Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收�
 | F4 | #33 的背景失效粒度过大：所有 session 变更都递增同一个 background revision，Pin 等普通 session 修改会使有效 hint/settings 作废，暖进入的底色闪现可能回来（《前端》F4） | #67 | 已修待验：#67 已合并，只有全局背景变更和明确标记 `backgroundChanged` 的 session 变更才推进 revision；自动测试通过，设备验收未做 |
 | F5 | Chat 和 Messages 仍是每挂载读取，外壳与内容天然分批出现（《前端》F5） | #63（#36 冻结，是另一条 Messages 点击入口的方案） | 已修待验：#63 已合并，协调发布当前会话、人物身份、初始消息、Custom CSS 与选定壁纸，设置/壁纸读取最多等 1200ms 后回退到现有 Theme 背景；自动测试通过；iPhone Safari/Standalone 真机对比待做，真机前保持"已修待验" |
 | F6 | Contact Info 重复进入仍有等待：外层 route loading 与内层真实页面是两种等待，共享 Contacts 快照不是原因（《前端》F6，设备因果待核实） | — | 未修（待对账；与 U4 同类，待测） |
-| F7 | 初始消息定位在 effect 中、display Regex 异步加载，消息出现后才定位或转换；同挂载多次 Regex load 无请求序号（《前端》F7） | — | 未修（待对账） |
+| F7 | 初始消息定位在 effect 中、display Regex 异步加载，消息出现后才定位或转换；同挂载多次 Regex load 无请求序号（《前端》F7） | #75 | 未修（PR #75 开放，尚未合并） |
 | F8 | 异步与缓存生命周期标准未统一：Foundation 无跨标签页订阅、Messages 列表无请求版本、Regex/WorldBook Hook 保护不全、头像无 decode 边界、Chat 缓存只限条目数、decode 失败也标 decoded（《前端》F8） | — | 部分修复（待对账）：Foundation 跨标签页见板块一 S6（#44），Messages 旧刷新见板块三 D7c（#58）；其余未修 |
 | U1 | 聊天壁纸进入闪一下 | #32 #33 | #61 后 Lan 主观验过不再闪；仍待正式对比录屏 |
 | U2 | 点击进聊天后约 1 秒无反馈（老问题） | — | 未修，原因未明；归 Chat 首屏准备那一刀；可考虑点击即时按下反馈 |
