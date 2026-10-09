@@ -16,7 +16,7 @@ Claude；分支 `claude/p5-f10-route-states`；PR：[#88](https://github.com/yec
 
 - 逐项核对：四种情况在 72c3bd89e0e1e70918fc5530762cc971b6b77a08 上全部仍存在。运行 `npx tsc --project tsconfig.tests.json` 后 `node --test node_modules/.cache/veil-desktop-tests/tests/route-state-display.test.js`（Node 24，jsdom + fake-indexeddb），未改生产代码时 7 条中 5 条失败，2 条防回归通过（该统计是第一版测试，含 ② 的 “No conversations yet” 与无匹配断言；② 暂停后这两条已改为不钉文案的完成态测试）。
 - 修复：① 读取失败时不再显示 Loading（`!loaded && !error`）；② 不做（见下）；③ GroupRoom 读到非群聊 session 显示 “This conversation is not a group.”；④ BindingEditor 仅在 Foundation ready 后才判断 Character 缺失，之前显示 “Loading Bindings…”。App 标识无效不依赖 Foundation，仍立即判定。
-- 修复后测试全部通过（最终为 6 条）；``npm test` 779/779 通过；`npm run lint` 0 error（既有 warning 不变）；`npm run build` 成功（均 Node 24）。
+- 修复后测试全部通过（最终为 6 条）；`npm test` 779/779 通过；`npm run lint` 0 error（既有 warning 不变）；`npm run build` 成功（均 Node 24）。
 - 证据级别：自动化测试（JSDOM）；未做真机验证。
 - 与工单差异：② 工单要求恢复“没有会话/没有匹配”的提示，但 bce4305（2026-10-06）曾有意移除这些文案，并由 `tests/contacts-conversations.test.ts` 的 `doesNotMatch(/No conversations yet|No group chats yet|No matching chats/)` 钉住。依停止条件，② 暂停，不改生产代码和该测试；是否恢复由 Lan 决定。① 工单要求展示“已有的重试入口”，但 MessagesHome 没有重试入口（列表只在挂载和存储变更订阅时重读），本 PR 未新增；④ 工单要求区分 Foundation pending / failed / ready，Foundation Provider 不暴露失败状态，本 PR 只区分 pending / ready，Foundation 加载失败仍表现为 “Loading Bindings…”，不会再被误报为 not found，也不改 Foundation。
 
