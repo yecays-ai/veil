@@ -90,7 +90,7 @@ test("same-sender bubbles group by corners without merging or tapering the outer
 
 test("typing copy and enabled Send retain lightweight presentation", () => {
   assert.doesNotMatch(room, /Typing…/);
-  assert.match(room, /const typingIndicator = typing &&/);
+  assert.match(room, /const typingIndicator = framePublished && typing &&/);
   assert.match(room, /className="chat-typing-dots" aria-hidden="true"><i \/><i \/><i \/>/);
   assert.match(css, /\.chat-typing-dots i\s*\{[^}]*width:\s*8px;[^}]*height:\s*8px;[^}]*animation:\s*chat-typing-pulse/);
   assert.match(css, /nth-child\(2\).*animation-delay:\s*\.16s/);
