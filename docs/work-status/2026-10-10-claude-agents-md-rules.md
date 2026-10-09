@@ -6,11 +6,11 @@
 
 ## 当前任务
 
-进行中（本地草稿，未推送）：按 Lan 的要求小幅修订 AGENTS.md——去掉 automerge 授权、要求记录最新 origin/main 完整 SHA、指定 docs/AUDIT_LEDGER.md 为唯一当前总账、区分证据等级；不改其他规则，不改生产代码。
+待审查：按 Lan 的要求小幅修订 AGENTS.md——去掉 automerge 授权、要求记录最新 origin/main 完整 SHA、指定 docs/AUDIT_LEDGER.md 为唯一当前总账、区分证据等级；不改其他规则，不改生产代码。
 
 ## 谁在改哪里
 
-Claude；分支 claude/agents-md-rules；PR 尚未创建；涉及 AGENTS.md、docs/work-status/2026-10-10-claude-agents-md-rules.md；base 575132e。
+Claude；分支 claude/agents-md-rules；PR 创建后补链接；涉及 AGENTS.md、docs/work-status/2026-10-10-claude-agents-md-rules.md；base 575132e。
 
 ## 已完成
 
@@ -24,4 +24,4 @@ Claude；分支 claude/agents-md-rules；PR 尚未创建；涉及 AGENTS.md、do
 
 ## 下一步
 
-等待 Lan 确认后推送并创建仅文档 PR，由 Lan 手动合并。
+等待 Lan 手动合并，不使用 automerge。
