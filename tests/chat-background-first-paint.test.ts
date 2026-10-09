@@ -276,6 +276,32 @@ test("a global wallpaper is also in the first frame on re-entry, and a changed o
   } finally { await app.cleanup(); }
 });
 
+test("a settings read that finishes after a newer one cannot replace the newer cached snapshot", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    // The first (initial) settings read is held; later reads run normally.
+    let release!: (settings: { id: "chat-background" }) => void;
+    const real = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let calls = 0;
+    app.storage.readChatBackgroundSettings = () => ++calls === 1
+      ? new Promise((resolve) => { release = resolve; }) : real();
+    await app.mountNow(session);
+    assert.equal(calls, 1, "the initial read is pending");
+    // A background change refreshes through the subscription and caches the newer snapshot first.
+    const imageId = await app.storage.saveChatImage(new Blob(["new"], { type: "image/png" }));
+    await app.storage.updateGlobalChatBackground(imageId);
+    await app.until(() => cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()) !== null);
+    const newer = cachedBackgroundSettings(app.storage, app.storage.backgroundRevision());
+    assert.equal(newer?.globalChatBackgroundImage, imageId);
+    // The older initial read now lands with settings that predate the change.
+    await act(async () => { release({ id: "chat-background" }); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    assert.deepEqual(cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()), newer,
+      "the late, older read did not replace the newer snapshot");
+  } finally { await app.cleanup(); }
+});
+
 test("the cache is bounded to a few wallpapers, revokes evicted URLs, and never serves a stale settings snapshot", () => {
   resetChatBackgroundCacheForTests();
   const revoked: string[] = [];

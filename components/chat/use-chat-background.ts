@@ -14,6 +14,11 @@ const BACKGROUND_PREPARE_LIMIT_MS = 1200;
 const SETTINGS_PREPARE_LIMIT_MS = 1200;
 const pendingSettingsReads = new WeakMap<ChatStorage, Promise<ChatBackgroundSettings>>();
 
+// A read that began before a later background change is already stale: caching it would replace a newer snapshot.
+function rememberCurrentSettings(storage: ChatStorage, next: ChatBackgroundSettings, readRevision: number) {
+  if (storage.backgroundRevision() === readRevision) rememberBackgroundSettings(storage, next, readRevision);
+}
+
 function readBackgroundSettings(storage: ChatStorage) {
   const pending = pendingSettingsReads.get(storage);
   if (pending) return pending;
@@ -58,7 +63,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
       const request = ++settingsRevision.current;
       const readRevision = storage.backgroundRevision();
       void readBackgroundSettings(storage).then((next) => {
-        rememberBackgroundSettings(storage, next, readRevision);
+        rememberCurrentSettings(storage, next, readRevision);
         if (active && request === settingsRevision.current) {
           if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
           setSettings(next);
@@ -111,7 +116,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
       const request = ++settingsRevision.current;
       const readRevision = storage.backgroundRevision();
       void storage.readChatBackgroundSettings().then((next) => {
-        rememberBackgroundSettings(storage, next, readRevision);
+        rememberCurrentSettings(storage, next, readRevision);
         if (active && request === settingsRevision.current) {
           setSettings(next);
           setSettingsReady(true);
@@ -138,6 +143,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     if (pending) void pending.then(markReady, fail);
     else {
       void storage.readChatImage(image).then(async (blob) => {
+        if (!active) return; // a late read from a route that has left must not create an object URL
         if (!blob) { fail(); return; }
         try { await rememberBackgroundBlob(image, blob).ready; markReady(); }
         catch { fail(); }

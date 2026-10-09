@@ -284,6 +284,11 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.equal(destinationReads, 1);
     assert.equal(activeChatSubscriptions, 3);
 
+    // The blur checks below only apply to a chat with a wallpaper: give the destination one now.
+    const pepAssetId = await chatStorage.saveChatImage(new Blob(["pep wallpaper"], { type: "image/png" }));
+    await act(async () => { await chatStorage.updateSessionSettings(destination.id, { backgroundImage: pepAssetId }); });
+    await waitFor(() => imageReads.includes(pepAssetId) && container.querySelector<HTMLElement>(".chat-room")?.dataset.chatBackground === "custom");
+
     const readsBeforeBackgroundChange = backgroundReads;
     await act(async () => { await chatStorage.updateSessionSettings(destination.id, { backgroundBlur: 3 }); });
     await waitFor(() => backgroundReads === readsBeforeBackgroundChange + 1);
@@ -310,7 +315,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       releasePeterAsset();
       await drainContinuation(Promise.all(assetReads), "late chat background reads");
     });
-    assert.deepEqual(createdUrls, [], "a late asset from the unmounted route never creates an object URL");
+    assert.deepEqual(createdUrls, ["blob:chat-lifecycle-1"], "a late asset from the unmounted route never creates an object URL");
   } catch (reason) {
     failed = true;
     throw reason;
