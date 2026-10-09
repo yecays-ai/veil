@@ -104,7 +104,7 @@ test("typing copy and enabled Send retain lightweight presentation", () => {
 });
 
 test("More opens a full-screen scrollable Chat Info view instead of a popover", () => {
-  assert.match(room, /onClick=\{\(\) => setChatInfoOpen\(true\)\}/);
+  assert.match(room, /aria-label="Conversation settings"/);
   assert.match(room, /className="chat-info-screen"/);
   assert.match(room, /<h1>Chat Info<\/h1>/);
   assert.match(room, /Search Chat History/);
@@ -127,12 +127,12 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(globalCss, /\.veil-switch-input:checked \+ \.veil-switch-track \{ background: var\(--theme-accent\); \}/);
   assert.match(css, /\.chat-app button\.chat-info-clear\s*\{[^}]*color:\s*#c9363e/);
   assert.match(room, /<span>Chat Background/);
-  assert.match(room, /<ChatBackgroundSettings session=\{session\}/);
+  assert.match(room, /<ChatBackgroundSettings screenRef=\{screenRef\} session=\{session\}/);
   assert.match(room, /data-chat-background=\{framePublished && chatBackground\.url \? "custom" : "default"\}/);
   assert.match(room, /--chat-background-image/);
   assert.match(css, /\.chat-room\[data-chat-background="custom"\]::before\s*\{[^}]*z-index:\s*0/);
   assert.match(room, /<span>Custom CSS<small>/);
-  assert.match(room, /<CustomCSSSettings session=\{session\}/);
+  assert.match(room, /<CustomCSSSettings screenRef=\{screenRef\} session=\{session\}/);
   assert.match(room, /session\?\.customCSS && <SessionCustomCSS css=\{session\.customCSS\}/);
   assert.match(room, /className="chat-app chat-room chat-room-wrapper"/);
   assert.match(room, /chat-bubble-role-\$\{message\.role\}/);

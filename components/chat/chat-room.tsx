@@ -186,6 +186,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const composer = useRef<HTMLTextAreaElement>(null);
   const composerBar = useRef<HTMLFormElement>(null);
   const actionMenu = useRef<HTMLDivElement>(null);
+  const chatInfoScreen = useRef<HTMLElement>(null);
+  const confirmDialog = useRef<HTMLDivElement>(null);
+  const settingsTrigger = useRef<HTMLButtonElement>(null);
+  const overlayFocusOrigin = useRef(new Map<string, HTMLElement | null>());
+  const previousOverlay = useRef<string | null>(null);
   const positionMenu = useRef<() => void>(() => {});
   const nativeSelectionActive = useRef(false);
   useEffect(() => {
@@ -223,6 +228,90 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setActiveMessage(null);
     setMenuAnchor(null);
   }, []);
+  const overlayKind = confirmDelete ? "confirm-delete" : confirmClear ? "confirm-clear" :
+    chatInfoOpen ? "chat-info" : activeMessage ? "message-actions" : null;
+  useLayoutEffect(() => {
+    const previous = previousOverlay.current;
+    if (overlayKind && overlayKind !== previous &&
+      !(overlayKind === "chat-info" && overlayFocusOrigin.current.has("chat-info"))) {
+      overlayFocusOrigin.current.set(overlayKind,
+        globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null);
+    }
+    const getRoot = () => overlayKind === "chat-info" ? chatInfoScreen.current :
+      overlayKind === "message-actions" ? actionMenu.current : confirmDialog.current;
+    const root = getRoot();
+    const focusables = (scope = getRoot()) => scope ? [...scope.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    )].filter((element) => !element.closest('[inert]') && element.getAttribute("aria-hidden") !== "true") : [];
+    const focusFirst = () => {
+      const currentRoot = getRoot();
+      const target = overlayKind === "confirm-delete" || overlayKind === "confirm-clear"
+        ? currentRoot?.querySelector<HTMLElement>('button:not(:disabled)')
+        : focusables()[0];
+      (target ?? currentRoot)?.focus({ preventScroll: true });
+    };
+    const canRestore = (element: HTMLElement | null | undefined) => !!element?.isConnected &&
+      element !== globalThis.document.body && element !== globalThis.document.documentElement &&
+      (element.tabIndex >= 0 || element.matches("button, input, textarea, select, a[href], [contenteditable=true]"));
+    const inerted: Array<{ element: HTMLElement; wasInert: boolean }> = [];
+    if (overlayKind && root && shell.current) {
+      const allowed = overlayKind === "message-actions"
+        ? new Set([root, root.previousElementSibling])
+        : new Set([overlayKind === "chat-info" ? root : root.parentElement]);
+      for (const child of [...shell.current.children]) {
+        if (allowed.has(child)) continue;
+        const element = child as HTMLElement;
+        inerted.push({ element, wasInert: element.hasAttribute("inert") });
+        element.setAttribute("inert", "");
+      }
+      focusFirst();
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      const currentRoot = getRoot();
+      if (!currentRoot) return;
+      if (event.key === "Escape") {
+        const ElementConstructor = currentRoot.ownerDocument.defaultView?.Element;
+        const target = ElementConstructor && event.target instanceof ElementConstructor ? event.target : null;
+        const nestedDialog = target?.closest('dialog, [role="dialog"], [role="alertdialog"]');
+        if (nestedDialog && nestedDialog !== currentRoot) return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (overlayKind === "chat-info") setChatInfoOpen(false);
+        else if (overlayKind === "message-actions") closeActions();
+        else if (overlayKind === "confirm-delete") setConfirmDelete(null);
+        else if (overlayKind === "confirm-clear") setConfirmClear(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusables();
+      if (!items.length) { event.preventDefault(); currentRoot.focus(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const index = items.indexOf(globalThis.document.activeElement as HTMLElement);
+      event.preventDefault();
+      if (event.shiftKey) (index <= 0 ? last : items[index - 1]).focus();
+      else (index < 0 || index === items.length - 1 ? first : items[index + 1]).focus();
+    };
+    if (overlayKind && root) {
+      globalThis.document.addEventListener("keydown", onKeyDown, true);
+    }
+    if (!overlayKind && previous) {
+      const origin = overlayFocusOrigin.current.get(previous);
+      const fallback = settingsTrigger.current?.isConnected ? settingsTrigger.current : composer.current;
+      (canRestore(origin) && !origin!.closest("[inert]") ? origin : fallback)?.focus({ preventScroll: true });
+      overlayFocusOrigin.current.delete(previous);
+    } else if (overlayKind && previous && overlayKind !== previous) {
+      const origin = overlayFocusOrigin.current.get(previous);
+      if (canRestore(origin) && origin && root?.contains(origin)) origin.focus({ preventScroll: true });
+    }
+    previousOverlay.current = overlayKind;
+    return () => {
+      globalThis.document.removeEventListener("keydown", onKeyDown, true);
+      for (const { element, wasInert } of inerted) {
+        if (!wasInert) element.removeAttribute("inert");
+      }
+    };
+  }, [overlayKind, closeActions]);
   useLayoutEffect(() => {
     if (!activeMessage || !menuAnchor || !actionMenu.current || !shell.current) return;
     const menu = actionMenu.current;
@@ -594,9 +683,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           <strong>{contactName}</strong>
           <ChevronRight aria-hidden="true" />
         </Link> : <strong className="chat-contact-summary page-title">Chat</strong>}
-        <button type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
+        <button ref={settingsTrigger} type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
           title="Conversation settings"
-          onClick={() => setChatInfoOpen(true)}><Ellipsis aria-hidden="true" /></button>
+          onClick={() => {
+            overlayFocusOrigin.current.set("chat-info",
+              globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null);
+            setChatInfoOpen(true);
+          }}><Ellipsis aria-hidden="true" /></button>
       </header>
       <div
         key="history"
@@ -772,6 +865,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </div>
       </form>
       {chatInfoOpen && <ChatInfoScreen
+        screenRef={chatInfoScreen}
         session={session}
         messages={messages}
         characterName={contactName}
@@ -791,7 +885,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       />}
       {activeMessage && <>
         <button className="chat-context-backdrop" aria-label="Close message actions" onClick={closeActions} />
-        <div ref={actionMenu} className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
+        <div ref={actionMenu} tabIndex={-1} className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
             <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
@@ -830,10 +924,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <button type="submit" disabled={!editText.trim()}>Save</button></div>
         </form>
       </div>}
-      {confirmDelete && <ConfirmDialog title="Delete messages?"
+      {confirmDelete && <ConfirmDialog dialogRef={confirmDialog} title="Delete messages?"
         text={`Delete ${confirmDelete.length} message${confirmDelete.length === 1 ? "" : "s"} from this conversation?`}
         onCancel={() => setConfirmDelete(null)} onConfirm={() => void deleteConfirmed()} />}
-      {confirmClear && <ConfirmDialog title="Clear Chat History?"
+      {confirmClear && <ConfirmDialog dialogRef={confirmDialog} title="Clear Chat History?"
         text={`Delete all ${messages.length} messages from this conversation? The conversation itself will remain.`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
           if (!session) return;
@@ -844,8 +938,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
 }
 
-function ChatInfoScreen({ session, messages, characterName, streamOnline, autoReplyOnKeyboardDismiss, pinned,
+function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnline, autoReplyOnKeyboardDismiss, pinned,
   canClear, onBack, onJumpToMessage, onUpdate, onClear }: {
+  screenRef: React.Ref<HTMLElement>;
   session: ChatSession | null;
   messages: ChatMessage[];
   characterName: string;
@@ -886,13 +981,18 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
         setSettingsError(reason instanceof Error ? reason.message : "Setting could not be saved.");
     }
   }
+  useLayoutEffect(() => {
+    const screen = typeof screenRef === "function" ? null : screenRef?.current;
+    screen?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled), textarea:not(:disabled)")
+      ?.focus({ preventScroll: true });
+  }, [backgroundOpen, customCSSOpen, searchOpen, screenRef]);
   if (backgroundOpen && session)
-    return <ChatBackgroundSettings session={session} onBack={() => setBackgroundOpen(false)} />;
+    return <ChatBackgroundSettings screenRef={screenRef} session={session} onBack={() => setBackgroundOpen(false)} />;
   if (customCSSOpen && session)
-    return <CustomCSSSettings session={session} onBack={() => setCustomCSSOpen(false)} />;
-  if (searchOpen) return <ChatHistorySearchPage sessionId={session?.id ?? ""} messages={messages}
+    return <CustomCSSSettings screenRef={screenRef} session={session} onBack={() => setCustomCSSOpen(false)} />;
+  if (searchOpen) return <ChatHistorySearchPage screenRef={screenRef} sessionId={session?.id ?? ""} messages={messages}
     characterName={characterName} onBack={() => setSearchOpen(false)} onJumpToMessage={onJumpToMessage} />;
-  return <section className="chat-info-screen" aria-label="Chat Info">
+  return <section ref={screenRef} className="chat-info-screen" role="dialog" aria-modal="true" aria-label="Chat Info">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
         <ChevronLeft aria-hidden="true" />
@@ -942,7 +1042,8 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
   </section>;
 }
 
-function ChatHistorySearchPage({ sessionId, messages, characterName, onBack, onJumpToMessage }: {
+function ChatHistorySearchPage({ screenRef, sessionId, messages, characterName, onBack, onJumpToMessage }: {
+  screenRef: React.Ref<HTMLElement>;
   sessionId: string;
   messages: ChatMessage[];
   characterName: string;
@@ -963,7 +1064,7 @@ function ChatHistorySearchPage({ sessionId, messages, characterName, onBack, onJ
   const trimmedQuery = query.trim();
   const results = searchResult?.query === trimmedQuery ? searchResult.messages : [];
   const searching = !!trimmedQuery && searchResult?.query !== trimmedQuery;
-  return <section className="chat-info-screen" aria-label="Search Chat History">
+  return <section ref={screenRef} className="chat-info-screen" role="dialog" aria-modal="true" aria-label="Search Chat History">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to Chat Info" onClick={onBack}>
         <ChevronLeft aria-hidden="true" />
@@ -1005,12 +1106,14 @@ function Action({ label, icon, disabled, danger, onClick }: {
       aria-hidden="true" /><small>{label}</small></button>;
 }
 
-function ConfirmDialog({ title, text, onCancel, onConfirm }: {
+function ConfirmDialog({ dialogRef, title, text, onCancel, onConfirm }: {
+  dialogRef: React.Ref<HTMLDivElement>;
   title: string; text: string; onCancel: () => void; onConfirm: () => void;
 }) {
-  return <div className="chat-dialog-backdrop"><div className="chat-dialog" role="alertdialog"
+  return <div className="chat-dialog-backdrop"><div ref={dialogRef} tabIndex={-1} className="chat-dialog" role="alertdialog"
     aria-modal="true" aria-labelledby="chat-confirm-title"><h2 id="chat-confirm-title">{title}</h2>
     <p>{text}</p><div><button type="button" onClick={onCancel}>Cancel</button>
       <button type="button" className="chat-danger" onClick={onConfirm}>Delete</button></div></div></div>;
 }
+
 
