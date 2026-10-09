@@ -120,9 +120,18 @@ export function importPreset(document: PresetDocument, json: string, id: string 
   let value: unknown;
   try { value = JSON.parse(json); } catch { throw new Error("This file is not valid Preset JSON."); }
   const imported = validatePreset(value);
+  // Validate only new import identities; existing libraries remain untouched.
+  const assertBindableId = (value: string) => {
+    if (!value || value.length > 200 || value !== value.trim())
+      throw new Error("Preset ID must be 1–200 characters with no leading or trailing whitespace. Nothing was imported.");
+  };
+  assertBindableId(imported.id);
   // Imports always create a custom copy, including exports of the official default.
   imported.builtIn = false;
   if (imported.id === BUILTIN_PRESET_ID || document.presets.some((item) => item.id === imported.id)) imported.id = id;
+  assertBindableId(imported.id);
+  if (document.presets.some((item) => item.id === imported.id))
+    throw new Error("The new Preset ID already exists. Nothing was imported.");
   return validatePresetDocument({ ...document, presets: [...document.presets, imported] });
 }
 
