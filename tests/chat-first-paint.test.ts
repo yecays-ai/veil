@@ -130,7 +130,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     { characterId: "peter", name: "Peter" }, { characterId: "pep", name: "Pep" },
   ] });
   const originalLoad = browserFoundationStorage.load;
-  const originalRead = chatStorage.readSession;
+  const originalReadExisting = chatStorage.readExistingSession;
   const originalBackgroundRead = chatStorage.readChatBackgroundSettings;
   const originalProfileRead = chatStorage.readGlobalProfileSettings;
   const originalImageRead = chatStorage.readChatImage;
@@ -202,9 +202,9 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       return url;
     }) as typeof URL.createObjectURL;
     URL.revokeObjectURL = ((url) => { revokedUrls.push(url); }) as typeof URL.revokeObjectURL;
-    chatStorage.readSession = async (id) => {
-      if (id === destination.id) { destinationReads++; await destinationPending; }
-      return originalRead.call(chatStorage, id);
+    chatStorage.readExistingSession = async (id) => {
+      if (id === "pep") { destinationReads++; await destinationPending; }
+      return originalReadExisting.call(chatStorage, id);
     };
     const initial = await DirectChatPage({ params: Promise.resolve({ characterId: "peter" }) });
     function Navigation() {
@@ -308,7 +308,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     // Wallpaper object URLs belong to a bounded cache, not to the mounted chat; releasing the cache revokes them all.
     resetChatBackgroundCacheForTests();
     const revokedAtUnmount = [...revokedUrls];
-    chatStorage.readSession = originalRead;
+    chatStorage.readExistingSession = originalReadExisting;
     chatStorage.readChatBackgroundSettings = originalBackgroundRead;
     chatStorage.readGlobalProfileSettings = originalProfileRead;
     chatStorage.readChatImage = originalImageRead;
