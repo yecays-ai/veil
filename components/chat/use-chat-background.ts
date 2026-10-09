@@ -28,14 +28,15 @@ type Options = { characterId?: string; storage?: ChatStorage };
 
 /** Choose the current chat's wallpaper before its session read, using its last resolved hint. */
 export function useChatBackground(session: ChatSession | null, { characterId, storage = chatStorage }: Options = {}) {
-  const initialSettings = cachedBackgroundSettings(storage, storage.backgroundRevision());
-  const [settings, setSettings] = useState<ChatBackgroundSettings>(initialSettings ?? DEFAULT_SETTINGS);
-  const [settingsReady, setSettingsReady] = useState(!!initialSettings);
+  const settingsSnapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
+  const [settings, setSettings] = useState<ChatBackgroundSettings>(settingsSnapshot ?? DEFAULT_SETTINGS);
+  const settingsForFrame = settingsSnapshot ?? settings;
+  const settingsReadyForFrame = settingsReady || settingsSnapshot !== null;
   const [lateFor, setLateFor] = useState<string | null>(null);
   const [fallbackFor, setFallbackFor] = useState<string | null>(null);
   const settingsRevision = useRef(0);
   const hint = !session && characterId ? cachedBackgroundHint(storage, characterId, storage.backgroundRevision()) : null;
-  const resolved = resolveChatBackground(session ? session : hint ? { backgroundImage: hint.image ?? undefined, backgroundBlur: hint.blur ?? undefined } : null, settings);
+  const resolved = resolveChatBackground(session ? session : hint ? { backgroundImage: hint.image ?? undefined, backgroundBlur: hint.blur ?? undefined } : null, settingsForFrame);
   const image = resolved.image;
   useEffect(() => {
     if (isChatDiagnosticsEnabled()) recordChatDiagnostic("background-selection", {
@@ -148,7 +149,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
 
   if (lateFor !== null && lateFor !== image) setLateFor(null);
   if (fallbackFor !== null && fallbackFor !== image) setFallbackFor(null);
-  const readyForFrame = settingsReady && (!image || !!url || fallbackFor === image);
+  const readyForFrame = settingsReadyForFrame && (!image || !!url || fallbackFor === image);
   useEffect(() => {
     if (isChatDiagnosticsEnabled()) recordChatDiagnostic("background-url-state", {
       characterId, hasImage: !!image, hasSession: !!session, cached: !!url, urlKind: url ? "object-url" : "unavailable",
