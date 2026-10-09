@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { JSDOM } from "jsdom";
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import type { createRoot as CreateRoot } from "react-dom/client";
 import { ThemeProvider, useTheme } from "../components/theme-provider";
 import { browserThemeStorage } from "../lib/theme-storage";
@@ -14,8 +14,9 @@ type Theme = ReturnType<typeof useTheme>;
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((done) => { resolve = done; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 function stored(accent: string, extra?: (document: ThemeDocument) => void): string {
   const document: ThemeDocument = { version: 1, current: defaultSnapshot(), presets: [] };
@@ -25,7 +26,7 @@ function stored(accent: string, extra?: (document: ThemeDocument) => void): stri
 }
 async function mounted(run: (env: {
   container: HTMLElement; root: ReturnType<typeof CreateRoot>; dom: JSDOM; theme: () => Theme;
-}) => Promise<void>) {
+}) => Promise<void>, strict = false) {
   const dom = new JSDOM('<div id="root"></div>', { url: "https://veil.test" });
   Object.defineProperty(dom.window, "indexedDB", { value: new IDBFactory() });
   const keys = ["window", "document", "HTMLElement", "IS_REACT_ACT_ENVIRONMENT"];
@@ -41,7 +42,10 @@ async function mounted(run: (env: {
     latest = useTheme();
     return createElement("output", { "data-ready": String(latest.ready), "data-accent": latest.document.current.profile.colors.accent });
   }
-  await act(async () => { root.render(createElement(ThemeProvider, null, createElement(Probe))); });
+  await act(async () => {
+    const provider = createElement(ThemeProvider, null, createElement(Probe));
+    root.render(strict ? createElement(StrictMode, null, provider) : provider);
+  });
   try { await run({ container, root, dom, theme: () => latest }); }
   finally {
     await act(async () => { root.unmount(); });
@@ -63,27 +67,31 @@ const retryButton = (container: HTMLElement) =>
 const accentUpdate = (accent: string) => (theme: Theme) => theme.updateProfile((profile) => ({
   ...profile, colors: { ...profile.colors, accent } }));
 
-test("Theme snapshot and ready stay unpublished until its current image URL is prepared", async () => {
+test("Theme configuration publishes before pending images, which fill in without resetting it", async () => {
   const originalLoad = browserThemeStorage.load;
   const originalRead = browserAppearanceImageStorage.readBlob;
   const pending = deferred<Blob | null>();
   const saved = JSON.parse(stored("#112233")) as ThemeDocument;
   const source = `appearance-asset:${"a".repeat(64)}`;
   saved.current.profile.wallpaper.source = source;
+  saved.current.profile.text.font = "serif";
   let reads = 0;
   browserThemeStorage.load = async () => saved;
   browserAppearanceImageStorage.readBlob = () => { reads++; return pending.promise; };
   try {
     await mounted(async ({ container, theme }) => {
-      assert.equal(output(container).dataset.ready, "false");
       await waitFor(() => reads === 1);
-      assert.equal(output(container).dataset.ready, "false", "ready must wait for the selected current image read");
-      assert.equal(output(container).dataset.accent, defaultSnapshot().profile.colors.accent,
-        "the saved Theme document and ready state publish together");
-      await act(async () => { pending.resolve(new Blob(["theme"], { type: "image/png" })); });
-      await waitFor(() => output(container).dataset.ready === "true");
+      assert.equal(output(container).dataset.ready, "true", "configuration is ready while the Blob read remains pending");
       assert.equal(output(container).dataset.accent, "#112233");
-      assert.ok(theme().resolveImage(source), "the prepared current image URL is available at the same publication");
+      const surface = container.querySelector<HTMLElement>(".theme-surface")!;
+      assert.equal(surface.style.getPropertyValue("--theme-accent"), "#112233");
+      assert.equal(surface.style.getPropertyValue("--theme-font-family"), "Georgia, serif");
+      assert.equal(theme().resolveImage(source), null);
+      await act(async () => { pending.resolve(new Blob(["theme"], { type: "image/png" })); });
+      await waitFor(() => !!theme().resolveImage(source));
+      assert.equal(output(container).dataset.accent, "#112233");
+      assert.ok(container.querySelector('[data-testid="home-wallpaper"]'));
+      assert.equal(surface.style.getPropertyValue("--theme-font-family"), "Georgia, serif");
     });
   } finally {
     browserThemeStorage.load = originalLoad;
@@ -91,7 +99,7 @@ test("Theme snapshot and ready stay unpublished until its current image URL is p
   }
 });
 
-test("a slow current image is bounded and falls back without blocking Theme ready", async () => {
+test("a slow current image does not block Theme ready", async () => {
   const originalLoad = browserThemeStorage.load;
   const originalRead = browserAppearanceImageStorage.readBlob;
   const saved = JSON.parse(stored("#112233")) as ThemeDocument;
@@ -109,6 +117,173 @@ test("a slow current image is bounded and falls back without blocking Theme read
     browserThemeStorage.load = originalLoad;
     browserAppearanceImageStorage.readBlob = originalRead;
   }
+});
+
+const asset = (letter: string) => `appearance-asset:${letter.repeat(64)}`;
+const withImage = (accent: string, letter: string): ThemeDocument => {
+  const saved = JSON.parse(stored(accent)) as ThemeDocument;
+  saved.current.profile.wallpaper.source = asset(letter);
+  return saved;
+};
+async function imageFixture(run: (resources: {
+  created: string[]; revoked: string[]; reads: string[];
+  setDocument: (document: ThemeDocument) => void;
+  setRead: (read: (id: string) => Promise<Blob | null>) => void;
+}) => Promise<void>) {
+  const original = { load: browserThemeStorage.load, read: browserAppearanceImageStorage.readBlob };
+  const create = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+  const revoke = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+  const created: string[] = [], revoked: string[] = [], reads: string[] = [];
+  let document = withImage("#112233", "a");
+  let read: (id: string) => Promise<Blob | null> = async () => new Blob(["image"]);
+  browserThemeStorage.load = async () => document;
+  browserAppearanceImageStorage.readBlob = (id) => { reads.push(id); return read(id); };
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => {
+    const url = `blob:theme-${created.length}`; created.push(url); return url;
+  } });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: (url: string) => { revoked.push(url); } });
+  try { await run({ created, revoked, reads,
+    setDocument: (saved) => { document = saved; }, setRead: (next) => { read = next; } }); }
+  finally {
+    browserThemeStorage.load = original.load;
+    browserAppearanceImageStorage.readBlob = original.read;
+    if (create) Object.defineProperty(URL, "createObjectURL", create); else Reflect.deleteProperty(URL, "createObjectURL");
+    if (revoke) Object.defineProperty(URL, "revokeObjectURL", revoke); else Reflect.deleteProperty(URL, "revokeObjectURL");
+  }
+}
+async function peerChanged(dom: JSDOM) {
+  await act(async () => { dom.window.dispatchEvent(new dom.window.StorageEvent("storage", { key: KEY })); });
+}
+
+test("a rejected image read leaves the mounted saved configuration ready without an unhandled rejection", async () => {
+  await imageFixture(async ({ created, setRead }) => {
+    const pending = deferred<Blob | null>();
+    setRead(() => pending.promise);
+    await mounted(async ({ container, theme }) => {
+      assert.equal(output(container).dataset.ready, "true");
+      await act(async () => { pending.reject(new Error("image unavailable")); });
+      assert.equal(output(container).dataset.accent, "#112233");
+      assert.equal(theme().resolveImage(asset("a")), null);
+      assert.equal(output(container).dataset.ready, "true");
+      assert.equal(container.querySelector("[role=alert]"), null);
+      assert.deepEqual(created, []);
+    });
+  });
+});
+
+test("saving a ready configuration does not wait for pending images and its refresh keeps the latest settings", async () => {
+  await imageFixture(async ({ setRead, setDocument, created }) => {
+    const pending = deferred<Blob | null>();
+    setRead(() => pending.promise);
+    let saved = withImage("#112233", "a");
+    setDocument(saved);
+    const transact = browserThemeStorage.transact;
+    browserThemeStorage.transact = async (update) => {
+      saved = update(saved);
+      setDocument(saved);
+      return saved;
+    };
+    try {
+      await mounted(async ({ container, theme }) => {
+        await act(async () => { await accentUpdate("#445566")(theme()); });
+        assert.equal(saved.current.profile.colors.accent, "#445566");
+        assert.equal(output(container).dataset.ready, "true");
+        assert.equal(output(container).dataset.accent, "#445566");
+        assert.equal(theme().resolveImage(asset("a")), null);
+        await act(async () => { pending.resolve(new Blob(["image"])); });
+        await waitFor(() => !!theme().resolveImage(asset("a")));
+        assert.equal(created.length, 1, "only the refreshed request creates a URL");
+        assert.equal(output(container).dataset.accent, "#445566");
+      });
+    } finally { browserThemeStorage.transact = transact; }
+  });
+});
+
+test("image timeout immediately releases partial URLs and ignores late completion without reverting configuration", async () => {
+  await imageFixture(async ({ created, revoked, setRead, setDocument }) => {
+    const pending = deferred<Blob | null>();
+    const saved = withImage("#112233", "a");
+    saved.current.profile.dock.image = asset("b");
+    setDocument(saved);
+    setRead(async (id) => id === "b".repeat(64) ? pending.promise : new Blob(["first"]));
+    await mounted(async ({ container, theme }) => {
+      assert.equal(output(container).dataset.ready, "true");
+      await waitFor(() => created.length === 1);
+      await waitFor(() => revoked.length === 1);
+      assert.equal(output(container).dataset.accent, "#112233");
+      assert.equal(output(container).dataset.ready, "true");
+      assert.equal(theme().resolveImage(asset("a")), null);
+      await act(async () => { pending.resolve(new Blob(["late"])); });
+      assert.deepEqual(created, ["blob:theme-0"]);
+      assert.deepEqual(revoked, created, "the timed-out partial URL is revoked exactly once");
+      assert.equal(theme().resolveImage(asset("b")), null);
+    });
+  });
+});
+
+test("theme B supersedes pending theme A images and A cannot invalidate or overwrite B", async () => {
+  await imageFixture(async ({ created, revoked, setRead, setDocument }) => {
+    const pending = deferred<Blob | null>();
+    setRead(async (id) => id === "a".repeat(64) ? pending.promise : new Blob([id]));
+    await mounted(async ({ container, dom, theme }) => {
+      assert.equal(output(container).dataset.accent, "#112233");
+      setDocument(withImage("#445566", "b"));
+      await peerChanged(dom);
+      await waitFor(() => !!theme().resolveImage(asset("b")));
+      const current = theme().resolveImage(asset("b"));
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1050)); });
+      await act(async () => { pending.resolve(new Blob(["obsolete"])); });
+      assert.equal(output(container).dataset.accent, "#445566");
+      assert.equal(theme().resolveImage(asset("b")), current);
+      assert.equal(theme().resolveImage(asset("a")), null);
+      assert.deepEqual(created, [current]);
+      assert.deepEqual(revoked, []);
+    });
+    assert.deepEqual(revoked, created, "unmount releases the current theme URL");
+  });
+});
+
+test("repeated mounted loads reuse current URLs, ignore preset images, and release replaced URLs", async () => {
+  await imageFixture(async ({ created, revoked, reads, setDocument }) => {
+    const saved = withImage("#112233", "a");
+    const unused = defaultSnapshot();
+    unused.profile.wallpaper.source = asset("c");
+    saved.presets.push({ id: "unused", name: "Unused", snapshot: unused });
+    setDocument(saved);
+    await mounted(async ({ dom, theme }) => {
+      await waitFor(() => !!theme().resolveImage(asset("a")));
+      const first = theme().resolveImage(asset("a"));
+      await peerChanged(dom);
+      await waitFor(() => !!theme().resolveImage(asset("a")));
+      assert.equal(theme().resolveImage(asset("a")), first);
+      assert.deepEqual(reads, ["a".repeat(64)]);
+      assert.deepEqual(created, [first]);
+      setDocument(withImage("#445566", "b"));
+      await peerChanged(dom);
+      await waitFor(() => !!theme().resolveImage(asset("b")));
+      assert.deepEqual(revoked, [first]);
+      assert.equal(theme().resolveImage(asset("a")), null);
+    });
+    assert.deepEqual(revoked, created);
+  });
+});
+
+test("Strict Mode and unmount invalidate pending reads and revoke partial URLs before they finish", async () => {
+  await imageFixture(async ({ created, revoked, setRead, setDocument }) => {
+    const pending = deferred<Blob | null>();
+    const saved = withImage("#112233", "a");
+    saved.current.profile.dock.image = asset("b");
+    setDocument(saved);
+    setRead(async (id) => id === "b".repeat(64) ? pending.promise : new Blob(["first"]));
+    await mounted(async ({ container }) => {
+      assert.equal(output(container).dataset.ready, "true");
+      await waitFor(() => created.length === 1);
+    }, true);
+    assert.deepEqual(revoked, created, "unmount revokes the partial batch while its other Blob is still pending");
+    await act(async () => { pending.resolve(new Blob(["late"])); });
+    assert.equal(created.length, 1, "obsolete Strict Mode and unmounted reads cannot create URLs");
+    assert.deepEqual(revoked, created);
+  });
 });
 
 // The provider calls these properties, so a test can fail or slow its reads without a second storage.
