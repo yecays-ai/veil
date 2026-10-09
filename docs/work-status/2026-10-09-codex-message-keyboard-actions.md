@@ -1,12 +1,12 @@
 # STATUS — Part 5 / F4 Message keyboard actions
 
 更新人：Codex
-更新时间：2026-10-09T22:47:57+08:00
+更新时间：2026-10-09T22:50:38+08:00
 发现范围：2026-10-09，通过 GitHub 集成复核 main `30437ae7223b1b03f65ebcef8b6cb83ee6701152`、PR #73 的合并状态、开放 PR（含 drafts）及 PR #75 / `codex/f7-initial-chat-render-20261009` 的文件和 diff。#75 修改 Regex 与初始 history 定位，没有消息键盘操作入口。旧本地 checkout 含其他任务改动，本单使用 main 的独立本地快照及独立分支；远端操作通过 GitHub 集成，本地 DOM 测试不证明 iPhone 实际键盘/触屏表现。CI、Vercel 和真机未验证。
 
 ## 当前任务
 
-进行中：仅修复原始 Part 5 / F4 的消息操作键盘入口；禁止自动合并。
+待审查：原始 Part 5 / F4 键盘入口已修；定向本地验证通过，全套检查存在一项 main 既有导航断言失败；等待 CodeRabbit，禁止自动合并。
 
 ## 谁在改哪里
 
@@ -21,7 +21,8 @@ Codex；分支 `fix/chat-message-keyboard-actions`；PR 尚未创建；基线 ma
 
 ## 尚未验证
 
-- 本地全套测试、应用 TypeScript、Lint 和 diff 检查进行中。
+- 应用与测试 TypeScript、Lint（0 errors / 3 条既有 use-chat-background warnings）、git diff --check 通过。
+- 定向 F4、原有 F3 焦点与消息入口测试 5/5 通过；完整本地测试 744/745 通过。唯一失败为 navigation-feedback.test.ts 的 RouteLoading 断言与 main 已合并 ContactInfo 加载页不符；该测试独立复跑同样失败。相关路由和测试均与 main 相同，本单未修改，不宣称全套绿色。
 - CodeRabbit 尚未审查。
 - GitHub Actions/CI 未运行；Vercel 免费额度限制不作为合并阻碍。
 - iPhone Safari、VoiceOver、真实键盘与原生长按选择/触屏布局待验。
