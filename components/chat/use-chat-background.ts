@@ -110,7 +110,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     const refresh = () => {
       const request = ++settingsRevision.current;
       const readRevision = storage.backgroundRevision();
-      void readBackgroundSettings(storage).then((next) => {
+      void storage.readChatBackgroundSettings().then((next) => {
         rememberBackgroundSettings(storage, next, readRevision);
         if (active && request === settingsRevision.current) {
           setSettings(next);
