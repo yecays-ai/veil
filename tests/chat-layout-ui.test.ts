@@ -197,5 +197,12 @@ test("iOS keyboard handling keeps header and history on the stable chat canvas",
 
 test("mobile shell follows the dynamic viewport in Safari and standalone mode", () => {
   assert.match(mobile, /--phone-screen-height:\s*100dvh/);
+  assert.match(mobile, /@media[\\s\\S]*?html,\\s*body\\s*\\{[^}]*height:\\s*100dvh/);
+  assert.match(mobile, /@media[\\s\\S]*?\\.app-root\\s*\\{[^}]*height:\\s*100dvh/);
+  assert.match(mobile, /html\\[data-mobile-standalone="true"\\]\\s*\\{[^}]*height:\\s*100dvh/);
+  assert.match(
+    mobile,
+    /html\\[data-mobile-standalone="true"\\]\\s+body,\\s*html\\[data-mobile-standalone="true"\\]\\s+\\.app-root\\s*\\{[^}]*height:\\s*100dvh/,
+  );
   assert.doesNotMatch(mobile, /100lvh/);
 });
