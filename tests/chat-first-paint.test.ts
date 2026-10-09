@@ -231,7 +231,14 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     const waitFor = async (check: () => boolean) => {
       const deadline = Date.now() + 2000;
       while (!check()) {
-        assert.ok(Date.now() < deadline, "mounted chat did not reach its expected state within 2s");
+        assert.ok(Date.now() < deadline,
+          `mounted chat did not reach its expected state within 2s: ${JSON.stringify({
+            destinationReads, backgroundReads, profileReads, regexReads, activeChatSubscriptions,
+            header: container.querySelector(".chat-contact-summary")?.textContent,
+            messages: container.querySelectorAll("[data-message-id]").length,
+            historyBusy: container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy"),
+            pendingImages: imageReads.length, text: container.textContent?.slice(0, 160),
+          })}`);
         await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
       }
     };
