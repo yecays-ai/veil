@@ -99,6 +99,18 @@ test("a source that fails to load leaves nothing usable and shows the error", as
   } finally { await h.cleanup(); }
 });
 
+test("an image that errors after it has loaded stops being usable", async () => {
+  const h = await harness();
+  try {
+    await h.render("image:a");
+    await h.loadImage(h.img(), 400, 300);
+    assert.deepEqual(actionsDisabled(h), [false, false]);
+    await h.failImage(h.img());
+    assert.equal(h.$("[role=alert]")?.textContent, "This image could not be loaded.");
+    assert.deepEqual(actionsDisabled(h), [true, true], "onError must clear readiness");
+  } finally { await h.cleanup(); }
+});
+
 test("a late event from the previous image cannot make the new source ready", async () => {
   const h = await harness();
   try {

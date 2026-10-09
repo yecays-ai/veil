@@ -14,9 +14,9 @@ Claude；分支 `claude/p5-f9-crop-source-reset`；PR：[#86](https://github.com
 
 ## 已完成
 
-- 当前 main 复现（Node 24，jsdom，fake-indexeddb；命令 `npx tsc --project tsconfig.tests.json` 后 `node --test node_modules/.cache/veil-desktop-tests/tests/image-crop-dialog-source.test.js`；未改生产代码，基于 270f726）：5 条中 4 条失败——换 source 后 Save/Use original 仍可用、缩放残留、B 加载失败后仍可用、A 迟到的 load 事件。
+- 当前 main 复现（Node 24，jsdom，fake-indexeddb；命令 `npx tsc --project tsconfig.tests.json` 后 `node --test node_modules/.cache/veil-desktop-tests/tests/image-crop-dialog-source.test.js`；未改生产代码，基于 270f726）：5 条（当时）中 4 条失败——换 source 后 Save/Use original 仍可用、缩放残留、B 加载失败后仍可用、A 迟到的 load 事件。
 - 最小修复：`ImageCropDialog` 改为以 `key={source}` 渲染内部组件，source 变化时 state、拖动 ref、`<img>` 及其事件整体丢弃；`onError` 同时 `setLoaded(false)`。调用方与存量数据不变。
-- 修复后（同一命令）5 条挂载级测试全部通过（含 source 不变时缩放/拖动/原图不回归）；`npm test` 772 中 771 通过，唯一失败为已知偶发 CF-02，单独重跑 11/11；`npm run lint` 0 error；`npm run build` 成功。
+- 修复后（同一命令）6 条挂载级测试全部通过（含 source 不变时缩放/拖动/原图不回归）；`npm test` 772 中 771 通过，唯一失败为已知偶发 CF-02，单独重跑 11/11；`npm run lint` 0 error；`npm run build` 成功。
 - 证据级别：自动化测试（JSDOM）；未做真机验证。
 - 与工单差异：五个调用方都用 `{crop && <ImageCropDialog .../>}` 且为模态框，正常 UI 无法在挂载中换 source，所以 F9 是组件契约缺陷，现有 UI 路径未必触发。
 
