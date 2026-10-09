@@ -38,10 +38,13 @@ async function harness(options: { fakeImage?: boolean } = {}) {
   const root = createRoot(dom.window.document.getElementById("root")!);
   function Probe({ session, characterId }: { session: ChatSession | null; characterId: string }) {
     const background = useChatBackground(session, { characterId, storage });
-    return createElement("div", { id: "probe", "data-url": background.url ?? "", "data-blur": String(background.blur), "data-late": String(background.late) });
+    const frame = background as typeof background & { readyForFrame?: boolean };
+    return createElement("div", { id: "probe", "data-url": background.url ?? "", "data-blur": String(background.blur),
+      "data-late": String(background.late), "data-frame-ready": String(frame.readyForFrame) });
   }
   const url = () => dom.window.document.getElementById("probe")?.getAttribute("data-url") ?? "";
   const late = () => dom.window.document.getElementById("probe")?.getAttribute("data-late");
+  const frameReady = () => dom.window.document.getElementById("probe")?.getAttribute("data-frame-ready");
   // Synchronous act: renders and flushes effects but not pending storage promises, i.e. the first frame.
   const mountNow = (session: ChatSession | null, characterId = "a") => act(() => { root.render(createElement(Probe, { session, characterId })); });
   const settleDecodes = () => act(async () => { decodes.splice(0).forEach((resolve) => resolve()); });
@@ -62,7 +65,7 @@ async function harness(options: { fakeImage?: boolean } = {}) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
     }
   };
-  return { storage, reads, revoked, mountNow, leave, until, url, late, settleDecodes, pendingDecodes: () => decodes.length, cleanup };
+  return { storage, reads, revoked, mountNow, leave, until, url, late, frameReady, settleDecodes, pendingDecodes: () => decodes.length, cleanup };
 }
 
 async function sessionWithWallpaper(storage: ChatStorage, content = "wallpaper") {
@@ -146,12 +149,14 @@ test("a wallpaper is not exposed before it has decoded, and re-entering while it
     await app.mountNow(session);
     await app.until(() => app.pendingDecodes() === 1); // the Blob is read; decode() is still pending
     assert.equal(app.url(), "", "an undecoded wallpaper is not treated as ready");
+    assert.equal(app.frameReady(), "false", "the chat frame must wait for its selected wallpaper");
     await app.leave();
     await app.mountNow(session); // re-entry while the decode is pending
     assert.equal(app.url(), "");
     await app.settleDecodes();
     await app.until(() => app.url() !== "");
     assert.equal(app.late(), "true", "it arrived after the first frame, decoded");
+    assert.equal(app.frameReady(), "true", "frame readiness follows the wallpaper preparation result");
     assert.equal(app.reads.image, 1, "the pending entry was awaited, not read again");
   } finally { await app.cleanup(); }
 });

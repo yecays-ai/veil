@@ -224,6 +224,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     await act(async () => { root.render(createElement(Navigation)); });
     await waitFor(() => container.textContent?.includes("peter history") === true);
     await waitFor(() => imageReads.includes(peterAssetId) && regexReads === 1);
+    assert.equal(container.querySelectorAll("[data-message-id]").length, 0,
+      "current chat messages must stay unpublished until the selected background is prepared");
     assert.deepEqual([backgroundReads, profileReads, regexReads], [1, 1, 1]);
     assert.equal(activeChatSubscriptions, 3, "the validated session, background, and global timing owner each subscribe once");
     const composer = () => container.querySelector<HTMLTextAreaElement>("#chat-input")!;
