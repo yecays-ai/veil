@@ -235,7 +235,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     await waitFor(() => destinationReads === 1 && profileReads === 2 && regexReads === 2);
     assert.equal(backgroundReads, 1, "background settings are not read while the destination session is unavailable");
     assert.equal(activeChatSubscriptions, 2, "pending navigation keeps only the destination session and global timing subscriptions");
-    assert.equal(container.querySelector(".chat-contact-summary strong")?.textContent, "Pep");
+    assert.equal(container.querySelector(".chat-contact-summary")?.textContent, "Chat",
+      "the destination keeps its stable header until its own frame is ready");
     assert.ok(container.querySelector(".chat-room .chat-header"));
     const history = container.querySelector<HTMLElement>('[aria-label="Conversation history"]')!;
     assert.ok(history.classList.contains("chat-history"));

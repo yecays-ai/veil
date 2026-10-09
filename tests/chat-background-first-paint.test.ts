@@ -161,6 +161,18 @@ test("a wallpaper is not exposed before it has decoded, and re-entering while it
   } finally { await app.cleanup(); }
 });
 
+test("a wallpaper read that never settles releases the frame to the theme background", async () => {
+  const app = await harness();
+  try {
+    const { session } = await sessionWithWallpaper(app.storage);
+    app.storage.readChatImage = () => new Promise<Blob | null>(() => {});
+    await app.mountNow(session);
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "a stalled image is not exposed");
+    assert.equal(app.frameReady(), "true", "the bounded fallback prevents a permanently blocked frame");
+  } finally { await app.cleanup(); }
+});
+
 test("a wallpaper selected after the chat opened is faded in even though the first one was cached", async () => {
   const app = await harness();
   try {
