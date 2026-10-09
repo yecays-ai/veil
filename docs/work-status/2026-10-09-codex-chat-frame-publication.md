@@ -19,7 +19,8 @@ Codex；branch codex/chat-frame-publication-20261009；PR #63 https://github.com
 
 - 2026-10-09 Claude 补充：修复 CodeRabbit r4228300655（过期 settings 读取覆盖较新缓存）：初始读取与订阅刷新两条路径写缓存前都校验 storage 背景 revision 仍等于读取开始时的值（`rememberCurrentSettings`），并新增回归测试；负向对照：去掉校验该测试失败。
 - 同次本地验证发现并修复两处 #63 自带问题：① 离开路由后迟到的图片读取仍会创建对象 URL（main 有 `active` 保护，已补回）；② `chat.mounted-character-navigation` 在去掉目的地壁纸后，模糊度断言没有可作用的壁纸，一直失败（这是 CI 早先真实失败的原因），已在模糊度检查前给目的地加壁纸并恢复对象 URL 断言。
-- 本地（Node 24，干净编译缓存）：完整测试 708/708；`tsc --noEmit`、`eslint .`（0 error，3 个既有 warning）、`next build` 通过。
+- CodeRabbit r4228628614（共享 `pendingSettingsReads` 未按 revision 区分）：成立，已用测试复现（变更后的新挂载加入了变更前开始的读取，并把旧结果以新 revision 缓存）；现在共享读取与其 revision 一起保存，仅同 revision 复用，旧读取结束时只清理自己的条目。
+- 本地（Node 24，干净编译缓存）：完整测试 709/709；`tsc --noEmit`、`eslint .`（0 error，3 个既有 warning）、`next build` 通过。
 
 ## 尚未验证
 

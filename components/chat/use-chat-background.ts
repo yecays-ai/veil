@@ -12,21 +12,23 @@ import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagno
 const DEFAULT_SETTINGS: ChatBackgroundSettings = { id: "chat-background" };
 const BACKGROUND_PREPARE_LIMIT_MS = 1200;
 const SETTINGS_PREPARE_LIMIT_MS = 1200;
-const pendingSettingsReads = new WeakMap<ChatStorage, Promise<ChatBackgroundSettings>>();
+// One in-flight settings read per storage, shared only by hooks that started at the same background revision.
+const pendingSettingsReads = new WeakMap<ChatStorage, { revision: number; promise: Promise<ChatBackgroundSettings> }>();
 
 // A read that began before a later background change is already stale: caching it would replace a newer snapshot.
 function rememberCurrentSettings(storage: ChatStorage, next: ChatBackgroundSettings, readRevision: number) {
   if (storage.backgroundRevision() === readRevision) rememberBackgroundSettings(storage, next, readRevision);
 }
 
-function readBackgroundSettings(storage: ChatStorage) {
+function readBackgroundSettings(storage: ChatStorage, revision: number) {
   const pending = pendingSettingsReads.get(storage);
-  if (pending) return pending;
-  const request = storage.readChatBackgroundSettings().finally(() => {
-    if (pendingSettingsReads.get(storage) === request) pendingSettingsReads.delete(storage);
+  if (pending?.revision === revision) return pending.promise;
+  const promise = storage.readChatBackgroundSettings().finally(() => {
+    // An older read finishing late must not clear the entry of a newer one.
+    if (pendingSettingsReads.get(storage)?.promise === promise) pendingSettingsReads.delete(storage);
   });
-  pendingSettingsReads.set(storage, request);
-  return request;
+  pendingSettingsReads.set(storage, { revision, promise });
+  return promise;
 }
 
 type Options = { characterId?: string; storage?: ChatStorage };
@@ -62,7 +64,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     const refresh = () => {
       const request = ++settingsRevision.current;
       const readRevision = storage.backgroundRevision();
-      void readBackgroundSettings(storage).then((next) => {
+      void readBackgroundSettings(storage, readRevision).then((next) => {
         rememberCurrentSettings(storage, next, readRevision);
         if (active && request === settingsRevision.current) {
           if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
