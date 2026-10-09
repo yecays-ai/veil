@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 fix/d6-preset-import-id-contract；PR 发布后补入链接。
+Codex；分支 fix/d6-preset-import-id-contract；PR https://github.com/yecays-ai/veil/pull/62 。
 仅修改 lib/preset-library.ts、新增 tests/preset-binding-id-contract.test.ts、docs/fixtures/d6 三份手机样本及本记录。不修改总账（#61 正在修改该文件）。
 
 ## 已完成
