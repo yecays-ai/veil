@@ -88,6 +88,7 @@ for (const kind of ["user", "character"] as const) {
       assert.equal(unrelated.scrollTop, 73, "an unrelated scroll container is untouched");
       await app.click([...app.container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Edit")!);
       assert.ok(app.container.querySelector("form"), "re-entering Edit still opens the original form");
+      body.scrollTop = 184;
       await app.click([...app.container.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Cancel")!);
       assert.equal(body.scrollTop, 0, "repeated display entry stays at the top under StrictMode");
     });
