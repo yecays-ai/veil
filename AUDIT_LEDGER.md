@@ -13,5 +13,5 @@ This ledger preserves the original identifiers from the 《前端》 architectur
 
 | Audit ID | Finding | Status | Evidence |
 | --- | --- | --- | --- |
-| F5 | Chat and Messages still load on each mount; the shell and content are naturally published in separate stages. | 已修待验 | This PR coordinates the selected session, current wallpaper, character identity, and initial messages at the first-frame boundary. Automated regression coverage passes; iPhone visual acceptance remains pending. |
-| F3 | Chat treats “background not yet known” as “use the global/default background.” | 待调查 | Recorded as a separate finding from the original 《前端》 audit; outside this PR's F5 scope. |
+| F5 | Chat 和 Messages 仍是每挂载读取；外壳与内容天然分批出现。 | 已修待验 | This PR coordinates the selected session, current wallpaper, character identity, and initial messages at the first-frame boundary. Automated regression coverage passes; iPhone visual acceptance remains pending. |
+| F3 | Chat 将“尚不知道背景”当成“使用 global/default 背景”。 | 待调查 | Recorded as a separate finding from the original 《前端》 audit; outside this PR's F5 scope. |

@@ -68,6 +68,13 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
   }, [storage]);
 
   useEffect(() => {
+    if (!session?.id) return;
+    const snapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (snapshot) { setSettings(snapshot); setSettingsReady(true); }
+  }, [session?.id, storage]);
+
+  useEffect(() => {
     const sessionId = session?.id;
     if (!sessionId) return;
     let active = true;
