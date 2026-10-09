@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
@@ -9,9 +9,14 @@ export function CustomCSSSettings({ session, onBack }: {
   session: ChatSession;
   onBack: () => void;
 }) {
+  const ownsEditor = useRef(true);
   const [draft, setDraft] = useState(session.customCSS || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => {
+    ownsEditor.current = true;
+    return () => { ownsEditor.current = false; };
+  }, []);
   async function save(css: string | null) {
     const problems = css ? validateSessionCSS(css) : [];
     if (problems.length) { setError(problems.join(" ")); return; }
@@ -19,9 +24,11 @@ export function CustomCSSSettings({ session, onBack }: {
     setError("");
     try {
       await chatStorage.updateSessionSettings(session.id, { customCSS: css });
+      if (!ownsEditor.current) return;
       setBusy(false);
       onBack();
     } catch (reason) {
+      if (!ownsEditor.current) return;
       setError(reason instanceof Error ? reason.message : "Custom CSS could not be saved.");
       setBusy(false);
     }
