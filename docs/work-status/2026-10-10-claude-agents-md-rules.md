@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 claude/agents-md-rules；PR 创建后补链接；涉及 AGENTS.md、docs/work-status/2026-10-10-claude-agents-md-rules.md；base 575132e。
+Claude；分支 claude/agents-md-rules；PR https://github.com/yecays-ai/veil/pull/85；涉及 AGENTS.md、docs/work-status/2026-10-10-claude-agents-md-rules.md；base 575132e。
 
 ## 已完成
 
