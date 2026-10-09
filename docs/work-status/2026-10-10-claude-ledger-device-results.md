@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 claude/ledger-device-results；PR 创建后补链接；涉及 docs/AUDIT_LEDGER.md、docs/work-status/2026-10-10-claude-ledger-device-results.md；base f19416c。
+Claude；分支 claude/ledger-device-results；PR https://github.com/yecays-ai/veil/pull/84；涉及 docs/AUDIT_LEDGER.md、docs/work-status/2026-10-10-claude-ledger-device-results.md；base f19416c。
 
 ## 已完成
 
