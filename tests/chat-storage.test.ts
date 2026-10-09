@@ -54,6 +54,11 @@ test("scoped notifications avoid unrelated session, background and profile reads
   assert.deepEqual([sessionReads, backgroundReads, profileReads], [1, 0, 1]);
   await storage.updateSessionSettings(other.id, { backgroundBlur: 2 });
   assert.deepEqual([sessionReads, backgroundReads, profileReads], [1, 0, 1]);
+  const changeRevision = storage.changeRevision();
+  const backgroundRevision = storage.backgroundRevision();
+  await storage.updateSessionSettings(other.id, { streamOnline: true });
+  assert.equal(storage.changeRevision(), changeRevision + 1, "ordinary session writes still invalidate chat seeds");
+  assert.equal(storage.backgroundRevision(), backgroundRevision, "ordinary session writes do not invalidate the background cache");
   await storage.updateSessionSettings(first.id, { backgroundBlur: 3 });
   assert.deepEqual([sessionReads, backgroundReads, profileReads], [2, 1, 1]);
   await storage.updateGlobalChatBackgroundBlur(4);

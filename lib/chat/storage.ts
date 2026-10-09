@@ -385,9 +385,13 @@ export class ChatStorage {
   }
 
   private chatBackgroundRevision = 0;
+  private changes = 0;
   /** Bumped by local or cross-tab background changes; lets callers validate a snapshot without a listener. */
   backgroundRevision() { return this.chatBackgroundRevision; }
+  /** Bumped by every dispatched chat change, independently of background cache invalidation. */
+  changeRevision() { return this.changes; }
   private dispatch(change: ChatStorageChange) {
+    this.changes++;
     if (change.domain === "chat-background" ||
         (change.domain === "session" && change.backgroundChanged === true)) this.chatBackgroundRevision++;
     // Observer failures must not turn an already committed write into a failed restore.
@@ -526,6 +530,19 @@ export class ChatStorage {
     if (snapshot && (snapshot.session.generation || snapshot.messages.some((message) => message.status === "streaming")))
       return this.readSession(snapshot.session.id);
     return snapshot;
+  }
+
+  /** Read-only prefetch for a first-paint seed. Active generations are left to their route owner. */
+  async peekExistingSession(characterId: string): Promise<{ session: ChatSession; messages: ChatMessage[] } | null> {
+    if (!characterId) return null;
+    return this.transaction("readonly", async (tx) => {
+      const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
+      const session = directSessionFor(sessions, characterId);
+      if (!session || session.generation) return null;
+      const messages: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(session.id));
+      if (messages.some((message) => message.status === "streaming")) return null;
+      return { session, messages: messages.sort((a, b) => a.order - b.order) };
+    }, ["sessions", "messages"]);
   }
 
   readWorldBookState(sessionId: string): Promise<WorldBookActivationState | null> {

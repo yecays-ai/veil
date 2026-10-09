@@ -5,11 +5,12 @@ import { measureChatDiagnostic } from "../diagnostics/chat-first-paint";
 type Snapshot = { session: ChatSession; messages: ChatMessage[] };
 type Storage = Pick<ChatStorage, "readExistingSession" | "openSession" | "readSession" | "subscribe">;
 
-/** Per-route request owner, not a shared session cache. */
+/** Per-route request owner. A seed is display-only; this owner still reads authoritative storage. */
 export function createChatSessionLifecycle(characterId: string, storage: Storage,
   publish: (snapshot: Snapshot | null, error: string) => void, stop: (sessionId: string) => void) {
   let active = false, enabled = false, checkedExisting = false, revision = 0;
   let sessionId: string | undefined, snapshot: Snapshot | null = null, error = "";
+  let seededId: string | undefined;
   let running: Promise<void> | undefined;
   let awaitingExisting = false;
   let completedRevision = 0;
@@ -80,6 +81,12 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
     return running;
   };
   return {
+    seed(initial: Snapshot | null) {
+      if (!active && !snapshot && initial?.session.characterId === characterId) {
+        snapshot = initial;
+        seededId = initial.session.id;
+      }
+    },
     mount(validCharacter: boolean) {
       if (active) return;
       active = true;
@@ -98,10 +105,12 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
       if (!active || enabled === validCharacter) return;
       enabled = validCharacter;
       if (!enabled) {
-        if (sessionId) stop(sessionId);
+        const id = sessionId ?? seededId;
+        if (id) stop(id);
         revision++;
         checkedExisting = false;
         sessionId = undefined;
+        seededId = undefined;
         snapshot = null;
         error = "";
         changedBeforeResolution.clear();
@@ -121,7 +130,8 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
       active = false;
       unsubscribe();
       changedBeforeResolution.clear();
-      if (enabled && sessionId) stop(sessionId);
+      const id = sessionId ?? seededId;
+      if (enabled && id) stop(id);
       enabled = false;
     },
   };

@@ -35,10 +35,12 @@ test("a window that never subscribed still notifies a window that is listening",
   await withChannels(async () => {
     const [writer, listener] = windows();
     const heard = record(listener);
+    const beforeRevision = listener.changeRevision();
     const session = await writer.openSession("peter"); // the writer has never called subscribe()
     await writer.send(session.id, "hello");
     await settle();
     assert.deepEqual(heard.seen.map((change) => change.domain), ["session", "messages"]);
+    assert.equal(listener.changeRevision(), beforeRevision + 2, "remote session and message changes invalidate chat seeds");
     assert.deepEqual(heard.seen.at(-1), { domain: "messages", sessionId: session.id });
     heard.stop();
   });
