@@ -513,8 +513,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     backgroundBlur?: number | null;
   }) {
     if (!session) return;
-    try { await chatStorage.updateSessionSettings(session.id, patch); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Setting could not be saved."); }
+    await chatStorage.updateSessionSettings(session.id, patch);
   }
   const loadingNotice = chatLoadingNotice(ready, !!character, loadError);
   if (!ready || !character)
@@ -866,6 +865,25 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [customCSSOpen, setCustomCSSOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const settingsScreenMounted = useRef(false);
+  useEffect(() => {
+    settingsScreenMounted.current = true;
+    return () => { settingsScreenMounted.current = false; };
+  }, []);
+  async function updateSettings(patch: {
+    streamOnline?: boolean;
+    autoReplyOnKeyboardDismiss?: boolean;
+    pinned?: boolean;
+  }) {
+    setSettingsError("");
+    try {
+      await onUpdate(patch);
+    } catch (reason) {
+      if (settingsScreenMounted.current)
+        setSettingsError(reason instanceof Error ? reason.message : "Setting could not be saved.");
+    }
+  }
   if (backgroundOpen && session)
     return <ChatBackgroundSettings session={session} onBack={() => setBackgroundOpen(false)} />;
   if (customCSSOpen && session)
@@ -881,6 +899,7 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
       <span className="chat-info-header-spacer" aria-hidden="true" />
     </header>
     <div className="chat-info-body">
+      {settingsError && <p role="alert" className="chat-notice chat-setting-error">{settingsError}</p>}
       <section className="chat-info-group" aria-label="Chat history">
         <button type="button" className="chat-session-setting chat-info-row"
           onClick={() => setSearchOpen(true)}>
@@ -890,7 +909,7 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
       <section className="chat-info-group" aria-label="Conversation settings">
         <label className="chat-session-setting chat-info-toggle"><span>Pin Conversation</span>
           <Switch checked={pinned} disabled={!session}
-            onChange={(checked) => void onUpdate({ pinned: checked })} /></label>
+            onChange={(checked) => void updateSettings({ pinned: checked })} /></label>
       </section>
       <section className="chat-info-group" aria-label="Appearance">
         <button type="button" className="chat-session-setting chat-info-row"
@@ -908,10 +927,10 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
         <label className="chat-session-setting"><span>Streaming Replies
           <small>Show replies as they are generated.</small></span>
           <Switch checked={streamOnline} disabled={!session}
-            onChange={(checked) => void onUpdate({ streamOnline: checked })} /></label>
+            onChange={(checked) => void updateSettings({ streamOnline: checked })} /></label>
         <label className="chat-session-setting chat-info-toggle"><span>Reply When Keyboard Closes</span>
           <Switch checked={autoReplyOnKeyboardDismiss} disabled={!session}
-            onChange={(checked) => void onUpdate({ autoReplyOnKeyboardDismiss: checked })} /></label>
+            onChange={(checked) => void updateSettings({ autoReplyOnKeyboardDismiss: checked })} /></label>
       </section>
       <section className="chat-info-group chat-info-danger-group" aria-label="Danger">
         <button type="button" className="chat-session-setting chat-info-clear chat-danger"
