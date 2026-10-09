@@ -185,6 +185,7 @@ test("a superseding settings refresh completes readiness before the fallback tim
   const app = await harness();
   try {
     const created = await app.storage.openSession("a");
+    await app.storage.updateSessionSettings(created.id, { backgroundBlur: null });
     const session = (await app.storage.readSession(created.id)).session;
     const readSettings = app.storage.readChatBackgroundSettings.bind(app.storage);
     let release!: (value: Awaited<ReturnType<typeof app.storage.readChatBackgroundSettings>>) => void;
@@ -197,7 +198,7 @@ test("a superseding settings refresh completes readiness before the fallback tim
     await app.mountNow(session);
     await app.until(() => pendingReads === 1 && app.frameReady() === "false");
     await act(async () => {
-      await app.storage.updateSessionSettings(session.id, { backgroundBlur: 4 });
+      await app.storage.updateGlobalChatBackgroundBlur(4);
     });
     release(await readSettings());
     await app.until(() => app.frameReady() === "true");
