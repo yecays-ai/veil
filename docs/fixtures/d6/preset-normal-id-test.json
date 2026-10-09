@@ -1,0 +1,143 @@
+{
+  "id": "d6-phone-contract",
+  "name": "D6 Phone Test",
+  "description": "Default private conversation prompt pipeline.",
+  "builtIn": false,
+  "prompts": [
+    {
+      "identifier": "base",
+      "name": "Base Instruction",
+      "role": "system",
+      "enabled": true,
+      "source": "prompt",
+      "content": "For the user message D6 CHECK, reply exactly: D6_PRESET_OK"
+    },
+    {
+      "identifier": "user",
+      "name": "◇ User",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "user"
+    },
+    {
+      "identifier": "universe",
+      "name": "◇ Universe",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "universe"
+    },
+    {
+      "identifier": "world-info-before",
+      "name": "◇ World Info Before",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "world-info-before"
+    },
+    {
+      "identifier": "character",
+      "name": "◇ Character",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "character"
+    },
+    {
+      "identifier": "relations",
+      "name": "◇ Character Relations",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "relations"
+    },
+    {
+      "identifier": "world-info-after",
+      "name": "◇ World Info After",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "world-info-after"
+    },
+    {
+      "identifier": "memory",
+      "name": "◇ Memory",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "memory"
+    },
+    {
+      "identifier": "history",
+      "name": "◇ Recent History",
+      "role": "system",
+      "enabled": true,
+      "source": "marker",
+      "marker": "history"
+    },
+    {
+      "identifier": "chat_output_format",
+      "name": "Chat Output Format",
+      "role": "system",
+      "enabled": true,
+      "source": "prompt",
+      "content": "This is an instant-message text conversation.\nDecide naturally how many messages to send based on the Character's personality, Speaking Style, current emotion, and context.\nA single reply may contain multiple independent messages. Separate each message with one blank line.\nUse a real empty line (two newline characters) as the separator; never output a word or label to stand in for that empty line.\nKeep each message concise, natural, and like real chat. Do not split sentences mechanically just to create more messages.\nIf a sentence would naturally be sent on its own, send it as its own message.\nAvoid long paragraphs or essay-like replies unless the current context truly calls for one.\nDo not output timestamps; VEIL provides message times in the interface."
+    },
+    {
+      "identifier": "response-directive",
+      "name": "Response Directive",
+      "role": "system",
+      "enabled": true,
+      "source": "prompt",
+      "content": ""
+    }
+  ],
+  "promptOrder": [
+    {
+      "identifier": "base",
+      "enabled": true
+    },
+    {
+      "identifier": "user",
+      "enabled": true
+    },
+    {
+      "identifier": "universe",
+      "enabled": true
+    },
+    {
+      "identifier": "world-info-before",
+      "enabled": true
+    },
+    {
+      "identifier": "character",
+      "enabled": true
+    },
+    {
+      "identifier": "relations",
+      "enabled": true
+    },
+    {
+      "identifier": "world-info-after",
+      "enabled": true
+    },
+    {
+      "identifier": "memory",
+      "enabled": true
+    },
+    {
+      "identifier": "history",
+      "enabled": true
+    },
+    {
+      "identifier": "chat_output_format",
+      "enabled": true
+    },
+    {
+      "identifier": "response-directive",
+      "enabled": true
+    }
+  ],
+  "generation": {}
+}
