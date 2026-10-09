@@ -76,20 +76,8 @@ export function ChatDiagnosticsGate({ children }: { children: ReactNode }) {
   }
   return <>
     {children}
-    {enabled
-      ? <ChatDiagnosticsObserver onDisable={() => toggle(false)} />
-      : standalone && <StandaloneDiagnosticsOptIn onEnable={() => toggle(true)} />}
+    {enabled && <ChatDiagnosticsObserver onDisable={() => toggle(false)} />}
   </>;
-}
-
-function StandaloneDiagnosticsOptIn({ onEnable }: { onEnable: () => void }) {
-  return <button type="button" data-chat-diagnostics="" onClick={onEnable} style={{
-    position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 2px)",
-    right: "calc(env(safe-area-inset-right, 0px) + 4px)", zIndex: 2147483000,
-    minHeight: 28, padding: "3px 9px", border: "1px solid #ffffff66",
-    borderRadius: 14, color: "#fff", background: "#111d",
-    font: "11px system-ui, sans-serif",
-  }}>Enable DIAG</button>;
 }
 
 function ChatDiagnosticsObserver({ onDisable }: { onDisable: () => void }) {
