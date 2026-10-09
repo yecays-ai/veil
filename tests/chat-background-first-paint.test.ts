@@ -43,6 +43,7 @@ async function harness(options: { fakeImage?: boolean } = {}) {
       "data-late": String(background.late), "data-frame-ready": String(frame.readyForFrame) });
   }
   const url = () => dom.window.document.getElementById("probe")?.getAttribute("data-url") ?? "";
+  const blur = () => dom.window.document.getElementById("probe")?.getAttribute("data-blur") ?? "";
   const late = () => dom.window.document.getElementById("probe")?.getAttribute("data-late");
   const frameReady = () => dom.window.document.getElementById("probe")?.getAttribute("data-frame-ready");
   // Synchronous act: renders and flushes effects but not pending storage promises, i.e. the first frame.
@@ -65,7 +66,7 @@ async function harness(options: { fakeImage?: boolean } = {}) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
     }
   };
-  return { storage, reads, revoked, mountNow, leave, until, url, late, frameReady, settleDecodes, pendingDecodes: () => decodes.length, cleanup };
+  return { storage, reads, revoked, mountNow, leave, until, url, blur, late, frameReady, settleDecodes, pendingDecodes: () => decodes.length, cleanup };
 }
 
 async function sessionWithWallpaper(storage: ChatStorage, content = "wallpaper") {
@@ -177,6 +178,31 @@ test("a settings read timeout releases the frame and a late result still applies
     release(await readSettings());
     await app.until(() => app.url() !== "");
     assert.equal(app.frameReady(), "true", "the late settings result updates the selected wallpaper");
+  } finally { await app.cleanup(); }
+});
+
+test("a superseding settings refresh completes readiness before the fallback timeout", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    const readSettings = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let release!: (value: Awaited<ReturnType<typeof app.storage.readChatBackgroundSettings>>) => void;
+    let pendingReads = 0;
+    app.storage.readChatBackgroundSettings = () => {
+      app.reads.settings++;
+      pendingReads++;
+      return new Promise((resolve) => { release = resolve; });
+    };
+    await app.mountNow(session);
+    await app.until(() => pendingReads === 1 && app.frameReady() === "false");
+    await act(async () => {
+      await app.storage.updateSessionSettings(session.id, { backgroundBlur: 4 });
+    });
+    release(await readSettings());
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "the frame is ready with the existing Theme background");
+    assert.equal(app.blur(), "4");
   } finally { await app.cleanup(); }
 });
 
