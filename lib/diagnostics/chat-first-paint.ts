@@ -16,10 +16,13 @@ const SAFE_DETAIL_KEYS = new Set([
 
 function normalizedRoute(value: string | null | undefined): string | null {
   if (!value) return null;
-  const path = value.split(/[?#]/, 1)[0] || "/";
+  const path = value.split(/[?#]/, 1)[0].replace(/\/+$/, "") || "/";
   return path.replace(/^\/messages\/group\/[^/]+$/, "/messages/group/[session]")
     .replace(/^\/messages\/[^/]+$/, "/messages/[character]")
-    .replace(/^\/contacts\/[^/]+$/, "/contacts/[character]");
+    .replace(/^\/contacts\/(?!add$|create-group$)[^/]+$/, "/contacts/[character]")
+    .replace(/^\/social\/[^/]+$/, "/social/[character]")
+    .replace(/^\/characters\/(?!new$)[^/]+$/, "/characters/[character]")
+    .replace(/^\/settings\/bindings\/[^/]+(?=\/|$)/, "/settings/bindings/[character]");
 }
 
 export function createChatDiagnosticRecorder(now: () => number = () => performance.now()) {
@@ -79,7 +82,10 @@ export function createChatDiagnosticRecorder(now: () => number = () => performan
       const segment = value?.split(/[?#]/, 1)[0]?.split("/").filter(Boolean) ?? [];
       let routeCharacter: string | null = null;
       if (segment[0] === "messages" && segment.length === 2) routeCharacter = segment[1];
-      if (segment[0] === "contacts" && segment.length === 2) routeCharacter = segment[1];
+      if (segment[0] === "contacts" && segment.length === 2 && !["add", "create-group"].includes(segment[1])) routeCharacter = segment[1];
+      if (segment[0] === "social" && segment.length === 2) routeCharacter = segment[1];
+      if (segment[0] === "characters" && segment.length === 2 && segment[1] !== "new") routeCharacter = segment[1];
+      if (segment[0] === "settings" && segment[1] === "bindings" && segment.length >= 3) routeCharacter = segment[2];
       try { currentCharacterId = characterId ?? (routeCharacter ? decodeURIComponent(routeCharacter) : null); }
       catch { currentCharacterId = characterId ?? routeCharacter; }
     },

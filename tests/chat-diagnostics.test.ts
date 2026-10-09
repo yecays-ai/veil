@@ -48,3 +48,21 @@ test("events share monotonic navigation time and clear only the active navigatio
   recorder.clearCurrentNavigation();
   assert.equal(recorder.currentNavigation().events.length, 0);
 });
+
+test("all character routes redact route, target and query identifiers, including nested Bindings", () => {
+  for (const route of ["/messages/private-character", "/contacts/private-character", "/social/private-character",
+    "/characters/private-character", "/settings/bindings/private-character", "/settings/bindings/private-character/messages"]) {
+    const recorder = createChatDiagnosticRecorder(() => 1);
+    recorder.setEnabled(true); recorder.setRoute(route + "?characterId=private-character#private-character");
+    recorder.ensureNavigation(route); recorder.record("route", { route, target: route });
+    const output = recorder.exportCurrentNavigation();
+    assert.doesNotMatch(output, /private-character/);
+    assert.match(output, /\[character\]/); assert.match(output, /character-1/);
+  }
+  for (const route of ["/contacts/add", "/contacts/create-group", "/characters/new"]) {
+    const recorder = createChatDiagnosticRecorder(() => 1);
+    recorder.setEnabled(true); recorder.setRoute(route); recorder.ensureNavigation(route);
+    assert.equal(recorder.currentNavigation().events[0].route, route);
+    assert.equal(recorder.currentNavigation().events[0].character, null);
+  }
+});

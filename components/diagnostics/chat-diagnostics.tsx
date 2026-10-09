@@ -37,23 +37,33 @@ function writeOptIn(enabled: boolean, standalone: boolean) {
 const NAV_SELECTOR = 'a[href^="/messages"], a[href^="/contacts"], button[data-chat-navigation]';
 
 export function ChatDiagnosticsGate({ children }: { children: ReactNode }) {
-  const [enabled, setEnabled] = useState(false);
-  const [standalone, setStandalone] = useState(false);
-  useEffect(() => {
-    let mounted = true;
+  const [startup] = useState(() => {
+    if (typeof window === "undefined") return { active: false, standalone: false };
     const inStandalone = isStandaloneWindow();
     const requested = new URLSearchParams(window.location.search).get("veilDiagnostics") === "1";
     const active = requested || readOptIn(inStandalone);
     if (requested) writeOptIn(true, inStandalone);
+    // Children emit layout effects before this gate's effects. Enable and assign
+    // the document navigation now; keep the panel deferred for hydration parity.
     chatDiagnosticRecorder.setEnabled(active);
+    if (active) {
+      chatDiagnosticRecorder.setRoute(window.location.pathname);
+      chatDiagnosticRecorder.ensureNavigation(window.location.pathname);
+    }
+    return { active, standalone: inStandalone };
+  });
+  const [enabled, setEnabled] = useState(false);
+  const [standalone, setStandalone] = useState(false);
+  useEffect(() => {
+    let mounted = true;
     const timer = window.setTimeout(() => {
       if (mounted) {
-        setStandalone(inStandalone);
-        setEnabled(active);
+        setStandalone(startup.standalone);
+        setEnabled(startup.active);
       }
     }, 0);
     return () => { mounted = false; window.clearTimeout(timer); };
-  }, []);
+  }, [startup]);
   function toggle(next: boolean) {
     writeOptIn(next, standalone);
     chatDiagnosticRecorder.setEnabled(next);
