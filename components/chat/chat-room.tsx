@@ -297,9 +297,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       const centeredOffset = targetRect.top - containerRect.top - (container.clientHeight - targetRect.height) / 2;
       container.scrollTo({ top: container.scrollTop + centeredOffset, behavior: "smooth" });
       setHighlightedMessageId(pendingSearchJumpId);
+      revealQueue.revealMessage(pendingSearchJumpId);
     }
     setPendingSearchJumpId(null);
-  }, [pendingSearchJumpId]);
+  }, [pendingSearchJumpId, revealQueue]);
   // Preserve the original header safe area across keyboard transitions while
   // keeping keyboard panning confined to the composer and history bottom inset.
   useEffect(() => {
