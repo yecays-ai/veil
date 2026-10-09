@@ -11,7 +11,7 @@ import { createChatSessionLifecycle } from "../lib/chat/session-lifecycle";
 import { regressionContract } from "./regression-contract";
 import { browserRegexStorage } from "../lib/regex-storage";
 import { drainContinuation } from "./lifecycle-test-tools";
-import { rememberBackgroundBlob, resetChatBackgroundCacheForTests } from "../lib/chat/background-cache";
+import { resetChatBackgroundCacheForTests } from "../lib/chat/background-cache";
 
 regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
   "direct chat has no full-page fallback and still awaits and keys the current route identity", () => {
@@ -186,9 +186,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     const peter = await chatStorage.openSession("peter");
     const destination = await chatStorage.openSession("pep");
     const peterAssetId = await chatStorage.saveChatImage(new Blob(["peter wallpaper"], { type: "image/png" }));
-    const pepAssetId = await chatStorage.saveChatImage(new Blob(["pep wallpaper"], { type: "image/png" }));
     await chatStorage.updateSessionSettings(peter.id, { backgroundImage: peterAssetId });
-    await chatStorage.updateSessionSettings(destination.id, { backgroundImage: pepAssetId });
     chatStorage.readChatImage = (id) => {
       imageReads.push(id);
       const read = (async () => {
@@ -204,7 +202,6 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       return url;
     }) as typeof URL.createObjectURL;
     URL.revokeObjectURL = ((url) => { revokedUrls.push(url); }) as typeof URL.revokeObjectURL;
-    const cachedDestinationBackground = rememberBackgroundBlob(pepAssetId, new Blob(["pep wallpaper"], { type: "image/png" }));
     const waitForDestinationRead = async () => {
       if (!destinationReadStarted) {
         destinationReadStarted = true;
@@ -275,9 +272,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     await act(async () => { releaseDestination(); releaseSecondary(); });
     await waitFor(() => container.textContent?.includes("pep history") === true &&
       container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");
-    const destinationBackground = container.querySelector<HTMLElement>(".chat-room")?.style.getPropertyValue("--chat-background-image") ?? "";
-    assert.ok(destinationBackground.includes(cachedDestinationBackground.url),
-      "the destination publishes its own prepared wallpaper, never the previous chat's image");
+    assert.equal(container.querySelector(".chat-room")?.getAttribute("data-chat-background"), "default",
+      "the session contract uses the Theme background without a selected chat wallpaper");
     // Background settings are global, not per Character: the destination reuses the valid snapshot the
     // first chat already read instead of reading them again.
     assert.equal(backgroundReads, 1);
@@ -314,7 +310,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       releasePeterAsset();
       await drainContinuation(Promise.all(assetReads), "late chat background reads");
     });
-    assert.deepEqual(createdUrls, ["blob:chat-lifecycle-1"], "a late asset from the unmounted route never creates an object URL");
+    assert.deepEqual(createdUrls, [], "a late asset from the unmounted route never creates an object URL");
   } catch (reason) {
     failed = true;
     throw reason;
