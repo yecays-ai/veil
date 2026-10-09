@@ -269,6 +269,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       const currentRoot = getRoot();
       if (!currentRoot) return;
       if (event.key === "Escape") {
+        const ElementConstructor = currentRoot.ownerDocument.defaultView?.Element;
+        const target = ElementConstructor && event.target instanceof ElementConstructor ? event.target : null;
+        const nestedDialog = target?.closest('dialog, [role="dialog"], [role="alertdialog"]');
+        if (nestedDialog && nestedDialog !== currentRoot) return;
         event.preventDefault();
         event.stopPropagation();
         if (overlayKind === "chat-info") setChatInfoOpen(false);
