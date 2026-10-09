@@ -59,7 +59,7 @@ export default function RootLayout({
             const allowed = ["--theme-background","--theme-surface","--theme-text","--theme-accent","--theme-dock-background","--theme-font-size","--theme-icon-radius"];
             for (const [key, value] of Object.entries(p && p.cssOverrides || {})) {
               if (!allowed.includes(key) || typeof value !== "string") continue;
-              if (/^#[0-9a-f]{6}$/i.test(value)) values[key] = value;
+              if (["--theme-background","--theme-surface","--theme-text","--theme-accent","--theme-dock-background"].includes(key) && /^#[0-9a-f]{6}$/i.test(value)) values[key] = value;
               else if ((key === "--theme-font-size" || key === "--theme-icon-radius") && /^(\d+(\.\d+)?px)$/.test(value)) {
                 const size = parseFloat(value);
                 if (key === "--theme-font-size" ? size >= 12 && size <= 24 : size >= 0 && size <= 32) values[key] = value;
