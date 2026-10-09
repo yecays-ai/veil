@@ -44,10 +44,14 @@ export function ChatDiagnosticsGate({ children }: { children: ReactNode }) {
     const inStandalone = isStandaloneWindow();
     const requested = new URLSearchParams(window.location.search).get("veilDiagnostics") === "1";
     const active = requested || readOptIn(inStandalone);
-    setStandalone(inStandalone);
     if (requested) writeOptIn(true, inStandalone);
     chatDiagnosticRecorder.setEnabled(active);
-    const timer = window.setTimeout(() => { if (mounted) setEnabled(active); }, 0);
+    const timer = window.setTimeout(() => {
+      if (mounted) {
+        setStandalone(inStandalone);
+        setEnabled(active);
+      }
+    }, 0);
     return () => { mounted = false; window.clearTimeout(timer); };
   }, []);
   function toggle(next: boolean) {
