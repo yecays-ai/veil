@@ -11,6 +11,17 @@ import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagno
 
 const DEFAULT_SETTINGS: ChatBackgroundSettings = { id: "chat-background" };
 const BACKGROUND_PREPARE_LIMIT_MS = 1200;
+const pendingSettingsReads = new WeakMap<ChatStorage, Promise<ChatBackgroundSettings>>();
+
+function readBackgroundSettings(storage: ChatStorage) {
+  const pending = pendingSettingsReads.get(storage);
+  if (pending) return pending;
+  const request = storage.readChatBackgroundSettings().finally(() => {
+    if (pendingSettingsReads.get(storage) === request) pendingSettingsReads.delete(storage);
+  });
+  pendingSettingsReads.set(storage, request);
+  return request;
+}
 
 type Options = { characterId?: string; storage?: ChatStorage };
 
@@ -43,7 +54,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     const refresh = () => {
       const request = ++settingsRevision.current;
       const readRevision = storage.backgroundRevision();
-      void storage.readChatBackgroundSettings().then((next) => {
+      void readBackgroundSettings(storage).then((next) => {
         rememberBackgroundSettings(storage, next, readRevision);
         if (active && request === settingsRevision.current) { setSettings(next); setSettingsReady(true); }
       }).catch(() => {
@@ -63,7 +74,7 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     const refresh = () => {
       const request = ++settingsRevision.current;
       const readRevision = storage.backgroundRevision();
-      void storage.readChatBackgroundSettings().then((next) => {
+      void readBackgroundSettings(storage).then((next) => {
         rememberBackgroundSettings(storage, next, readRevision);
         if (active && request === settingsRevision.current) setSettings(next);
       }).catch(() => {});
