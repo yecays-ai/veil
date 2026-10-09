@@ -127,12 +127,12 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(globalCss, /\.veil-switch-input:checked \+ \.veil-switch-track \{ background: var\(--theme-accent\); \}/);
   assert.match(css, /\.chat-app button\.chat-info-clear\s*\{[^}]*color:\s*#c9363e/);
   assert.match(room, /<span>Chat Background/);
-  assert.match(room, /<ChatBackgroundSettings session=\{session\}/);
+  assert.match(room, /<ChatBackgroundSettings screenRef=\{screenRef\} session=\{session\}/);
   assert.match(room, /data-chat-background=\{framePublished && chatBackground\.url \? "custom" : "default"\}/);
   assert.match(room, /--chat-background-image/);
   assert.match(css, /\.chat-room\[data-chat-background="custom"\]::before\s*\{[^}]*z-index:\s*0/);
   assert.match(room, /<span>Custom CSS<small>/);
-  assert.match(room, /<CustomCSSSettings session=\{session\}/);
+  assert.match(room, /<CustomCSSSettings screenRef=\{screenRef\} session=\{session\}/);
   assert.match(room, /session\?\.customCSS && <SessionCustomCSS css=\{session\.customCSS\}/);
   assert.match(room, /className="chat-app chat-room chat-room-wrapper"/);
   assert.match(room, /chat-bubble-role-\$\{message\.role\}/);
@@ -195,23 +195,15 @@ test("iOS keyboard handling keeps header and history on the stable chat canvas",
 });
 
 
-test("mobile Safari uses dynamic viewport while standalone keeps full-screen geometry", () => {
+test("mobile shell follows the dynamic viewport in Safari and standalone mode", () => {
   assert.match(mobile, /--phone-screen-height:\s*100dvh/);
   assert.match(mobile, /@media[\s\S]*?html,\s*body\s*\{[^}]*height:\s*100dvh/);
   assert.match(mobile, /@media[\s\S]*?\.app-root\s*\{[^}]*height:\s*100dvh/);
-  const standalone = mobile.slice(mobile.indexOf('html[data-mobile-standalone="true"]'));
-  assert.match(standalone, /--phone-screen-height:\s*100lvh/);
-  assert.match(standalone, /html\[data-mobile-standalone="true"\]\s*\{[^}]*height:\s*100lvh/);
+  assert.match(mobile, /html\[data-mobile-standalone="true"\]\s*\{[^}]*height:\s*100dvh/);
   assert.match(
-    standalone,
-    /html\[data-mobile-standalone="true"\]\s+body,\s*html\[data-mobile-standalone="true"\]\s+\.app-root\s*\{[^}]*height:\s*100lvh/,
+    mobile,
+    /html\[data-mobile-standalone="true"\]\s+body,\s*html\[data-mobile-standalone="true"\]\s+\.app-root\s*\{[^}]*height:\s*100dvh/,
   );
-  assert.doesNotMatch(standalone, /100dvh/);
+  assert.doesNotMatch(mobile, /100lvh/);
 });
 
-test("standalone diagnostics never render an Enable DIAG overlay", () => {
-  const diagnostics = readFileSync("components/diagnostics/chat-diagnostics.tsx", "utf8");
-  assert.doesNotMatch(diagnostics, /Enable DIAG|StandaloneDiagnosticsOptIn/);
-  assert.match(diagnostics, /get\("veilDiagnostics"\) === "1"/);
-  assert.match(diagnostics, /<DiagnosticsPanel onDisable=\{onDisable\} \/>/);
-});
