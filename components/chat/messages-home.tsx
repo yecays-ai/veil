@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
+import { recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
 import { sortChatSessions } from "../../lib/chat/session-order";
 import { CONVERSATION_DELETE_WIDTH, conversationDeleteMotion, conversationSwipeOffset, isHorizontalConversationSwipe,
   conversationSwipeReleaseTarget } from "../../lib/chat/swipe-gesture";
@@ -153,6 +154,11 @@ export function MessagesHome() {
           <Link className={`conversation-row${draggingRowId === session.id ? " is-dragging" : ""}`}
             style={{ transform: `translateX(${offset}px)` }} data-testid={`conversation-link-${session.id}`}
             href={group ? `/messages/group/${encodeURIComponent(session.id)}` : `/messages/${encodeURIComponent(session.characterId)}`}
+            onClick={(event) => {
+              if (!event.defaultPrevented && !group) recordChatDiagnostic("navigation-call", {
+                target: `/messages/${encodeURIComponent(session.characterId)}`, characterId: session.characterId,
+              });
+            }}
             onPointerDown={(event) => beginSwipe(event, session.id)}
             onPointerMove={(event) => moveSwipe(event, session.id)}
             onPointerUp={(event) => finishSwipe(event, session.id)}

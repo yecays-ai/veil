@@ -56,9 +56,14 @@ import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/
 import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
 import { chatLoadingNotice } from "../../lib/chat/loading-notice";
+import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
+  useLayoutEffect(() => {
+    recordChatDiagnostic("ChatRoom-commit-mount", { characterId });
+    return () => recordChatDiagnostic("ChatRoom-commit-unmount", { characterId });
+  }, [characterId]);
   const { document, ready } = useFoundation();
   const contacts = useContacts();
   const [bubbleTiming, setBubbleTiming] = useState(DEFAULT_BUBBLE_TIMING);
@@ -89,9 +94,20 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useEffect(() => {
     if (!bindingsReady) return;
     let active = true;
+    const loadStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
+    if (loadStartedAt !== null) recordChatDiagnostic("regex-read-start", { characterId });
     const load = () => void browserRegexStorage.load().then((saved) => {
-      if (active) setRegexGroups(resolveRegexGroups(saved, regexIds));
-    }).catch(() => { if (active) setRegexGroups([]); });
+      const resolved = resolveRegexGroups(saved, regexIds);
+      if (active) {
+        if (loadStartedAt !== null) recordChatDiagnostic("regex-ready", { characterId, rulesCount: resolved.length, durationMs: performance.now() - loadStartedAt });
+        setRegexGroups(resolved);
+      }
+    }).catch(() => {
+      if (active) {
+        if (loadStartedAt !== null) recordChatDiagnostic("regex-failed", { characterId, error: true, durationMs: performance.now() - loadStartedAt });
+        setRegexGroups([]);
+      }
+    });
     load();
     window.addEventListener("storage", load);
     return () => { active = false; window.removeEventListener("storage", load); };
@@ -152,6 +168,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [pendingSearchJumpId, setPendingSearchJumpId] = useState<string | null>(null);
   const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
   const history = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!isChatDiagnosticsEnabled()) return;
+    const nodeCount = history.current?.querySelectorAll("[data-message-id]").length ?? 0;
+    recordChatDiagnostic("chat-react-commit", { characterId, hasSession: !!session, messageCount: messages.length, nodeCount });
+  }, [characterId, session, messages.length]);
   const nearBottom = useRef(true);
   const previousSearchJumpId = useRef<string | null>(null);
   const mounted = useRef(true);

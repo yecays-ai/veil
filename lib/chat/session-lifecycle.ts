@@ -1,5 +1,6 @@
 import { affectsChatSession, type ChatStorage } from "./storage";
 import type { ChatMessage, ChatSession } from "./types";
+import { measureChatDiagnostic } from "../diagnostics/chat-first-paint";
 
 type Snapshot = { session: ChatSession; messages: ChatMessage[] };
 type Storage = Pick<ChatStorage, "readExistingSession" | "openSession" | "readSession" | "subscribe">;
@@ -25,7 +26,9 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
           let next: Snapshot | null = null;
           if (!checkedExisting && !enabled) {
             awaitingExisting = true;
-            next = await storage.readExistingSession(characterId);
+            next = await measureChatDiagnostic("read-existing-session", { characterId },
+              () => storage.readExistingSession(characterId),
+              (value) => ({ hasSession: !!value, messageCount: value?.messages.length ?? 0 }));
             awaitingExisting = false;
             if (!active) return;
             if (observed !== revision) continue;
@@ -36,17 +39,22 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
             }
             changedBeforeResolution.clear();
           } else if (sessionId) {
-            next = await storage.readSession(sessionId);
+            next = await measureChatDiagnostic("read-session", { characterId },
+              () => storage.readSession(sessionId!),
+              (value) => ({ hasSession: true, messageCount: value.messages.length }));
           }
           if (!active) return;
           if (!sessionId && enabled) {
-            const opened = await storage.openSession(characterId);
+            const opened = await measureChatDiagnostic("open-session", { characterId },
+              () => storage.openSession(characterId), () => ({ hasSession: true }));
             if (!active) return;
             if (observed !== revision) continue;
             checkedExisting = true;
             sessionId = opened.id;
             changedBeforeResolution.clear();
-            next = await storage.readSession(sessionId);
+            next = await measureChatDiagnostic("read-session", { characterId },
+              () => storage.readSession(sessionId!),
+              (value) => ({ hasSession: true, messageCount: value.messages.length }));
           }
           if (!active) return;
           if (observed !== revision) continue;

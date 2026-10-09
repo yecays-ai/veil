@@ -11,6 +11,7 @@ import { PresenceBadge, presenceLabel } from "./presence";
 import { ImageCropDialog } from "./image-crop-dialog";
 import { readImage } from "../lib/theme-storage";
 import { chatStorage } from "../lib/chat/storage";
+import { measureChatDiagnostic, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 import { contactDisplayName, removeContact, updateContact } from "../lib/contact-storage";
 import { contactReturnTarget, type ContactReturnSource } from "../lib/contact-navigation";
 import "../app/contacts/contact-info.css";
@@ -26,6 +27,10 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
   const router = useRouter();
   const character = document.characters.find((item) => item.characterId === characterId);
   const contact = contacts.document.contacts.find((item) => item.characterId === characterId);
+  useLayoutEffect(() => {
+    recordChatDiagnostic("ContactInfo-commit-mount", { characterId, pending });
+    return () => recordChatDiagnostic("ContactInfo-commit-unmount", { characterId, pending });
+  }, [characterId, pending]);
   const [draft, setDraft] = useState<{ remark: string; heroBackground: string | null;
     base: { remark: string | null; heroBackground: string | null } } | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -78,8 +83,13 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     const owner = lifetime.current;
     setBusy(true); setError("");
     try {
-      await chatStorage.openSession(character.characterId);
-      if (owner === lifetime.current) router.push(`/messages/${encodeURIComponent(character.characterId)}`);
+      await measureChatDiagnostic("contact-info-open-session", { characterId: character.characterId },
+        () => chatStorage.openSession(character.characterId), () => ({ hasSession: true }));
+      if (owner === lifetime.current) {
+        const target = `/messages/${encodeURIComponent(character.characterId)}`;
+        recordChatDiagnostic("navigation-call", { target, characterId: character.characterId });
+        router.push(target);
+      }
     } catch (reason) {
       if (owner === lifetime.current) {
         setError(reason instanceof Error ? reason.message : "Conversation could not be opened."); setBusy(false);
@@ -147,7 +157,7 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     </header>
     <div className="contact-info-body">
       <nav className="contact-quick-actions" aria-label="Quick Actions">
-        <button type="button" disabled={busy || !!draft} onClick={() => void message()}><MessageCircle /><span>Message</span></button>
+        <button type="button" data-chat-navigation="contact-info-message" disabled={busy || !!draft} onClick={() => void message()}><MessageCircle /><span>Message</span></button>
         <button type="button" disabled title="Call unavailable"><Phone /><span>Call</span></button>
         <button type="button" disabled title="Video unavailable"><Video /><span>Video</span></button>
         <Link href={`/social/${encodeURIComponent(character.characterId)}`}><UserRound /><span>Profile</span></Link>
