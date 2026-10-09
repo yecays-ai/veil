@@ -38,10 +38,14 @@ async function harness(options: { fakeImage?: boolean } = {}) {
   const root = createRoot(dom.window.document.getElementById("root")!);
   function Probe({ session, characterId }: { session: ChatSession | null; characterId: string }) {
     const background = useChatBackground(session, { characterId, storage });
-    return createElement("div", { id: "probe", "data-url": background.url ?? "", "data-blur": String(background.blur), "data-late": String(background.late) });
+    const frame = background as typeof background & { readyForFrame?: boolean };
+    return createElement("div", { id: "probe", "data-url": background.url ?? "", "data-blur": String(background.blur),
+      "data-late": String(background.late), "data-frame-ready": String(frame.readyForFrame) });
   }
   const url = () => dom.window.document.getElementById("probe")?.getAttribute("data-url") ?? "";
+  const blur = () => dom.window.document.getElementById("probe")?.getAttribute("data-blur") ?? "";
   const late = () => dom.window.document.getElementById("probe")?.getAttribute("data-late");
+  const frameReady = () => dom.window.document.getElementById("probe")?.getAttribute("data-frame-ready");
   // Synchronous act: renders and flushes effects but not pending storage promises, i.e. the first frame.
   const mountNow = (session: ChatSession | null, characterId = "a") => act(() => { root.render(createElement(Probe, { session, characterId })); });
   const settleDecodes = () => act(async () => { decodes.splice(0).forEach((resolve) => resolve()); });
@@ -62,7 +66,7 @@ async function harness(options: { fakeImage?: boolean } = {}) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
     }
   };
-  return { storage, reads, revoked, mountNow, leave, until, url, late, settleDecodes, pendingDecodes: () => decodes.length, cleanup };
+  return { storage, reads, revoked, mountNow, leave, until, url, blur, late, frameReady, settleDecodes, pendingDecodes: () => decodes.length, cleanup };
 }
 
 async function sessionWithWallpaper(storage: ChatStorage, content = "wallpaper") {
@@ -146,13 +150,72 @@ test("a wallpaper is not exposed before it has decoded, and re-entering while it
     await app.mountNow(session);
     await app.until(() => app.pendingDecodes() === 1); // the Blob is read; decode() is still pending
     assert.equal(app.url(), "", "an undecoded wallpaper is not treated as ready");
+    assert.equal(app.frameReady(), "false", "the chat frame must wait for its selected wallpaper");
     await app.leave();
     await app.mountNow(session); // re-entry while the decode is pending
     assert.equal(app.url(), "");
     await app.settleDecodes();
     await app.until(() => app.url() !== "");
     assert.equal(app.late(), "true", "it arrived after the first frame, decoded");
+    assert.equal(app.frameReady(), "true", "frame readiness follows the wallpaper preparation result");
     assert.equal(app.reads.image, 1, "the pending entry was awaited, not read again");
+  } finally { await app.cleanup(); }
+});
+
+test("a settings read timeout releases the frame and a late result still applies", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    const image = await app.storage.saveChatImage(new Blob(["global"], { type: "image/png" }));
+    await app.storage.updateGlobalChatBackground(image);
+    const readSettings = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let release!: (value: Awaited<ReturnType<typeof app.storage.readChatBackgroundSettings>>) => void;
+    app.storage.readChatBackgroundSettings = () => new Promise((resolve) => { release = resolve; });
+    await app.mountNow(session);
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "timed-out settings publish with the Theme background fallback");
+    release(await readSettings());
+    await app.until(() => app.url() !== "");
+    assert.equal(app.frameReady(), "true", "the late settings result updates the selected wallpaper");
+  } finally { await app.cleanup(); }
+});
+
+test("a superseding settings refresh completes readiness before the fallback timeout", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    await app.storage.updateSessionSettings(created.id, { backgroundBlur: null });
+    const session = (await app.storage.readSession(created.id)).session;
+    const readSettings = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let release!: (value: Awaited<ReturnType<typeof app.storage.readChatBackgroundSettings>>) => void;
+    let pendingReads = 0;
+    app.storage.readChatBackgroundSettings = () => {
+      app.reads.settings++;
+      pendingReads++;
+      return new Promise((resolve) => { release = resolve; });
+    };
+    await app.mountNow(session);
+    await app.until(() => pendingReads === 1 && app.frameReady() === "false");
+    await act(async () => {
+      await app.storage.updateGlobalChatBackgroundBlur(4);
+    });
+    release(await readSettings());
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "the frame is ready with the existing Theme background");
+    assert.equal(app.blur(), "4");
+  } finally { await app.cleanup(); }
+});
+
+test("a wallpaper read that never settles releases the frame to the theme background", async () => {
+  const app = await harness();
+  try {
+    const { session } = await sessionWithWallpaper(app.storage);
+    app.storage.readChatImage = () => new Promise<Blob | null>(() => {});
+    await app.mountNow(session);
+    await app.until(() => app.frameReady() === "true");
+    assert.equal(app.url(), "", "a stalled image is not exposed");
+    assert.equal(app.frameReady(), "true", "the bounded fallback prevents a permanently blocked frame");
   } finally { await app.cleanup(); }
 });
 
@@ -184,7 +247,7 @@ test("a snapshot stored while the session was still loading is applied once the 
     rememberBackgroundSettings(app.storage, { id: "chat-background", globalChatBackgroundImage: "global" }, app.storage.backgroundRevision());
     await app.mountNow(session);
     assert.notEqual(app.url(), "", "the cached global wallpaper is applied, not skipped");
-    assert.equal(app.reads.settings, 0, "no settings read was needed");
+    assert.equal(app.reads.settings, 1, "the one settings read starts in parallel before the cached snapshot is stored");
   } finally { await app.cleanup(); }
 });
 
@@ -210,6 +273,56 @@ test("a global wallpaper is also in the first frame on re-entry, and a changed o
     await app.mountNow(session);
     assert.equal(app.url(), "", "the replaced wallpaper is never painted from the stale snapshot");
     await app.until(() => app.url() !== "" && app.url() !== oldUrl);
+  } finally { await app.cleanup(); }
+});
+
+test("a settings read that finishes after a newer one cannot replace the newer cached snapshot", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    // The first (initial) settings read is held; later reads run normally.
+    let release!: (settings: { id: "chat-background" }) => void;
+    const real = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let calls = 0;
+    app.storage.readChatBackgroundSettings = () => ++calls === 1
+      ? new Promise((resolve) => { release = resolve; }) : real();
+    await app.mountNow(session);
+    assert.equal(calls, 1, "the initial read is pending");
+    // A background change refreshes through the subscription and caches the newer snapshot first.
+    const imageId = await app.storage.saveChatImage(new Blob(["new"], { type: "image/png" }));
+    await app.storage.updateGlobalChatBackground(imageId);
+    await app.until(() => cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()) !== null);
+    const newer = cachedBackgroundSettings(app.storage, app.storage.backgroundRevision());
+    assert.equal(newer?.globalChatBackgroundImage, imageId);
+    // The older initial read now lands with settings that predate the change.
+    await act(async () => { release({ id: "chat-background" }); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    assert.deepEqual(cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()), newer,
+      "the late, older read did not replace the newer snapshot");
+  } finally { await app.cleanup(); }
+});
+
+test("a mount after a background change does not join a settings read that began before the change", async () => {
+  const app = await harness();
+  try {
+    const created = await app.storage.openSession("a");
+    const session = (await app.storage.readSession(created.id)).session;
+    let release!: (settings: { id: "chat-background" }) => void;
+    const real = app.storage.readChatBackgroundSettings.bind(app.storage);
+    let calls = 0;
+    app.storage.readChatBackgroundSettings = () => ++calls === 1
+      ? new Promise((resolve) => { release = resolve; }) : real();
+    await app.mountNow(session); // starts the shared read at the old revision and leaves it pending
+    assert.equal(calls, 1);
+    await app.leave();
+    const imageId = await app.storage.saveChatImage(new Blob(["new"], { type: "image/png" }));
+    await app.storage.updateGlobalChatBackground(imageId); // the revision moves on
+    await app.mountNow(session);
+    await app.until(() => calls >= 2); // the new mount reads for itself instead of joining the pre-change read
+    await act(async () => { release({ id: "chat-background" }); await new Promise((resolve) => setTimeout(resolve, 20)); });
+    await app.until(() => cachedBackgroundSettings(app.storage, app.storage.backgroundRevision()) !== null);
+    assert.equal(cachedBackgroundSettings(app.storage, app.storage.backgroundRevision())?.globalChatBackgroundImage, imageId,
+      "the snapshot for the current revision comes from a read that started at that revision");
   } finally { await app.cleanup(); }
 });
 

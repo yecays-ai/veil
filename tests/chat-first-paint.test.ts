@@ -28,8 +28,9 @@ regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
   for (const ref of ["shell", "history", "composerBar", "composer"])
     assert.match(pending, new RegExp(`ref=\\{${ref}\\}`));
   assert.match(pending, /<textarea[^>]*[\s\S]*?disabled placeholder="Message…"/);
-  assert.match(room, /aria-busy=\{!session && !loadError\}/);
-    assert.match(readFileSync("components/chat/use-chat-background.ts", "utf8"), /if \(!sessionId\) return/);
+  assert.match(room, /aria-busy=\{!framePublished\}/);
+  assert.match(room, /framePublished && groupedMessages\.map/);
+  assert.match(readFileSync("components/chat/use-chat-background.ts", "utf8"), /BACKGROUND_PREPARE_LIMIT_MS/);
     assert.match(room, /if \(!bindingsReady\) return/);
 });
 
@@ -129,7 +130,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     { characterId: "peter", name: "Peter" }, { characterId: "pep", name: "Pep" },
   ] });
   const originalLoad = browserFoundationStorage.load;
-  const originalRead = chatStorage.readSession;
+  const originalReadExisting = chatStorage.readExistingSession;
+  const originalSessionRead = chatStorage.readSession;
   const originalBackgroundRead = chatStorage.readChatBackgroundSettings;
   const originalProfileRead = chatStorage.readGlobalProfileSettings;
   const originalImageRead = chatStorage.readChatImage;
@@ -147,6 +149,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
   const backgroundResponses: Array<(settings: Awaited<ReturnType<typeof chatStorage.readChatBackgroundSettings>>) => void> = [];
   const assetReads: Promise<Blob | null>[] = [];
   let destinationReads = 0, backgroundReads = 0, profileReads = 0, regexReads = 0;
+  let destinationReadStarted = false;
   let activeChatSubscriptions = 0;
   const imageReads: string[] = [], createdUrls: string[] = [], revokedUrls: string[] = [];
   const container = dom.window.document.getElementById("root")!;
@@ -183,9 +186,7 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     const peter = await chatStorage.openSession("peter");
     const destination = await chatStorage.openSession("pep");
     const peterAssetId = await chatStorage.saveChatImage(new Blob(["peter wallpaper"], { type: "image/png" }));
-    const pepAssetId = await chatStorage.saveChatImage(new Blob(["pep wallpaper"], { type: "image/png" }));
     await chatStorage.updateSessionSettings(peter.id, { backgroundImage: peterAssetId });
-    await chatStorage.updateSessionSettings(destination.id, { backgroundImage: pepAssetId });
     chatStorage.readChatImage = (id) => {
       imageReads.push(id);
       const read = (async () => {
@@ -201,9 +202,20 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
       return url;
     }) as typeof URL.createObjectURL;
     URL.revokeObjectURL = ((url) => { revokedUrls.push(url); }) as typeof URL.revokeObjectURL;
+    const waitForDestinationRead = async () => {
+      if (!destinationReadStarted) {
+        destinationReadStarted = true;
+        destinationReads++;
+        await destinationPending;
+      }
+    };
+    chatStorage.readExistingSession = async (id) => {
+      if (id === "pep") await waitForDestinationRead();
+      return originalReadExisting.call(chatStorage, id);
+    };
     chatStorage.readSession = async (id) => {
-      if (id === destination.id) { destinationReads++; await destinationPending; }
-      return originalRead.call(chatStorage, id);
+      if (id === destination.id) await waitForDestinationRead();
+      return originalSessionRead.call(chatStorage, id);
     };
     const initial = await DirectChatPage({ params: Promise.resolve({ characterId: "peter" }) });
     function Navigation() {
@@ -217,23 +229,35 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     const waitFor = async (check: () => boolean) => {
       const deadline = Date.now() + 2000;
       while (!check()) {
-        assert.ok(Date.now() < deadline, "mounted chat did not reach its expected state within 2s");
+        assert.ok(Date.now() < deadline,
+          `mounted chat did not reach its expected state within 2s: ${JSON.stringify({
+            destinationReads, backgroundReads, profileReads, regexReads, activeChatSubscriptions,
+            header: container.querySelector(".chat-contact-summary")?.textContent,
+            messages: container.querySelectorAll("[data-message-id]").length,
+            historyBusy: container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy"),
+            pendingImages: imageReads.length, text: container.textContent?.slice(0, 160),
+          })}`);
         await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
       }
     };
     await act(async () => { root.render(createElement(Navigation)); });
-    await waitFor(() => container.textContent?.includes("peter history") === true);
-    await waitFor(() => imageReads.includes(peterAssetId) && regexReads === 1);
+    await waitFor(() => imageReads.includes(peterAssetId) && regexReads === 1 && backgroundReads === 1);
+    assert.equal(container.querySelectorAll("[data-message-id]").length, 0,
+      "current chat messages must stay unpublished until the selected background is prepared");
+    assert.equal(container.querySelector(".chat-contact-summary")?.textContent, "Chat",
+      "the generic header remains until the current frame can publish");
     assert.deepEqual([backgroundReads, profileReads, regexReads], [1, 1, 1]);
     assert.equal(activeChatSubscriptions, 3, "the validated session, background, and global timing owner each subscribe once");
     const composer = () => container.querySelector<HTMLTextAreaElement>("#chat-input")!;
     assert.equal(composer().disabled, false);
 
     await act(async () => { container.querySelector("button")!.click(); });
-    await waitFor(() => destinationReads === 1 && profileReads === 2 && regexReads === 2);
-    assert.equal(backgroundReads, 1, "background settings are not read while the destination session is unavailable");
+    await waitFor(() => destinationReads === 1);
+    await waitFor(() => profileReads === 2 && regexReads === 2);
+    assert.equal(backgroundReads, 1, "background settings were prepared once in parallel with the session");
     assert.equal(activeChatSubscriptions, 2, "pending navigation keeps only the destination session and global timing subscriptions");
-    assert.equal(container.querySelector(".chat-contact-summary strong")?.textContent, "Pep");
+    assert.equal(container.querySelector(".chat-contact-summary")?.textContent, "Chat",
+      "the destination keeps its stable header until its own frame is ready");
     assert.ok(container.querySelector(".chat-room .chat-header"));
     const history = container.querySelector<HTMLElement>('[aria-label="Conversation history"]')!;
     assert.ok(history.classList.contains("chat-history"));
@@ -246,8 +270,10 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.doesNotMatch(container.textContent ?? "", /peter history|pep history|Loading/);
 
     await act(async () => { releaseDestination(); releaseSecondary(); });
-    await waitFor(() => container.textContent?.includes("pep history") === true);
-    await waitFor(() => imageReads.includes(pepAssetId) && container.querySelector<HTMLElement>(".chat-room")?.dataset.chatBackground === "custom");
+    await waitFor(() => container.textContent?.includes("pep history") === true &&
+      container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");
+    assert.equal(container.querySelector(".chat-room")?.getAttribute("data-chat-background"), "default",
+      "the session contract uses the Theme background without a selected chat wallpaper");
     // Background settings are global, not per Character: the destination reuses the valid snapshot the
     // first chat already read instead of reading them again.
     assert.equal(backgroundReads, 1);
@@ -257,6 +283,11 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.doesNotMatch(container.textContent ?? "", /peter history/);
     assert.equal(destinationReads, 1);
     assert.equal(activeChatSubscriptions, 3);
+
+    // The blur checks below only apply to a chat with a wallpaper: give the destination one now.
+    const pepAssetId = await chatStorage.saveChatImage(new Blob(["pep wallpaper"], { type: "image/png" }));
+    await act(async () => { await chatStorage.updateSessionSettings(destination.id, { backgroundImage: pepAssetId }); });
+    await waitFor(() => imageReads.includes(pepAssetId) && container.querySelector<HTMLElement>(".chat-room")?.dataset.chatBackground === "custom");
 
     const readsBeforeBackgroundChange = backgroundReads;
     await act(async () => { await chatStorage.updateSessionSettings(destination.id, { backgroundBlur: 3 }); });
@@ -302,7 +333,8 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     // Wallpaper object URLs belong to a bounded cache, not to the mounted chat; releasing the cache revokes them all.
     resetChatBackgroundCacheForTests();
     const revokedAtUnmount = [...revokedUrls];
-    chatStorage.readSession = originalRead;
+    chatStorage.readExistingSession = originalReadExisting;
+    chatStorage.readSession = originalSessionRead;
     chatStorage.readChatBackgroundSettings = originalBackgroundRead;
     chatStorage.readGlobalProfileSettings = originalProfileRead;
     chatStorage.readChatImage = originalImageRead;

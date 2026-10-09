@@ -119,7 +119,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     ready && !!character,
   );
   const chatBackground = useChatBackground(session, { characterId });
-  const empty = !!session && messages.length === 0 && !loadError;
+  const [publishedSessionId, setPublishedSessionId] = useState<string | null>(null);
+  const frameReady = !!loadError || (!!session && chatBackground.readyForFrame);
+  useEffect(() => {
+    if (session && frameReady && publishedSessionId !== session.id) setPublishedSessionId(session.id);
+  }, [session, frameReady, publishedSessionId]);
+  const framePublished = !!loadError || (!!session && publishedSessionId === session.id);
+  const empty = framePublished && !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const draftEditVersion = useRef(0);
   const savedDraftAwaitingSession = useRef<{ sessionId: string; content: string; editVersion: number } | null>(null);
@@ -559,22 +565,22 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
     messages.slice(firstHiddenIndex + 1).find((message) => !hidden(message))?.id;
-  const typingIndicator = typing && <div className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing">
+  const typingIndicator = framePublished && typing && <div className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing">
     <div className="chat-avatar-column chat-msg-avatar"><ChatAvatar profile={character} /></div><div className="chat-message">
       <p className="chat-bubble chat-bubble-role-assistant"><span className="chat-typing-dots" aria-hidden="true"><i /><i /><i /></span></p>
     </div>
   </div>;
   return (
     <div className="chat-app chat-room chat-room-wrapper" ref={shell}
-      style={chatBackground.url ? {
+      style={framePublished && chatBackground.url ? {
         "--chat-background-image": `url(${JSON.stringify(chatBackground.url)})`,
         "--chat-background-blur": `${chatBackground.blur}px`,
         "--chat-background-inset": chatBackground.blur ? `${-2 * chatBackground.blur}px` : "0px",
       } as CSSProperties : undefined}
-      data-chat-background={chatBackground.url ? "custom" : "default"}
-      data-chat-background-entry={chatBackground.url && chatBackground.late ? "fade" : undefined}
+      data-chat-background={framePublished && chatBackground.url ? "custom" : "default"}
+      data-chat-background-entry={framePublished && chatBackground.url && chatBackground.late ? "fade" : undefined}
       data-context-menu-open={activeMessage ? "" : undefined}>
-      {session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
+      {framePublished && session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
       <header key="header" className="chat-header page-header">
         <Link
           href="/messages"
@@ -583,12 +589,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         >
           <ChevronLeft aria-hidden="true" />
         </Link>
-        <Link href={`/contacts/${encodeURIComponent(character.characterId)}?from=direct`}
+        {framePublished ? <Link href={`/contacts/${encodeURIComponent(character.characterId)}?from=direct`}
           className="chat-contact-summary page-title" aria-label={`Open Contact Info for ${contactName}`}>
           <ChatAvatar profile={character} />
           <strong>{contactName}</strong>
           <ChevronRight aria-hidden="true" />
-        </Link>
+        </Link> : <strong className="chat-contact-summary page-title">Chat</strong>}
         <button type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
           title="Conversation settings"
           onClick={() => setChatInfoOpen(true)}><Ellipsis aria-hidden="true" /></button>
@@ -598,7 +604,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         className={`chat-history chat-scroll-anchored${empty ? " chat-history-empty" : ""}`}
         ref={history}
         aria-label="Conversation history"
-        aria-busy={!session && !loadError}
+        aria-busy={!framePublished}
         onScroll={() => {
           const el = history.current;
           if (el)
@@ -607,9 +613,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           if (activeMessage) positionMenu.current();
         }}
       >
-        {!session && loadingNotice && <p className="chat-notice" role="status">{loadingNotice}</p>}
+        {!framePublished && loadingNotice && <p className="chat-notice" role="status">{loadingNotice}</p>}
         {empty && <p className="chat-empty-state">No messages yet</p>}
-        {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
+        {framePublished && groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
           const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
           // Middle of a same-sender group: neither end keeps a full radius.
           const groupClass = `${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${isGroupStart || isGroupEnd ? "" : " chat-group-middle"}`;
@@ -677,7 +683,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </div>
           </Fragment>
         );})}
-        {!typingBeforeId && typingIndicator}
+        {framePublished && !typingBeforeId && typingIndicator}
       </div>
       {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { resolveChatBackground } from "../../lib/chat/background";
 import {
   cachedBackgroundHint, cachedBackgroundSettings, cachedBackgroundUrl, pendingBackgroundReady,
@@ -10,17 +10,41 @@ import type { ChatBackgroundSettings, ChatSession } from "../../lib/chat/types";
 import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
 
 const DEFAULT_SETTINGS: ChatBackgroundSettings = { id: "chat-background" };
+const BACKGROUND_PREPARE_LIMIT_MS = 1200;
+const SETTINGS_PREPARE_LIMIT_MS = 1200;
+// One in-flight settings read per storage, shared only by hooks that started at the same background revision.
+const pendingSettingsReads = new WeakMap<ChatStorage, { revision: number; promise: Promise<ChatBackgroundSettings> }>();
+
+// A read that began before a later background change is already stale: caching it would replace a newer snapshot.
+function rememberCurrentSettings(storage: ChatStorage, next: ChatBackgroundSettings, readRevision: number) {
+  if (storage.backgroundRevision() === readRevision) rememberBackgroundSettings(storage, next, readRevision);
+}
+
+function readBackgroundSettings(storage: ChatStorage, revision: number) {
+  const pending = pendingSettingsReads.get(storage);
+  if (pending?.revision === revision) return pending.promise;
+  const promise = storage.readChatBackgroundSettings().finally(() => {
+    // An older read finishing late must not clear the entry of a newer one.
+    if (pendingSettingsReads.get(storage)?.promise === promise) pendingSettingsReads.delete(storage);
+  });
+  pendingSettingsReads.set(storage, { revision, promise });
+  return promise;
+}
 
 type Options = { characterId?: string; storage?: ChatStorage };
 
-/** `characterId` lets the wallpaper be chosen before the session has been read, from what this chat last resolved to. */
+/** Choose the current chat's wallpaper before its session read, using its last resolved hint. */
 export function useChatBackground(session: ChatSession | null, { characterId, storage = chatStorage }: Options = {}) {
-  const [settings, setSettings] = useState<ChatBackgroundSettings>(
-    () => cachedBackgroundSettings(storage, storage.backgroundRevision()) ?? DEFAULT_SETTINGS);
-  // The wallpaper that had to be loaded after it was selected (so it may fade in); reset when the image changes.
+  const settingsSnapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
+  const [settings, setSettings] = useState<ChatBackgroundSettings>(settingsSnapshot ?? DEFAULT_SETTINGS);
+  const [settingsReady, setSettingsReady] = useState(settingsSnapshot !== null);
+  const settingsForFrame = settingsSnapshot ?? settings;
+  const settingsReadyForFrame = settingsReady || settingsSnapshot !== null;
   const [lateFor, setLateFor] = useState<string | null>(null);
+  const [fallbackFor, setFallbackFor] = useState<string | null>(null);
+  const settingsRevision = useRef(0);
   const hint = !session && characterId ? cachedBackgroundHint(storage, characterId, storage.backgroundRevision()) : null;
-  const resolved = resolveChatBackground(session ? session : hint ? { backgroundImage: hint.image ?? undefined, backgroundBlur: hint.blur ?? undefined } : null, settings);
+  const resolved = resolveChatBackground(session ? session : hint ? { backgroundImage: hint.image ?? undefined, backgroundBlur: hint.blur ?? undefined } : null, settingsForFrame);
   const image = resolved.image;
   useEffect(() => {
     if (isChatDiagnosticsEnabled()) recordChatDiagnostic("background-selection", {
@@ -34,66 +58,111 @@ export function useChatBackground(session: ChatSession | null, { characterId, st
     if (ownerId) rememberBackgroundHint(storage, ownerId, { image: sessionImage, blur: sessionBlur }, storage.backgroundRevision());
   }, [ownerId, sessionImage, sessionBlur, storage]);
 
+  // Start settings recovery in parallel with the route's session/message read.
+  useEffect(() => {
+    let active = true;
+    const refresh = () => {
+      const request = ++settingsRevision.current;
+      const readRevision = storage.backgroundRevision();
+      void readBackgroundSettings(storage, readRevision).then((next) => {
+        rememberCurrentSettings(storage, next, readRevision);
+        if (active && request === settingsRevision.current) {
+          if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+          setSettings(next);
+          setSettingsReady(true);
+        }
+      }).catch(() => {
+        if (active && request === settingsRevision.current) {
+          if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+          setSettingsReady(true);
+        }
+      });
+    };
+    const snapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
+    let fallbackTimer: number | undefined;
+    if (snapshot) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSettings(snapshot);
+      setSettingsReady(true);
+    } else {
+      fallbackTimer = window.setTimeout(() => {
+        if (active) setSettingsReady(true);
+      }, SETTINGS_PREPARE_LIMIT_MS);
+      refresh();
+    }
+    return () => {
+      active = false;
+      if (fallbackTimer !== undefined) window.clearTimeout(fallbackTimer);
+      settingsRevision.current++;
+    };
+  }, [storage]);
+
+  useEffect(() => {
+    if (!session?.id) return;
+    const snapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (snapshot) {
+      settingsRevision.current++;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSettings(snapshot);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSettingsReady(true);
+    }
+  }, [session?.id, storage]);
+
   useEffect(() => {
     const sessionId = session?.id;
     if (!sessionId) return;
     let active = true;
-    let requestRevision = 0;
     const refresh = () => {
-      const request = ++requestRevision;
+      const request = ++settingsRevision.current;
       const readRevision = storage.backgroundRevision();
       void storage.readChatBackgroundSettings().then((next) => {
-        rememberBackgroundSettings(storage, next, readRevision);
-        if (active && requestRevision === request) setSettings(next);
+        rememberCurrentSettings(storage, next, readRevision);
+        if (active && request === settingsRevision.current) {
+          setSettings(next);
+          setSettingsReady(true);
+        }
       }).catch(() => {});
     };
-    // A valid snapshot replaces the read; it may have been stored after this hook's first render
-    // (e.g. by another chat while the session was still loading), so apply it to state too.
-    const snapshot = cachedBackgroundSettings(storage, storage.backgroundRevision());
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (snapshot) setSettings(snapshot); else refresh();
     const unsubscribe = storage.subscribe((change) => {
       if (affectsChatBackground(change, sessionId)) refresh();
     });
-    return () => { active = false; requestRevision++; unsubscribe(); };
+    return () => { active = false; unsubscribe(); };
   }, [session?.id, storage]);
 
-  if (lateFor !== null && lateFor !== image) setLateFor(null);
+  const url = image ? cachedBackgroundUrl(image) : null;
   useEffect(() => {
     if (!image || cachedBackgroundUrl(image)) return;
     let active = true;
-    const decodeStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
-    const reveal = (ready: Promise<void>, source: string) => ready.then(() => {
-      if (decodeStartedAt !== null) recordChatDiagnostic("background-decode-settled", {
-        characterId, source, durationMs: performance.now() - decodeStartedAt, outcome: "settled",
-      });
-      if (active) setLateFor(image);
-    });
+    const markReady = () => {
+      if (!active) return;
+      setLateFor(image);
+      setFallbackFor((current) => current === image ? null : current);
+    };
+    const fail = () => { if (active) setFallbackFor(image); };
     const pending = pendingBackgroundReady(image);
-    // Reveal a wallpaper only once the browser can paint it, so it never appears half-decoded.
-    if (pending) void reveal(pending, "pending-cache");
+    if (pending) void pending.then(markReady, fail);
     else {
-      const readStartedAt = isChatDiagnosticsEnabled() ? performance.now() : null;
-      if (readStartedAt !== null) recordChatDiagnostic("background-blob-read-start", { characterId });
       void storage.readChatImage(image).then(async (blob) => {
-        if (readStartedAt !== null) recordChatDiagnostic("background-blob-read-complete", {
-          characterId, hasImage: !!blob, durationMs: performance.now() - readStartedAt,
-        });
-        if (active && blob) await reveal(rememberBackgroundBlob(image, blob).ready, "read-blob");
-      }).catch(() => {
-        if (readStartedAt !== null) recordChatDiagnostic("background-blob-read-failed", { characterId, error: true, durationMs: performance.now() - readStartedAt });
-      });
+        if (!active) return; // a late read from a route that has left must not create an object URL
+        if (!blob) { fail(); return; }
+        try { await rememberBackgroundBlob(image, blob).ready; markReady(); }
+        catch { fail(); }
+      }).catch(fail);
     }
-    return () => { active = false; };
+    // A hung local read/decode may fall back to the theme background; it cannot hold the chat blank.
+    const timeout = window.setTimeout(fail, BACKGROUND_PREPARE_LIMIT_MS);
+    return () => { active = false; window.clearTimeout(timeout); };
   }, [characterId, image, storage]);
 
-  // A wallpaper already known to the cache is part of the first painted frame, with its decoded bitmap.
-  const url = image ? cachedBackgroundUrl(image) : null;
+  if (lateFor !== null && lateFor !== image) setLateFor(null);
+  if (fallbackFor !== null && fallbackFor !== image) setFallbackFor(null);
+  const readyForFrame = settingsReadyForFrame && (!image || !!url || fallbackFor === image);
   useEffect(() => {
     if (isChatDiagnosticsEnabled()) recordChatDiagnostic("background-url-state", {
       characterId, hasImage: !!image, hasSession: !!session, cached: !!url, urlKind: url ? "object-url" : "unavailable",
     });
   }, [characterId, image, session, session?.id, url]);
-  // "late": it was not ready when it was selected, so the caller may fade it in instead of popping it in.
-  return { url, blur: resolved.blur, late: url !== null && lateFor === image };
+  return { url, blur: resolved.blur, late: url !== null && lateFor === image, readyForFrame };
 }

@@ -90,7 +90,7 @@ test("same-sender bubbles group by corners without merging or tapering the outer
 
 test("typing copy and enabled Send retain lightweight presentation", () => {
   assert.doesNotMatch(room, /Typing…/);
-  assert.match(room, /const typingIndicator = typing &&/);
+  assert.match(room, /const typingIndicator = framePublished && typing &&/);
   assert.match(room, /className="chat-typing-dots" aria-hidden="true"><i \/><i \/><i \/>/);
   assert.match(css, /\.chat-typing-dots i\s*\{[^}]*width:\s*8px;[^}]*height:\s*8px;[^}]*animation:\s*chat-typing-pulse/);
   assert.match(css, /nth-child\(2\).*animation-delay:\s*\.16s/);
@@ -128,7 +128,7 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(css, /\.chat-app button\.chat-info-clear\s*\{[^}]*color:\s*#c9363e/);
   assert.match(room, /<span>Chat Background/);
   assert.match(room, /<ChatBackgroundSettings session=\{session\}/);
-  assert.match(room, /data-chat-background=\{chatBackground\.url \? "custom" : "default"\}/);
+  assert.match(room, /data-chat-background=\{framePublished && chatBackground\.url \? "custom" : "default"\}/);
   assert.match(room, /--chat-background-image/);
   assert.match(css, /\.chat-room\[data-chat-background="custom"\]::before\s*\{[^}]*z-index:\s*0/);
   assert.match(room, /<span>Custom CSS<small>/);
