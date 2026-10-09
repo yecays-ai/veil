@@ -83,7 +83,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     });
     return () => { active = false; revision++; unsubscribe(); };
   }, []);
-  const { bindings, ready: bindingsReady } = useBindings();
+  const { bindings, ready: bindingsReady, error: bindingsError } = useBindings();
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
@@ -96,8 +96,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const regexIds = resolveBindings(bindings, characterId, "messages").regexIds;
   const regexKey = regexIds?.join("\u0000") ?? "*";
   const regexOwner = `${characterId}\u0000${regexKey}`;
-  const regexGroups = regexReadState.owner === regexOwner ? regexReadState.groups : [];
-  const regexReady = bindingsReady && regexReadState.owner === regexOwner && regexReadState.ready;
+  const bindingReadFailed = !bindingsReady && !!bindingsError;
+  const regexGroups = bindingReadFailed ? [] : regexReadState.owner === regexOwner ? regexReadState.groups : [];
+  const regexReady = bindingReadFailed || (bindingsReady && regexReadState.owner === regexOwner && regexReadState.ready);
   useEffect(() => {
     if (!bindingsReady) return;
     let active = true;
@@ -193,7 +194,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     const nodeCount = history.current?.querySelectorAll("[data-message-id]").length ?? 0;
     recordChatDiagnostic("chat-react-commit", { characterId, hasSession: !!session, messageCount: messages.length, nodeCount });
   }, [characterId, session, messages.length]);
-  const nearBottom = useRef(true);
+  const nearBottom = useRef<{ characterId: string; sessionId: string | undefined; value: boolean }>({
+    characterId, sessionId: undefined, value: true,
+  });
   const initialPositionedSession = useRef<string | null>(null);
   const previousSearchJumpId = useRef<string | null>(null);
   const mounted = useRef(true);
@@ -306,11 +309,16 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useLayoutEffect(() => {
     if (!framePublished || !session || initialPositionedSession.current === session.id) return;
     initialPositionedSession.current = session.id;
-    if (nearBottom.current)
+    const intent = nearBottom.current;
+    if (intent.sessionId !== session.id &&
+      !(intent.sessionId === undefined && intent.characterId === session.characterId)) {
+      nearBottom.current = { characterId: session.characterId, sessionId: session.id, value: true };
+    }
+    if (nearBottom.current.value)
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [framePublished, session?.id]);
   useEffect(() => {
-    if (nearBottom.current)
+    if (nearBottom.current.value)
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [messages, revealState]);
   useLayoutEffect(() => {
@@ -320,7 +328,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     const target = container && Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]"))
       .find((element) => element.dataset.messageId === pendingSearchJumpId);
     if (container && target) {
-      nearBottom.current = false;
+      nearBottom.current = { characterId, sessionId: currentSessionId.current, value: false };
       const containerRect = container.getBoundingClientRect();
       const targetRect = target.getBoundingClientRect();
       const centeredOffset = targetRect.top - containerRect.top - (container.clientHeight - targetRect.height) / 2;
@@ -383,7 +391,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           window.innerHeight,
         );
         room.style.setProperty("--chat-keyboard-inset", `${inset}px`);
-        if (nearBottom.current)
+        if (nearBottom.current.value)
           history.current?.scrollTo({ top: history.current.scrollHeight });
       });
     };
@@ -410,7 +418,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setSending(true);
     const editVersion = draftEditVersion.current;
     try {
-      nearBottom.current = true;
+      nearBottom.current = { characterId, sessionId, value: true };
       const quote = quotingMessage;
       await chatEngine.send(sessionId, content, quote?.id);
       if (mounted.current && currentSessionId.current === sessionId) {
@@ -455,7 +463,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setGenerating(true);
     setError("");
     setFailedDraft(null);
-    nearBottom.current = true;
+    nearBottom.current = { characterId, sessionId, value: true };
     try {
       revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleTiming);
       const token = revealToken;
@@ -495,7 +503,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     replyLock.current = true;
     closeActions();
     setGenerating(true);
-    nearBottom.current = true;
+    nearBottom.current = { characterId, sessionId, value: true };
     const revealToken = revealQueue.begin(sessionId, messages, session.streamOnline === true, performance.now(), bubbleTiming);
     setError("");
     setFailedDraft(null);
@@ -628,8 +636,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onScroll={() => {
           const el = history.current;
           if (el)
-            nearBottom.current =
-              el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            nearBottom.current = {
+              characterId,
+              sessionId: currentSessionId.current,
+              value: el.scrollHeight - el.scrollTop - el.clientHeight < 80,
+            };
           if (activeMessage) positionMenu.current();
         }}
       >
@@ -802,7 +813,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         canClear={messages.length > 0 && !generationActive}
         onBack={() => setChatInfoOpen(false)}
         onJumpToMessage={(messageId) => {
-          nearBottom.current = false;
+          nearBottom.current = { characterId, sessionId: currentSessionId.current, value: false };
           previousSearchJumpId.current = null;
           setPendingSearchJumpId(messageId);
           setChatInfoOpen(false);
