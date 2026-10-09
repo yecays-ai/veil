@@ -1,11 +1,11 @@
 # STATUS — Part 5 / F3 Chat overlay focus
 
 更新人：Codex
-更新时间：2026-10-09T21:46:00+08:00
+更新时间：2026-10-09T21:50:26+08:00
 
 ## 当前任务
 
-Part 5 / F3：已修，待 CodeRabbit 意见整改。新增焦点恢复意见已补丁提交并通过本地回归，等待复审；PR #73 open，禁止自动合并。本来源编号不覆盖仓库总账中背景问题的 F3。
+Part 5 / F3：已修，待 CodeRabbit 意见整改。新增焦点恢复意见已补丁提交并通过本地回归，CodeRabbit 已标记 Addressed in commit 561d7a7 并 resolved；PR #73 open，禁止自动合并。本来源编号不覆盖仓库总账中背景问题的 F3。
 
 ## 谁在改哪里
 
@@ -27,10 +27,10 @@ Codex；分支 `fix/chat-overlay-focus-boundaries`，PR [#73](https://github.com
 
 ## 尚未验证
 
-- 新焦点恢复补丁尚待 CodeRabbit 复审；原评论不由 Codex 自行核销。
+- 两条 CodeRabbit 行内意见均已由 CodeRabbit 自身标记 addressed/resolved（Escape：f11e993 至 9c70720；焦点恢复：561d7a7）。2026-10-09 21:49 +08:00 已通过 GitHub review_threads 核对。未宣称另一次完整复审对最终 head 无新增问题。
 - GitHub Actions/CI 未运行；Vercel preview 受免费部署额度限制，本次验收为本地测试 + CodeRabbit。
 - iPhone Safari 软键盘、VoiceOver 和真实设备焦点表现未验证。
 
 ## 下一步
 
-等待 PR #73 本次补丁复审。用户自行决定合并，之后再进行真机验收。
+本次整改施工完成，停止扩张。两条已知 CodeRabbit 意见均 resolved；用户自行确认 PR #73 最终审查状态并决定合并，之后再进行真机验收。状态标签沿用工单，不直接核销。
