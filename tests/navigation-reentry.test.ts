@@ -189,12 +189,16 @@ async function homeWith(load: () => Promise<unknown>, run: (app: Awaited<ReturnT
   const dialog = (globalThis.window as unknown as { HTMLDialogElement: { prototype: { close?: () => void } } }).HTMLDialogElement.prototype;
   dialog.close ??= () => {};
   Object.defineProperty(globalThis, "indexedDB", { configurable: true, writable: true, value: new IDBFactory() });
+  // An open BroadcastChannel (used by the storage layers) would keep the test process alive.
+  const hadChannel = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");
+  Object.defineProperty(globalThis, "BroadcastChannel", { configurable: true, writable: true, value: undefined });
   try {
     browserThemeStorage.load = load as never;
     await run(app);
   } finally {
     browserThemeStorage.load = originalLoad;
     if (hadFactory) Object.defineProperty(globalThis, "indexedDB", hadFactory); else Reflect.deleteProperty(globalThis, "indexedDB");
+    if (hadChannel) Object.defineProperty(globalThis, "BroadcastChannel", hadChannel); else Reflect.deleteProperty(globalThis, "BroadcastChannel");
     await app.cleanup();
   }
 }
