@@ -108,6 +108,17 @@ regressionContract("chat.settings-errors-follow-chat-info", "async-race-safety",
       await act(async () => { success.resolve(); await success.promise; });
       assert.equal(container.querySelector('[aria-label="Chat Info"] [role="alert"]'), null);
 
+      const supersededFailure = deferred<void>();
+      const latestSuccess = deferred<void>();
+      saves.push(supersededFailure);
+      await clickSwitch("Pin Conversation");
+      saves.push(latestSuccess);
+      await clickSwitch("Streaming Replies");
+      await act(async () => { latestSuccess.resolve(); await latestSuccess.promise; });
+      await act(async () => { supersededFailure.reject(new Error("superseded setting failure")); await supersededFailure.promise.catch(() => {}); });
+      assert.equal(container.querySelector('[aria-label="Chat Info"] [role="alert"]'), null,
+        "a superseded save failure must not replace the latest save result");
+
       const staleFailure = deferred<void>();
       saves.push(staleFailure);
       await clickSwitch("Reply When Keyboard Closes");

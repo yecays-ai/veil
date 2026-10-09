@@ -867,6 +867,7 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsError, setSettingsError] = useState("");
   const settingsScreenMounted = useRef(false);
+  const settingsUpdateRevision = useRef(0);
   useEffect(() => {
     settingsScreenMounted.current = true;
     return () => { settingsScreenMounted.current = false; };
@@ -876,11 +877,12 @@ function ChatInfoScreen({ session, messages, characterName, streamOnline, autoRe
     autoReplyOnKeyboardDismiss?: boolean;
     pinned?: boolean;
   }) {
+    const revision = ++settingsUpdateRevision.current;
     setSettingsError("");
     try {
       await onUpdate(patch);
     } catch (reason) {
-      if (settingsScreenMounted.current)
+      if (settingsScreenMounted.current && revision === settingsUpdateRevision.current)
         setSettingsError(reason instanceof Error ? reason.message : "Setting could not be saved.");
     }
   }
