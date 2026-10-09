@@ -104,7 +104,7 @@ test("typing copy and enabled Send retain lightweight presentation", () => {
 });
 
 test("More opens a full-screen scrollable Chat Info view instead of a popover", () => {
-  assert.match(room, /onClick=\{\(\) => setChatInfoOpen\(true\)\}/);
+  assert.match(room, /aria-label="Conversation settings"/);
   assert.match(room, /className="chat-info-screen"/);
   assert.match(room, /<h1>Chat Info<\/h1>/);
   assert.match(room, /Search Chat History/);
