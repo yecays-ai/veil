@@ -21,7 +21,7 @@ Claude；分支 claude/ledger-device-results；PR https://github.com/yecays-ai/v
 
 - 上述 PR 的合并状态由第五刀窗口核对，我只在仓库里核对了 #25、#24、#27、#29 的存在与标题。
 - 真机验收均为 Lan 自述，录屏/截图未入库；D2/D6/D7 的验收过程来自 GPT 窗口记录。
-- U3 的“离开即取消”产品决策在仓库内无书面出处，待 Lan 补。
+- U3 的“离开即取消”：Lan 于 2026-10-10 确认接受，账本该行即为书面记录。
 - Part 5 F9–F11、R1–R4 未在当前 main 复验。
 
 ## 下一步
