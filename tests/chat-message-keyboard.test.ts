@@ -108,8 +108,8 @@ regressionContract("chat.message-actions-keyboard-entry", "render-lifecycle",
       const firstEntry = entry(first.id);
       const secondEntry = entry(second.id);
       assert.notEqual(firstEntry.getAttribute("aria-label"), secondEntry.getAttribute("aria-label"));
-      assert.equal(firstEntry.getAttribute("aria-label"), `Message actions for message ${first.order + 1} from You`);
-      assert.equal(secondEntry.getAttribute("aria-label"), `Message actions for message ${second.order + 1} from You`);
+      assert.equal(firstEntry.getAttribute("aria-label"), `Message actions for message ${first.order} from You`);
+      assert.equal(secondEntry.getAttribute("aria-label"), `Message actions for message ${second.order} from You`);
       assert.equal(dom.window.document.getElementById(firstEntry.getAttribute("aria-describedby")!)?.textContent, first.content);
       assert.equal(dom.window.document.getElementById(secondEntry.getAttribute("aria-describedby")!)?.textContent, second.content);
       assert.equal(firstEntry.getAttribute("aria-haspopup"), "menu");
