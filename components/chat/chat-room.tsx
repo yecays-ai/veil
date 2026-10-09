@@ -53,6 +53,7 @@ import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
 import { applyRegex } from "../../lib/regex-engine";
 import { createRegexReadGuard } from "../../lib/chat/regex-read-guard";
+import { chatScrollIntentMatchesSession, shouldPositionChatHistoryAtBottom } from "../../lib/chat/initial-scroll";
 import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/search";
 import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
@@ -309,12 +310,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useLayoutEffect(() => {
     if (!framePublished || !session || initialPositionedSession.current === session.id) return;
     initialPositionedSession.current = session.id;
-    const intent = nearBottom.current;
-    if (intent.sessionId !== session.id &&
-      !(intent.sessionId === undefined && intent.characterId === session.characterId)) {
+    if (!chatScrollIntentMatchesSession(nearBottom.current, session))
       nearBottom.current = { characterId: session.characterId, sessionId: session.id, value: true };
-    }
-    if (nearBottom.current.value)
+    if (shouldPositionChatHistoryAtBottom(nearBottom.current, session))
       history.current?.scrollTo({ top: history.current.scrollHeight });
   }, [framePublished, session?.id]);
   useEffect(() => {
