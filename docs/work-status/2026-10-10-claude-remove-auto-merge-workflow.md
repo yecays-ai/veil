@@ -10,17 +10,18 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/remove-auto-merge-workflow`；PR 见本分支 PR。涉及：删除 `.github/workflows/auto-merge.yml`、删除 `tests/safe-pr-auto-merge.test.ts`（22 条用例，全部只针对该工作流）；新增本记录。`ci.yml`、AGENTS.md、生产代码均未改。
+Claude；分支 `claude/remove-auto-merge-workflow`；PR：[#87](https://github.com/yecays-ai/veil/pull/87)。涉及：删除 `.github/workflows/auto-merge.yml`、删除 `tests/safe-pr-auto-merge.test.ts`（22 条用例，全部只针对该工作流）；新增本记录。`ci.yml`、AGENTS.md、生产代码均未改。
 
 ## 已完成
 
 - 已确认除该测试文件与历史审计文档 `docs/auto-merge-pr16-audit.md` 外，没有其他文件引用该工作流；历史审计文档保留原样，不改写。
-- 检查结果见 PR 描述。
+- 检查（Node 24）：`npm test` 747/747 通过；`npm run lint` 0 error（既有 warning 不变）。证据级别：自动化测试。
 
 ## 尚未验证
 
 - GitHub 仓库设置里是否单独开启了 “Allow auto-merge”：我看不到，需要 Lan 在网页设置里确认。
-- Actions / Vercel 若因额度未运行，在 PR 中逐项记为“未运行”。
+- GitHub Actions `verify`（head e98af66）：未运行成功——2 秒内失败，job 无 step、日志取不到，原因未知（疑似额度/计费，未确认）；不算通过。
+- Vercel 预览：未运行——部署因免费额度限制失败（`api-deployments-free-per-day`）；不算通过。
 
 ## 下一步
 
