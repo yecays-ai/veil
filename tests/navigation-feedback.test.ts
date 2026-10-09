@@ -7,9 +7,11 @@ test("high-frequency dynamic destinations provide a small shared loading boundar
   assert.match(routeLoading, /<p role="status">Loading…<\/p>/);
   for (const path of [
     "app/messages/group/[sessionId]/loading.tsx",
-    "app/contacts/[characterId]/loading.tsx",
     "app/social/[characterId]/loading.tsx",
   ]) assert.match(readFileSync(path, "utf8"), /RouteLoading/);
+  // Contact Info renders its own pending shell so the page does not swap layouts when the route resolves.
+  const contacts = readFileSync("app/contacts/[characterId]/loading.tsx", "utf8");
+  assert.match(contacts, /<ContactInfo characterId=\{characterId\} pending \/>/);
 });
 
 test("Messages prefetches its two Contacts chooser routes after it is ready", () => {
