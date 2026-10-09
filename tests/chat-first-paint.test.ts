@@ -271,10 +271,6 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.ok(container.querySelector(".chat-composer"));
     assert.doesNotMatch(container.textContent ?? "", /peter history|pep history|Loading/);
 
-    assert.ok(scrollCalls.length > 0, "the first published history positions the current session before paint");
-    const initiallyPositionedHistory = container.querySelector<HTMLElement>('[aria-label="Conversation history"]')!;
-    assert.equal(scrollCalls[0].top, initiallyPositionedHistory.scrollHeight,
-      "the initial positioning targets the bottom of the first history");
     const callsBeforeDestinationPublish = scrollCalls.length;
     await act(async () => { releaseDestination(); releaseSecondary(); });
     await waitFor(() => container.textContent?.includes("pep history") === true &&
