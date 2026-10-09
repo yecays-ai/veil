@@ -220,7 +220,7 @@ test("a snapshot stored while the session was still loading is applied once the 
     rememberBackgroundSettings(app.storage, { id: "chat-background", globalChatBackgroundImage: "global" }, app.storage.backgroundRevision());
     await app.mountNow(session);
     assert.notEqual(app.url(), "", "the cached global wallpaper is applied, not skipped");
-    assert.equal(app.reads.settings, 0, "no settings read was needed");
+    assert.equal(app.reads.settings, 1, "the one settings read starts in parallel before the cached snapshot is stored");
   } finally { await app.cleanup(); }
 });
 

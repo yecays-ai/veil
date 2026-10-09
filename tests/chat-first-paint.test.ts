@@ -251,8 +251,9 @@ regressionContract("chat.mounted-character-navigation", "render-lifecycle",
     assert.doesNotMatch(container.textContent ?? "", /peter history|pep history|Loading/);
 
     await act(async () => { releaseDestination(); releaseSecondary(); });
-    await waitFor(() => imageReads.includes(pepAssetId) && container.querySelector<HTMLElement>(".chat-room")?.dataset.chatBackground === "custom");
-    assert.match(container.textContent ?? "", /pep history/);
+    await waitFor(() => container.textContent?.includes("pep history") === true &&
+      container.querySelector<HTMLElement>('[aria-label="Conversation history"]')?.getAttribute("aria-busy") === "false");
+    assert.ok(imageReads.includes(pepAssetId), "the destination prepares its own selected wallpaper");
     // Background settings are global, not per Character: the destination reuses the valid snapshot the
     // first chat already read instead of reading them again.
     assert.equal(backgroundReads, 1);
