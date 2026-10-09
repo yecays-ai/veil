@@ -76,6 +76,18 @@ regressionContract("chat.overlay-focus-boundary", "render-lifecycle",
 
       const composer = container.querySelector<HTMLTextAreaElement>("#chat-input")!;
       const settings = container.querySelector<HTMLButtonElement>('[aria-label="Conversation settings"]')!;
+      const alternateOpener = dom.window.document.createElement("button");
+      alternateOpener.textContent = "Open Chat Info";
+      alternateOpener.addEventListener("click", () => settings.click());
+      container.before(alternateOpener);
+      alternateOpener.focus();
+      await click(alternateOpener);
+      const alternateBack = container.querySelector<HTMLButtonElement>('[aria-label="Back to conversation"]')!;
+      assert.equal(dom.window.document.activeElement === alternateBack, true, "Chat Info receives focus from an alternate opener");
+      await click(alternateBack);
+      assert.equal(dom.window.document.activeElement === alternateOpener, true,
+        "closing Chat Info restores the actual opener rather than the settings fallback");
+      alternateOpener.remove();
       composer.focus();
       assert.equal(dom.window.document.activeElement === composer, true);
       settings.focus(); // Native button activation transfers focus before React opens Chat Info.
