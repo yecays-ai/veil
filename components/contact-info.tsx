@@ -11,6 +11,7 @@ import { PresenceBadge, presenceLabel } from "./presence";
 import { ImageCropDialog } from "./image-crop-dialog";
 import { readImage } from "../lib/theme-storage";
 import { chatStorage } from "../lib/chat/storage";
+import { prefetchChatSession } from "../lib/chat/session-prefetch";
 import { measureChatDiagnostic, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 import { contactDisplayName, removeContact, updateContact } from "../lib/contact-storage";
 import { contactReturnTarget, type ContactReturnSource } from "../lib/contact-navigation";
@@ -85,6 +86,8 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     try {
       await measureChatDiagnostic("contact-info-open-session", { characterId: character.characterId },
         () => chatStorage.openSession(character.characterId), () => ({ hasSession: true }));
+      // Seed the room's first frame with the session that was just opened; a failed read only means no seed.
+      await prefetchChatSession(character.characterId, chatStorage);
       if (owner === lifetime.current) {
         const target = `/messages/${encodeURIComponent(character.characterId)}`;
         recordChatDiagnostic("navigation-call", { target, characterId: character.characterId });

@@ -178,3 +178,70 @@ test("Universe canvas records its pan/zoom when opening a Character and restores
 });
 
 function dom(app: { $: (selector: string) => HTMLElement | null }) { return app.$(".phone-shell")!; }
+
+async function homeWith(load: () => Promise<unknown>, run: (app: Awaited<ReturnType<typeof mountedApp>>) => Promise<void>) {
+  const app = await mountedApp();
+  const { IDBFactory } = await import("fake-indexeddb");
+  const { browserThemeStorage } = await import("../lib/theme-storage");
+  const originalLoad = browserThemeStorage.load;
+  const hadFactory = Object.getOwnPropertyDescriptor(globalThis, "indexedDB");
+  // jsdom has no <dialog> behaviour; the Here & There widget closes its dialog when it mounts.
+  const dialog = (globalThis.window as unknown as { HTMLDialogElement: { prototype: { close?: () => void } } }).HTMLDialogElement.prototype;
+  dialog.close ??= () => {};
+  Object.defineProperty(globalThis, "indexedDB", { configurable: true, writable: true, value: new IDBFactory() });
+  try {
+    browserThemeStorage.load = load as never;
+    await run(app);
+  } finally {
+    browserThemeStorage.load = originalLoad;
+    if (hadFactory) Object.defineProperty(globalThis, "indexedDB", hadFactory); else Reflect.deleteProperty(globalThis, "indexedDB");
+    await app.cleanup();
+  }
+}
+
+test("Home shows no desktop until the saved Theme has been read", async () => {
+  const { defaultSnapshot } = await import("../lib/theme-types");
+  const { HomeScreen } = await import("../components/home-screen");
+  let release!: (value: unknown) => void;
+  await homeWith(() => new Promise((resolve) => { release = resolve; }), async (app) => {
+    await app.render("/", "", createElement(HomeScreen));
+    assert.ok(app.$(".home-screen"), "the shell is there so the bootstrap colours fill the screen");
+    assert.equal(app.$(".desktop-app"), null, "no default icons while the saved Theme is unknown");
+    assert.equal(app.$(".desktop-dock"), null, "no default Dock while the saved Theme is unknown");
+    const saved = defaultSnapshot();
+    saved.dockLayout = ["profile"];
+    await act(async () => release({ version: 1, current: saved, presets: [] }));
+    await app.settle(() => !!app.$(".desktop-dock"));
+    assert.equal(app.$(".desktop-dock")!.querySelectorAll("a, button").length, 1, "the user's own Dock, not the default one");
+  });
+});
+
+test("Home still shows the default desktop when the saved Theme cannot be read", async () => {
+  const { HomeScreen } = await import("../components/home-screen");
+  await homeWith(async () => { throw new Error("Saved appearance is invalid."); }, async (app) => {
+    await app.render("/", "", createElement(HomeScreen));
+    await app.settle(() => !!app.$(".desktop-dock"));
+    assert.ok(app.$(".desktop-app"), "a failed read falls back to the default desktop so the app stays reachable");
+  });
+});
+
+test("Contact Info Message seeds the chat session before navigating", async () => {
+  const app = await mountedApp();
+  const { chatStorage } = await import("../lib/chat/storage");
+  const { prefetchedChatSession } = await import("../lib/chat/session-prefetch");
+  const { ContactInfo } = await import("../components/contact-info");
+  const originalOpen = chatStorage.openSession, originalPeek = chatStorage.peekExistingSession;
+  const order: string[] = [];
+  try {
+    const session = { id: "s1", characterId: "peter", updatedAt: 1, lastMessagePreview: "", autoReplyOnKeyboardDismiss: false, nextOrder: 1 };
+    chatStorage.openSession = (async () => { order.push("open"); return session; }) as never;
+    chatStorage.peekExistingSession = (async () => { order.push("peek"); return { session, messages: [] }; }) as never;
+    await app.render("/contacts/peter", "from=direct", createElement(ContactInfo, { characterId: "peter", returnSource: "direct" }));
+    await app.settle(() => !!app.$("[data-chat-navigation='contact-info-message']"));
+    await act(async () => { app.$("[data-chat-navigation='contact-info-message']")!.click(); });
+    await app.settle(() => app.calls.push.length === 1);
+    assert.deepEqual(app.calls.push, ["/messages/peter"]);
+    assert.deepEqual(order, ["open", "peek"], "the room's session is read once, after it was opened and before navigation");
+    assert.equal(prefetchedChatSession("peter", chatStorage)?.session.id, "s1", "the chat's first frame can use it");
+  } finally { chatStorage.openSession = originalOpen; chatStorage.peekExistingSession = originalPeek; await app.cleanup(); }
+});
