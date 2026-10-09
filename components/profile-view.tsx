@@ -1,6 +1,6 @@
 "use client";
 /* eslint-disable @next/next/no-img-element -- Local avatars can be embedded data URLs. */
-import { useEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { UI_COPY as U } from "../lib/ui-copy";
 import type {
@@ -42,9 +42,11 @@ export function ProfileView({
   kind: "user" | "character";
   children: React.ReactNode;
 }) {
-  useEffect(() => {
-    // A saved profile opens at its header instead of the former form's scroll position.
-    document.querySelector(".phone-content")?.scrollTo({ top: 0 });
+  const profileTop = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    // The PageShell body owns page scrolling; the phone shell only clips its content.
+    const body = profileTop.current?.closest<HTMLElement>(".app-page-body");
+    if (body) body.scrollTop = 0;
   }, []);
   const keys = [
     "gender",
@@ -65,7 +67,7 @@ export function ProfileView({
       : (["appearance", "backstory", "personality", "speakingStyle"] as const);
   return (
     <>
-      <header className="profile-hero">
+      <header className="profile-hero" ref={profileTop}>
         <Avatar avatar={profile.avatar} name={profile.name} large />
         <h1>{profile.name}</h1>
         {profile.occupation && <p className="subtle">{profile.occupation}</p>}
