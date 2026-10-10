@@ -1,6 +1,5 @@
 "use client";
 import { useBindings } from "../use-bindings";
-import Link from "next/link";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
   type CSSProperties } from "react";
 import {
@@ -31,6 +30,7 @@ import {
   selectMessageRange,
 } from "../../lib/chat/message-actions";
 import { ChatAvatar } from "./avatar";
+import { ChatHeader } from "./chat-header";
 import { useChatSession } from "./use-chat-session";
 import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
 import { createTransientFeedback, hasPendingUserContent, visibleReplyText } from "../../lib/chat/usability";
@@ -643,14 +643,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   if (!ready || !character)
     return (
       <div className="chat-app chat-room chat-room-wrapper" ref={shell}>
-        <header key="header" className="chat-header page-header">
-          <Link href="/messages" className="chat-back page-back-btn" aria-label="Back to Messages">
-            <ChevronLeft aria-hidden="true" />
-          </Link>
-          <strong className="chat-contact-summary page-title">Chat</strong>
-          <button type="button" className="chat-settings-button page-back-btn"
-            aria-label="Conversation settings" disabled><Ellipsis aria-hidden="true" /></button>
-        </header>
+        <ChatHeader key="header" contact={null} settingsTrigger={settingsTrigger} />
         <div key="history" className="chat-history chat-scroll-anchored" ref={history}
           aria-label="Conversation history" aria-busy={!ready}>
           <p className="chat-notice" role="status">{loadingNotice}</p>
@@ -704,28 +697,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       data-chat-background-entry={framePublished && chatBackground.url && chatBackground.late ? "fade" : undefined}
       data-context-menu-open={activeMessage ? "" : undefined}>
       {framePublished && session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
-      <header key="header" className="chat-header page-header">
-        <Link
-          href="/messages"
-          className="chat-back page-back-btn"
-          aria-label="Back to Messages"
-        >
-          <ChevronLeft aria-hidden="true" />
-        </Link>
-        {framePublished ? <Link href={`/contacts/${encodeURIComponent(character.characterId)}?from=direct`}
-          className="chat-contact-summary page-title" aria-label={`Open Contact Info for ${contactName}`}>
-          <ChatAvatar profile={character} />
-          <strong>{contactName}</strong>
-          <ChevronRight aria-hidden="true" />
-        </Link> : <strong className="chat-contact-summary page-title">Chat</strong>}
-        <button ref={settingsTrigger} type="button" className="chat-settings-button page-back-btn" aria-label="Conversation settings"
-          title="Conversation settings"
-          onClick={() => {
-            overlayFocusOrigin.current.set("chat-info",
-              globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null);
-            setChatInfoOpen(true);
-          }}><Ellipsis aria-hidden="true" /></button>
-      </header>
+      <ChatHeader key="header" settingsTrigger={settingsTrigger}
+        contact={framePublished ? { characterId: character.characterId, name: contactName, profile: character } : null}
+        onOpenSettings={() => {
+          overlayFocusOrigin.current.set("chat-info",
+            globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null);
+          setChatInfoOpen(true);
+        }} />
       <div
         key="history"
         className={`chat-history chat-scroll-anchored${empty ? " chat-history-empty" : ""}`}
