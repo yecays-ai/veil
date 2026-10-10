@@ -20,7 +20,11 @@ export type StoredSituation = PresenceSituation & ChangeMark;
 export type PresenceRecord = {
   characterId: string;
   routine: StoredRoutine | null;
-  /** Newest last. At most one has not started yet; ended ones are kept only for the Last Seen look-back. */
+  /**
+   * Newest last and never overlapping, so at any instant at most one is running (the one that started most
+   * recently supersedes the rest). At most one has not started yet; ended ones are kept only for the Last
+   * Seen look-back.
+   */
   situations: StoredSituation[];
   /** Only the change mark: the signature text itself stays on the Character. */
   signature: ChangeMark | null;
@@ -70,12 +74,24 @@ function normalizeStoredSituation(value: unknown): StoredSituation | null {
   const reason = typeof raw.reason === "string" ? raw.reason.trim().slice(0, 200) || null : null;
   return { status: raw.status, reason, startsAt, endsAt, ...markOf(raw, startsAt) };
 }
+/**
+ * Makes the situations disjoint: each one ends no later than the next one starts, and a later start
+ * supersedes an earlier one (on equal starts the later change wins). The result is the same for any
+ * stored order, so the calculator never has overlapping situations to choose between.
+ */
+function disjoint(items: StoredSituation[]): StoredSituation[] {
+  const sorted = [...items].sort((a, b) => a.startsAt - b.startsAt || a.changedAt - b.changedAt);
+  return sorted.flatMap((item, index) => {
+    const endsAt = Math.min(item.endsAt, sorted[index + 1]?.startsAt ?? item.endsAt);
+    return endsAt > item.startsAt ? [endsAt === item.endsAt ? item : { ...item, endsAt }] : [];
+  });
+}
 function normalizeRecord(value: unknown): PresenceRecord | null {
   const raw = record(value);
   if (!validId(raw.characterId)) return null;
   const routine = normalizeRoutine(record(raw.routine).routine);
-  const situations = (Array.isArray(raw.situations) ? raw.situations : []).flatMap((item) => normalizeStoredSituation(item) ?? [])
-    .sort((a, b) => a.startsAt - b.startsAt).slice(-MAX_STORED_SITUATIONS);
+  const situations = disjoint((Array.isArray(raw.situations) ? raw.situations : []).flatMap((item) => normalizeStoredSituation(item) ?? []))
+    .slice(-MAX_STORED_SITUATIONS);
   return { characterId: raw.characterId,
     routine: routine ? { routine, ...markOf(raw.routine) } : null, situations,
     signature: raw.signature ? markOf(raw.signature) : null,
@@ -110,10 +126,11 @@ export function setRoutine(document: PresenceDocument, characterId: string, rout
   return update(document, characterId, (current) => ({ ...current, routine: { routine: valid, ...markOf(mark) } }));
 }
 /**
- * Adds a situation already normalized by `normalizeSituation`. Only one situation may be upcoming: a new
- * upcoming one replaces it, and a current one removes an upcoming one it would overlap. Situations that
- * ended before the Last Seen look-back are dropped; recent ended ones stay so a back-filled Last Seen
- * still sees them.
+ * Adds a situation already normalized by `normalizeSituation`. A situation supersedes whatever it overlaps:
+ * the one running when it starts ends there, so a Character returns to its routine, not to an older
+ * situation, when the new one ends. Only one situation may be upcoming: a new upcoming one replaces it, and
+ * a current one removes an upcoming one it would overlap. Situations that ended before the Last Seen
+ * look-back are dropped; recent ended ones stay so a back-filled Last Seen still sees them.
  */
 export function addSituation(document: PresenceDocument, characterId: string, situation: PresenceSituation,
   mark: ChangeMark, now: number): PresenceDocument {
@@ -123,7 +140,7 @@ export function addSituation(document: PresenceDocument, characterId: string, si
     const upcoming = (item: PresenceSituation) => item.startsAt > now;
     const kept = current.situations.filter((item) => item.endsAt > now - LAST_ONLINE_LOOKBACK_MS)
       .filter((item) => added.startsAt > now ? !upcoming(item) : !(upcoming(item) && item.startsAt < added.endsAt));
-    return { ...current, situations: [...kept, added].sort((a, b) => a.startsAt - b.startsAt).slice(-MAX_STORED_SITUATIONS) };
+    return { ...current, situations: disjoint([...kept, added]).slice(-MAX_STORED_SITUATIONS) };
   });
 }
 export function markSignatureChange(document: PresenceDocument, characterId: string, mark: ChangeMark): PresenceDocument {

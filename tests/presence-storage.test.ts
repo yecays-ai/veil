@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LAST_ONLINE_LOOKBACK_MS, SITUATION_MAX_MS, type PresenceRoutine } from "../lib/presence/compute";
+import { LAST_ONLINE_LOOKBACK_MS, SITUATION_MAX_MS, effectivePresence, type PresenceRoutine } from "../lib/presence/compute";
 import { MAX_STORED_SITUATIONS, PRESENCE_STORAGE_KEY, addSituation, advanceLastSeen, createPresenceStorage, emptyPresenceDocument,
   markSignatureChange, normalizePresenceDocument, normalizeRoutine, presenceRecord, removePresence, setRoutine } from "../lib/presence/storage";
 
@@ -59,10 +59,10 @@ test("one situation may be upcoming, a current one replaces only what it overlap
   document = addSituation(document, A, away(now, now + 10 * HOUR), mark(now, "m4"), now);
   assert.deepEqual(list(), ["m1", "m4"], "a current situation overlapping the upcoming one removes it");
   document = addSituation(document, A, away(now, now + HOUR), mark(now, "m5"), now);
-  assert.deepEqual(list(), ["m1", "m4", "m5"], "ended and current ones are kept for the Last Seen look-back");
+  assert.deepEqual(list(), ["m1", "m5"], "a situation starting at the same moment replaces the one already stored");
   const later = now + LAST_ONLINE_LOOKBACK_MS + 2 * HOUR;
   document = addSituation(document, A, away(later, later + HOUR), mark(later, "m6"), later);
-  assert.deepEqual(list(), ["m4", "m6"], "situations that ended before the look-back are dropped; m4 still runs until after it");
+  assert.deepEqual(list(), ["m6"], "situations that ended before the look-back are dropped");
   for (let i = 0; i < 20; i++) document = addSituation(document, A, away(later + i, later + i + 1), mark(later, `n${i}`), later + i);
   assert.equal(presenceRecord(document, A)!.situations.length, MAX_STORED_SITUATIONS);
   assert.throws(() => addSituation(document, A, away(5, 5), mark(1), 1), /Invalid situation/);
@@ -156,4 +156,57 @@ test("a change in another tab between the read and the write is picked up by ret
   await racing.transact((d) => advanceLastSeen(d, A, { lastOnlineAt: 20 }, 100));
   const document = await o.tab().load();
   assert.deepEqual([presenceRecord(document, A)!.lastOnlineAt, presenceRecord(document, B)!.lastOnlineAt], [20, 77]);
+});
+
+// The calculator picks the most recently started situation, so what storage hands it must never overlap:
+// then "at most one running + at most one upcoming" holds for the effective status, whatever is pruned.
+const stateAt = (document: ReturnType<typeof emptyPresenceDocument>, at: number) =>
+  effectivePresence({ characterId: A, timezone: "UTC", routine: null, situations: presenceRecord(document, A)?.situations ?? [] }, at);
+const status = (value: Parameters<typeof addSituation>[2]["status"], startsAt: number, endsAt: number) => ({ status: value, reason: null, startsAt, endsAt });
+
+test("a new situation supersedes the running one: when it ends the Character is back on the routine, not on the older situation", () => {
+  const t = 100 * HOUR;
+  let document = addSituation(emptyPresenceDocument(), A, status("away", t, t + 48 * HOUR), mark(t, "trip"), t);
+  document = addSituation(document, A, status("busy", t + 10 * HOUR, t + 11 * HOUR), mark(t + 10 * HOUR, "call"), t + 10 * HOUR);
+  assert.deepEqual(presenceRecord(document, A)!.situations.map((s) => [s.source, s.startsAt, s.endsAt]),
+    [["trip", t, t + 10 * HOUR], ["call", t + 10 * HOUR, t + 11 * HOUR]], "the trip ends where the call starts");
+  assert.deepEqual([t + 5 * HOUR, t + 10.5 * HOUR, t + 11 * HOUR, t + 20 * HOUR].map((at) => stateAt(document, at).status),
+    ["away", "busy", "offline", "offline"], "after the call there is no situation, so the routine (none here: offline) decides");
+  // An upcoming situation also ends the one running when it starts, and the two never overlap.
+  let planned = addSituation(emptyPresenceDocument(), A, status("away", t, t + 48 * HOUR), mark(t, "trip"), t);
+  planned = addSituation(planned, A, status("busy", t + 30 * HOUR, t + 31 * HOUR), mark(t, "plan"), t);
+  const rows = presenceRecord(planned, A)!.situations;
+  assert.deepEqual(rows.map((s) => [s.source, s.endsAt]), [["trip", t + 30 * HOUR], ["plan", t + 31 * HOUR]]);
+  assert.equal(rows.filter((s) => s.startsAt > t).length, 1, "only one is upcoming");
+  for (let i = 1; i < rows.length; i++) assert(rows[i - 1].endsAt <= rows[i].startsAt);
+});
+
+test("overlapping stored situations are made disjoint when read, the same for any stored order", () => {
+  const rows = [
+    { ...status("away", 0, 10 * HOUR), changedAt: 0, source: "trip" }, { ...status("busy", 4 * HOUR, 5 * HOUR), changedAt: 4 * HOUR, source: "call" },
+    { ...status("dnd", 4 * HOUR, 6 * HOUR), changedAt: 4 * HOUR + 1, source: "focus" }, { ...status("offline", 20 * HOUR, 30 * HOUR), changedAt: 1, source: "next" }];
+  const read = (order: typeof rows) => presenceRecord(normalizePresenceDocument({ version: 1, characters: [{ characterId: A, situations: order }] }), A)!.situations;
+  const expected = [["trip", 0, 4 * HOUR], ["focus", 4 * HOUR, 6 * HOUR], ["next", 20 * HOUR, 30 * HOUR]];
+  for (const order of [rows, [...rows].reverse(), [rows[2], rows[0], rows[3], rows[1]]])
+    assert.deepEqual(read(order).map((s) => [s.source, s.startsAt, s.endsAt]), expected);
+});
+
+test("pruning old situations and the size cap never change the Character's current state", () => {
+  const t = 100 * HOUR;
+  // Long trip, then many short situations inside it; each add supersedes the previous one.
+  let document = addSituation(emptyPresenceDocument(), A, status("away", t, t + 14 * 24 * HOUR), mark(t, "trip"), t);
+  for (let i = 0; i < 12; i++) {
+    const start = t + (i + 1) * 3 * HOUR;
+    document = addSituation(document, A, status("busy", start, start + HOUR), mark(start, `s${i}`), start);
+  }
+  const rows = presenceRecord(document, A)!.situations;
+  assert.equal(rows.length, MAX_STORED_SITUATIONS, "the cap kept the newest");
+  const lastStart = t + 12 * 3 * HOUR;
+  assert.equal(stateAt(document, lastStart + 0.5 * HOUR).status, "busy");
+  assert.equal(stateAt(document, lastStart + 2 * HOUR).status, "offline", "back to the routine, never to the trip the short ones interrupted");
+  // Writing much later prunes everything that ended before the look-back; the running state is unchanged.
+  const later = t + 14 * 24 * HOUR + LAST_ONLINE_LOOKBACK_MS;
+  const pruned = addSituation(document, A, status("away", later, later + HOUR), mark(later, "late"), later);
+  assert.deepEqual(presenceRecord(pruned, A)!.situations.map((s) => s.source), ["late"]);
+  assert.equal(stateAt(pruned, later + HOUR / 2).status, "away");
 });

@@ -1,7 +1,7 @@
 # STATUS — 2026-10-10-claude-presence-t2-storage
 
 更新人：Claude
-更新时间：2026-10-11T06:10:00+08:00
+更新时间：2026-10-11T06:30:00+08:00
 发现范围：2026-10-11T06:02+08:00 通过 GitHub API 查看开放 PR（无开放 PR，含草稿）；`origin/main` = `47828c9e4d7287a0b1afd143e510c1f7eea98be6`（含 T1 #109）；已读 `docs/AUDIT_LEDGER.md`（在线系统仍为“未启动、保持登记”，要求不动首帧布局；本工单不碰界面）。
 
 ## 当前任务
@@ -17,12 +17,12 @@ Claude；分支 `claude/project-thread-459m41`（T1 合并后从最新 main 重�
 
 ## 已完成
 
-- 独立存储域 `veil.presence.v1`（localStorage，沿用 Contacts / Bindings 的写入约定：本实例排队、跨标签页 Web Lock、写前复读重试）。按角色保存：作息（带修改时间与来源）、处境列表（最多 8 条，只允许 1 条尚未开始；结束超过 7 天的清除，近期已结束的保留给 Last Seen 回溯）、签名的修改标记（只存标记，签名文字仍在角色上）、两个 Last Seen 值（只增不减；非法值与超出 1 分钟时钟误差的未来值忽略）。
+- 独立存储域 `veil.presence.v1`（localStorage，沿用 Contacts / Bindings 的写入约定：本实例排队、跨标签页 Web Lock、写前复读重试）。按角色保存：作息（带修改时间与来源）、处境列表（最多 8 条，互不重叠：新处境从它开始的时刻起取代正在进行的那条，所以任一时刻最多 1 条在进行；只允许 1 条尚未开始；结束超过 7 天的清除，近期已结束的保留给 Last Seen 回溯；裁剪与 8 条上限不会改变当前状态）、签名的修改标记（只存标记，签名文字仍在角色上）、两个 Last Seen 值（只增不减；非法值与超出 1 分钟时钟误差的未来值忽略）。
 - 无变化的更新不写入、不广播；读不到、解析失败或来自更新版本的数据，读写都失败，不会被空文档覆盖。
 - 作息整份有效才保存（任何字段越界则拒绝写入，读到时视为没有作息）；读取时丢弃损坏的行，不改动存储。
 - 删除角色时清理该角色的 Presence 数据（`cleanupCharacterData` 新增 `presence` 步骤），并加入历史遗留的惰性引用清理（`reconcileInertReferences`）。
-- 测试：新增 `tests/presence-storage.test.ts` 10 项（角色隔离、Last Seen 只增不减、处境规则与修剪、作息校验、损坏数据、无变化不写入、读失败/新版本不覆盖、写失败不丢数据、多标签页并发、写前复读重试）；删除相关用例加入 Presence 并覆盖单步失败重试。
-- 本地检查（2026-10-11 +08:00，Node 24.21.0）：`npm test` 831/831 通过；`npm run typecheck` 通过；`npm run lint` 0 error / 3 条既有 warning；`npm run build` 通过；`git diff --check` 无输出。证据级别：自动化测试（内存 localStorage、fake IndexedDB），非真机。
+- 测试：新增 `tests/presence-storage.test.ts` 13 项（角色隔离、Last Seen 只增不减、处境规则与修剪、新处境取代在进行的处境、重叠数据读取时变为不重叠、作息校验、损坏数据、无变化不写入、读失败/新版本不覆盖、写失败不丢数据、多标签页并发、写前复读重试）；删除相关用例加入 Presence 并覆盖单步失败重试。
+- 本地检查（2026-10-11 +08:00，Node 24.21.0）：`npm test` 834/834 通过；`npm run typecheck` 通过；`npm run lint` 0 error / 3 条既有 warning；`npm run build` 通过；`git diff --check` 无输出。证据级别：自动化测试（内存 localStorage、fake IndexedDB），非真机。
 
 ## 尚未验证
 

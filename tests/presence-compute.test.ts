@@ -86,6 +86,9 @@ test("of overlapping situations, the most recently started one wins", () => {
   const call = situation("busy", "2026-10-12T18:00:00Z", "2026-10-12T19:00:00Z");
   assert.equal(effectivePresence(inputs({ situations: [call, trip] }), at("2026-10-12T18:30:00Z")).status, "busy");
   assert.equal(effectivePresence(inputs({ situations: [call, trip] }), at("2026-10-12T19:00:00Z")).status, "away");
+  // The answer does not depend on list order; storage hands over non-overlapping situations anyway.
+  assert.equal(effectivePresence(inputs({ situations: [trip, call] }), at("2026-10-12T18:30:00Z")).status, "busy");
+  assert.equal(effectivePresence(inputs({ situations: [trip, call] }), at("2026-10-12T19:00:00Z")).status, "away");
 });
 
 test("normalizeSituation stores absolute times that never start in the past, always end and are capped", () => {
