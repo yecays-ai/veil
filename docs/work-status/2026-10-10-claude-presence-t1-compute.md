@@ -10,7 +10,7 @@ Character Presence 第一批 T1：Presence 纯计算核心。待审查。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-459m41`；PR 待创建；base `928a565`。
+Claude；分支 `claude/project-thread-459m41`；PR [#109](https://github.com/yecays-ai/veil/pull/109)；base `928a565`。
 只新增：`lib/presence/compute.ts`、`tests/presence-compute.test.ts`、本记录。不改任何现有文件、存储、界面或请求。
 
 ## 已完成
@@ -25,7 +25,7 @@ Claude；分支 `claude/project-thread-459m41`；PR 待创建；base `928a565`�
 
 - 不适用真机：本工单没有界面和存储改动，Presence 尚未接入任何页面。
 - 缺省 6 小时、上限 14 天、回溯 7 天、波动上限 120 分钟是暂定常量，待 T2–T4 接入后按真机体验再定。
-- 性能只有测试内粗测（单次最近在线推算约 1–2 ms，Node 24）；未在手机上测。
+- 性能只有测试内粗测（单次最近在线推算约 1–2 ms，Node 22）；未在手机上测。
 
 ## 下一步
 
