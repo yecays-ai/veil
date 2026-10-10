@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/p6-a1-stale-compiled-tests`；PR 见 GitHub。涉及：`scripts/run-tests.mjs`、新增 `scripts/test-files.mjs`、`tests/test-runner.test.ts`（夹具补 `tests/` 源文件）、新增 `tests/test-runner-files.test.ts`、`docs/AUDIT_LEDGER.md` 板块六一行。不改业务代码。
+Claude；分支 `claude/p6-a1-stale-compiled-tests`；PR：[#92](https://github.com/yecays-ai/veil/pull/92)。涉及：`scripts/run-tests.mjs`、新增 `scripts/test-files.mjs`、`tests/test-runner.test.ts`（夹具补 `tests/` 源文件）、新增 `tests/test-runner-files.test.ts`、`docs/AUDIT_LEDGER.md` 板块六一行。不改业务代码。
 
 ## 已完成
 
