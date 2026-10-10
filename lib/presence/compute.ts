@@ -74,7 +74,8 @@ export function lastOnlineAt(inputs: PresenceInputs, now: number, lookbackMs = L
 
 function activeSituation(situations: readonly PresenceSituation[], now: number) {
   let active: PresenceSituation | null = null;
-  // Overlaps cannot normally be stored; if they are, the most recently started one wins.
+  // Situations may overlap: a short one inside a long one is an interruption, and the long one shows again
+  // when it ends. The most recently started of those running wins. Storage keeps at most two running at once.
   for (const item of situations)
     if (item.startsAt <= now && now < item.endsAt && (!active || item.startsAt >= active.startsAt)) active = item;
   return active;

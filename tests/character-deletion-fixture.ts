@@ -8,6 +8,7 @@ import { saveRelation, setNodePosition } from "../lib/foundation";
 import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
 import { normalizeCharacterInput, type FoundationDocument } from "../lib/foundation-types";
 import { AppearanceImageStorage } from "../lib/appearance-image-storage";
+import { addSituation, advanceLastSeen, createPresenceStorage, setRoutine, type PresenceDocument } from "../lib/presence/storage";
 import { createThemeStorage } from "../lib/theme-storage";
 import type { BindingDocument } from "../lib/bindings";
 import type { ContactDocument } from "../lib/contact-storage";
@@ -26,6 +27,7 @@ export async function buildWorld(options: { aBackground?: "shared" | "exclusive"
   const chat = new ChatStorage(() => factory);
   const themeStore = createThemeStorage(() => raw, new AppearanceImageStorage(() => factory));
   const contactStore = createContactStorage(() => raw), bindingStore = createBindingStorage(() => raw);
+  const presenceStore = createPresenceStorage(() => raw);
 
   await foundation.transact((document) => {
     let next: FoundationDocument = { ...document, characters: [A, B, C, D].map((characterId) => ({ characterId,
@@ -53,6 +55,13 @@ export async function buildWorld(options: { aBackground?: "shared" | "exclusive"
   await bindingStore.transact(() => ({ global: { apiConfigId: "api" }, characters: {
     [A]: { defaults: { presetId: "preset-a" }, apps: {} }, [B]: { defaults: { presetId: "preset-b" }, apps: {} } } }));
 
+  const routine = { blocks: [{ days: [1, 2, 3, 4, 5], startMinute: 540, endMinute: 1080, status: "busy" as const }], defaultStatus: "online" as const, jitterMinutes: 30 };
+  for (const id of [A, B]) {
+    await presenceStore.transact((document) => setRoutine(document, id, routine, { changedAt: 1, source: "generated" }));
+    await presenceStore.transact((document) => addSituation(document, id, { status: "offline", reason: `mission ${id}`, startsAt: 5_000, endsAt: 9_000 }, { changedAt: 5_000, source: "msg-1" }, 5_000));
+    await presenceStore.transact((document) => advanceLastSeen(document, id, { lastOnlineAt: 4_000, lastMessageAt: 4_500 }, 6_000));
+  }
+
   const comment = (characterId: string, text: string) => ({ characterId, text, generatedAt: "2026-10-08T00:00:00.000Z" });
   const base = normalizeDocument(null);
   const layout = (aWidget: boolean): ThemeDocument["current"] => ({ ...base.current, widgets: [
@@ -66,11 +75,12 @@ export async function buildWorld(options: { aBackground?: "shared" | "exclusive"
     theme: { load: () => themeStore.load(), update: (update) => themeStore.transact(update) },
     contacts: { load: () => contactStore.load(), update: (update) => contactStore.transact(update) },
     bindings: { load: () => bindingStore.load(), update: (update) => bindingStore.transact(update) },
+    presence: { load: () => presenceStore.load(), update: (update) => presenceStore.transact(update) },
     chat,
   };
   const commitFoundation = (update: (document: FoundationDocument) => FoundationDocument) => foundation.transact(update);
-  return { factory, foundation, chat, deps, commitFoundation, themeStore, contactStore, bindingStore, raw: values,
-    ids: { sessionA, sessionB, trio, pair, duo, withDave, shared, exclusive }, snapshot: () => snapshot(factory, { foundation, themeStore, contactStore, bindingStore }) };
+  return { factory, foundation, chat, deps, commitFoundation, themeStore, contactStore, bindingStore, presenceStore, raw: values,
+    ids: { sessionA, sessionB, trio, pair, duo, withDave, shared, exclusive }, snapshot: () => snapshot(factory, { foundation, themeStore, contactStore, bindingStore, presenceStore }) };
 }
 
 function open(factory: IDBFactory, name: string): Promise<IDBDatabase> {
@@ -93,11 +103,12 @@ export async function putWorldBookState(factory: IDBFactory, sessionId: string) 
 
 /** Every persisted record of every store, as plain data, so a test can compare whole worlds and search for a leftover ID. */
 export async function snapshot(factory: IDBFactory, stores: { foundation: { load(): Promise<FoundationDocument> }; themeStore: { load(): Promise<ThemeDocument> };
-  contactStore: { load(): Promise<ContactDocument> }; bindingStore: { load(): Promise<BindingDocument> } }) {
+  contactStore: { load(): Promise<ContactDocument> }; bindingStore: { load(): Promise<BindingDocument> };
+  presenceStore: { load(): Promise<PresenceDocument> } }) {
   const sort = (rows: unknown[]) => [...rows].sort((a, b) => JSON.stringify(a) < JSON.stringify(b) ? -1 : 1);
   const assets = (await readAll(factory, "assets")).map((asset) => { const { id, blob } = asset as { id: string; blob: Blob }; return { id, size: blob.size }; });
   return { foundation: await stores.foundation.load(), theme: await stores.themeStore.load(), contacts: await stores.contactStore.load(),
-    bindings: await stores.bindingStore.load(), sessions: sort(await readAll(factory, "sessions")), messages: sort(await readAll(factory, "messages")),
+    bindings: await stores.bindingStore.load(), presence: await stores.presenceStore.load(), sessions: sort(await readAll(factory, "sessions")), messages: sort(await readAll(factory, "messages")),
     worldBookStates: sort(await readAll(factory, "worldBookStates")), assets: sort(assets), chatSettings: sort(await readAll(factory, "chatSettings")) };
 }
 export type World = Awaited<ReturnType<typeof buildWorld>>;

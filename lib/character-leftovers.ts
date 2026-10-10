@@ -2,6 +2,7 @@ import { withoutCharacterBindings } from "./bindings";
 import { removeContact } from "./contact-storage";
 import type { CleanupDeps, CleanupReport, CleanupStep } from "./character-deletion";
 import type { FoundationDocument } from "./foundation-types";
+import { removePresence } from "./presence/storage";
 import { unbindHereThereCharacters } from "./here-there-binding";
 
 /**
@@ -41,6 +42,11 @@ export async function reconcileInertReferences(foundation: FoundationRead, deps:
   await run("bindings", async (alive) => {
     const bindings = await deps.bindings.load(), dead = (id: string) => !alive.has(id);
     if (withoutCharacterBindings(bindings, dead) !== bindings) await deps.bindings.update((current) => withoutCharacterBindings(current, dead));
+  });
+  await run("presence", async (alive) => {
+    const presence = await deps.presence.load();
+    const dead = presence.characters.map((item) => item.characterId).filter((id) => !alive.has(id));
+    if (dead.length) await deps.presence.update((current) => dead.reduce(removePresence, current));
   });
   await run("groups", async (alive) => {
     const sessions = await deps.chat.listSessions();
