@@ -10,7 +10,7 @@ Part 5 R2（《6刀.docx》，Medium）按 Lan 选定的方案 3 施工：有实
 
 ## 谁在改哪里
 
-Claude；分支 `claude/r2-leave-guards`；PR 见本分支 PR。涉及：新增 `components/leave-guard.ts`（确认文案与两个小函数）；`components/page-shell.tsx`（新增可选 `guardLeave`，拦截页内链接点击与 `onBack` 按钮）；`components/settings/worldbooks/worldbook-detail.tsx`、`worldbook-entry-editor.tsx`；`components/settings/regex/regex-detail.tsx`、`regex-rule-editor.tsx`、`regex-new.tsx`；`components/profile-form.tsx`、`profile-pages.tsx`；`components/contact-info.tsx`；`components/appearance.tsx`；`components/chat/custom-css-settings.tsx`；`components/settings/presets/prompt-editor.tsx`；`tests/leave-guards-ui.test.ts`（新）。base revision `711ae2da25c1d5db112498b843cd04bfa517094e`。
+Claude；分支 `claude/r2-leave-guards`；PR：[#90](https://github.com/yecays-ai/veil/pull/90)。涉及：新增 `components/leave-guard.ts`（确认文案与两个小函数）；`components/page-shell.tsx`（新增可选 `guardLeave`，拦截页内链接点击与 `onBack` 按钮）；`components/settings/worldbooks/worldbook-detail.tsx`、`worldbook-entry-editor.tsx`；`components/settings/regex/regex-detail.tsx`、`regex-rule-editor.tsx`、`regex-new.tsx`；`components/profile-form.tsx`、`profile-pages.tsx`；`components/contact-info.tsx`；`components/appearance.tsx`；`components/chat/custom-css-settings.tsx`；`components/settings/presets/prompt-editor.tsx`；`tests/leave-guards-ui.test.ts`（新）。base revision `711ae2da25c1d5db112498b843cd04bfa517094e`。
 
 ## 已完成
 
@@ -32,7 +32,7 @@ Claude；分支 `claude/r2-leave-guards`；PR 见本分支 PR。涉及：新增 
 
 - 真机行为未验证；浏览器刷新、关闭标签页、浏览器 Back / Forward 按设计不保护。
 - 未自动化覆盖：用户资料/角色资料里“通过 router.back() 的页头 Back”这条路径只经 PageShell 的 `onBack` 共用逻辑间接覆盖（该逻辑由 Regex 规则子视图测试直接覆盖）；新建角色整页、角色资料编辑页本身没有单独挂载测试（其表单与 Cancel、dirty 逻辑由用户资料页测试覆盖）。
-- GitHub Actions `verify` 与 Vercel 预览：在本记录写下时 PR 尚未创建，结果以 PR 评论为准，未运行成功则逐项记录原因，不算通过。
+- GitHub Actions `verify` 与 Vercel 预览：在本记录写下时 PR 刚创建，尚无结果；结果以 PR 评论为准，未运行成功则逐项记录原因，不算通过。本地命令（修订 9b6bd19，Node 24）：`npm test` 770/770，`npm run lint` 0 error，`npm run build` 成功。
 
 ## 下一步
 
