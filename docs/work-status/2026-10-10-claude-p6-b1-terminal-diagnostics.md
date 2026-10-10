@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/p6-b1-terminal-diagnostics`；PR：见 GitHub（分支名即标识，创建后补链接）。涉及：`lib/chat/request-diagnostics.ts`、`lib/chat/provider.ts`、`lib/settings/text-api.ts`、新增 `tests/completion-terminal.test.ts`、`docs/AUDIT_LEDGER.md` 板块六一行。未改 `engine.ts` 及其他业务模块。
+Claude；分支 `claude/p6-b1-terminal-diagnostics`；PR：[#93](https://github.com/yecays-ai/veil/pull/93)。涉及：`lib/chat/request-diagnostics.ts`、`lib/chat/provider.ts`、`lib/settings/text-api.ts`、新增 `tests/completion-terminal.test.ts`、`docs/AUDIT_LEDGER.md` 板块六一行。未改 `engine.ts` 及其他业务模块。
 
 ## 已完成
 
