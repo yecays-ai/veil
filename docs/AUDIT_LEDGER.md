@@ -153,4 +153,5 @@ Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收�
 - Part 5 R4：聊天未发送草稿离开即丢；若将来不可接受再考虑按 session 持久化（见 R4 行）。
 - 布局导入是否可能带入多个 Here & There：未核查（Part 5 R3 的未验证项）。
 - Contacts → Contact Info → Profile：未完成的社交主页外壳仍显示 Loading。待 Profile 正式开发时处理。（只登记；本次 F7 不处理）
+- ChatRoom 第二块拆分（Lan 2026-10-10 授权“只选一个边界清楚、风险低、不涉及 #36 冻结区的组件”；基线 `1498bd4`，记录见 `docs/work-status/2026-10-10-claude-chatroom-multi-select-bar.md`）：选中多选操作栏（`components/chat/chat-multi-select-bar.tsx`，纯展示），因为它只在进入多选后渲染、不在首帧路径、没有 ref/副作用/焦点/异步；不改行为与 CSS。明确未选：消息气泡与列表（在首帧路径，处理器多）、输入栏（键盘/焦点/ref 测量）、消息操作菜单与 Chat Info（焦点恢复）、编辑对话框（autoFocus + 异步保存）、输入中提示（在首帧路径的历史列表里）。状态：待审查；自动化测试，真机未验证。
 #36 冻结｜备注/签名/最后在线/在线系统｜Memory 系统｜R2 备份｜固定"测试站"域名（让预览共享本地数据，避免每次重配 API）｜CI 额度用尽后的省分钟办法｜GPT 自定义指令改写

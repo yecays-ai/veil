@@ -31,6 +31,7 @@ import {
 } from "../../lib/chat/message-actions";
 import { ChatAvatar } from "./avatar";
 import { ChatHeader } from "./chat-header";
+import { ChatMultiSelectBar } from "./chat-multi-select-bar";
 import { useChatSession } from "./use-chat-session";
 import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
 import { createTransientFeedback, hasPendingUserContent, visibleReplyText } from "../../lib/chat/usability";
@@ -815,17 +816,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </p>
       )}
       {feedback && <div className="chat-feedback-toast" role="status">{feedback}</div>}
-      {multiSelect && <div className="chat-multi-select-bar">
-        <span>{selectedIds.size} selected</span>
-        <button type="button" onClick={() => setSelectedIds(new Set(selectable.map((m) => m.id)))}>Select all</button>
-        <button type="button" disabled={!selectionStartId} onClick={() => selectionStartId &&
-          setSelectedIds(new Set(selectMessageRange(selectable.map((m) => m.id), selectionStartId)))}>
-          Select from here to latest
-        </button>
-        <button type="button" className="chat-danger" disabled={!selectedIds.size}
-          onClick={() => setConfirmDelete([...selectedIds])}>Delete selected</button>
-        <button type="button" onClick={() => { setMultiSelect(false); setSelectedIds(new Set()); }}>Cancel</button>
-      </div>}
+      {multiSelect && <ChatMultiSelectBar selectedCount={selectedIds.size} canSelectFromHere={!!selectionStartId}
+        onSelectAll={() => setSelectedIds(new Set(selectable.map((m) => m.id)))}
+        onSelectFromHere={() => selectionStartId &&
+          setSelectedIds(new Set(selectMessageRange(selectable.map((m) => m.id), selectionStartId)))}
+        onDelete={() => setConfirmDelete([...selectedIds])}
+        onCancel={() => { setMultiSelect(false); setSelectedIds(new Set()); }} />}
       <form
         key="composer"
         className="chat-composer chat-input-bar"
