@@ -10,7 +10,7 @@ Character Presence 第一批 T2：Presence 存储。待审查。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-459m41`（T1 合并后从最新 main 重建）；PR 待创建；base `47828c9`。
+Claude；分支 `claude/project-thread-459m41`（T1 合并后从最新 main 重建）；PR [#110](https://github.com/yecays-ai/veil/pull/110)；base `47828c9`。
 新增：`lib/presence/storage.ts`、`tests/presence-storage.test.ts`、本记录。
 修改：`lib/character-deletion.ts`、`lib/character-leftovers.ts`（删除角色时清理 Presence 数据）、`tests/character-deletion-fixture.ts`、`tests/character-deletion.test.ts`。
 不碰 Foundation、聊天、备注数据，不碰角色原有的 `presence` 字段，不碰任何界面。
