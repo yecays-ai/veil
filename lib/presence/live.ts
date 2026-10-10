@@ -5,5 +5,6 @@ import { PRESENCE_CHANGE_EVENT, PRESENCE_STORAGE_KEY, browserPresenceStorage, em
 export const livePresence = createLiveDocument<PresenceDocument>({
   initial: emptyPresenceDocument(), load: () => browserPresenceStorage.load(),
   key: PRESENCE_STORAGE_KEY, event: PRESENCE_CHANGE_EVENT,
-  error: "Presence could not be loaded.", readyOnError: true,
+  // Unreadable or newer-version data never counts as loaded: surfaces show nothing rather than a guessed Offline.
+  error: "Presence could not be loaded.",
 });

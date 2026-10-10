@@ -18,12 +18,12 @@ Claude；分支 `claude/project-thread-459m41`（T3 合并后从最新 main 重�
 ## 已完成
 
 - 四处显示同一份状态：聊天顶部、通讯录列表（状态点）、Contact Info、社交资料页；全部来自 `useCharacterPresence`，由纯函数 `presenceView` 算出：处境优先于作息；Last Seen = 已存的最近在线时间、已存的最近角色消息时间和当前推算的在线时间三者中最晚的（未来值不计）；在线时只显示 “Online”，其他显示 “Busy · Last seen 1h ago” 这类一行。
-- 读取：沿用 Contacts 的应用级读取点（`createLiveDocument`），跨标签页变化会刷新；数据读到之前 hook 返回 “未就绪、文字为空”，服务端首渲染与客户端首帧一致，不显示猜出来的状态。
+- 读取：沿用 Contacts 的应用级读取点（`createLiveDocument`），跨标签页变化会刷新；读失败（损坏或更新版本的数据）不算“已读到”，页面什么都不显示也不写入，下次挂载会重读；数据读到之前 hook 返回 “未就绪、文字为空”，服务端首渲染与客户端首帧一致，不显示猜出来的状态。
 - 刷新：只在下一次状态变化的时刻刷新一次；显示 Last Seen 的地方额外每 60 秒刷新一次文字；定时器随组件卸载清除，没有每秒轮询。
 - 补写 Last Seen：显示 Last Seen 的地方，若推算的在线时间比已存的更晚且角色当前不在线，写入一次（只增不减，失败不影响显示）；在线时不写，没有数据的角色不会产生记录。
 - Header：名字下方加一行小字（11px），名字与状态包在同一列里，列高约 30px，小于头像 40px，所以 56px 的标题行和 Header 的 `min-height` 不变；有联系人时状态行始终存在（数据读到前为空），所以数据读到时名字不会再移动；加载中的 “Chat” 标题没有状态行。`.contact-presence` 加了 `min-height: 1.2em`，只是防止文字为空时塌陷。
 - 角色原有 `presence` 字段不再用于任何显示；没有读到作息的角色一律显示 Offline（和原来大多数角色的缺省值一致）。
-- 本地检查（2026-10-11 +08:00，Node 24.21.0）：`npm test` 857/857 通过（新增 9 项）；`npm run typecheck` 通过；`npm run lint` 0 error / 3 条既有 warning；`npm run build` 通过；`git diff --check` 无输出。证据级别：自动化测试（JSDOM 挂载、纯函数），非真机。
+- 本地检查（2026-10-11 +08:00，Node 24.21.0）：`npm test` 857/857 通过（新增 9 项；全量运行中 foundation-load-recovery 的一条重试用例曾失败一次，单独重跑 3 次与全量再跑 2 次均通过，未追根因）；`npm run typecheck` 通过；`npm run lint` 0 error / 3 条既有 warning；`npm run build` 通过；`git diff --check` 无输出。证据级别：自动化测试（JSDOM 挂载、纯函数），非真机。
 
 ## 尚未验证（需 Lan 真机）
 

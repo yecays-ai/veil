@@ -32,6 +32,15 @@ test("the presence line shows status and Last Seen after loading, keeps its plac
     const { CharacterPresenceLine, CharacterPresenceBadge } = await import("../components/presence");
     const { PRESENCE_STORAGE_KEY } = await import("../lib/presence/storage");
     const now = Date.now();
+    // Unreadable data is not "loaded": nothing is shown, nothing is written, and a later mount reads again.
+    storage.setItem(PRESENCE_STORAGE_KEY, "{not json");
+    const broken = createRoot(container);
+    await act(async () => { broken.render(createElement(CharacterPresenceLine, { character })); });
+    await settle();
+    assert.equal(container.querySelector(".contact-presence")!.textContent, "");
+    assert.equal(container.querySelector(".presence-badge"), null);
+    assert.equal(storage.getItem(PRESENCE_STORAGE_KEY), "{not json");
+    await act(async () => { broken.unmount(); });
     storage.setItem(PRESENCE_STORAGE_KEY, JSON.stringify({ version: 1, characters: [{ characterId: "a",
       routine: { routine: { blocks: [], defaultStatus: "online", jitterMinutes: 0 }, changedAt: 1, source: null },
       situations: [{ status: "busy", reason: null, startsAt: now - HOUR, endsAt: now + HOUR, changedAt: now - HOUR, source: null }],
@@ -75,7 +84,9 @@ test("the chat header keeps one status line for a contact, empty or filled, and 
       const status = container.querySelector(".chat-contact-status")!;
       assert.equal(status.textContent, "");
       assert.equal(container.querySelector(".chat-contact-text strong")!.textContent, "Ada");
+      assert.equal(container.querySelector("a.chat-contact-summary")!.getAttribute("aria-label"), "Open Contact Info for Ada");
       await render({ contact, status: "Busy · Last seen 1h ago" });
+      assert.equal(container.querySelector("a.chat-contact-summary")!.getAttribute("aria-label"), "Open Contact Info for Ada, Busy · Last seen 1h ago");
       assert.equal(container.querySelector(".chat-contact-status") === status, true, "the status line is updated in place");
       assert.equal(status.textContent, "Busy · Last seen 1h ago");
     } finally { await act(async () => { root.unmount(); }); }

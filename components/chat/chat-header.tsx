@@ -22,7 +22,8 @@ export function ChatHeader({ contact, status, settingsTrigger, onOpenSettings }:
         <ChevronLeft aria-hidden="true" />
       </Link>
       {contact ? <Link href={`/contacts/${encodeURIComponent(contact.characterId)}?from=direct`}
-        className="chat-contact-summary page-title" aria-label={`Open Contact Info for ${contact.name}`}>
+        className="chat-contact-summary page-title"
+        aria-label={`Open Contact Info for ${contact.name}${status ? `, ${status}` : ""}`}>
         <ChatAvatar profile={contact.profile} />
         <span className="chat-contact-text"><strong>{contact.name}</strong>
           <small className="chat-contact-status">{status}</small></span>
