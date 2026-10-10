@@ -44,7 +44,7 @@ function Detail({ saved, library }: { saved: RegexGroup; library: ReturnType<typ
       return { ...group, rules, updatedAt: Date.now() };
     }) })); });
   }
-  return <PageShell className="settings-app regex-manager" title={saved.name} backHref="/settings/regex" backLabel="Back to Regex Groups"
+  return <PageShell className="settings-app regex-manager" title={saved.name} backHref="/settings/regex" backLabel="Back to Regex Groups" guardLeave={dirty}
     rightAction={<button className="settings-header-action" disabled={!dirty || busy || !canSaveRegexGroup(draft)} onClick={() => void run(async () => {
       await change((current) => ({ ...current, groups: current.groups.map((group) => group.id === saved.id
         ? { ...group, name: draft.name.trim(), description: draft.description, enabled: draft.enabled, updatedAt: Date.now() } : group) }));

@@ -42,7 +42,7 @@ function Editor({ saved, groupId, library }: { saved: RegexRule; groupId: string
       ? draft.appliesTo.filter((item) => item !== role) : [...draft.appliesTo, role];
     if (appliesTo.length) setDraft({ ...draft, appliesTo });
   };
-  return <PageShell className="settings-app regex-manager" title={saved.name || "Regex Rule"} backHref={back} backLabel="Back to Regex Group"
+  return <PageShell className="settings-app regex-manager" title={saved.name || "Regex Rule"} backHref={back} backLabel="Back to Regex Group" guardLeave={dirty}
     rightAction={<button className="settings-header-action" disabled={!dirty || busy || !draft.appliesTo.length} onClick={() => void run(async () => {
       await change((current) => ({ ...current, groups: current.groups.map((group) => group.id !== groupId ? group : {
         ...group, updatedAt: Date.now(), rules: group.rules.map((rule) => rule.id === saved.id ? draft : rule),

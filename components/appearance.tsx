@@ -181,6 +181,7 @@ export function Appearance() {
   const [presetName, setPresetName] = useState("");
   const [css, setCss] = useState<string | null>(null);
   const [resetPending, setResetPending] = useState(false);
+  const cssDirty = css !== null && css !== JSON.stringify(profile.cssOverrides, null, 2);
 
   async function run(action: () => Promise<void>, message = "Saved.") {
     setBusy(true);
@@ -201,6 +202,7 @@ export function Appearance() {
       backHref="/"
       backLabel="Back to Home"
       bodyClassName="theme-page appearance-page"
+      guardLeave={cssDirty}
     >
       <p className="theme-notice" role="status" aria-live="polite">
         {notice || (!ready ? "Loading appearance…" : "")}

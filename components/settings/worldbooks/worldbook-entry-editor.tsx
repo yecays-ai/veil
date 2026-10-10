@@ -27,6 +27,9 @@ function Editor({ bookId, entryId, saved, library }: {
 }) {
   const { busy, error, notice, run, change, setNotice } = library;
   const [draft, setDraft] = useState<WorldBookEntry>(() => saved ?? normalizeWorldBookEntry({ content: "" }));
+  // An existing entry is compared with its latest saved value; a new one with the blank entry it started as.
+  const [blank] = useState(() => draft);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved ?? blank);
   const file = useRef<HTMLInputElement>(null);
   const router = useRouter();
   const base = `/settings/worldbooks/${bookId}`;
@@ -34,7 +37,7 @@ function Editor({ bookId, entryId, saved, library }: {
   const number = (field: "scanDepth" | "priority" | "sticky" | "cooldown" | "delay", value: string) =>
     patch({ [field]: value === "" ? 0 : Number(value) });
   return <PageShell className="settings-app worldbook-manager" title={saved ? "Edit Entry" : "New Entry"}
-    backHref={base} backLabel="Back to WorldBook"
+    backHref={base} backLabel="Back to WorldBook" guardLeave={dirty}
     rightAction={<button className="settings-header-action" disabled={busy || !draft.name.trim()} onClick={() => void run(async () => {
       await change((current) => ({ ...current, books: current.books.map((book) => book.id !== bookId ? book : {
         ...book, entries: saved ? book.entries.map((item) => item.id === entryId ? draft : item) : [...book.entries, draft],

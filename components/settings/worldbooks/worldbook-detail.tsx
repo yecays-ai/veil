@@ -28,7 +28,7 @@ function Detail({ saved, library }: { saved: WorldBook; library: ReturnType<type
   const router = useRouter();
   const dirty = draft.name !== saved.name || draft.description !== saved.description || draft.enabled !== saved.enabled;
   const base = `/settings/worldbooks/${saved.id}`;
-  return <PageShell className="settings-app worldbook-manager" title={saved.name} backHref="/settings/worldbooks" backLabel="Back to WorldBooks"
+  return <PageShell className="settings-app worldbook-manager" title={saved.name} backHref="/settings/worldbooks" backLabel="Back to WorldBooks" guardLeave={dirty}
     rightAction={<button className="settings-header-action" disabled={!dirty || busy} onClick={() => void run(async () => {
       const name = draft.name.trim();
       await change((current) => ({ ...current, books: current.books.map((book) => book.id === saved.id

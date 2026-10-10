@@ -13,7 +13,12 @@ import { Switch } from "../ui/switch";
 export function RegexNew() {
   const { document, error, busy, loading, loadError, retry, run, change } = useRegex("new");
   const [draft, setDraft] = useState(newRegexDraft);
+  const [baseline] = useState(() => JSON.stringify(draft));
   const [editing, setEditing] = useState<RegexRule | null>(null);
+  const [editingBaseline, setEditingBaseline] = useState("");
+  const groupDirty = JSON.stringify(draft) !== baseline;
+  const ruleDirty = !!editing && JSON.stringify(editing) !== editingBaseline;
+  function startEditing(rule: RegexRule) { setEditingBaseline(JSON.stringify(rule)); setEditing(rule); }
   const [ruleTest, setRuleTest] = useState("");
   const [groupTest, setGroupTest] = useState("");
   const [role, setRole] = useState<RegexRole>("assistant");
@@ -36,7 +41,7 @@ export function RegexNew() {
   if (editing) {
     const patternError = regexPatternError(editing.find);
     const test = testRegexRule(editing, ruleTest);
-    return <PageShell className="settings-app regex-manager" title="New Rule" backHref="/settings/regex/new" backLabel="Back to new Regex Group"
+    return <PageShell className="settings-app regex-manager" title="New Rule" backHref="/settings/regex/new" backLabel="Back to new Regex Group" guardLeave={ruleDirty}
       onBack={() => { setEditing(null); setRuleTest(""); }}
       rightAction={<button className="settings-header-action" onClick={saveRule}>Save Rule</button>}>
       {loadError && <Alert variant="danger">{loadError}</Alert>}
@@ -67,7 +72,7 @@ export function RegexNew() {
       </div></section>
     </PageShell>;
   }
-  return <PageShell className="settings-app regex-manager" title="New Regex" backHref="/settings/regex" backLabel="Cancel new Regex Group"
+  return <PageShell className="settings-app regex-manager" title="New Regex" backHref="/settings/regex" backLabel="Cancel new Regex Group" guardLeave={groupDirty}
     rightAction={<button className="settings-header-action" disabled={!document || busy || !canSaveRegexGroup(draft)} onClick={() => void run(async () => {
       await change((current) => ({ ...current, groups: [...current.groups, { ...draft, name: draft.name.trim(), updatedAt: Date.now() }] }));
       router.replace("/settings/regex");
@@ -81,10 +86,10 @@ export function RegexNew() {
         onChange={(enabled) => setDraft({ ...draft, enabled })} /></label>
     </div></section>
     <section className="regex-section"><div className="regex-section-heading"><h2>Rules</h2>
-      <button className="settings-button" onClick={() => setEditing(newRegexRule())}><Plus size={17} />Add Rule</button></div>
+      <button className="settings-button" onClick={() => startEditing(newRegexRule())}><Plus size={17} />Add Rule</button></div>
       {draft.rules.length === 0 && <p>No Rules yet.</p>}
       <div className="regex-list">{draft.rules.map((item, index) => <article className="regex-card" key={item.id}>
-        <button className="regex-card-main regex-card-button" onClick={() => setEditing(item)}><span><strong>{item.name || "Untitled Rule"}</strong>
+        <button className="regex-card-main regex-card-button" onClick={() => startEditing(item)}><span><strong>{item.name || "Untitled Rule"}</strong>
           <small>{item.find || "Empty Find"}</small></span></button>
         <div className="regex-row-actions"><span className="regex-row-spacer" />
           <button aria-label={`Move ${item.name} up`} disabled={index === 0} onClick={() => moveRule(index, index - 1)}><ArrowUp size={17} /></button>
