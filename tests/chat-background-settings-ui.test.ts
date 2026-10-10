@@ -34,12 +34,17 @@ async function mounted(sessionOverride: Partial<ChatSession> = {}) {
   const settingsReads: Array<ReturnType<typeof deferred<ChatBackgroundSettings>>> = [];
   const imageReads: Array<{ id: string; read: ReturnType<typeof deferred<Blob | null>> }> = [];
   const created: string[] = [];
-  let listener: ((change: Change) => void) | undefined, unsubscribed = 0;
+  const revoked: string[] = [];
+  const listeners = new Set<(change: Change) => void>();
+  let unsubscribed = 0;
   chatStorage.readChatBackgroundSettings = () => { const read = deferred<ChatBackgroundSettings>(); settingsReads.push(read); return read.promise; };
   chatStorage.readChatImage = (id: string) => { const read = deferred<Blob | null>(); imageReads.push({ id, read }); return read.promise; };
-  chatStorage.subscribe = ((next: typeof listener) => { listener = next; return () => { unsubscribed++; }; }) as typeof chatStorage.subscribe;
+  chatStorage.subscribe = ((next: (change: Change) => void) => {
+    listeners.add(next);
+    return () => { if (listeners.delete(next)) unsubscribed++; };
+  }) as typeof chatStorage.subscribe;
   URL.createObjectURL = (() => { const url = `blob:test-${created.length}`; created.push(url); return url; }) as typeof URL.createObjectURL;
-  URL.revokeObjectURL = (() => {}) as typeof URL.revokeObjectURL;
+  URL.revokeObjectURL = ((url: string) => { revoked.push(url); }) as typeof URL.revokeObjectURL;
   const unhandled: unknown[] = [];
   const onUnhandled = (reason: unknown) => { unhandled.push(reason); };
   process.on("unhandledRejection", onUnhandled);
@@ -53,8 +58,9 @@ async function mounted(sessionOverride: Partial<ChatSession> = {}) {
   const flush = () => act(async () => { await new Promise<void>((resolve) => setImmediate(resolve)); await new Promise<void>((resolve) => setImmediate(resolve)); });
   const alert = () => container.querySelector('[role="alert"]')?.textContent ?? null;
   const preview = () => container.querySelector(".chat-background-preview-image");
-  return { chatStorage, settingsReads, imageReads, created, container, render, flush, alert, preview, unhandled, unmount,
-    notify: (change: Change) => act(async () => { listener?.(change); }), get unsubscribed() { return unsubscribed; },
+  return { chatStorage, settingsReads, imageReads, created, revoked, container, render, flush, alert, preview, unhandled, unmount,
+    notify: (change: Change) => act(async () => { for (const listener of [...listeners]) listener(change); }),
+    get listenerCount() { return listeners.size; }, get unsubscribed() { return unsubscribed; },
     async cleanup() {
       await unmount();
       process.off("unhandledRejection", onUnhandled);
@@ -129,10 +135,15 @@ regressionContract("chat.background-settings-unmount", "async-race-safety",
   const ui = await mounted();
   try {
     await ui.render();
+    assert.equal(ui.listenerCount, 1, "the mounted component registers one store listener");
     ui.settingsReads[0].resolve({ id: "chat-background", globalChatBackgroundImage: "g1" }); await ui.flush();
     await ui.notify({ domain: "chat-background" } as Change);
     await ui.unmount();
     assert.equal(ui.unsubscribed, 1, "the store subscription is released");
+    assert.equal(ui.listenerCount, 0, "the live listener fixture no longer retains the component callback");
+    const settingsReadsAtUnmount = ui.settingsReads.length;
+    await ui.notify({ domain: "chat-background" } as Change);
+    assert.equal(ui.settingsReads.length, settingsReadsAtUnmount, "a post-unmount notification starts no settings read");
     ui.settingsReads[1].resolve({ id: "chat-background", globalChatBackgroundImage: "late" });
     ui.imageReads[0].read.resolve(new Blob(["late"]));
     await ui.flush();
@@ -146,6 +157,35 @@ regressionContract("chat.background-settings-unmount", "async-race-safety",
       assert.deepEqual(second.unhandled, []);
     } finally { await second.cleanup(); }
     assert.deepEqual(ui.unhandled, []);
+  } finally { await ui.cleanup(); }
+});
+
+regressionContract("chat.background-settings-preview-url-release", "async-race-safety",
+  "replacing or unmounting a preview revokes its created object URL and a late image read creates none", async () => {
+  const ui = await mounted();
+  try {
+    await ui.render();
+    ui.settingsReads[0].resolve({ id: "chat-background", globalChatBackgroundImage: "g1" }); await ui.flush();
+    ui.imageReads[0].read.resolve(new Blob(["first"])); await ui.flush();
+    assert.deepEqual(ui.created, ["blob:test-0"], "the first successful read creates a preview URL");
+    assert.ok(ui.preview(), "the first preview is rendered");
+    assert.deepEqual(ui.revoked, []);
+
+    await ui.notify({ domain: "chat-background" } as Change);
+    ui.settingsReads[1].resolve({ id: "chat-background", globalChatBackgroundImage: "g2" }); await ui.flush();
+    assert.deepEqual(ui.revoked, ["blob:test-0"], "changing images revokes the previous preview URL");
+    ui.imageReads[1].read.resolve(new Blob(["second"])); await ui.flush();
+    assert.deepEqual(ui.created, ["blob:test-0", "blob:test-1"]);
+    assert.ok(ui.preview(), "the replacement preview is rendered");
+
+    await ui.notify({ domain: "chat-background" } as Change);
+    ui.settingsReads[2].resolve({ id: "chat-background", globalChatBackgroundImage: "g3" }); await ui.flush();
+    assert.equal(ui.imageReads[2].id, "g3", "the third image read is pending before unmount");
+    await ui.unmount();
+    assert.deepEqual(ui.revoked, ["blob:test-0", "blob:test-1"], "unmount revokes the currently displayed preview URL");
+    ui.imageReads[2].read.resolve(new Blob(["late"])); await ui.flush();
+    assert.deepEqual(ui.created, ["blob:test-0", "blob:test-1"], "a late read after unmount creates no orphan URL");
+    assert.deepEqual(ui.revoked, ["blob:test-0", "blob:test-1"]);
   } finally { await ui.cleanup(); }
 });
 
