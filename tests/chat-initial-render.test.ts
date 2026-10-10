@@ -39,7 +39,6 @@ test("unmounted Regex readers invalidate their outstanding result", () => {
 });
 
 test("initial history uses the new session default and keeps scroll input from its own loading phase", () => {
-  const sessionA = { characterId: "peter", id: "session-a" };
   const sessionB = { characterId: "pep", id: "session-b" };
   const scrolledUpInA = { characterId: "peter", sessionId: "session-a", value: false };
   const untouchedB = { characterId: "pep", sessionId: undefined, value: true };

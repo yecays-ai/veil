@@ -183,7 +183,7 @@ test("a successful reading is rounded, cached and refreshed only when stale", as
     return new Response(weatherBody(21.6, 3), { status: 200 });
   };
   const coordinates = { latitude: 1.5, longitude: 2.5 };
-  const request = { coordinates, timezone: "UTC" };
+  const request = { coordinates };
   const first = await fetchCurrentWeather(request, fetcher, 1000);
   assert.deepEqual(first, {
     status: "ready",
@@ -207,7 +207,7 @@ test("failures fall back to an error state without throwing", async () => {
   };
   const coordinates = { latitude: 3.5, longitude: 4.5 };
   const failed = await fetchCurrentWeather(
-    { coordinates, timezone: "UTC" },
+    { coordinates },
     offline,
     5000,
   );
@@ -219,7 +219,7 @@ test("failures fall back to an error state without throwing", async () => {
   assert.equal(
     (
       await fetchCurrentWeather(
-        { coordinates: { latitude: 5.5, longitude: 6.5 }, timezone: "UTC" },
+        { coordinates: { latitude: 5.5, longitude: 6.5 } },
         serverError,
         0,
       )
@@ -238,7 +238,7 @@ test("failures fall back to an error state without throwing", async () => {
     assert.equal(
       (
         await fetchCurrentWeather(
-          { coordinates: { latitude: 7.5, longitude: 8.5 }, timezone: "UTC" },
+          { coordinates: { latitude: 7.5, longitude: 8.5 } },
           undefined,
           0,
         )

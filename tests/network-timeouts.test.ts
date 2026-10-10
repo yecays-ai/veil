@@ -27,7 +27,7 @@ const noStop = (signal?: AbortSignal | null) => new Promise<Response>((_resolve,
 
 test("a weather request that never answers times out, frees the shared entry and later requests can start again", async () => {
   clearWeatherCache();
-  const request = { coordinates: { latitude: 11.1, longitude: 22.2 }, timezone: "UTC" };
+  const request = { coordinates: { latitude: 11.1, longitude: 22.2 } };
   let signal: AbortSignal | undefined, lateResolve!: (response: Response) => void;
   const hung = ((_url: string, init?: RequestInit) => { signal = init?.signal ?? undefined;
     return new Promise<Response>((resolve) => { lateResolve = resolve; }); }) as unknown as typeof fetch;
@@ -51,8 +51,8 @@ test("a weather request that never answers times out, frees the shared entry and
 test("a fetcher that ignores its AbortSignal is still released at the deadline; other coordinates are unaffected", async () => {
   clearWeatherCache();
   const stuck = (() => new Promise<Response>(() => {})) as unknown as typeof fetch;
-  const pending = fetchCurrentWeather({ coordinates: { latitude: 5.5, longitude: 6.6 }, timezone: "UTC" }, stuck, 5_000_000, 40);
-  const other = await fetchCurrentWeather({ coordinates: { latitude: 8.8, longitude: 9.9 }, timezone: "UTC" }, goodWeather as unknown as typeof fetch, 5_000_000, 40);
+  const pending = fetchCurrentWeather({ coordinates: { latitude: 5.5, longitude: 6.6 } }, stuck, 5_000_000, 40);
+  const other = await fetchCurrentWeather({ coordinates: { latitude: 8.8, longitude: 9.9 } }, goodWeather as unknown as typeof fetch, 5_000_000, 40);
   assert.equal(other.status, "ready");
   assert.equal((await pending).status, "error");
 });
@@ -63,7 +63,7 @@ test("a caller joining a shared request is released at its own deadline without 
   let release!: (response: Response) => void, aborted = false;
   const slow = ((_url: string, init?: RequestInit) => { init?.signal?.addEventListener("abort", () => { aborted = true; });
     return new Promise<Response>((resolve) => { release = resolve; }); }) as unknown as typeof fetch;
-  const request = { coordinates: { latitude: 31.1, longitude: 32.2 }, timezone: "UTC" };
+  const request = { coordinates: { latitude: 31.1, longitude: 32.2 } };
   const owner = fetchCurrentWeather(request, slow, 7_000_000, 400);
   const t0 = Date.now();
   assert.equal((await fetchCurrentWeather(request, slow, 7_000_000, 40)).status, "error");
@@ -83,7 +83,7 @@ test("a place lookup that never answers times out and a later lookup starts a ne
   const stuck = (() => new Promise<Response>(() => {})) as unknown as typeof fetch;
   assert.equal(await lookupPlace("Nowhere Town", stuck, 7_000_000, 40), null);
   let sent = 0;
-  const healthy = (async () => { sent++; return Response.json({ results: [{ name: "Nowhere Town", latitude: 1, longitude: 2, timezone: "UTC" }] }); }) as unknown as typeof fetch;
+  const healthy = (async () => { sent++; return Response.json({ results: [{ name: "Nowhere Town", latitude: 1, longitude: 2 }] }); }) as unknown as typeof fetch;
   const match = await lookupPlace("nowhere town", healthy, 7_000_000 + PLACE_ERROR_CACHE_MS + 1, 40);
   assert.equal(match?.coordinates.latitude, 1);
   assert.equal(sent, 1);
