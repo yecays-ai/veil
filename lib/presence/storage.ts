@@ -21,8 +21,9 @@ export type PresenceRecord = {
   characterId: string;
   routine: StoredRoutine | null;
   /**
-   * Newest last and never overlapping, so at any instant at most one is running (the one that started most
-   * recently supersedes the rest). At most one has not started yet; ended ones are kept only for the Last
+   * Ordered by start, each with its own original end. At most two run at once: a longer base (a trip) and one
+   * shorter interruption on top (a call); the calculator shows the one that started last, and the base shows
+   * again when the interruption ends. At most one has not started yet. Ended ones are kept only for the Last
    * Seen look-back.
    */
   situations: StoredSituation[];
@@ -75,23 +76,27 @@ function normalizeStoredSituation(value: unknown): StoredSituation | null {
   return { status: raw.status, reason, startsAt, endsAt, ...markOf(raw, startsAt) };
 }
 /**
- * Makes the situations disjoint: each one ends no later than the next one starts, and a later start
- * supersedes an earlier one (on equal starts the later change wins). The result is the same for any
- * stored order, so the calculator never has overlapping situations to choose between.
+ * Keeps at most two situations running at any instant: a base and the interruption on top of it. A situation
+ * that starts while two are running ends the upper one at that moment and leaves the base alone; one that
+ * starts exactly when another does replaces it (the later change wins). Original end times are otherwise
+ * kept, so a base resumes after an interruption. The result is the same for any stored order.
  */
-function disjoint(items: StoredSituation[]): StoredSituation[] {
-  const sorted = [...items].sort((a, b) => a.startsAt - b.startsAt || a.changedAt - b.changedAt);
-  return sorted.flatMap((item, index) => {
-    const endsAt = Math.min(item.endsAt, sorted[index + 1]?.startsAt ?? item.endsAt);
-    return endsAt > item.startsAt ? [endsAt === item.endsAt ? item : { ...item, endsAt }] : [];
-  });
+function layers(items: StoredSituation[]): StoredSituation[] {
+  const sorted = items.map((item) => ({ ...item })).sort((a, b) => a.startsAt - b.startsAt || a.changedAt - b.changedAt);
+  let running: StoredSituation[] = [];
+  for (const next of sorted) {
+    running = running.filter((item) => item.endsAt > next.startsAt);
+    if (running.length && running[running.length - 1].startsAt === next.startsAt) running.pop()!.endsAt = next.startsAt;
+    if (running.length >= 2) running.pop()!.endsAt = next.startsAt;
+    running.push(next);
+  }
+  return sorted.filter((item) => item.endsAt > item.startsAt);
 }
 function normalizeRecord(value: unknown): PresenceRecord | null {
   const raw = record(value);
   if (!validId(raw.characterId)) return null;
   const routine = normalizeRoutine(record(raw.routine).routine);
-  const situations = disjoint((Array.isArray(raw.situations) ? raw.situations : []).flatMap((item) => normalizeStoredSituation(item) ?? []))
-    .slice(-MAX_STORED_SITUATIONS);
+  const situations = layers((Array.isArray(raw.situations) ? raw.situations : []).flatMap((item) => normalizeStoredSituation(item) ?? []));
   return { characterId: raw.characterId,
     routine: routine ? { routine, ...markOf(raw.routine) } : null, situations,
     signature: raw.signature ? markOf(raw.signature) : null,
@@ -125,22 +130,43 @@ export function setRoutine(document: PresenceDocument, characterId: string, rout
   if (!valid) throw new Error("Invalid routine.");
   return update(document, characterId, (current) => ({ ...current, routine: { routine: valid, ...markOf(mark) } }));
 }
+const isRunning = (item: PresenceSituation, now: number) => item.startsAt <= now && now < item.endsAt;
+const isUpcoming = (item: PresenceSituation, now: number) => item.startsAt > now;
 /**
- * Adds a situation already normalized by `normalizeSituation`. A situation supersedes whatever it overlaps:
- * the one running when it starts ends there, so a Character returns to its routine, not to an older
- * situation, when the new one ends. Only one situation may be upcoming: a new upcoming one replaces it, and
- * a current one removes an upcoming one it would overlap. Situations that ended before the Last Seen
- * look-back are dropped; recent ended ones stay so a back-filled Last Seen still sees them.
+ * Adds a situation already normalized by `normalizeSituation`. It does not shorten what is running: when it
+ * ends, a longer situation under it shows again (see `layers` for the two-layer limit). Only one situation
+ * may be upcoming: a new upcoming one replaces the old one, a current one leaves it alone (`cancelUpcoming`
+ * removes it). Situations that ended before the Last Seen look-back are dropped, and the size cap only
+ * trims ended ones, never one that is running or has not started.
  */
 export function addSituation(document: PresenceDocument, characterId: string, situation: PresenceSituation,
   mark: ChangeMark, now: number): PresenceDocument {
   const added = normalizeStoredSituation({ ...situation, ...markOf(mark, now) });
   if (!added) throw new Error("Invalid situation.");
   return update(document, characterId, (current) => {
-    const upcoming = (item: PresenceSituation) => item.startsAt > now;
     const kept = current.situations.filter((item) => item.endsAt > now - LAST_ONLINE_LOOKBACK_MS)
-      .filter((item) => added.startsAt > now ? !upcoming(item) : !(upcoming(item) && item.startsAt < added.endsAt));
-    return { ...current, situations: disjoint([...kept, added]).slice(-MAX_STORED_SITUATIONS) };
+      .filter((item) => !(isUpcoming(added, now) && isUpcoming(item, now)));
+    const all = layers([...kept, added]), ended = all.filter((item) => item.endsAt <= now);
+    const dropped = new Set(ended.slice(0, Math.max(0, all.length - MAX_STORED_SITUATIONS)));
+    return { ...current, situations: all.filter((item) => !dropped.has(item)) };
+  });
+}
+/** Removes the situation that has not started yet, if any. Running and ended ones are untouched. */
+export function cancelUpcoming(document: PresenceDocument, characterId: string, now: number): PresenceDocument {
+  return update(document, characterId, (current) => current.situations.some((item) => isUpcoming(item, now))
+    ? { ...current, situations: current.situations.filter((item) => !isUpcoming(item, now)) } : current);
+}
+/**
+ * Ends running situations at `now`: "current" only the one showing now (a base under it shows again),
+ * "all" every running layer (the Character is back on its routine). An upcoming situation is not touched.
+ */
+export function endSituation(document: PresenceDocument, characterId: string, now: number, scope: "current" | "all"): PresenceDocument {
+  return update(document, characterId, (current) => {
+    const running = current.situations.filter((item) => isRunning(item, now));
+    if (!running.length) return current;
+    const ending = scope === "all" ? new Set(running) : new Set(running.slice(-1));
+    return { ...current, situations: current.situations.flatMap((item) =>
+      !ending.has(item) ? [item] : item.startsAt < now ? [{ ...item, endsAt: now }] : []) };
   });
 }
 export function markSignatureChange(document: PresenceDocument, characterId: string, mark: ChangeMark): PresenceDocument {

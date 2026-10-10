@@ -91,6 +91,20 @@ test("of overlapping situations, the most recently started one wins", () => {
   assert.equal(effectivePresence(inputs({ situations: [trip, call] }), at("2026-10-12T19:00:00Z")).status, "away");
 });
 
+test("a short situation inside a long one ends and the long one shows again until its own original end", () => {
+  const trip = situation("away", "2026-10-12T00:00:00Z", "2026-10-15T00:00:00Z");
+  const call = situation("busy", "2026-10-13T10:00:00Z", "2026-10-13T10:30:00Z");
+  const both = inputs({ situations: [trip, call] });
+  const states = ["2026-10-12T12:00:00Z", "2026-10-13T10:15:00Z", "2026-10-13T10:30:00Z", "2026-10-14T23:59:00Z", "2026-10-15T00:00:00Z"]
+    .map((iso) => effectivePresence(both, at(iso)).status);
+  assert.deepEqual(states, ["away", "busy", "away", "away", "offline"], "the routine (offline at midnight) only decides once the trip itself has ended");
+  assert.equal(nextPresenceChange(both, at("2026-10-13T10:15:00Z")), at("2026-10-13T10:30:00Z"));
+  assert.equal(nextPresenceChange(both, at("2026-10-13T10:30:00Z")), at("2026-10-15T00:00:00Z"), "after the call the next change is the end of the trip");
+  // Last Seen looks back through the layers: online during the call, not during the trip.
+  const onlineCall = { ...call, status: "online" as const };
+  assert.equal(lastOnlineAt(inputs({ situations: [trip, onlineCall] }), at("2026-10-14T12:00:00Z")), at("2026-10-13T10:30:00Z"));
+});
+
 test("normalizeSituation stores absolute times that never start in the past, always end and are capped", () => {
   const now = at("2026-10-12T12:00:00Z");
   assert.deepEqual(normalizeSituation({ status: "busy", reason: "  Emergency  ",
