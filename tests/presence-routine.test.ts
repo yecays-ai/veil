@@ -123,10 +123,36 @@ test("a save during generation triggers one follow-up for the new basis, and con
   await new Promise((resolve) => setTimeout(resolve, 0));
   f.edit({ occupation: "pilot" });
   const second = ensureRoutineAfterSave(ID, undefined, f.deps);
-  assert.equal(await second, "current");
+  assert.equal(await second, "busy");
   release();
   assert.equal(await running, "generated");
   assert.equal(f.state.requests.length, 2);
+  assert.equal((await f.record())!.routine?.source, routineSource(routineBasis(f.state.foundation.characters[0])));
+});
+
+test("a save during the follow-up request is checked too", async () => {
+  const f = fixture();
+  const gates: (() => void)[] = [];
+  f.deps.provider = async function* (...args) {
+    f.state.requests.push({ messages: args[1] });
+    await new Promise<void>((resolve) => gates.push(resolve));
+    yield goodReply;
+  };
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+  const first = ensureRoutineAfterSave(ID, undefined, f.deps);
+  await tick();
+  f.edit({ occupation: "pilot" });
+  void ensureRoutineAfterSave(ID, undefined, f.deps);
+  gates.shift()!();
+  await tick(); await tick();
+  assert.equal(f.state.requests.length, 2);
+  f.edit({ occupation: "chef" });
+  void ensureRoutineAfterSave(ID, undefined, f.deps);
+  gates.shift()!();
+  await tick(); await tick();
+  assert.equal(f.state.requests.length, 3);
+  gates.shift()!();
+  await first;
   assert.equal((await f.record())!.routine?.source, routineSource(routineBasis(f.state.foundation.characters[0])));
 });
 

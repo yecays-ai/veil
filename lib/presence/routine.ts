@@ -73,7 +73,7 @@ export function parseRoutine(reply: string): PresenceRoutine | null {
   return normalizeRoutine({ blocks, defaultStatus: raw.defaultStatus, jitterMinutes: raw.jitterMinutes });
 }
 
-export type RoutineOutcome = "current" | "no-character" | "no-api" | "generated" | "invalid" | "stale" | "cancelled" | "error";
+export type RoutineOutcome = "current" | "busy" | "no-character" | "no-api" | "generated" | "invalid" | "stale" | "cancelled" | "error";
 type Services = {
   foundation: () => Promise<FoundationDocument>; presence: () => Promise<PresenceDocument>;
   bindings: () => Promise<BindingDocument>; presets: () => Promise<PresetDocument>;
@@ -93,7 +93,7 @@ const inFlight = new Set<string>(), rerun = new Set<string>();
  */
 export async function ensureRoutine(characterId: string, signal?: AbortSignal, deps: Services = services): Promise<RoutineOutcome> {
   // A save that lands while a request is running is not lost: the Character is checked again when it ends.
-  if (inFlight.has(characterId)) { rerun.add(characterId); return "current"; }
+  if (inFlight.has(characterId)) { rerun.add(characterId); return "busy"; }
   inFlight.add(characterId);
   const controller = new AbortController();
   const cancel = () => controller.abort();
@@ -136,10 +136,11 @@ export async function ensureRoutine(characterId: string, signal?: AbortSignal, d
     inFlight.delete(characterId);
   }
 }
-/** Runs `ensureRoutine`, then once more if another save arrived meanwhile and the first result went stale. */
+/** Runs `ensureRoutine` and repeats it while another save arrives during a request; each repeat needs a new save. */
 export async function ensureRoutineAfterSave(characterId: string, signal?: AbortSignal, deps: Services = services): Promise<RoutineOutcome> {
-  rerun.delete(characterId);
-  const outcome = await ensureRoutine(characterId, signal, deps);
-  if (!rerun.delete(characterId) || signal?.aborted) return outcome;
-  return ensureRoutine(characterId, signal, deps);
+  let outcome = await ensureRoutine(characterId, signal, deps);
+  // A "busy" call left its marker for the wrapper that is already running; only that one repeats.
+  if (outcome === "busy") return outcome;
+  while (rerun.delete(characterId) && !signal?.aborted) outcome = await ensureRoutine(characterId, signal, deps);
+  return outcome;
 }
