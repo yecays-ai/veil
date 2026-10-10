@@ -10,6 +10,7 @@ import { findLeftovers, hasLeftovers, reconcileInertReferences, removeLeftovers,
 import { browserFoundationStorage } from "../lib/foundation-storage";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { UI_COPY as U } from "../lib/ui-copy";
+import { ensureRoutineAfterSave } from "../lib/presence/routine";
 import {
   createCharacter,
   saveUser,
@@ -239,6 +240,9 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
                   ? updateCharacter(d, characterId, input as CharacterInput, baseline ?? undefined)
                   : createCharacter(d, input as CharacterInput),
               );
+              // Drafts a life rhythm in the background when the settings behind it are new or changed; no-op otherwise.
+              const savedId = characterId ?? saved.characters.at(-1)?.characterId;
+              if (savedId) void ensureRoutineAfterSave(savedId);
               if (isNew) {
                 const created = saved.characters.at(-1);
                 if (!created) throw new Error(C.characters.notFound);

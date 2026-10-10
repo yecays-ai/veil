@@ -1,0 +1,150 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { defaultFoundation, normalizeCharacterInput, type FoundationDocument } from "../lib/foundation-types";
+import { createPresetDocument } from "../lib/preset";
+import type { TextProvider } from "../lib/chat/provider";
+import { ensureRoutine, ensureRoutineAfterSave, parseRoutine, routineBasis, routinePrompt, routineSource, ROUTINE_MAX_TOKENS } from "../lib/presence/routine";
+import { createPresenceStorage, presenceRecord, setRoutine, emptyPresenceDocument } from "../lib/presence/storage";
+
+const ID = "char-a";
+const goodReply = JSON.stringify({ defaultStatus: "online", jitterMinutes: 45, blocks: [
+  { days: [1, 2, 3, 4, 5], start: "09:00", end: "17:30", status: "busy" }, { days: [0, 1, 2, 3, 4, 5, 6], start: "23:30", end: "07:00", status: "offline" }] });
+
+function fixture(reply: string | (() => string | Promise<string>) = goodReply) {
+  const foundation = defaultFoundation();
+  foundation.characters = [{ characterId: ID, ...normalizeCharacterInput({ name: "Ada", occupation: "nurse", backstory: "night shifts", personality: "calm" }) }];
+  const values = new Map<string, string>();
+  const store = createPresenceStorage(() => ({ getItem: (k: string) => values.get(k) ?? null, setItem: (k: string, v: string) => { values.set(k, v); } }), () => undefined);
+  const state = { foundation: foundation as FoundationDocument, api: true, requests: [] as { messages: unknown; maxTokens?: number }[] };
+  const provider: TextProvider = async function* (_config, messages, signal, generation) {
+    state.requests.push({ messages, maxTokens: generation?.maxTokens });
+    const text = typeof reply === "string" ? reply : await reply();
+    signal.throwIfAborted();
+    yield text;
+  };
+  const deps = { foundation: async () => state.foundation, presence: () => store.load(), bindings: async () => ({ global: {}, characters: {} }),
+    presets: async () => createPresetDocument(), provider, write: (change: Parameters<typeof store.transact>[0]) => store.transact(change), now: () => 1_000,
+    api: async (id: string) => state.api ? { id, apiKey: "k", model: "m", baseUrl: "https://example.test/v1" } : undefined };
+  const edit = (patch: Partial<{ name: string; occupation: string; backstory: string; personality: string; statusMessage: string; speakingStyle: string }>) => {
+    state.foundation = { ...state.foundation, characters: state.foundation.characters.map((c) => ({ ...c, ...patch })) };
+  };
+  return { state, deps, store, edit, record: async () => presenceRecord(await store.load(), ID) };
+}
+
+test("the basis follows occupation, backstory and personality only", () => {
+  const base = { occupation: "nurse", backstory: "night shifts", personality: "calm" };
+  assert.equal(routineBasis(base), routineBasis({ ...base, occupation: "  nurse " }));
+  for (const change of [{ occupation: "pilot" }, { backstory: "day shifts" }, { personality: "restless" }, { occupation: null }])
+    assert.notEqual(routineBasis({ ...base, ...change }), routineBasis(base));
+  const prompt = routinePrompt({ name: "Ada", ...base })[0].content;
+  assert.match(prompt, /nurse/); assert.match(prompt, /night shifts/); assert.match(prompt, /calm/);
+});
+
+test("a model reply becomes a routine only when every part is valid", () => {
+  const parsed = parseRoutine("```json\n" + goodReply + "\n```")!;
+  assert.deepEqual([parsed.defaultStatus, parsed.jitterMinutes, parsed.blocks.length], ["online", 45, 2]);
+  assert.deepEqual(parsed.blocks[1], { days: [0, 1, 2, 3, 4, 5, 6], startMinute: 1410, endMinute: 420, status: "offline" });
+  const block = { days: [1], start: "09:00", end: "10:00", status: "busy" };
+  for (const bad of ["", "no json", "{", "{}", JSON.stringify({ defaultStatus: "online", jitterMinutes: 5, blocks: [] }),
+    JSON.stringify({ defaultStatus: "gone", jitterMinutes: 5, blocks: [block] }), JSON.stringify({ defaultStatus: "online", blocks: [block] }),
+    JSON.stringify({ defaultStatus: "online", jitterMinutes: 5, blocks: [{ ...block, start: "25:00" }] }),
+    JSON.stringify({ defaultStatus: "online", jitterMinutes: 5, blocks: [{ ...block, start: "9am" }] }),
+    JSON.stringify({ defaultStatus: "online", jitterMinutes: 5, blocks: [{ ...block, days: [7] }] }),
+    JSON.stringify({ defaultStatus: "online", jitterMinutes: 5, blocks: [{ ...block, status: "sleeping" }] })])
+    assert.equal(parseRoutine(bad), null, bad);
+});
+
+test("the first save generates a routine with one request and records its basis", async () => {
+  const f = fixture();
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "generated");
+  const record = (await f.record())!;
+  assert.deepEqual([record.routine?.routine.blocks.length, record.routine?.changedAt], [2, 1_000]);
+  assert.equal(record.routine?.source, routineSource(routineBasis(f.state.foundation.characters[0])));
+  assert.equal(f.state.requests.length, 1);
+  assert.equal(f.state.requests[0].maxTokens, ROUTINE_MAX_TOKENS);
+});
+
+test("saves that leave the life basis alone make no request; a changed basis regenerates", async () => {
+  const f = fixture();
+  await ensureRoutine(ID, undefined, f.deps);
+  f.edit({ name: "Ada L.", statusMessage: "hi", speakingStyle: "terse" });
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "current");
+  assert.equal(f.state.requests.length, 1);
+  f.edit({ occupation: "pilot" });
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "generated");
+  assert.equal(f.state.requests.length, 2);
+  assert.equal((await f.record())!.routine?.source, routineSource(routineBasis(f.state.foundation.characters[0])));
+});
+
+test("a failed, invalid or unavailable generation keeps the existing routine and is not retried by itself", async () => {
+  const f = fixture();
+  await ensureRoutine(ID, undefined, f.deps);
+  const before = JSON.stringify(await f.store.load());
+  f.edit({ backstory: "moved cities" });
+  f.deps.provider = async function* () { throw new Error("offline"); };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "error");
+  f.deps.provider = async function* () { yield "I cannot do that."; };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "invalid");
+  f.deps.provider = async function* () { yield "{".repeat(9_000); };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "invalid");
+  f.state.api = false;
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "no-api");
+  assert.equal(JSON.stringify(await f.store.load()), before);
+});
+
+test("without a routine, a failed request leaves nothing stored", async () => {
+  const f = fixture("nonsense");
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "invalid");
+  assert.equal(await f.record(), undefined);
+  assert.equal(await ensureRoutine("missing", undefined, f.deps), "no-character");
+});
+
+test("an edit or deletion while the model is answering discards the old routine", async () => {
+  const f = fixture();
+  f.deps.provider = async function* () { f.edit({ personality: "restless" }); yield goodReply; };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "stale");
+  assert.equal(await f.record(), undefined);
+  f.deps.provider = async function* () { f.state.foundation = { ...f.state.foundation, characters: [] }; yield goodReply; };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "stale");
+  assert.equal(await f.record(), undefined);
+});
+
+test("a save during generation triggers one follow-up for the new basis, and concurrent calls share one request", async () => {
+  const f = fixture();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let first = true;
+  f.deps.provider = async function* (...args) {
+    f.state.requests.push({ messages: args[1] });
+    if (first) { first = false; await gate; }
+    yield goodReply;
+  };
+  const running = ensureRoutineAfterSave(ID, undefined, f.deps);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  f.edit({ occupation: "pilot" });
+  const second = ensureRoutineAfterSave(ID, undefined, f.deps);
+  assert.equal(await second, "current");
+  release();
+  assert.equal(await running, "generated");
+  assert.equal(f.state.requests.length, 2);
+  assert.equal((await f.record())!.routine?.source, routineSource(routineBasis(f.state.foundation.characters[0])));
+});
+
+test("cancelling stops the request and stores nothing", async () => {
+  const f = fixture(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); return goodReply; });
+  const controller = new AbortController();
+  const running = ensureRoutine(ID, controller.signal, f.deps);
+  setTimeout(() => controller.abort(), 5);
+  assert.equal(await running, "cancelled");
+  assert.equal(await f.record(), undefined);
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "generated");
+});
+
+test("a routine for an unrelated stored basis is replaced only for the same Character", async () => {
+  const f = fixture();
+  await f.store.transact(() => setRoutine(setRoutine(emptyPresenceDocument(), "other", parseRoutine(goodReply)!, { changedAt: 5, source: "x" }), ID, parseRoutine(goodReply)!, { changedAt: 5, source: "manual" }));
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "generated");
+  const document = await f.store.load();
+  assert.equal(presenceRecord(document, "other")?.routine?.source, "x");
+  assert.equal(presenceRecord(document, ID)?.routine?.changedAt, 1_000);
+});
