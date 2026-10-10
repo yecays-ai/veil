@@ -10,13 +10,13 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/p6-closeout-ledger`；PR：见 GitHub（创建后补链接）。涉及：`docs/AUDIT_LEDGER.md`（头部基线；板块六的 #98/#100/A1/C2 措辞、已合并列表、CF-02、收口声明；停车场的 ChatRoom 决策）、`docs/work-status/2026-10-10-claude-p6-browser-sync-smoke.md`（作废旧的 chat-room 整体拆分口径）。
+Claude；分支 `claude/p6-closeout-ledger`；PR：[#101](https://github.com/yecays-ai/veil/pull/101)。涉及：`docs/AUDIT_LEDGER.md`（头部基线；板块六的 #98/#100/A1/C2 措辞、已合并列表、CF-02、收口声明；停车场的 ChatRoom 决策）、`docs/work-status/2026-10-10-claude-p6-browser-sync-smoke.md`（作废旧的 chat-room 整体拆分口径）。
 
 ## 已完成
 
 - 订正：头部基线 SHA 与范围；Foundation 清理由“已补测待审/待本 PR 核销”改为“已修待验”（#99、#100 已合并，不写成“已验证修复”），并记录我对 #100 三个负对照的独立复核；“本 PR”指代改为 #92、#97、#98、#100；已合并列表补 #92–#100。
 - 登记：CF-02 偶发失败（未调查）；第六刀阶段性收口声明（无阻塞，证据等级与延期项）；ChatRoom 只拆 Header 的决定（未施工）。
-- 检查：仅文档改动；`npm test` 797/797 以外无变化（本地，Node 24.21.0）。证据级别：源码阅读与 GitHub 状态核对。
+- 检查：仅文档改动；`npm test` 799/799 通过（本地，Node 24.21.0）。证据级别：源码阅读与 GitHub 状态核对。
 
 ## 尚未验证
 
