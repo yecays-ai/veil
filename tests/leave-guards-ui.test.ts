@@ -379,7 +379,7 @@ test("Preset detail keeps its existing leave guard", async () => {
     const name = () => ui.field("Name") as HTMLInputElement;
     const original = name().value;
     await leaveMatrix(ui, () => ui.type(name(), `${original} edited`), () => ui.type(name(), original),
-      () => ui.followLink("Back to Presets"), () => name().value.replace(original, "").trim() ? "edited" : "edited");
+      () => ui.followLink("Back to Presets"), () => name().value);
   } finally { await ui.close(); }
 });
 
