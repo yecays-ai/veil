@@ -1,7 +1,9 @@
 # Chat Core v1
 
-Messages lists every existing Character. Opening a Character creates or reuses
-one session by `characterId`; there are no separate contacts or friend records.
+Messages lists existing conversations (private and group) from chat storage; display
+names come from the Contacts record (`lib/contact-storage.ts`) when one exists, which
+is stored separately from the chat session. Opening a Character creates or reuses
+one private session by `characterId`.
 A deleted Character is hidden from Messages and cannot request replies.
 Deleting a Character also deletes its private session, messages, WorldBook state
 and any background image no other chat uses. Group sessions are kept: the
@@ -12,6 +14,9 @@ Sessions of Characters deleted before this cleanup existed stay until the user
 confirms their removal on the Characters page. This describes `main` at
 `8790e408ee3f0db06107a5b1c5983782f6423877` (2026-10-08, PR #46), the revision
 audited in the storage map in [README.md](../README.md).
+Sections written for v1 are not kept in step with later changes; where this file
+and the code disagree, the code and `docs/AUDIT_LEDGER.md` win. The 2026-10-10
+corrections (Part 6 C1) are limited to facts checked against the code.
 
 ## Send and Request Reply
 
@@ -19,14 +24,17 @@ Send saves one user bubble and never calls a model. Send several messages, then
 use Request Reply (even with an empty composer). The engine atomically marks
 all unrequested user messages with the new assistant message's request ID before
 calling the API. An already claimed batch cannot generate again, across reloads
-or concurrent tabs. New messages sent during generation remain pending for the
-next explicit request. Stop preserves partial output. Failed/stopped batches
-remain consumed; no retry action is included. Missing/invalid API configuration
+or concurrent tabs. While a reply is in progress Send is rejected ("A reply is already
+in progress."), so new messages wait until it ends. Stop preserves partial output.
+Failed/stopped batches remain consumed; the chat offers a Retry action for a failed
+or stopped reply and for a failed draft. Missing/invalid API configuration
 is checked before a batch is claimed.
 
-The optional `autoReplyOnKeyboardDismiss` field is reserved and defaults to false.
-The trigger and its UI are deferred: ordinary input blur cannot reliably identify
-keyboard dismissal and must not turn Send into generation.
+The optional `autoReplyOnKeyboardDismiss` session setting defaults to false. It can be
+turned on in the chat settings; `components/chat/use-keyboard-dismiss-auto-reply.ts`
+then requests a reply after a measured keyboard open-then-close on touch devices.
+Ordinary input blur cannot reliably identify keyboard dismissal and must not turn
+Send into generation.
 
 ## Storage and boundaries
 
@@ -42,7 +50,9 @@ database. They are never stored in bindings, themes, messages, URL parameters
 or logs.
 
 Every mutation is an atomic record operation, not a cache/snapshot replacement.
-Loads are read-only. Empty/failed hydration has no path to clear existing data.
+Loads never replace stored data, but they are not purely read-only: `readSession`
+calls `recoverGeneration`, which can write to repair an interrupted generation.
+Empty/failed hydration has no path to clear existing data.
 Opening an existing session does not overwrite it. The provider receives a fresh
 storage snapshot for each request. Future message edits/deletes must change these
 records; prompt history does not maintain a second cached copy.
@@ -84,8 +94,10 @@ missing configuration fails visibly. No additional binding/provider editor is ad
 
 The pending IDs are excluded from recent history. Failed, stopped and unfinished
 assistant drafts are excluded. API settings and avatars are not prompt fields.
-No Memory retrieval, instruction-message UI, side-story mode, groups, tools,
-media, calls, reactions, WorldBook, regex or message action menus are implemented.
+No Memory retrieval, instruction-message UI, side-story mode, tools, media, calls or
+reactions are implemented. Groups, WorldBook activation, Regex and message actions
+exist in later code (`lib/chat/engine.ts`, `components/chat/`); the order above is the
+v1 order and does not list the WorldBook and Regex steps.
 
 ## Extension points and validation
 

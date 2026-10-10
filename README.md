@@ -52,7 +52,7 @@ VEIL's app data is stored by the browser for this site origin. There is no app-w
 
 ### Backup, restore, and browser cleanup
 
-The transferable files above are resource-level packages, not snapshots of all VEIL data. Contacts and bubble-timing serialization exist only as storage APIs and are not exposed in the current UI. There is no full-site backup/restore, cloud backup, or cross-device sync. The browser Storage API usage/quota and persistence status shown by `lib/storage-health.ts` report browser storage health; requesting persistent storage is not a backup.
+The transferable files above are resource-level packages, not snapshots of all VEIL data. Contacts and bubble-timing serialization exist only as storage APIs and are not exposed in the current UI. There is no full-site backup/restore, cloud backup, or cross-device sync. `lib/storage-health.ts` can read the browser's storage usage/quota and persistence status and request persistent storage, but no production code or UI calls it; only its tests do (a leftover from a removed backup page, kept for now). Requesting persistent storage is not a backup.
 
 Browser **Clear site data** removes the site's localStorage and IndexedDB data together. VEIL has no general old-key or deleted-record sweeper. The implemented residual cleanup is limited to the Appearance and Chat image rules described above, plus explicit scoped deletion and association cleanup in the relevant resource flows. Do not interpret a resource export, a successful storage-health check, or provider state as a complete backup.
 
@@ -70,7 +70,7 @@ Appearance supports colors, uploaded or URL wallpaper/icons, wallpaper fit/opaci
 
 `lib/theme-package.ts` exports/imports versioned JSON decoration packages containing only validated theme fields, image sources, and registered App layouts. Uploaded images are embedded, while image URLs remain external references. Packages contain no character/user data or other app state; old-project packages are not supported.
 
-Uploads support PNG/JPEG/WebP/GIF (first frame), at most 10 MB before resizing to a maximum edge of 1200px. Encoded images must fit within 600,000 characters; import packages are capped at 3 MB. Browser storage quotas still apply, especially when saving several image-heavy presets. Export a theme before clearing browser data.
+Uploads support PNG/JPEG/WebP/GIF (first frame), at most 20 MB before resizing to a maximum edge of 1200px. Encoded images must fit within 600,000 characters; import packages are capped at 3 MB. Browser storage quotas still apply, especially when saving several image-heavy presets. Export a theme before clearing browser data.
 
 ## Vercel
 
@@ -96,9 +96,9 @@ The edit-mode minus button removes only its Widget instance from the current des
 
 `lib/widget-registry.ts` owns supported sizes and normalized config; `components/widgets/widget-renderer.tsx` maps registered types to views. Adding a Widget requires its type, registry definition and view, without changing the Home grid. Clock reads local device time/date and updates every second. It remains registered, but fresh/restored default layouts only include Here & There; stored layouts keep their existing Widgets. Here & There reads the singleton User and selected Character from the Foundation provider; an unset timezone explicitly falls back to the device timezone. Without Characters it offers a link to create/select one.
 
-Each participant's location is either unset or a manually chosen label with optional latitude/longitude. `lib/participant-config.ts` defines the future coordinates-based `WeatherProvider` and weather state. v1 always displays **Weather not connected** and makes no weather or location requests. Names, locations and timezones are never stored in theme packages.
+Each participant's location is either unset or a manually chosen label with optional latitude/longitude. `lib/participant-config.ts` defines the coordinates-based `WeatherProvider` type and weather state; `lib/weather.ts` implements it with Open-Meteo. Here & There requests current weather from `api.open-meteo.com` for a participant who has saved coordinates or a place name; a place name is first looked up through `geocoding-api.open-meteo.com`, so the coordinates or place name are sent to that keyless service. A participant with no location makes no request. Results are cached in memory (10 minutes, 1 minute for failures), requests have a deadline, and a failure shows the widget's weather-unavailable text. Names, locations and timezones are never stored in theme packages.
 
-`npm test` exercises collision/bounds handling, full-layout normalization, legacy migration, preset/package round trips and IANA timezone/DST behavior using Node's built-in test runner. Test compilation goes to `/tmp/veil-desktop-tests`.
+`npm test` exercises collision/bounds handling, full-layout normalization, legacy migration, preset/package round trips and IANA timezone/DST behavior using Node's built-in test runner. Test compilation goes to `node_modules/.cache/veil-desktop-tests`.
 
 ## Character & Universe Foundation v1
 
