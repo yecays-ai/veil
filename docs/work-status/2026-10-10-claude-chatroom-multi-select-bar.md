@@ -1,7 +1,7 @@
 # STATUS — 2026-10-10-claude-chatroom-multi-select-bar
 
 更新人：Claude
-更新时间：2026-10-10T09:10:00Z
+更新时间：2026-10-10T12:04:00Z
 发现范围：观察时间 2026-10-10T09:00Z；基于 origin/main `1498bd451560a8be2dd2fe5c0c9abf0356dd16fe`（#102 已合并，现场核实）；GitHub open PR 列表：#103（仅改 `docs/AUDIT_LEDGER.md` 的 F5 行、真机验收表、停车场“ChatRoom 拆分”条，以及 Header 拆分的 work-status 记录），与本任务不改同一行、不改同一文件的同一段；其他分支上的任务记录未逐一检查。依据：Lan 的授权（对话中交付）、总账停车场“ChatRoom 拆分”条、此前 ChatRoom 评估、#102 的 CodeRabbit 审查（无可处理意见，未建议进一步拆分）。
 
 总账 ID：新增（停车场条目“ChatRoom 第二块拆分”，非审计问题）。
@@ -11,7 +11,7 @@
 
 ## 当前任务
 
-待审查：把 `chat-room.tsx` 里多选操作栏（`.chat-multi-select-bar`）抽成 `components/chat/chat-multi-select-bar.tsx`。
+已合并（#104）：把 `chat-room.tsx` 里多选操作栏（`.chat-multi-select-bar`）抽成 `components/chat/chat-multi-select-bar.tsx`。
 
 ## 谁在改哪里
 
