@@ -1,16 +1,16 @@
 # STATUS — 2026-10-10-codex-p6-lifecycle-mutations
 
 更新人：Codex
-更新时间：2026-10-10T14:50:00+08:00
+更新时间：2026-10-10T14:54:00+08:00
 发现范围：GitHub API main、开放 PR（含 Draft）及远端分支；基线 `8d13788cef3533d775e0ff04a270f4f19fbb67f6`（#97 已合并），开放 PR 为空；已读 AGENTS、审计总账、work-status 规则、#97 入库交接。未发布的其他本地任务仍不可见。
 
 ## 当前任务
 
-生命周期变异脚本最小修复，施工及本地验证完成；等待独立 PR 创建和审查，合并由 Lan 手动完成。
+生命周期变异脚本最小修复，施工及本地验证完成；PR #98 已提交，待审查、未合并，合并由 Lan 手动完成。
 
 ## 谁在改哪里
 
-Codex；分支 `fix/p6-lifecycle-mutation-runner`；PR 待创建。
+Codex；分支 `fix/p6-lifecycle-mutation-runner`；PR：[#98](https://github.com/yecays-ai/veil/pull/98)。
 文件仅：`scripts/check-lifecycle-test-mutations.mjs`、`package.json`、`docs/regression-contracts.md`、`docs/AUDIT_LEDGER.md`、本记录。
 独立检出按 API 文件清单恢复；基线树与 GitHub tree SHA `561f4a43ebc1b8610d96b691d1fcd2efa51e213d` 完全一致，未改其他检出的未提交工作。
 
@@ -34,11 +34,11 @@ Codex；分支 `fix/p6-lifecycle-mutation-runner`；PR 待创建。
 ## 尚未验证
 
 - GitHub Actions verify / Vercel：待 PR 最新提交检查；历史 verify 没分配 runner，不能视为通过，不空提交触发。
-- CodeRabbit 最新提交的正式 review 与评论串：待 PR 创建后查看。
+- CodeRabbit 最新提交的正式 review 与评论串：以 PR 最新 head 实际返回为准；尚未完成时不声称审查通过。
 - 本脚本仅三个保护，不代表全仓清理验证；依赖的匹配锚点未来变动会明确失败。
 - 浏览器/iPhone 资源释放不在范围；#97 浏览器测试、URL 释放/Foundation 补测、天气计时器、#36 均未修改。
 - CF-02 的一次不稳定测试观测未定位，不据此宣称业务缺陷。
 
 ## 下一步
 
-创建独立 PR，补本记录的 PR 链接；读取最新 head 的审查正文及评论串，如实报告 CI/预览。由 Lan 手动合并，不添加 automerge。
+读取 PR 最新 head 的审查正文及评论串，如实报告 CI/预览；如有本单范围内意见，按实际证据处理。由 Lan 手动合并，不添加 automerge。
