@@ -10,7 +10,7 @@ Character Presence 第一批 T4：界面接入。待审查，等 Lan 真机验�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-459m41`（T3 合并后从最新 main 重建）；PR 待创建后补链接；base `3bb7b58`。
+Claude；分支 `claude/project-thread-459m41`（T3 合并后从最新 main 重建）；PR [#112](https://github.com/yecays-ai/veil/pull/112)；base `3bb7b58`。
 新增：`lib/presence/view.ts`（纯函数：状态、Last Seen、下次变化、文字）、`lib/presence/live.ts`（Presence 的应用级读取点）、`components/use-character-presence.ts`（共享 hook）、`tests/presence-view.test.ts`、`tests/presence-ui.test.ts`、本记录。
 修改：`components/presence.tsx`、`components/contacts-pages.tsx`、`components/contact-info.tsx`、`components/character-social-profile.tsx`、`components/chat/chat-header.tsx`、`components/chat/chat-room.tsx`、`app/messages/chat.css`、`app/contacts/contact-info.css`、`tests/chat-header.test.ts`、`tests/contact-info.test.ts`（一条源码断言改指向新组件）。
 不拆 Header、不接 Messages 列表、不碰 Foundation 数据、不碰角色原有 `presence` 字段（保留，不再显示）。
