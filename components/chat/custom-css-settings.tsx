@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft } from "lucide-react";
 import { chatStorage } from "../../lib/chat/storage";
 import type { ChatSession } from "../../lib/chat/types";
+import { confirmDiscard } from "../leave-guard";
 import { CHAT_SESSION_CSS_EXAMPLE, validateSessionCSS } from "../../lib/chat/custom-css";
 
 export function CustomCSSSettings({ screenRef, session, onBack }: {
@@ -14,6 +15,7 @@ export function CustomCSSSettings({ screenRef, session, onBack }: {
   const [draft, setDraft] = useState(session.customCSS || "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const dirty = draft !== (session.customCSS || "");
   useEffect(() => {
     ownsEditor.current = true;
     return () => { ownsEditor.current = false; };
@@ -36,7 +38,7 @@ export function CustomCSSSettings({ screenRef, session, onBack }: {
   }
   return <section ref={screenRef} className="chat-info-screen chat-custom-css-screen" role="dialog" aria-modal="true" aria-label="Custom CSS">
     <header className="chat-info-header">
-      <button type="button" className="chat-info-back" aria-label="Back to Chat Info" onClick={onBack}>
+      <button type="button" className="chat-info-back" aria-label="Back to Chat Info" onClick={() => { if (confirmDiscard(dirty)) onBack(); }}>
         <ChevronLeft aria-hidden="true" />
       </button>
       <h1>自定义 CSS</h1>

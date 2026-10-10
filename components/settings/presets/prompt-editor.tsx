@@ -24,9 +24,11 @@ function CreatePromptEditor({ preset, library, backHref }: {
   preset: Preset; library: ReturnType<typeof usePresetLibrary>; backHref: string;
 }) {
   const [baseline] = useState(preset);
-  const [draft, setDraft] = useState<PresetPrompt>(() => ({
+  const [blank] = useState<PresetPrompt>(() => ({
     identifier: "", name: "", source: "prompt", role: "system", enabled: true, content: "",
   }));
+  const [draft, setDraft] = useState<PresetPrompt>(blank);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(blank);
   const { busy, error, run, change } = library;
   const router = useRouter();
   const operationOwner = useRef<object | null>(null);
@@ -38,7 +40,7 @@ function CreatePromptEditor({ preset, library, backHref }: {
   const readOnly = preset.builtIn;
   function update(patch: Partial<PresetPrompt>) { setDraft({ ...draft, ...patch } as PresetPrompt); }
   return <div className="preset-route" onClickCapture={(event) => {
-    if (!readOnly && (event.target as HTMLElement).closest("a") && !window.confirm("Discard unsaved changes?")) event.preventDefault();
+    if (!readOnly && dirty && (event.target as HTMLElement).closest("a") && !window.confirm("Discard unsaved changes?")) event.preventDefault();
   }}><PageShell className="settings-app preset-manager" title="New Prompt" backHref={backHref} backLabel="Back to Preset"
     rightAction={!readOnly && <button className="settings-header-action" disabled={busy} onClick={() => void run(async () => {
       const owner = operationOwner.current;

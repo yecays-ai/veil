@@ -53,12 +53,14 @@ export function ProfileHub() {
 export function UserProfilePage() {
   const { document, ready, commit } = useFoundation();
   const [editing, setEditing] = useState(false);
+  const [formDirty, setFormDirty] = useState(false);
   return (
     <PageShell
       title={C.profile.title}
       backHref="/profile"
       backLabel="Back to Profile"
       bodyClassName="foundation-page"
+      guardLeave={editing && formDirty}
     >
       {!ready ? (
         <p>{C.common.loading}</p>
@@ -68,6 +70,7 @@ export function UserProfilePage() {
           <ProfileForm
             initial={document.user}
             kind="user"
+            onDirtyChange={setFormDirty}
             onCancel={() => setEditing(false)}
             onSave={async (input) => {
               await commit((d) => saveUser(d, input as UserProfile));
@@ -146,6 +149,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
     [impact, setImpact] = useState<DeletionImpact | null>(null),
     [unfinished, setUnfinished] = useState<CleanupReport["failed"]>([]);
   const [baseline, setBaseline] = useState<Character | null>(null);
+  const [formDirty, setFormDirty] = useState(false);
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
@@ -213,6 +217,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
         {...back}
       backLabel="Back to Characters"
       bodyClassName="foundation-page"
+      guardLeave={(isNew || editing) && formDirty}
     >
       {isNew || editing ? (
         <>
@@ -220,6 +225,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
           <ProfileForm
             key={characterId ?? "new"}
             kind="character"
+            onDirtyChange={setFormDirty}
             initial={
               baseline ?? character ?? { ...normalizeCharacterInput(null), name: "" }
             }

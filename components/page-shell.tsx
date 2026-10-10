@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, type ReactNode } from "react";
+import { confirmDiscard, guardLinkClicks } from "./leave-guard";
 
 export function Chevron({ forward = false }: { forward?: boolean }) {
   return (
@@ -26,6 +27,7 @@ export function PageShell({
   backHref,
   backLabel,
   onBack,
+  guardLeave = false,
   rightAction,
   children,
   overlay,
@@ -36,6 +38,8 @@ export function PageShell({
   backHref: string;
   backLabel: string;
   onBack?: () => void;
+  /** The page holds an unsaved draft: leaving through its links or Back button asks first. */
+  guardLeave?: boolean;
   rightAction?: ReactNode;
   children: ReactNode;
   overlay?: ReactNode;
@@ -66,14 +70,14 @@ export function PageShell({
     };
   }, []);
   return (
-    <div className={`app-page ${className}`} ref={ref}>
+    <div className={`app-page ${className}`} ref={ref} onClickCapture={guardLinkClicks(guardLeave)}>
       <div className="app-page-shell" inert={!!overlay}>
         <header className="app-page-header" data-ui="header">
           <div className="app-page-header-safe-area" />
           <div className="app-page-header-content">
             {onBack ? <button type="button" className="app-page-back" aria-label={backLabel}
               style={{ border: 0, background: "none", color: "inherit", padding: 0, cursor: "pointer" }}
-              onClick={onBack}><Chevron /></button> :
+              onClick={() => { if (confirmDiscard(guardLeave)) onBack(); }}><Chevron /></button> :
               <Link className="app-page-back" href={backHref} aria-label={backLabel}><Chevron /></Link>}
             <h1 className="app-page-title">{title}</h1>
             <div className="app-page-header-right">{rightAction}</div>

@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  useEffect,
   useState,
   type FormEvent,
 } from "react";
+import { confirmDiscard } from "./leave-guard";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import {
   avatarSource,
@@ -23,12 +25,15 @@ export function ProfileForm({
   saveLabel = C.common.save,
   onSave,
   onCancel,
+  onDirtyChange,
 }: {
   initial: Input;
   kind: "user" | "character";
   saveLabel?: string;
   onSave: (profile: Input) => Promise<void>;
   onCancel?: () => void;
+  /** Reports whether the form holds edits that were not saved yet, so the page can guard leaving. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [draft, setDraft] = useState<Input>(initial);
   const [location, setLocation] = useState(initial.location?.label ?? "");
@@ -38,6 +43,13 @@ export function ProfileForm({
   );
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  // Empty text and null are the same value here (`text()` stores "" as null), so typing and erasing is clean.
+  const snapshot = () => JSON.stringify({ draft, location: location.trim(), avatar: avatar.trim(), age: age.trim() },
+    (_key, value) => value === "" ? null : value);
+  const [baseline, setBaseline] = useState(snapshot);
+  const dirty = snapshot() !== baseline;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
   function text(key: keyof Input, value: string) {
     setDraft((d) => ({ ...d, [key]: value || null }));
   }
@@ -62,6 +74,7 @@ export function ProfileForm({
             }
           : null,
       });
+      setBaseline(snapshot());
       setNotice(C.common.saved);
     } catch (e) {
       setNotice(e instanceof Error ? e.message : C.profile.saveError);
@@ -198,7 +211,7 @@ export function ProfileForm({
         <div className="foundation-actions">
           <button type="submit">{saveLabel}</button>
           {onCancel && (
-            <button type="button" onClick={onCancel}>
+            <button type="button" onClick={() => { if (confirmDiscard(dirty)) onCancel(); }}>
               {C.common.cancel}
             </button>
           )}

@@ -15,6 +15,7 @@ import { prefetchChatSession } from "../lib/chat/session-prefetch";
 import { measureChatDiagnostic, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 import { contactDisplayName, removeContact, updateContact } from "../lib/contact-storage";
 import { contactReturnTarget, type ContactReturnSource } from "../lib/contact-navigation";
+import { confirmDiscard, guardLinkClicks } from "./leave-guard";
 import "../app/contacts/contact-info.css";
 
 // While `pending`, the route query is still resolving and this instance is about to be replaced by
@@ -119,10 +120,11 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     <p role={contacts.error ? "alert" : undefined}>{!ready || !contacts.ready ? "Loading contact…" : contacts.error || "Contact not found."}</p>
     {contacts.error && <button type="button" className="settings-button" onClick={() => void contacts.retry()}>Retry</button>}
   </div>;
+  const dirty = !!draft && (draft.remark !== (draft.base.remark ?? "") || draft.heroBackground !== draft.base.heroBackground);
   const heroBackground = draft ? draft.heroBackground : contact.heroBackground;
   const name = contactDisplayName(draft ? { remark: draft.remark } : contact, character.name);
   const since = contact.createdAt > 0 && contact.createdAt <= 8.64e15 ? new Date(contact.createdAt) : null;
-  return <div className="contact-info">
+  return <div className="contact-info" onClickCapture={guardLinkClicks(dirty)}>
     <header className={`contact-info-hero${heroBackground ? " has-background" : ""}`}
       style={heroBackground ? { backgroundImage: `url(${JSON.stringify(heroBackground)})` } : undefined}>
       {draft && <>
@@ -139,7 +141,7 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
         {pending ? <span className="contact-back" aria-label="Back to Contacts" aria-disabled="true"><ChevronLeft /></span>
           : <Link className="contact-back" href={backHref} aria-label="Back to Contacts"><ChevronLeft /></Link>}
         {draft ? <div className="contact-edit-actions">
-          <button type="button" disabled={busy} onClick={cancelEdit}>Cancel</button>
+          <button type="button" disabled={busy} onClick={() => { if (confirmDiscard(dirty)) cancelEdit(); }}>Cancel</button>
           <button type="button" disabled={busy || imageReading || !!cropSource} onClick={() => void save()}>Save</button>
         </div> : <button type="button" className="contact-edit" disabled={pending} onClick={() => {
           setDraft({ remark: contact.remark ?? "", heroBackground: contact.heroBackground,
