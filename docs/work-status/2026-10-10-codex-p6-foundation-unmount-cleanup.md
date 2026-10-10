@@ -1,16 +1,16 @@
 # STATUS — 2026-10-10-codex-p6-foundation-unmount-cleanup
 
 更新人：Codex  
-更新时间：2026-10-10T15:43:00+08:00  
+更新时间：2026-10-10T15:50:00+08:00  
 发现范围：2026-10-10T07:40Z 通过 GitHub API 核实 `main` 为 #99 合并提交 `a42eda4d31fd52709d7b74d924f00dcd082d5ee5`；开放 PR（含 Draft）为 0；检查 Foundation 历史分支/工作记录，#44 已合并、#45 已关闭，当前没有 Foundation 文件冲突。工作树文件树与该 main 提交一致。
 
 ## 当前任务
 
-Foundation 卸载清理测试补强；本地验证完成，PR 待创建/审查。清理类测试总项保持“部分修复”。
+Foundation 卸载清理测试补强；本地验证完成，PR #100 已创建，等待 CodeRabbit 审查。清理类测试总项保持“部分修复”。
 
 ## 谁在改哪里
 
-Codex；`test/p6-foundation-unmount-cleanup`；只改 `tests/foundation-cross-tab.test.ts`、`docs/AUDIT_LEDGER.md` 和本记录。基线 `a42eda4d31fd52709d7b74d924f00dcd082d5ee5`。
+Codex；`test/p6-foundation-unmount-cleanup`；PR [#100](https://github.com/yecays-ai/veil/pull/100)；只改 `tests/foundation-cross-tab.test.ts`、`docs/AUDIT_LEDGER.md` 和本记录。基线 `a42eda4d31fd52709d7b74d924f00dcd082d5ee5`。
 
 ## 已完成
 
@@ -19,12 +19,13 @@ Codex；`test/p6-foundation-unmount-cleanup`；只改 `tests/foundation-cross-ta
 - 三个负对照分别临时移除编译产物中的 focus 清理、visibilitychange 清理、`channel.close()`；对应测试均以 exit 1 和断言失败，恢复后编译文件 SHA-256 与变异前一致。未改生产源码。
 - Node v24.21.0 / npm 11.19.0。目标测试 4/4 通过；`npm test` 最终 799/799（首次全量运行有一条无关 Chat 合约测试失败，隔离复跑通过，随后全量复跑通过）；`npm run typecheck` 通过；`npm run lint` 0 errors、6 条既有 warnings。
 - 本地实际更新 `docs/AUDIT_LEDGER.md` 板块六：Foundation 局部由未核销更新为已补测待审；保留 #26/#99 证据，清理类总项仍为“部分修复”，天气等仍保留。
+- 当前远端 head `928da8d496d7eda56c6008bff72091abf19c66d5` 的 Vercel 部署成功并生成本 head 预览；未做浏览器手动验收。Actions `verify` 两次均标记 failure，但对应 job `runner_id=0`、无 runner 名和 0 步骤，按“未运行”处理。CodeRabbit 讨论正文为“review in progress”，正式 review 与 inline threads 均为空。
 
 ## 尚未验证
 
 - JSDOM、fake-indexeddb 和 TestChannel 只证明本地自动化行为；真实 Chromium 多标签、真双窗口、iPhone 未在本任务验收。
-- PR 尚待创建；CodeRabbit、GitHub Actions `verify` 和当前 head 的 Vercel 预览状态待核查。CI 若无 runner/执行步骤按未运行记录。
+- CodeRabbit 尚未完成；PR 创建后若 work-status 更新产生新 head，需再次核对该最新 head 的完整评论、正式 review、inline threads、Actions 与 Vercel 状态。
 
 ## 下一步
 
-提交本任务独立 PR，核对最新 head 的 CodeRabbit 正文、正式 review 与 inline 评论；不自动合并，等待用户手动合并。
+等待 CodeRabbit 审查结果；核对最新 head 的完整正文、正式 review 与 inline 评论，之后再报告。PR 不自动合并，等待用户手动合并。
