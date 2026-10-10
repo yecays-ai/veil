@@ -20,6 +20,7 @@ const fails = (deps: CleanupDeps, step: CleanupStep): CleanupDeps => {
     case "widgets": return { ...deps, theme: { ...deps.theme, update: boom } };
     case "contact": return { ...deps, contacts: { ...deps.contacts, update: boom } };
     case "bindings": return { ...deps, bindings: { ...deps.bindings, update: boom } };
+    case "presence": return { ...deps, presence: { ...deps.presence, update: boom } };
     case "groups": return { ...deps, chat: Object.assign(Object.create(deps.chat as object), { removeGroupMembers: boom }) };
     case "conversation": return { ...deps, chat: Object.assign(Object.create(deps.chat as object), { deleteSession: boom }) };
   }
@@ -59,10 +60,12 @@ test("deleting a Character removes all of its data and leaves every other Charac
   assert.deepEqual(after.contacts.contacts.map((c) => c.characterId), [B]);
   assert.deepEqual(Object.keys(after.bindings.characters), [B]);
   assert.deepEqual(after.bindings.global, before.bindings.global);
+  assert.deepEqual(after.presence.characters.map((c) => c.characterId), [B]);
+  assert.deepEqual(after.presence.characters[0], before.presence.characters.find((c) => c.characterId === B), "another Character's presence data is untouched");
   assert.deepEqual(after.foundation.characters.map((c) => c.characterId), [B, C, D]);
   assert.equal(after.foundation.universe.relations.length, 1);
-  assert.deepEqual(without(after, "foundation", "theme", "contacts", "bindings", "sessions", "messages", "worldBookStates"),
-    without(before, "foundation", "theme", "contacts", "bindings", "sessions", "messages", "worldBookStates"));
+  assert.deepEqual(without(after, "foundation", "theme", "contacts", "bindings", "presence", "sessions", "messages", "worldBookStates"),
+    without(before, "foundation", "theme", "contacts", "bindings", "presence", "sessions", "messages", "worldBookStates"));
 });
 
 test("a group outlives its members: the last member leaving leaves an empty group with no dangling ID", async () => {
@@ -111,11 +114,11 @@ test("a Here & There remark still being generated cannot be written back after t
 });
 
 test("each cleanup step can fail on its own; the report names it, the rest finish, and a retry completes", async () => {
-  for (const step of ["widgets", "groups", "conversation", "contact", "bindings"] as const) {
+  for (const step of ["widgets", "groups", "conversation", "contact", "bindings", "presence"] as const) {
     const world = await buildWorld();
     const report = await deleteCharacterWithData({ characterId: A, commitFoundation: world.commitFoundation, deps: fails(world.deps, step) });
     assert.deepEqual(report.failed.map((f) => f.step), [step], step);
-    assert.equal(report.completed.length, 4, step);
+    assert.equal(report.completed.length, 5, step);
     assert.equal((await world.foundation.load()).characters.some((c) => c.characterId === A), false, "Foundation delete is already committed");
     const retried = await cleanupCharacterData(A, world.deps);
     assert.deepEqual(retried.failed, [], step);
@@ -175,6 +178,8 @@ test("historical orphans: only references without user content are cleared autom
   assert.deepEqual(after.contacts, before.contacts, "contact records hold user content and need confirmation");
   assert.equal(JSON.stringify(after.theme).includes(A), false);
   assert.equal(JSON.stringify(after.bindings).includes(A), false);
+  assert.equal(JSON.stringify(after.presence).includes(A), false);
+  assert.deepEqual(after.presence.characters.map((c) => c.characterId), [B]);
   assert.equal(JSON.stringify(after.sessions.filter((s) => (s as { type?: string }).type === "group")).includes(A), false);
   const settled = await world.snapshot();
   await reconcileInertReferences(world.foundation, world.deps);

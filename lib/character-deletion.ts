@@ -5,6 +5,7 @@ import { chatStorage, type ChatStorage } from "./chat/storage";
 import type { ChatSession } from "./chat/types";
 import { deleteCharacter } from "./foundation";
 import type { Character, FoundationDocument } from "./foundation-types";
+import { browserPresenceStorage, presenceRecord, removePresence, type PresenceDocument } from "./presence/storage";
 import { countHereThereReferences, unbindHereThereCharacters } from "./here-there-binding";
 import { browserThemeStorage } from "./theme-storage";
 import type { ThemeDocument } from "./theme-types";
@@ -15,6 +16,7 @@ export type CleanupDeps = {
   theme: Access<ThemeDocument>;
   contacts: Access<ContactDocument>;
   bindings: Access<BindingDocument>;
+  presence: Access<PresenceDocument>;
   chat: Pick<ChatStorage, "listSessions" | "countMessages" | "deleteSession" | "removeGroupMembers">;
 };
 /** `updateTheme` should be the mounted ThemeProvider's commit, so the open page sees the change. */
@@ -23,15 +25,16 @@ export function browserCleanupDeps(updateTheme: Access<ThemeDocument>["update"])
     theme: { load: () => browserThemeStorage.load(), update: updateTheme },
     contacts: { load: () => browserContactStorage.load(), update: (update) => browserContactStorage.transact(update) },
     bindings: { load: () => browserBindingStorage.load(), update: (update) => browserBindingStorage.transact(update) },
+    presence: { load: () => browserPresenceStorage.load(), update: (update) => browserPresenceStorage.transact(update) },
     chat: chatStorage,
   };
 }
 
-export type CleanupStep = "widgets" | "groups" | "conversation" | "contact" | "bindings";
+export type CleanupStep = "widgets" | "groups" | "conversation" | "contact" | "bindings" | "presence";
 export type CleanupReport = { completed: CleanupStep[]; failed: { step: CleanupStep; message: string }[] };
 export const CLEANUP_STEP_LABEL: Record<CleanupStep, string> = {
   widgets: "Here & There widget links and comments", groups: "group memberships",
-  conversation: "private conversation", contact: "contact record", bindings: "Binding overrides",
+  conversation: "private conversation", contact: "contact record", bindings: "Binding overrides", presence: "presence data",
 };
 const directSession = (sessions: readonly ChatSession[], characterId: string) =>
   sessions.find((session) => session.type !== "group" && session.characterId === characterId);
@@ -91,6 +94,10 @@ export async function cleanupCharacterData(characterId: string, deps: CleanupDep
   await run("bindings", async () => {
     if (characterId in (await deps.bindings.load()).characters)
       await deps.bindings.update((bindings) => withoutCharacterBindings(bindings, is));
+  });
+  await run("presence", async () => {
+    if (presenceRecord(await deps.presence.load(), characterId))
+      await deps.presence.update((presence) => removePresence(presence, characterId));
   });
   return report;
 }
