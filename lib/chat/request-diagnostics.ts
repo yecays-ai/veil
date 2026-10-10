@@ -2,7 +2,7 @@ import { isTruncatedReason, type PromptTurn } from "./types";
 import type { PromptDiagnosticSection } from "./prompt";
 
 export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue"
-  | "test-connection" | "here-there-comment" | "unclassified";
+  | "test-connection" | "here-there-comment" | "presence-routine" | "unclassified";
 export type CompletionRequestContext = { requestId: string; source: CompletionSource; sessionId?: string };
 export type CompletionUsage = {
   prompt_tokens: number | null;
