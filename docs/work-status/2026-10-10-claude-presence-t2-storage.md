@@ -1,7 +1,7 @@
 # STATUS — 2026-10-10-claude-presence-t2-storage
 
 更新人：Claude
-更新时间：2026-10-11T06:50:00+08:00
+更新时间：2026-10-11T07:00:00+08:00
 发现范围：2026-10-11T06:02+08:00 通过 GitHub API 查看开放 PR（无开放 PR，含草稿）；`origin/main` = `47828c9e4d7287a0b1afd143e510c1f7eea98be6`（含 T1 #109）；已读 `docs/AUDIT_LEDGER.md`（在线系统仍为“未启动、保持登记”，要求不动首帧布局；本工单不碰界面）。
 
 ## 当前任务
@@ -23,6 +23,12 @@ Claude；分支 `claude/project-thread-459m41`（T1 合并后从最新 main 重�
 - 删除角色时清理该角色的 Presence 数据（`cleanupCharacterData` 新增 `presence` 步骤），并加入历史遗留的惰性引用清理（`reconcileInertReferences`）。
 - 测试：新增 `tests/presence-storage.test.ts` 16 项（角色隔离、Last Seen 只增不减、未来处境与修剪、作息校验、损坏数据、无变化不写入、读失败/新版本不覆盖、写失败不丢数据、多标签页并发、写前复读重试、短暂活动结束后长期处境恢复、计划/取消/替换、结束当前与全部结束、Last Seen 回溯穿过两层、读取时限制为两层、上限与修剪不丢进行中的长期处境）；T1 另加 1 项长期处境恢复的回归测试；删除相关用例加入 Presence 并覆盖单步失败重试。
 - 本地检查（2026-10-11 +08:00，Node 24.21.0）：`npm test` 838/838 通过；`npm run typecheck` 通过；`npm run lint` 0 error / 3 条既有 warning；`npm run build` 通过；`git diff --check` 无输出。证据级别：自动化测试（内存 localStorage、fake IndexedDB），非真机。
+
+## 已知风险（Lan 2026-10-11 确认接受，不整改）
+
+- 适用条件：浏览器没有 Web Locks（`navigator.locks` 不可用），且两个标签页在“写前复读”与 `setItem` 之间的极短窗口内同时写 Presence。此时后写入者可能覆盖先写入者的更新（localStorage 没有原子比较并写入）。有 Web Locks 时不存在这个问题。
+- 不是完全无损：被覆盖的更新不保证能自动恢复。最近模拟在线时间可在下次打开时由作息与处境重新推算；但最近角色消息发送时间、处境、签名修改标记来自当时的事件，丢了不会自动补回（消息发送时间要等角色下一次发消息才会再被写入）。作息可由 T3 的生成流程重建。
+- 范围：Contacts 与 Bindings 使用同一写法并有同样限制，本工单不改动它们；若要整改应三个存储一起另开工单（CodeRabbit 在 #110 提出，Lan 选择保持现状）。
 
 ## 尚未验证
 
