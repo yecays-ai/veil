@@ -15,7 +15,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/chat-header-split`；PR：创建后补链接。涉及：`components/chat/chat-header.tsx`（新增，纯展示）、`components/chat/chat-room.tsx`（两处 `<header>` 换成 `<ChatHeader key="header" …/>`，删除不再使用的 `Link` 导入）、`tests/chat-header.test.ts`（新增）、`tests/chat-layout-ui.test.ts`、`tests/contact-info.test.ts`、`tests/root-app-navigation.test.ts`、`docs/AUDIT_LEDGER.md`。
+Claude；分支 `claude/chat-header-split`；PR：[#102](https://github.com/yecays-ai/veil/pull/102)。涉及：`components/chat/chat-header.tsx`（新增，纯展示）、`components/chat/chat-room.tsx`（两处 `<header>` 换成 `<ChatHeader key="header" …/>`，删除不再使用的 `Link` 导入）、`tests/chat-header.test.ts`（新增）、`tests/chat-layout-ui.test.ts`、`tests/contact-info.test.ts`、`tests/root-app-navigation.test.ts`、`docs/AUDIT_LEDGER.md`。
 
 ## 已完成
 
