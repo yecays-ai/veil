@@ -1,8 +1,8 @@
 # STATUS — 2026-10-10-claude-dry01-b01-b02-settings-record
 
 更新人：Claude
-更新时间：2026-10-10T11:55:00Z
-发现范围：观察时间 2026-10-10T11:45Z；基于 origin/main `df4d9f9`（#105 已合并，现场核实）；开放 PR：#106（DRY-01 PR-A，改 README/CSS/天气/Custom CSS 等死代码，不涉及 `lib/chat/storage.ts` 与 `here-there-comment.ts`，不改同一文件）；其他分支上的任务记录未逐一检查。依据：Lan 批准的 PR-B（对话中交付），审计为 DRY-01（报告未入库）。
+更新时间：2026-10-10T11:51:00Z
+发现范围：观察时间 2026-10-10T11:40Z；基于 origin/main `df4d9f9`（#105 已合并，现场核实）；开放 PR：#106（DRY-01 PR-A，改 README/CSS/天气/Custom CSS 等死代码，不涉及 `lib/chat/storage.ts` 与 `here-there-comment.ts`，不改同一文件）；其他分支上的任务记录未逐一检查。依据：Lan 批准的 PR-B（对话中交付），审计为 DRY-01（报告未入库）。
 
 总账 ID：新增（板块六 “DRY-01 PR-B”，对应审计 B01、B02）。
 这一刀只解决：B01 评论间隔常量有两份且测试断言的不是生产用的那份；B02 全局资料设置记录在多处各自拼装。
@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/dry01-b01-b02-settings-records`；PR：创建后补链接。涉及：`lib/chat/storage.ts`、`lib/here-there-comment.ts`（仅删两行常量）、`tests/here-there-comment.test.ts`（仅改导入）、`tests/global-profile-record.test.ts`（新增）、`docs/AUDIT_LEDGER.md`、本文件。
+Claude；分支 `claude/dry01-b01-b02-settings-records`；PR：[#107](https://github.com/yecays-ai/veil/pull/107)。涉及：`lib/chat/storage.ts`、`lib/here-there-comment.ts`（仅删两行常量）、`tests/here-there-comment.test.ts`（仅改导入）、`tests/global-profile-record.test.ts`（新增）、`docs/AUDIT_LEDGER.md`、本文件。
 
 ## 已完成
 
