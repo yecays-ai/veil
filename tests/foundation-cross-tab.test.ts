@@ -14,22 +14,27 @@ import { defaultFoundation, normalizeCharacterInput, type FoundationDocument } f
 
 class TestChannel {
   static rooms = new Map<string, Set<TestChannel>>();
+  static instances: TestChannel[] = [];
   static opened = 0;
   static closed = 0;
+  closed = false;
   onmessage: ((event: MessageEvent) => void) | null = null;
   constructor(private name: string) {
     TestChannel.opened++;
+    TestChannel.instances.push(this);
     const room = TestChannel.rooms.get(name) ?? new Set();
     room.add(this);
     TestChannel.rooms.set(name, room);
   }
   postMessage(data: unknown) {
+    if (this.closed) return;
     TestChannel.rooms.get(this.name)?.forEach((peer) => {
-      if (peer !== this) peer.onmessage?.({ data } as MessageEvent);
+      if (peer !== this && !peer.closed) peer.onmessage?.({ data } as MessageEvent);
     });
   }
   close() {
     TestChannel.closed++;
+    this.closed = true;
     TestChannel.rooms.get(this.name)?.delete(this);
   }
 }
@@ -44,7 +49,7 @@ const peter = () => ({ characterId: "peter", ...normalizeCharacterInput({ name: 
 test("Foundation create, update, delete and alternating cross-tab writes converge", async () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");
   Object.defineProperty(globalThis, "BroadcastChannel", { configurable: true, value: TestChannel });
-  TestChannel.rooms.clear(); TestChannel.opened = 0; TestChannel.closed = 0;
+  TestChannel.rooms.clear(); TestChannel.instances = []; TestChannel.opened = 0; TestChannel.closed = 0;
   try {
     const documents = new IndexedDBDocumentStorage(() => new IDBFactory());
     const a = createIndexedDBFoundationStorage(documents);
@@ -110,10 +115,78 @@ test("a failed Foundation transaction emits no local or cross-tab success notifi
   }
 });
 
+test("Foundation storage stops delivery when a channel closes and supports a fresh subscription", async () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, "BroadcastChannel");
+  Object.defineProperty(globalThis, "BroadcastChannel", { configurable: true, value: TestChannel });
+  TestChannel.rooms.clear(); TestChannel.instances = []; TestChannel.opened = 0; TestChannel.closed = 0;
+  let stopRetired: (() => void) | undefined;
+  let stopPeer: (() => void) | undefined;
+  let stopFresh: (() => void) | undefined;
+  try {
+    const documents = new IndexedDBDocumentStorage(() => new IDBFactory());
+    const left = createIndexedDBFoundationStorage(documents);
+    const right = createIndexedDBFoundationStorage(documents);
+    let retiredNotifications = 0;
+    let peerNotifications = 0;
+    let freshNotifications = 0;
+    stopRetired = left.subscribe(() => { retiredNotifications++; });
+    const retiredChannel = TestChannel.instances[0];
+    stopPeer = right.subscribe(() => { peerNotifications++; });
+
+    stopRetired();
+    assert.equal(retiredChannel.closed, true);
+    assert.equal(TestChannel.rooms.get("veil-foundation-v1")?.has(retiredChannel), false);
+    retiredChannel.postMessage({ type: "foundation-changed" });
+    assert.equal(peerNotifications, 0, "a closed channel must not deliver to a live peer");
+
+    await right.transact((current) => ({ ...current, user: { ...current.user, name: "Peer" } }));
+    await waitFor(() => peerNotifications === 1);
+    assert.equal(retiredNotifications, 0, "the retired subscription must not receive peer changes");
+
+    stopFresh = left.subscribe(() => { freshNotifications++; });
+    const freshChannel = TestChannel.instances[2];
+    assert.notEqual(freshChannel, retiredChannel);
+    await right.transact((current) => ({ ...current, user: { ...current.user, name: "Fresh" } }));
+    await waitFor(() => freshNotifications === 1);
+    assert.equal(retiredNotifications, 0);
+
+    stopFresh();
+    stopPeer();
+  } finally {
+    stopRetired?.();
+    stopFresh?.();
+    stopPeer?.();
+    if (original) Object.defineProperty(globalThis, "BroadcastChannel", original);
+    else Reflect.deleteProperty(globalThis, "BroadcastChannel");
+  }
+});
+
 test("Foundation Provider coalesces stale reads and cleans up every mount", async () => {
   const dom = new JSDOM("<div id='root'></div>", { url: "https://veil.test" });
   const previous = { window: globalThis.window, document: globalThis.document };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document });
+  const focusListeners = new Set<EventListenerOrEventListenerObject>();
+  const visibilityListeners = new Set<EventListenerOrEventListenerObject>();
+  const addWindowListener = dom.window.addEventListener.bind(dom.window);
+  const removeWindowListener = dom.window.removeEventListener.bind(dom.window);
+  const addDocumentListener = dom.window.document.addEventListener.bind(dom.window.document);
+  const removeDocumentListener = dom.window.document.removeEventListener.bind(dom.window.document);
+  dom.window.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+    if (type === "focus") focusListeners.add(listener);
+    addWindowListener(type, listener, options);
+  }) as typeof dom.window.addEventListener;
+  dom.window.removeEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => {
+    if (type === "focus") focusListeners.delete(listener);
+    removeWindowListener(type, listener, options);
+  }) as typeof dom.window.removeEventListener;
+  dom.window.document.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+    if (type === "visibilitychange") visibilityListeners.add(listener);
+    addDocumentListener(type, listener, options);
+  }) as typeof dom.window.document.addEventListener;
+  dom.window.document.removeEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions) => {
+    if (type === "visibilitychange") visibilityListeners.delete(listener);
+    removeDocumentListener(type, listener, options);
+  }) as typeof dom.window.document.removeEventListener;
   const original = {
     load: browserFoundationStorage.load,
     transact: browserFoundationStorage.transact,
@@ -125,6 +198,13 @@ test("Foundation Provider coalesces stale reads and cleans up every mount", asyn
   browserFoundationStorage.subscribe = (listener) => { callbacks.add(listener); return () => { callbacks.delete(listener); }; };
   const seen: string[] = [];
   function Probe() { const value = useFoundation(); if (value.ready) seen.push(value.document.user.name); return null; }
+  async function resolveRequest(index: number, name: string) {
+    const value = defaultFoundation(); value.user.name = name;
+    await act(async () => { requests[index].resolve(value); await settle(); });
+  }
+  async function dispatch(target: EventTarget, type: string) {
+    await act(async () => { target.dispatchEvent(new dom.window.Event(type)); await settle(); });
+  }
   try {
     const { createRoot } = await import("react-dom/client");
     const root = createRoot(dom.window.document.getElementById("root")!);
@@ -141,11 +221,32 @@ test("Foundation Provider coalesces stale reads and cleans up every mount", asyn
 
     await act(async () => { root.unmount(); });
     assert.equal(callbacks.size, 0);
+    assert.equal(focusListeners.size, 0);
+    assert.equal(visibilityListeners.size, 0);
+    const readsAfterUnmount = requests.length;
+    await dispatch(dom.window, "focus");
+    await dispatch(dom.window.document, "visibilitychange");
+    assert.equal(requests.length, readsAfterUnmount, "events after unmount must not start storage reads");
+
     const second = createRoot(dom.window.document.getElementById("root")!);
     await act(async () => { second.render(createElement(FoundationProvider, null, createElement(Probe))); });
     assert.equal(callbacks.size, 1);
+    assert.equal(focusListeners.size, 1);
+    assert.equal(visibilityListeners.size, 1);
+    await resolveRequest(2, "Remounted");
+    await dispatch(dom.window, "focus");
+    assert.equal(requests.length, 4, "the remounted focus listener should refresh storage");
+    await resolveRequest(3, "Focused");
+    await dispatch(dom.window.document, "visibilitychange");
+    assert.equal(requests.length, 5, "the remounted visibility listener should refresh storage");
+    await resolveRequest(4, "Visible");
+    await act(async () => { callbacks.forEach((listener) => listener()); await settle(); });
+    assert.equal(requests.length, 6, "the remounted storage subscription should receive notifications");
+    await resolveRequest(5, "Notified");
     await act(async () => { second.unmount(); });
     assert.equal(callbacks.size, 0);
+    assert.equal(focusListeners.size, 0);
+    assert.equal(visibilityListeners.size, 0);
   } finally {
     browserFoundationStorage.load = original.load;
     browserFoundationStorage.transact = original.transact;
