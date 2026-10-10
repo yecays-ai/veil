@@ -21,7 +21,8 @@ export default defineConfig({
   webServer: {
     command: `npm run build && npm run start -- --port ${port}`,
     url: `http://127.0.0.1:${port}`,
-    reuseExistingServer: true,
+    // Never reuse a running server: it may be an older build, and the test would then pass against the wrong code.
+    reuseExistingServer: false,
     timeout: 240_000,
   },
 });

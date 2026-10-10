@@ -15,7 +15,7 @@ Claude；分支 `claude/p6-browser-sync-smoke`；PR：[#97](https://github.com/y
 ## 已完成
 
 - 两条测试（同一 BrowserContext 的两个真实页面，不手动派发事件，不替换 BroadcastChannel/IndexedDB，不调用模型）：Chat 一页发送、另一页自动出现且只出现一次，并核对 `veil-chat-v2` 的 messages；Foundation 一页给 Character 改名、另一页列表自动更新，并核对 `veil-core-v1` 的 documents。每个测试用全新 context，不碰真实数据。
-- 负对照：临时把 `lib/chat/storage.ts` 与 `lib/foundation-storage.ts` 的 postMessage 关掉并重新构建，两条测试均失败（消息不出现、改名不出现）；恢复后 2/2 通过。关掉前先发现 `reuseExistingServer` 会复用旧构建而假通过，已杀掉旧进程后重做。
+- 负对照：临时把 `lib/chat/storage.ts` 与 `lib/foundation-storage.ts` 的 postMessage 关掉并重新构建，两条测试均失败（消息不出现、改名不出现）；恢复后 2/2 通过。关掉前先发现 `reuseExistingServer` 会复用旧构建而假通过，已杀掉旧进程后重做；CodeRabbit 同样指出这一点，已把 `reuseExistingServer` 改为 false（端口被占用时直接失败，不再复用旧服务器）。
 - 检查（Node 24.21.0，本地）：`npm run test:browser` 2/2（Chromium 1194，本机预装）；`npm test` 797/797；`npm run typecheck` 通过；`npx eslint app components lib tests scripts e2e playwright.config.ts` 0 error（6 条既有 warning）；`next build` 在 Playwright 的 webServer 中成功。证据级别：自动化浏览器测试（本地）。
 
 ## 尚未验证
