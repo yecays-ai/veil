@@ -8,7 +8,8 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "tsc --project tsconfig.tests.json && node scripts/run-tests.mjs"
+    "test": "tsc --project tsconfig.tests.json && node scripts/run-tests.mjs",
+    "test:browser": "playwright test"
   },
   "engines": {
     "node": "24.x"
@@ -20,6 +21,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/jsdom": "27.0.0",
     "@types/node": "^24",
     "@types/react": "^19",
