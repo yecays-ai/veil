@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
-import { HERE_THERE_COMMENT_MAX_DELAY_MS, HERE_THERE_COMMENT_MIN_DELAY_MS, HERE_THERE_COMMENT_RETRY_DELAY_MS, HereThereCommentAttemptGuard, HereThereGenerationOwner, hereThereCommentNeedsRefresh,
+import { HERE_THERE_COMMENT_MAX_DELAY_MS, HERE_THERE_COMMENT_MIN_DELAY_MS } from "../lib/chat/storage";
+import { HERE_THERE_COMMENT_RETRY_DELAY_MS, HereThereCommentAttemptGuard, HereThereGenerationOwner, hereThereCommentNeedsRefresh,
   ensureHereThereComment, startHereThereCommentAttempt } from "../lib/here-there-comment";
 import { bindHereThereCharacter } from "../lib/here-there-binding";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";

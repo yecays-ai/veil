@@ -16,8 +16,6 @@ import { createCompletionRequestContext, logPromptSummary } from "./chat/request
 import { startHereThereDisposition, type HereThereOutcome, type HereThereStage } from "./here-there-diagnostics";
 import type { WidgetInstance } from "./widget-types";
 
-export const HERE_THERE_COMMENT_MIN_DELAY_MS = 60 * 60 * 1000;
-export const HERE_THERE_COMMENT_MAX_DELAY_MS = 5 * 60 * 60 * 1000;
 export const HERE_THERE_COMMENT_RETRY_DELAY_MS = 5 * 60 * 1000;
 
 export class HereThereCommentAttemptGuard {
