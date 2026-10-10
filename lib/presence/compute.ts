@@ -142,11 +142,16 @@ function zoneOffset(instant: number, zone: string) {
   const p = parts(instant, zone);
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(instant / 1000) * 1000;
 }
-/** The instant of a local wall-clock minute (may exceed one day) on a local date in `zone`. */
+/**
+ * The instant of a local wall-clock minute (may exceed one day) on a local date in `zone`. A repeated
+ * time (DST fall-back) resolves to the earlier instant; a skipped time (spring-forward) moves forward
+ * by the gap, so a block's edges keep their order across a transition.
+ */
 function localInstant(date: LocalDate, minute: number, zone: string) {
   const naive = Date.UTC(date.year, date.month - 1, date.day, 0, minute);
-  const guess = naive - zoneOffset(naive, zone);
-  return naive - zoneOffset(guess, zone);
+  const candidates = [naive - zoneOffset(naive - DAY, zone), naive - zoneOffset(naive + DAY, zone)];
+  const valid = candidates.filter((instant) => instant + zoneOffset(instant, zone) === naive);
+  return valid.length ? Math.min(...valid) : Math.max(...candidates);
 }
 
 /** Stable integer in [-spread, spread] from a string seed (FNV-1a). */

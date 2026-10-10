@@ -40,6 +40,17 @@ test("routine edges follow daylight saving changes in the Character's timezone",
   assert.equal(effectivePresence(ny, at("2026-03-06T14:00:00Z")).status, "busy");
   assert.equal(effectivePresence(ny, at("2026-03-09T13:00:00Z")).status, "busy");
   assert.equal(effectivePresence(ny, at("2026-03-09T12:59:00Z")).status, "online");
+  // A block ending inside the skipped hour (02:00–03:00 does not exist on 2026-03-08) keeps its order:
+  // 01:50 EST is 06:50Z and the skipped 02:10 moves forward to 03:10 EDT, 07:10Z.
+  const gap = inputs({ timezone: "America/New_York", routine: { defaultStatus: "online", jitterMinutes: 0,
+    blocks: [{ days: EVERY_DAY, startMinute: 110, endMinute: 130, status: "busy" }] } });
+  assert.equal(effectivePresence(gap, at("2026-03-08T06:55:00Z")).status, "busy");
+  assert.equal(nextPresenceChange(gap, at("2026-03-08T06:00:00Z")), at("2026-03-08T06:50:00Z"));
+  assert.equal(nextPresenceChange(gap, at("2026-03-08T06:50:00Z")), at("2026-03-08T07:10:00Z"));
+  // A repeated hour (01:00–02:00 happens twice on 2026-11-01) resolves to its first occurrence.
+  const repeat = inputs({ timezone: "America/New_York", routine: { defaultStatus: "online", jitterMinutes: 0,
+    blocks: [{ days: EVERY_DAY, startMinute: 90, endMinute: 180, status: "busy" }] } });
+  assert.equal(nextPresenceChange(repeat, at("2026-11-01T04:00:00Z")), at("2026-11-01T05:30:00Z"));
 });
 
 test("without a routine the Character reads offline, and a later block wins an overlap", () => {
