@@ -119,10 +119,10 @@ test("a save during generation triggers one follow-up for the new basis, and con
     if (first) { first = false; await gate; }
     yield goodReply;
   };
-  const running = ensureRoutineAfterSave(ID, undefined, f.deps);
+  const running = ensureRoutineAfterSave(ID, f.deps);
   await new Promise((resolve) => setTimeout(resolve, 0));
   f.edit({ occupation: "pilot" });
-  const second = ensureRoutineAfterSave(ID, undefined, f.deps);
+  const second = ensureRoutineAfterSave(ID, f.deps);
   assert.equal(await second, "busy");
   release();
   assert.equal(await running, "generated");
@@ -139,15 +139,15 @@ test("a save during the follow-up request is checked too", async () => {
     yield goodReply;
   };
   const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
-  const first = ensureRoutineAfterSave(ID, undefined, f.deps);
+  const first = ensureRoutineAfterSave(ID, f.deps);
   await tick();
   f.edit({ occupation: "pilot" });
-  void ensureRoutineAfterSave(ID, undefined, f.deps);
+  void ensureRoutineAfterSave(ID, f.deps);
   gates.shift()!();
   await tick(); await tick();
   assert.equal(f.state.requests.length, 2);
   f.edit({ occupation: "chef" });
-  void ensureRoutineAfterSave(ID, undefined, f.deps);
+  void ensureRoutineAfterSave(ID, f.deps);
   gates.shift()!();
   await tick(); await tick();
   assert.equal(f.state.requests.length, 3);

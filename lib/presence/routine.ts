@@ -137,10 +137,11 @@ export async function ensureRoutine(characterId: string, signal?: AbortSignal, d
   }
 }
 /** Runs `ensureRoutine` and repeats it while another save arrives during a request; each repeat needs a new save. */
-export async function ensureRoutineAfterSave(characterId: string, signal?: AbortSignal, deps: Services = services): Promise<RoutineOutcome> {
-  let outcome = await ensureRoutine(characterId, signal, deps);
+export async function ensureRoutineAfterSave(characterId: string, deps: Services = services): Promise<RoutineOutcome> {
+  // No caller signal: a repeat belongs to a later save, so cancelling the first request must not drop it.
+  let outcome = await ensureRoutine(characterId, undefined, deps);
   // A "busy" call left its marker for the wrapper that is already running; only that one repeats.
   if (outcome === "busy") return outcome;
-  while (rerun.delete(characterId) && !signal?.aborted) outcome = await ensureRoutine(characterId, signal, deps);
+  while (rerun.delete(characterId)) outcome = await ensureRoutine(characterId, undefined, deps);
   return outcome;
 }
