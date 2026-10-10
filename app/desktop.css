@@ -68,6 +68,10 @@
   padding: 10px 16px;
   overflow-wrap: anywhere;
 }
+.home-edit-menu button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 .home-add-app-picker {
   pointer-events: auto;
   position: absolute;
