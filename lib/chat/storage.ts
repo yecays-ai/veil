@@ -22,12 +22,29 @@ export const CHAT_DATABASE_VERSION = 1;
 const STORES = ["sessions", "messages", "chatSettings", "assets", "worldBookStates"];
 const CHAT_BACKGROUND_SETTINGS_ID = "chat-background";
 const GLOBAL_PROFILE_SETTINGS_ID = "global-profile-settings";
-const COMMENT_MIN_DELAY_MS = 60 * 60 * 1000;
-const COMMENT_MAX_DELAY_MS = 5 * 60 * 60 * 1000;
+// The window the next Here & There opportunity is drawn from; the schedule lives here, so this is its only definition.
+export const HERE_THERE_COMMENT_MIN_DELAY_MS = 60 * 60 * 1000;
+export const HERE_THERE_COMMENT_MAX_DELAY_MS = 5 * 60 * 60 * 1000;
 function randomDelay(random: () => number) {
   const value = random();
   const unit = Number.isFinite(value) ? Math.min(0.999999999, Math.max(0, value)) : 0.5;
-  return COMMENT_MIN_DELAY_MS + Math.floor(unit * (COMMENT_MAX_DELAY_MS - COMMENT_MIN_DELAY_MS));
+  return HERE_THERE_COMMENT_MIN_DELAY_MS + Math.floor(unit * (HERE_THERE_COMMENT_MAX_DELAY_MS - HERE_THERE_COMMENT_MIN_DELAY_MS));
+}
+
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+// The one place that builds the stored global-profile record. Every writer starts from the saved record, so a
+// field it does not change is carried over (and normalised) here rather than re-spelled in each writer.
+function globalProfileRecord(
+  current: Partial<GlobalProfileSettings> | undefined,
+  change: Partial<Pick<GlobalProfileSettings, "bubbleTiming" | "hereThereEnabled" | "nextCommentAt">> = {},
+): GlobalProfileSettings {
+  return { id: GLOBAL_PROFILE_SETTINGS_ID,
+    bubbleTiming: change.bubbleTiming ?? normalizeBubbleTiming(current?.bubbleTiming),
+    hereThereEnabled: change.hereThereEnabled ?? (current?.hereThereEnabled !== false),
+    nextCommentAt: change.nextCommentAt !== undefined ? change.nextCommentAt : finiteOrNull(current?.nextCommentAt) };
 }
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
@@ -649,11 +666,7 @@ export class ChatStorage {
     return this.transaction("readonly", async (tx) => {
       const saved: Partial<GlobalProfileSettings> | undefined = await request(
         tx.objectStore("chatSettings").get(GLOBAL_PROFILE_SETTINGS_ID));
-      return { id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleTiming: normalizeBubbleTiming(saved?.bubbleTiming),
-        hereThereEnabled: saved?.hereThereEnabled !== false,
-        nextCommentAt: typeof saved?.nextCommentAt === "number" && Number.isFinite(saved.nextCommentAt)
-          ? saved.nextCommentAt : null };
+      return globalProfileRecord(saved);
     }, ["chatSettings"]);
   }
 
@@ -665,11 +678,8 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
-      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleTiming: { ...normalizeBubbleTiming(current?.bubbleTiming), ...patch },
-        hereThereEnabled: current?.hereThereEnabled !== false,
-        nextCommentAt: typeof current?.nextCommentAt === "number" && Number.isFinite(current.nextCommentAt)
-          ? current.nextCommentAt : null }));
+      await request(table.put(globalProfileRecord(current,
+        { bubbleTiming: { ...normalizeBubbleTiming(current?.bubbleTiming), ...patch } })));
     }, ["chatSettings"], { domain: "global-profile" });
   }
 
@@ -694,12 +704,10 @@ export class ChatStorage {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
       const enabled = current?.hereThereEnabled !== false;
-      const nextCommentAt = current?.nextCommentAt;
-      const valid = typeof nextCommentAt === "number" && Number.isFinite(nextCommentAt);
-      const next = !enabled ? null : valid ? nextCommentAt! : now + randomDelay(random);
-      const saved = { id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
-        hereThereEnabled: enabled, nextCommentAt: next };
+      const nextCommentAt = finiteOrNull(current?.nextCommentAt);
+      const valid = nextCommentAt !== null;
+      const saved = globalProfileRecord(current,
+        { nextCommentAt: !enabled ? null : valid ? nextCommentAt : now + randomDelay(random) });
       if (!valid || !current) {
         await request(table.put(saved));
         scheduled = true;
@@ -712,10 +720,8 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
-      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
-        hereThereEnabled: enabled,
-        nextCommentAt: enabled ? now + randomDelay(random) : null }));
+      await request(table.put(globalProfileRecord(current,
+        { hereThereEnabled: enabled, nextCommentAt: enabled ? now + randomDelay(random) : null })));
     }, ["chatSettings"], { domain: "global-profile" });
   }
 
@@ -723,12 +729,11 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
-      if (current?.hereThereEnabled === false || typeof current?.nextCommentAt !== "number"
-        || !Number.isFinite(current.nextCommentAt) || current.nextCommentAt > now) return null;
+      const due = finiteOrNull(current?.nextCommentAt);
+      if (current?.hereThereEnabled === false || due === null || due > now) return null;
       const claimedNextCommentAt = now + randomDelay(random);
-      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleTiming: normalizeBubbleTiming(current.bubbleTiming),
-        hereThereEnabled: true, nextCommentAt: claimedNextCommentAt }));
+      await request(table.put(globalProfileRecord(current,
+        { hereThereEnabled: true, nextCommentAt: claimedNextCommentAt })));
       return claimedNextCommentAt;
     }, ["chatSettings"], (claimed) => claimed !== null ? { domain: "global-profile" } : null);
   }
@@ -738,9 +743,8 @@ export class ChatStorage {
       const table = tx.objectStore("chatSettings");
       const current = await request(table.get(GLOBAL_PROFILE_SETTINGS_ID)) as Partial<GlobalProfileSettings> | undefined;
       if (current?.hereThereEnabled === false || current?.nextCommentAt !== expectedNextCommentAt) return false;
-      await request(table.put({ id: GLOBAL_PROFILE_SETTINGS_ID,
-        bubbleTiming: normalizeBubbleTiming(current?.bubbleTiming),
-        hereThereEnabled: true, nextCommentAt: now + delayMs }));
+      await request(table.put(globalProfileRecord(current,
+        { hereThereEnabled: true, nextCommentAt: now + delayMs })));
       return true;
     }, ["chatSettings"], (scheduled) => scheduled ? { domain: "global-profile" } : null);
   }
