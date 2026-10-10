@@ -25,7 +25,8 @@ use Request Reply (even with an empty composer). The engine atomically marks
 all unrequested user messages with the new assistant message's request ID before
 calling the API. An already claimed batch cannot generate again, across reloads
 or concurrent tabs. While a reply is in progress Send is rejected ("A reply is already
-in progress."), so new messages wait until it ends. Stop preserves partial output.
+in progress."); the user has to wait until it ends before sending another message,
+and nothing is queued. Stop preserves partial output.
 Failed/stopped batches remain consumed; the chat offers a Retry action for a failed
 or stopped reply and for a failed draft. Missing/invalid API configuration
 is checked before a batch is claimed.

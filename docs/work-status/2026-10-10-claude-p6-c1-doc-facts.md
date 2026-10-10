@@ -22,7 +22,7 @@ Claude；分支 `claude/p6-c1-doc-facts`；PR：[#96](https://github.com/yecays-
 ## 尚未验证
 
 - Chat Core 与 README 其余段落未逐条核对，可能仍有落后内容。
-- GitHub Actions `verify` 与 Vercel 预览：结果以 PR 为准；未运行成功的逐项记为“未运行”，不算通过。
+- GitHub Actions `verify` 与 Vercel 预览：结果以 PR 为准。`verify` 已失败（几秒内失败、没有步骤、没分配到 runner、日志取不到，原因不明），按“未运行”处理，不算通过；Vercel 部署成功，但预览页面本身没人打开过。
 
 ## 下一步
 
