@@ -1,7 +1,7 @@
 # STATUS — 2026-10-10-claude-dry01-dead-code
 
 更新人：Claude
-更新时间：2026-10-10T11:30:00Z
+更新时间：2026-10-10T11:32:00Z
 发现范围：观察时间 2026-10-10T11:25Z；基于 origin/main `16fdafc`（#104 已合并，现场核实）；开放 PR：#105（CI 触发成本，仅改 `.github/workflows/ci.yml` 与文档，不与本任务改同一文件，但两者都在 `docs/AUDIT_LEDGER.md` 不同位置新增条目）；其他分支上的任务记录未逐一检查。依据：Lan 批准的“PR-A”（对话中交付），审计为 DRY-01（Opus 5.5，报告未入库）。
 
 总账 ID：新增（板块六 “DRY-01 全仓重复实现与废弃代码审计”；关联 C1 的休眠接口决定、M3（#25）、S11 无关）。
@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/dry01-dead-code`；PR：创建后补链接。涉及：`config/character.ts`（删除）、`lib/participant-config.ts`、`lib/weather.ts`、`lib/chat/custom-css.ts`、`components/chat/use-chat-background.ts`（仅删两行 eslint-disable）、`app/appearance.css`、`app/desktop.css`、`app/foundation.css`、`app/globals.css`、`app/messages/chat.css`、`README.md`、`tests/chat-custom-css.test.ts`、`tests/custom-css-isolation.test.ts`、`tests/desktop.test.ts`、`tests/network-timeouts.test.ts`、`tests/widget-weather.test.ts`、`tests/chat-initial-render.test.ts`、`docs/AUDIT_LEDGER.md`、本文件。
+Claude；分支 `claude/dry01-dead-code`；PR：[#106](https://github.com/yecays-ai/veil/pull/106)。涉及：`config/character.ts`（删除）、`lib/participant-config.ts`、`lib/weather.ts`、`lib/chat/custom-css.ts`、`components/chat/use-chat-background.ts`（仅删两行 eslint-disable）、`app/appearance.css`、`app/desktop.css`、`app/foundation.css`、`app/globals.css`、`app/messages/chat.css`、`README.md`、`tests/chat-custom-css.test.ts`、`tests/custom-css-isolation.test.ts`、`tests/desktop.test.ts`、`tests/network-timeouts.test.ts`、`tests/widget-weather.test.ts`、`tests/chat-initial-render.test.ts`、`docs/AUDIT_LEDGER.md`、本文件。
 
 ## 已完成
 
