@@ -1,7 +1,7 @@
 # STATUS — 2026-10-10-codex-p6-foundation-unmount-cleanup
 
 更新人：Codex  
-更新时间：2026-10-10T15:50:00+08:00  
+更新时间：2026-10-10T15:55:00+08:00  
 发现范围：2026-10-10T07:40Z 通过 GitHub API 核实 `main` 为 #99 合并提交 `a42eda4d31fd52709d7b74d924f00dcd082d5ee5`；开放 PR（含 Draft）为 0；检查 Foundation 历史分支/工作记录，#44 已合并、#45 已关闭，当前没有 Foundation 文件冲突。工作树文件树与该 main 提交一致。
 
 ## 当前任务
@@ -19,12 +19,12 @@ Codex；`test/p6-foundation-unmount-cleanup`；PR [#100](https://github.com/yeca
 - 三个负对照分别临时移除编译产物中的 focus 清理、visibilitychange 清理、`channel.close()`；对应测试均以 exit 1 和断言失败，恢复后编译文件 SHA-256 与变异前一致。未改生产源码。
 - Node v24.21.0 / npm 11.19.0。目标测试 4/4 通过；`npm test` 最终 799/799（首次全量运行有一条无关 Chat 合约测试失败，隔离复跑通过，随后全量复跑通过）；`npm run typecheck` 通过；`npm run lint` 0 errors、6 条既有 warnings。
 - 本地实际更新 `docs/AUDIT_LEDGER.md` 板块六：Foundation 局部由未核销更新为已补测待审；保留 #26/#99 证据，清理类总项仍为“部分修复”，天气等仍保留。
-- 当前远端 head `928da8d496d7eda56c6008bff72091abf19c66d5` 的 Vercel 部署成功并生成本 head 预览；未做浏览器手动验收。Actions `verify` 两次均标记 failure，但对应 job `runner_id=0`、无 runner 名和 0 步骤，按“未运行”处理。CodeRabbit 讨论正文为“review in progress”，正式 review 与 inline threads 均为空。
+- PR 创建后的首次 head `928da8d496d7eda56c6008bff72091abf19c66d5` 曾有成功 Vercel 预览；该预览不代表更新后的 head。最近观察的 head `5c7104142b45807702e6b272bada5a077fdac1e8` 的 Vercel 部署因每日 100 次部署限额失败（24 小时后重试），当前 head 无预览，未做浏览器手动验收。Actions `verify` 两次均标记 failure，但对应 job `runner_id=0`、无 runner 名和 0 步骤，按“未运行”处理。CodeRabbit 自动摘要仍在处理较早的 `928da8d`；正式 review 与 inline threads 为空，尚未看到对最新 head 的审查结论。
 
 ## 尚未验证
 
 - JSDOM、fake-indexeddb 和 TestChannel 只证明本地自动化行为；真实 Chromium 多标签、真双窗口、iPhone 未在本任务验收。
-- CodeRabbit 尚未完成；PR 创建后若 work-status 更新产生新 head，需再次核对该最新 head 的完整评论、正式 review、inline threads、Actions 与 Vercel 状态。
+- CodeRabbit 尚未完成；本记录更新会推进 PR head，需再次核对最新 head 的完整评论、正式 review、inline threads、Actions 与 Vercel 状态。
 
 ## 下一步
 
