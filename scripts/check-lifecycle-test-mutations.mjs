@@ -1,7 +1,7 @@
-// Run after npm test. Mutate only the production module loaded by an isolated
+// Run with npm run test:mutations. Mutate only the production module loaded by an isolated
 // test process; neither source files nor compiled files are rewritten.
 import assert from "node:assert/strict";
-import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -10,7 +10,9 @@ const compiled = resolve("node_modules/.cache/veil-desktop-tests");
 const cases = [
   { name: "late background ownership", module: "components/chat/use-chat-background.js",
     test: "chat-first-paint.test.js", pattern: "chat.mounted-character-navigation",
-    from: "if (!active || !blob)", to: "if (!blob)",
+    // Remove this early return only; markReady has a separate active guard.
+    from: "return; // a late read from a route that has left must not create an object URL",
+    to: "; // late-read ownership protection removed",
     assertion: "a late asset from the unmounted route never creates an object URL" },
   { name: "timer cancellation", module: "lib/chat/bubble-pacing.js",
     test: "bubble-pacing.test.js", pattern: "chat.mounted-bubble-timer-route-cleanup",
@@ -33,8 +35,13 @@ function run(check, preload) {
 }
 try {
   for (const check of cases) {
+    const source = readFileSync(resolve(compiled, check.module), "utf8");
+    const matches = source.split(check.from).length - 1;
+    assert.equal(matches, 1,
+      `${check.name}: mutation target must match exactly once in ${check.module}; found ${matches}`);
     const healthy = run(check);
     assert.equal(healthy.status, 0, healthy.output);
+    assert.ok(healthy.output.includes(check.pattern), `${check.name}: target test must execute\n${healthy.output}`);
     const preload = join(directory, "mutation.cjs");
     writeFileSync(preload, `
 const fs = require("node:fs"), Module = require("node:module");
@@ -50,12 +57,13 @@ Module._extensions[".js"] = (module, filename) => {
 };
 `);
     const broken = run(check, preload);
-    assert.equal(broken.status, 1, broken.output);
-    assert.ok(broken.output.includes("VEIL_MUTATION_APPLIED"), "production mutation must execute");
-    assert.ok(broken.output.includes(check.assertion), broken.output);
+    assert.equal(broken.status, 1, `${check.name}: mutated test must fail with exit 1\n${broken.output}`);
+    assert.ok(broken.output.includes("VEIL_MUTATION_APPLIED"), `${check.name}: production mutation must execute\n${broken.output}`);
+    assert.ok(broken.output.includes(check.assertion), `${check.name}: expected protection assertion must fail\n${broken.output}`);
     const restored = run(check);
     assert.equal(restored.status, 0, restored.output);
-    console.log(`${check.name}: healthy PASS, injected protection failure DETECTED, restored PASS`);
+    assert.ok(restored.output.includes(check.pattern), `${check.name}: restored test must execute\n${restored.output}`);
+    console.log(`${check.name}: healthy PASS (exit 0), mutated EXPECTED_FAIL (exit 1), restored PASS (exit 0)`);
   }
 } finally {
   rmSync(directory, { recursive: true, force: true });

@@ -6,6 +6,12 @@ assertion failures. Its additional reporter writes
 `node_modules/.cache/veil-regression-contracts.json`; existing CI uploads this file
 as `lifecycle-regression-contracts`, including when a test fails.
 
+Run `npm run test:mutations` manually to compile current sources and check the
+late-background, bubble-timer and disabled-Switch protections. Each check must
+pass normally, fail with its protection removed in an isolated child process,
+and pass after restoration. Missing or ambiguous targets fail explicitly; source
+and compiled files are never mutated. This command is not part of CI.
+
 Use `regressionContract(id, category, title, check)` from
 `tests/regression-contract.ts` to mark a demonstrated lifecycle invariant. IDs must
 be unique across the repository and stable across title/file changes. Categories
