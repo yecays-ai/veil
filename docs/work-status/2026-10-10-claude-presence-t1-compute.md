@@ -17,7 +17,9 @@ Claude；分支 `claude/project-thread-459m41`；PR 待创建；base `928a565`�
 
 - 纯计算：有效状态（处境优先于作息）、下一次状态变化时刻、按作息与处境推算的最近在线时间（回溯 7 天有界）、处境规范化（开始不早于当前、必有结束、缺省 6 小时、上限 14 天）。
 - 作息按 Character 时区计算，支持跨午夜时段与夏令时；每日波动由“Character + 本地日期 + 时段”固定种子决定，幅度不超过时段长度的四分之一。
-- `tests/presence-compute.test.ts` 10 项测试（结果见 PR）。
+- `tests/presence-compute.test.ts` 10 项测试。
+- 本地检查（2026-10-11 +08:00，提交 `b572936`）：Node 24.21.0 下 `npm test` 821/821 通过；`npm run typecheck` 通过；`npm run lint` 0 error / 3 条既有 warning（均不在本次文件）；`npm run build` 通过（Node 22.22.0）；`git diff --check` 无输出。
+- 环境说明：本机默认 Node 22.22.0 跑 `npm test` 时 `regex-worldbook-storage-safety` 两条用例失败（Node 22 没有 `navigator.locks`），与本改动无关；仓库要求 Node 24，换 Node 24 后全部通过。
 
 ## 尚未验证
 
