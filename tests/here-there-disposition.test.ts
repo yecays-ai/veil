@@ -152,11 +152,17 @@ test("dispositions are development-only, carry no remark text or ids, never brea
   const text = JSON.stringify(loud.events);
   for (const secret of ["Wish you were here", "New York", "dry wit", "test", "example.test"]) assert.equal(text.includes(secret), false, secret);
   const broken = fixture();
-  const originalInfo = console.info;
-  console.info = (() => { throw new Error("logging is broken"); }) as typeof console.info;
+  const originalInfo = console.info, originalEnv = process.env.NODE_ENV;
+  let called = false;
+  Object.assign(process.env, { NODE_ENV: "development" });
+  console.info = (() => { called = true; throw new Error("logging is broken"); }) as typeof console.info;
   try {
     await ensureHereThereComment(broken.theme().current.widgets[0], broken.context, broken.commit, broken.services);
-  } finally { console.info = originalInfo; }
+  } finally {
+    console.info = originalInfo;
+    if (originalEnv === undefined) Reflect.deleteProperty(process.env, "NODE_ENV"); else Object.assign(process.env, { NODE_ENV: originalEnv });
+  }
+  assert.equal(called, true, "the logging path was actually exercised");
   assert.equal(broken.theme().current.widgets[0].config.comment?.text, "Wish you were here.");
   const logs: unknown[] = [];
   const info = console.info, env = process.env.NODE_ENV;
