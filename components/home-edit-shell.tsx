@@ -34,13 +34,14 @@ export function HomeEditShell({ onDone, onAddApp, availableApps, disabled }: {
       </div>
       {menuOpen && (
         <div className="home-edit-menu" id={menuId}>
-          <button type="button">Add Widget</button>
+          {/* Not built yet: shown but disabled so it does not look like it does something. */}
+          <button type="button" disabled>Add Widget</button>
           <button type="button" onClick={() => {
             setMenuOpen(false);
             setError("");
             setPickerOpen(true);
           }}>Add App</button>
-          <button type="button">Edit Pages</button>
+          <button type="button" disabled>Edit Pages</button>
         </div>
       )}
       {pickerOpen && (
