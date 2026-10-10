@@ -1,19 +1,19 @@
 # STATUS — 2026-10-10-claude-ci-trigger-cost
 
 更新人：Claude
-更新时间：2026-10-10T11:16:00Z
+更新时间：2026-10-10T12:04:00Z
 发现范围：观察时间 2026-10-10T11:10Z；基于 origin/main `16fdafc`（#104 已合并，现场核实）；GitHub open PR 列表在开工时无其他开放 PR（本分支开 PR 前）；其他分支上的任务记录未逐一检查。依据：Lan 在对话中同意的“先优化 CI”，以及此前读取的 GitHub Actions 运行记录。
 
 总账 ID：新增（板块六“CI 触发成本”；关联“GitHub Actions `verify` 按未运行处理”的历史记录）。
 这一刀只解决：CI 的触发与成本——同一提交在 PR 上跑两遍、旧推送不被取消、没有超时与权限声明；只改 `.github/workflows/ci.yml`。
-做完划掉：[x] push 限定 `main`，PR 上每个提交只跑一次（已观察到）；[x] 新推送取消同一 PR 的旧运行（已观察到：第 933 次 `cancelled`）；[x] 并发分组对非 PR 运行唯一（CodeRabbit 指出后修正）；[ ] 合并后 `main` 上仍触发一次运行（待合并后核对）。
+做完划掉：[x] push 限定 `main`，PR 上每个提交只跑一次（已观察到）；[x] 新推送取消同一 PR 的旧运行（已观察到：第 933 次 `cancelled`）；[x] 并发分组对非 PR 运行唯一（CodeRabbit 指出后修正）；[x] 合并后 `main` 上仍触发一次运行（#105 合并提交第 940 次、#106 第 943 次、#107 第 944 次，均只有一次且成功）；[x] 合并（Lan 手动）。
 验收话：同一次推送在 PR 上只触发一次 `verify`；PR 上较新的推送取消较旧的运行；`main` 合并后仍有一次运行；`verify` 的检查步骤与结果不变。
 不做：不改 typecheck/lint/test/build 步骤；不按路径跳过文档改动；不动 Vercel；不加缓存之外的新机制；不改业务代码与测试。
 停止条件：本 PR 经 Lan 手动合并，或 Lan 要求关闭；合并后另看一次 `main` 上的运行。
 
 ## 当前任务
 
-待审查：只修改 `.github/workflows/ci.yml` 的触发与成本控制。
+已合并（#105）：只修改 `.github/workflows/ci.yml` 的触发与成本控制。
 
 ## 谁在改哪里
 
@@ -29,7 +29,6 @@ Claude；分支 `claude/ci-trigger-cost`；PR：[#105](https://github.com/yecays
 
 ## 尚未验证
 
-- 合并后 `main` 上是否仍触发一次运行：待合并后核对。
 - 对外部 fork 的 PR：仓库设置里“首次贡献者需批准”是否开启，我看不到，由 Lan 在仓库设置里确认。
 - 公开前后实际消耗：Billing 页面数据我看不到。
 

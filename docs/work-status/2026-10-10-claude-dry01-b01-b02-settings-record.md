@@ -1,19 +1,19 @@
 # STATUS — 2026-10-10-claude-dry01-b01-b02-settings-record
 
 更新人：Claude
-更新时间：2026-10-10T11:51:00Z
+更新时间：2026-10-10T12:04:00Z
 发现范围：观察时间 2026-10-10T11:40Z；基于 origin/main `df4d9f9`（#105 已合并，现场核实）；开放 PR：#106（DRY-01 PR-A，改 README/CSS/天气/Custom CSS 等死代码，不涉及 `lib/chat/storage.ts` 与 `here-there-comment.ts`，不改同一文件）；其他分支上的任务记录未逐一检查。依据：Lan 批准的 PR-B（对话中交付），审计为 DRY-01（报告未入库）。
 
 总账 ID：新增（板块六 “DRY-01 PR-B”，对应审计 B01、B02）。
 这一刀只解决：B01 评论间隔常量有两份且测试断言的不是生产用的那份；B02 全局资料设置记录在多处各自拼装。
-做完划掉：[x] 先补 12 条特征测试并在未改动的代码上通过；[x] B02 统一由 `globalProfileRecord` 构造记录；[x] B01 常量只留 `chat/storage.ts` 一份并导出，测试改引用；[x] 反向验证；[x] typecheck/lint/测试/build；[ ] 合并（Lan 决定）。
+做完划掉：[x] 先补 12 条特征测试并在未改动的代码上通过；[x] B02 统一由 `globalProfileRecord` 构造记录；[x] B01 常量只留 `chat/storage.ts` 一份并导出，测试改引用；[x] 反向验证；[x] typecheck/lint/测试/build；[x] 合并（Lan 手动）。
 验收话：每个写入点存下的记录与重构前逐字段相同（只有 `id`、`bubbleTiming`、`hereThereEnabled`、`nextCommentAt` 四个字段，未改动的字段原样带过，非法值被规范化，不该写时不写）；现有测试全过；常量只有一个定义。
 不做：不改存储结构、数据库版本、字段名或读写时序；不改 Here & There 的调度逻辑与生成路径；不动 B03、B04、C01–C03 与 D 类；不碰 #36、ChatRoom、在线系统；不追加新的仓库审计。
 停止条件：本 PR 经 Lan 手动合并，或 Lan 要求关闭。
 
 ## 当前任务
 
-待审查：DRY-01 PR-B，B01+B02。
+已合并（#107）：DRY-01 PR-B，B01+B02。
 
 ## 谁在改哪里
 

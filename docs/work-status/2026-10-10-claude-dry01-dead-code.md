@@ -1,19 +1,19 @@
 # STATUS — 2026-10-10-claude-dry01-dead-code
 
 更新人：Claude
-更新时间：2026-10-10T11:32:00Z
+更新时间：2026-10-10T12:04:00Z
 发现范围：观察时间 2026-10-10T11:25Z；基于 origin/main `16fdafc`（#104 已合并，现场核实）；开放 PR：#105（CI 触发成本，仅改 `.github/workflows/ci.yml` 与文档，不与本任务改同一文件，但两者都在 `docs/AUDIT_LEDGER.md` 不同位置新增条目）；其他分支上的任务记录未逐一检查。依据：Lan 批准的“PR-A”（对话中交付），审计为 DRY-01（Opus 5.5，报告未入库）。
 
 总账 ID：新增（板块六 “DRY-01 全仓重复实现与废弃代码审计”；关联 C1 的休眠接口决定、M3（#25）、S11 无关）。
 这一刀只解决：DRY-01 的 A01–A06（确认可删除的死代码、只保护死代码的测试、无人引用的 CSS 类、3 条 lint 警告）。
-做完划掉：[x] A01 `config/character.ts`；[x] A02 天气预留 adapter 与 `WeatherRequest.timezone`；[x] A03 时区下拉残留函数、测试与样式；[x] A04 Custom CSS 旧包装函数，测试改走生产路径；[x] A05 16 个无引用 CSS 类；[x] A06 lint 警告 6→3；[x] README 与总账同步；[ ] 合并（Lan 决定）。
+做完划掉：[x] A01 `config/character.ts`；[x] A02 天气预留 adapter 与 `WeatherRequest.timezone`；[x] A03 时区下拉残留函数、测试与样式；[x] A04 Custom CSS 旧包装函数，测试改走生产路径；[x] A05 16 个无引用 CSS 类；[x] A06 lint 警告 6→3；[x] README 与总账同步；[x] 合并（Lan 手动；合并时 PR 上带一个 CF-02 偶发失败的叉，同提交重跑成功，见总账 CF-02）。
 验收话：删除的名字在 `docs` 之外不再被引用；`npm run typecheck`、`npm run lint`、`npm test`、`npm run build` 通过；被删测试只保护死代码，被改测试仍覆盖生产路径；行为不变。
 不做：B、C、D 类；任何存储或生成路径的改动；不顺手重构邻近代码；不追加新的仓库审计；不碰 #36、ChatRoom、在线系统。
 停止条件：本 PR 经 Lan 手动合并，或 Lan 要求关闭；PR-B 在本 PR 收尾后另行安排。
 
 ## 当前任务
 
-待审查：DRY-01 PR-A 死代码清理。
+已合并（#106）：DRY-01 PR-A 死代码清理。
 
 ## 谁在改哪里
 
