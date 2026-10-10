@@ -1,8 +1,8 @@
 # STATUS — 2026-10-10-claude-ci-trigger-cost
 
 更新人：Claude
-更新时间：2026-10-10T11:40:00Z
-发现范围：观察时间 2026-10-10T11:20Z；基于 origin/main `16fdafc`（#104 已合并，现场核实）；GitHub open PR 列表在开工时无其他开放 PR（本分支开 PR 前）；其他分支上的任务记录未逐一检查。依据：Lan 在对话中同意的“先优化 CI”，以及此前读取的 GitHub Actions 运行记录。
+更新时间：2026-10-10T11:16:00Z
+发现范围：观察时间 2026-10-10T11:10Z；基于 origin/main `16fdafc`（#104 已合并，现场核实）；GitHub open PR 列表在开工时无其他开放 PR（本分支开 PR 前）；其他分支上的任务记录未逐一检查。依据：Lan 在对话中同意的“先优化 CI”，以及此前读取的 GitHub Actions 运行记录。
 
 总账 ID：新增（板块六“CI 触发成本”；关联“GitHub Actions `verify` 按未运行处理”的历史记录）。
 验收话：同一次推送在 PR 上只触发一次 `verify`；PR 上较新的推送取消较旧的运行；`main` 合并后仍有一次运行；`verify` 的检查步骤与结果不变。
@@ -15,7 +15,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/ci-trigger-cost`；PR：创建后补链接。涉及：`.github/workflows/ci.yml`、`docs/AUDIT_LEDGER.md`（板块六新增一条；并入此前尚未合并的 #102 对照记录）、`docs/work-status/2026-10-10-claude-chat-header-split.md`（并入，内容见该文件）、本文件。
+Claude；分支 `claude/ci-trigger-cost`；PR：[#105](https://github.com/yecays-ai/veil/pull/105)。涉及：`.github/workflows/ci.yml`、`docs/AUDIT_LEDGER.md`（板块六新增一条；并入此前尚未合并的 #102 对照记录）、`docs/work-status/2026-10-10-claude-chat-header-split.md`（并入，内容见该文件）、本文件。
 
 ## 已完成
 
@@ -26,7 +26,7 @@ Claude；分支 `claude/ci-trigger-cost`；PR：创建后补链接。涉及：`.
 
 ## 尚未验证
 
-- 本 PR 自己的运行：应只出现 `pull_request` 事件的一次 `verify`，而没有同一 SHA 的 `push` 事件运行；之后再推送一次，确认较旧的运行被取消或已结束。结果待 PR 开出后核对，并写回本节。
+- 本 PR 自己的运行（第一项已观察到：`44f9788` 只触发一次 `pull_request` 运行，没有同一 SHA 的 `push` 运行；取消旧运行的结果待下一次推送后核对）：应只出现 `pull_request` 事件的一次 `verify`，而没有同一 SHA 的 `push` 事件运行；之后再推送一次，确认较旧的运行被取消或已结束。结果待 PR 开出后核对，并写回本节。
 - 合并后 `main` 上是否仍触发一次运行：待合并后核对。
 - 对外部 fork 的 PR：仓库设置里“首次贡献者需批准”是否开启，我看不到，由 Lan 在仓库设置里确认。
 - 公开前后实际消耗：Billing 页面数据我看不到。
