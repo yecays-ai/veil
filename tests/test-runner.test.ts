@@ -8,13 +8,17 @@ import test from "node:test";
 test("test command fails instead of reporting success when compiled tests are missing", () => {
   const directory = mkdtempSync(join(tmpdir(), "veil-test-runner-"));
   try {
+    mkdirSync(join(directory, "tests"));
     for (const emptyDirectory of [false, true]) {
-      if (emptyDirectory) mkdirSync(join(directory, "node_modules/.cache/veil-desktop-tests/tests"), { recursive: true });
+      if (emptyDirectory) {
+        rmSync(join(directory, "tests/fixture.test.ts"));
+        mkdirSync(join(directory, "node_modules/.cache/veil-desktop-tests/tests"), { recursive: true });
+      } else writeFileSync(join(directory, "tests/fixture.test.ts"), "");
       const result = spawnSync(process.execPath, [resolve("scripts/run-tests.mjs")],
         { cwd: directory, encoding: "utf8" });
       assert.equal(result.error, undefined);
       assert.notEqual(result.status, 0);
-      assert.match(result.stderr, emptyDirectory ? /No compiled test files/ : /ENOENT/);
+      assert.match(result.stderr, emptyDirectory ? /No compiled test files/ : /No compiled output for: fixture\.test\.ts/);
     }
   } finally {
     rmSync(directory, { recursive: true });
@@ -26,6 +30,8 @@ test("existing runner emits deterministic contract results without hiding failur
   const compiled = join(directory, "node_modules/.cache/veil-desktop-tests/tests");
   const reportPath = join(directory, "node_modules/.cache/veil-regression-contracts.json");
   mkdirSync(compiled, { recursive: true });
+  mkdirSync(join(directory, "tests"));
+  writeFileSync(join(directory, "tests/fixture.test.ts"), "");
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   const run = () => spawnSync(process.execPath, [resolve("scripts/run-tests.mjs")],
