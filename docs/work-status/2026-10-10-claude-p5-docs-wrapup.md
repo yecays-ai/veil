@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/p5-r4-docs`；PR 见 GitHub（分支名即标识）。涉及：`docs/AUDIT_LEDGER.md`（头部基线 SHA；F9/F11/U7 的过期“待合并”措辞；R1–R4 行；真机验收记录新增 R2；停车场新增四项）、`docs/work-status/2026-10-10-claude-remove-auto-merge-workflow.md`（#87 记录的发现范围措辞与状态）、本记录。
+Claude；分支 `claude/p5-r4-docs`；PR：[#91](https://github.com/yecays-ai/veil/pull/91)。涉及：`docs/AUDIT_LEDGER.md`（头部基线 SHA；F9/F11/U7 的过期“待合并”措辞；R1–R4 行；真机验收记录新增 R2；停车场新增四项）、`docs/work-status/2026-10-10-claude-remove-auto-merge-workflow.md`（#87 记录的发现范围措辞与状态）、本记录。
 
 ## 已完成
 
@@ -19,7 +19,7 @@ Claude；分支 `claude/p5-r4-docs`；PR 见 GitHub（分支名即标识）。�
 - R3：核销，按产品设计接受（Lan 的产品决定：后台生成是有意设计，整个 Home 最多一个 Here & There，留到 Add Widget 时落实）。证据：源码阅读 + 产品决定。
 - R4：本次只读核查，预期定义为“临时界面状态离开即丢弃，不持久化”，接受现状；证据：源码阅读 + R1 探针；未改代码。
 - F10② 暂停、F11 禁用按钮属计划功能、Add Widget/Edit Pages 等进停车场。
-- 检查：仅文档改动；`npm test`、`npm run lint` 结果见 PR 描述。
+- 检查（Node 24，本地，修订 c07e194）：`npm test` 770/770 通过；`npx eslint app components lib tests` 0 error、6 条既有 warning；`npm run lint` 报错，原因是扫到了未跟踪的本地目录 `.probe-r1`（暂存本改动后同样报错，与本 PR 无关）。npm 与 eslint 版本：无（未记录）。
 
 ## 尚未验证
 
@@ -28,4 +28,4 @@ Claude；分支 `claude/p5-r4-docs`；PR 见 GitHub（分支名即标识）。�
 
 ## 下一步
 
-等待 CodeRabbit 审查最新提交，由 Lan 手动合并；不自动合并，不加 automerge 标签。
+等待 CodeRabbit 针对最新提交完成审查，并确认无未解决评论、CI 为绿且预览对应最新提交后，由 Lan 手动合并；若 CI 或预览未运行，按人工例外记录并由 Lan 决定是否合并；不自动合并，不加 automerge 标签。
