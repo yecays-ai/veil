@@ -1,4 +1,4 @@
-import type { PromptTurn } from "./types";
+import { isTruncatedReason, type PromptTurn } from "./types";
 import type { PromptDiagnosticSection } from "./prompt";
 
 export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue"
@@ -108,4 +108,59 @@ export function logCompletionUsage(context: CompletionRequestContext, usage: Com
       prompt_cache_miss_tokens: usage?.prompt_cache_miss_tokens ?? null,
     });
   } catch { /* Diagnostics must never affect generation. */ }
+}
+
+/**
+ * How one model call ended. `cancelled` means the caller's signal was aborted; the reason is deliberately not
+ * guessed (Stop, leaving the page and losing ownership all abort). `abandoned` means the caller stopped reading.
+ */
+export type CompletionOutcome = "completed" | "truncated" | "error" | "timeout" | "cancelled" | "abandoned";
+export type CompletionErrorCategory = "network" | "http" | "invalid-reply" | "invalid-stream" | "no-stream"
+  | "stream-ended" | "stream-error" | "no-completion";
+export type CompletionTerminal = {
+  outcome: CompletionOutcome;
+  finishReason?: string;
+  errorCategory?: CompletionErrorCategory;
+  httpStatus?: number;
+  timeoutPhase?: "connect" | "idle";
+};
+
+const KNOWN_FINISH_REASONS = ["stop", "length", "max_tokens", "max_output_tokens", "content_filter", "tool_calls",
+  "function_call", "end_turn", "eos"];
+/** Provider text is never logged as-is: anything outside the usual finish reasons becomes "other". */
+function controlledFinishReason(reason?: string) {
+  return reason === undefined ? undefined : KNOWN_FINISH_REASONS.includes(reason) ? reason : "other";
+}
+
+export function completionTerminalOutcome(finishReason?: string): "completed" | "truncated" {
+  return isTruncatedReason(finishReason) ? "truncated" : "completed";
+}
+
+export function completionTerminalSummary(context: CompletionRequestContext, terminal: CompletionTerminal,
+  durationMs: number) {
+  const finishReason = controlledFinishReason(terminal.finishReason);
+  return {
+    requestId: context.requestId,
+    source: context.source,
+    outcome: terminal.outcome,
+    ...(finishReason ? { finishReason } : {}),
+    ...(terminal.errorCategory ? { errorCategory: terminal.errorCategory } : {}),
+    ...(terminal.httpStatus !== undefined ? { httpStatus: terminal.httpStatus } : {}),
+    ...(terminal.timeoutPhase ? { timeoutPhase: terminal.timeoutPhase } : {}),
+    durationMs,
+  };
+}
+
+/** Starts the clock for one model call. The returned function records the first outcome and ignores any later one. */
+export function startCompletionTerminal(context: CompletionRequestContext): (terminal: CompletionTerminal) => void {
+  const started = Date.now();
+  let recorded = false;
+  return (terminal) => {
+    if (recorded) return;
+    recorded = true;
+    if (process.env.NODE_ENV !== "development") return;
+    try {
+      console.info("[VEIL completion:terminal]", completionTerminalSummary(context, terminal, Date.now() - started));
+    } catch { /* Diagnostics must never affect generation. */ }
+  };
 }

@@ -5,8 +5,12 @@ import {
   createCompletionRequestContext,
   logCompletionStart,
   logCompletionUsage,
+  completionTerminalOutcome,
   parseCompletionUsage,
+  startCompletionTerminal,
+  type CompletionErrorCategory,
   type CompletionRequestContext,
+  type CompletionTerminal,
   type CompletionUsage,
 } from "./request-diagnostics";
 
@@ -59,7 +63,7 @@ function choice(value: unknown): { text: string; finishReason?: string } {
     }[];
   };
   if (!data || data.error)
-    throw new Error("The API returned an invalid reply.");
+    throw new ProviderError("The API returned an invalid reply.", "invalid-reply");
   const first = data.choices?.[0];
   const text = first?.delta?.content ?? first?.message?.content;
   return {
@@ -70,13 +74,20 @@ function choice(value: unknown): { text: string; finishReason?: string } {
 /** How long the API may take to start answering, and how long an open reply may go silent. */
 export const MODEL_CONNECT_TIMEOUT_MS = 30_000;
 export const MODEL_IDLE_TIMEOUT_MS = 45_000;
-class ModelTimeoutError extends Error {}
+class ModelTimeoutError extends Error {
+  constructor(message: string, readonly phase: "connect" | "idle") { super(message); }
+}
+/** An error the provider raised itself; the category is what the terminal diagnostic reports. */
+class ProviderError extends Error {
+  constructor(message: string, readonly category: CompletionErrorCategory, readonly httpStatus?: number) { super(message); }
+}
 
 /** Races `work` against a deadline; on expiry `abort` cancels the underlying request and the caller gets `message`. */
-function withDeadline<T>(ms: number, work: Promise<T>, abort: () => void, message: string): Promise<T> {
+function withDeadline<T>(ms: number, work: Promise<T>, abort: () => void, message: string,
+  phase: "connect" | "idle"): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expired = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => { reject(new ModelTimeoutError(message)); abort(); }, ms); // reject first: the abort makes `work` fail too
+    timer = setTimeout(() => { reject(new ModelTimeoutError(message, phase)); abort(); }, ms); // reject first: the abort makes `work` fail too
   });
   work.catch(() => {}); // a request abandoned at its deadline may still fail later; that is not a new error
   return Promise.race([work, expired]).finally(() => clearTimeout(timer));
@@ -96,6 +107,8 @@ export function createOpenAITextProvider(
   validateApiConfig(config);
   const context = request ?? createCompletionRequestContext("unclassified");
   let usage: CompletionUsage | null = null;
+  const finishTerminal = startCompletionTerminal(context);
+  let end: CompletionTerminal | null = null, lastFinishReason: string | undefined;
   logCompletionStart(context, config.model.trim(), messages, true);
   // The request has its own controller so a timeout can cancel it; the caller's Stop is forwarded to it.
   const network = new AbortController();
@@ -123,35 +136,36 @@ export function createOpenAITextProvider(
           ...(generation?.maxTokens !== undefined
             ? { max_tokens: generation.maxTokens } : {}),
         }),
-      }), cancelRequest, "The API did not respond in time. Try again.");
+      }), cancelRequest, "The API did not respond in time. Try again.", "connect");
     } catch (error) {
       signal.throwIfAborted();
       if (error instanceof ModelTimeoutError) throw error;
-      throw new Error(
-        "Could not reach the API. Check the Base URL and your provider's browser/CORS support.",
+      throw new ProviderError(
+        "Could not reach the API. Check the Base URL and your provider's browser/CORS support.", "network",
       );
     }
     // Never display/log response bodies: gateways may echo Authorization keys.
     if (!response.ok)
-      throw new Error(
-        `API request failed (HTTP ${response.status}). Check your API settings.`,
+      throw new ProviderError(
+        `API request failed (HTTP ${response.status}). Check your API settings.`, "http", response.status,
       );
     if (response.headers.get("content-type")?.includes("application/json")) {
       let data: unknown;
     try {
-        data = await withDeadline(timeouts.idleMs, response.json(), cancelRequest, "The API stopped sending its reply. Try again.");
+        data = await withDeadline(timeouts.idleMs, response.json(), cancelRequest, "The API stopped sending its reply. Try again.", "idle");
       } catch (error) {
         signal.throwIfAborted();
         if (error instanceof ModelTimeoutError) throw error;
-        throw new Error("The API returned an invalid reply.");
+        throw new ProviderError("The API returned an invalid reply.", "invalid-reply");
       }
       usage = parseCompletionUsage(data);
       const result = choice(data);
       if (result.text) yield result.text;
       if (result.finishReason) terminal?.(result.finishReason);
+      end = { outcome: completionTerminalOutcome(result.finishReason), finishReason: result.finishReason };
       return;
     }
-    if (!response.body) throw new Error("The API returned no response stream.");
+    if (!response.body) throw new ProviderError("The API returned no response stream.", "no-stream");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "",
@@ -166,12 +180,12 @@ export function createOpenAITextProvider(
       try {
         data = JSON.parse(payload);
       } catch {
-        throw new Error("The API returned an invalid stream event.");
+        throw new ProviderError("The API returned an invalid stream event.", "invalid-stream");
       }
       usage = parseCompletionUsage(data) ?? usage;
       const result = choice(data);
       finished ||= !!result.finishReason;
-      if (result.finishReason) terminal?.(result.finishReason);
+      if (result.finishReason) { lastFinishReason = result.finishReason; terminal?.(result.finishReason); }
       // The provider has explicitly ended output at its token budget. Do not
       // leave visible truncated text hostage to an optional later [DONE] frame.
       return { text: result.text, done: isTruncatedReason(result.finishReason) };
@@ -180,7 +194,7 @@ export function createOpenAITextProvider(
       while (true) {
         signal.throwIfAborted();
         const { value, done } = await withDeadline(timeouts.idleMs, reader.read(), cancelRequest,
-          "The reply stopped arriving. Retry to continue.");
+          "The reply stopped arriving. Retry to continue.", "idle");
         buffer += decoder.decode(value, { stream: !done });
         if (done) buffer += "\n\n";
         let newline: number;
@@ -191,20 +205,30 @@ export function createOpenAITextProvider(
           else if (!line) {
             const result = event();
             if (result.text) yield result.text;
-            if (result.done) return;
+            if (result.done) { end = { outcome: completionTerminalOutcome(lastFinishReason), finishReason: lastFinishReason }; return; }
           }
         }
         if (done) break;
       }
-      if (!finished) throw new Error("The reply stream ended unexpectedly.");
+      if (!finished) throw new ProviderError("The reply stream ended unexpectedly.", "stream-ended");
+      end = { outcome: completionTerminalOutcome(lastFinishReason), finishReason: lastFinishReason };
     } finally {
       // A stalled stream may never answer cancel(), so do not wait for it.
       void reader.cancel().catch(() => {});
       try { reader.releaseLock(); } catch { /* the stream is already gone */ }
     }
+  } catch (error) {
+    // Abort is checked first: Stop, leaving the page and losing ownership all abort and are not told apart here.
+    end = signal.aborted ? { outcome: "cancelled" }
+      : error instanceof ModelTimeoutError ? { outcome: "timeout", timeoutPhase: error.phase }
+      : error instanceof ProviderError ? { outcome: "error", errorCategory: error.category, httpStatus: error.httpStatus }
+      : { outcome: "error", errorCategory: "stream-error" };
+    throw error;
   } finally {
     signal.removeEventListener("abort", forwardStop);
     logCompletionUsage(context, usage);
+    // No outcome here means the caller stopped reading before the reply ended.
+    finishTerminal(end ?? { outcome: "abandoned", finishReason: lastFinishReason });
   }
   };
 }

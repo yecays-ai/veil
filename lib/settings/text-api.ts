@@ -4,8 +4,14 @@ import type { ApiConfigStorage } from "../api-config-storage";
 import { completionUrl, validateApiConfig } from "../chat/provider";
 import type { BindingDocument } from "../bindings";
 import { withoutApiConfigBinding } from "../bindings";
-import { createCompletionRequestContext, logCompletionStart, logCompletionUsage, parseCompletionUsage,
-  type CompletionUsage } from "../chat/request-diagnostics";
+import { completionTerminalOutcome, createCompletionRequestContext, logCompletionStart, logCompletionUsage,
+  parseCompletionUsage, startCompletionTerminal, type CompletionErrorCategory,
+  type CompletionTerminal, type CompletionUsage } from "../chat/request-diagnostics";
+
+/** An error with a fixed message; the category is what the terminal diagnostic reports. */
+class ApiRequestError extends Error {
+  constructor(message: string, readonly category: CompletionErrorCategory, readonly httpStatus?: number) { super(message); }
+}
 
 export async function deleteApiConfigAndBindings(
   id: string, storage: ApiConfigStorage, bindings: Pick<BindingStorage, "transact">,
@@ -61,20 +67,20 @@ async function apiRequest(
       },
     });
   } catch {
-    throw new Error(
-      "Could not reach the API. Check the Base URL, network and browser/CORS support.",
+    throw new ApiRequestError(
+      "Could not reach the API. Check the Base URL, network and browser/CORS support.", "network",
     );
   }
   // Never surface provider bodies, thrown fetch messages or generated content:
   // any of them may echo the credential.
   if (!response.ok)
-    throw new Error(
-      `API request failed (HTTP ${response.status}). Check credentials and endpoint support.`,
+    throw new ApiRequestError(
+      `API request failed (HTTP ${response.status}). Check credentials and endpoint support.`, "http", response.status,
     );
   try {
     return await response.json();
   } catch {
-    throw new Error("The API returned an invalid JSON response.");
+    throw new ApiRequestError("The API returned an invalid JSON response.", "invalid-reply");
   }
 }
 export async function testTextApiConnection(
@@ -85,6 +91,8 @@ export async function testTextApiConnection(
   const messages = [{ role: "user" as const, content: "Reply with OK only." }];
   const request = createCompletionRequestContext("test-connection");
   let usage: CompletionUsage | null = null;
+  const finishTerminal = startCompletionTerminal(request);
+  let end: CompletionTerminal = { outcome: "abandoned" };
   logCompletionStart(request, config.model.trim(), messages, false);
   try {
     const data = await apiRequest(
@@ -98,11 +106,20 @@ export async function testTextApiConnection(
     );
     usage = parseCompletionUsage(data);
     if (data?.error || !Array.isArray(data?.choices) || !data.choices.length)
-      throw new Error("The API returned no completion. Check the selected model.");
+      throw new ApiRequestError("The API returned no completion. Check the selected model.", "no-completion");
     // A valid completion with reasoning/length finish is still connectivity proof;
     // the small cap intentionally bounds cost rather than validating reply quality.
+    const finishReason = data.choices[0]?.finish_reason;
+    end = { outcome: completionTerminalOutcome(typeof finishReason === "string" ? finishReason : undefined),
+      finishReason: typeof finishReason === "string" ? finishReason : undefined };
+  } catch (error) {
+    end = signal?.aborted ? { outcome: "cancelled" }
+      : error instanceof ApiRequestError ? { outcome: "error", errorCategory: error.category, httpStatus: error.httpStatus }
+      : { outcome: "error", errorCategory: "network" };
+    throw error;
   } finally {
     logCompletionUsage(request, usage);
+    finishTerminal(end);
   }
 }
 export async function fetchTextApiModels(
