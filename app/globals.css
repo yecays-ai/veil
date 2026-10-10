@@ -187,18 +187,6 @@ a:focus-visible { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
   .veil-switch-track, .veil-switch-thumb { transition: none; }
 }
 
-.app-link {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 56px;
-  padding: 16px;
-  border: 1px solid #d6d6db;
-  border-radius: 14px;
-  background: white;
-}
-
-.back-link { display: inline-flex; align-items: center; min-height: 44px; }
 .empty-state { color: #666; }
 
 .product-bootstrap-error {

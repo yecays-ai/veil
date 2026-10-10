@@ -77,7 +77,6 @@
   line-height: 1.55;
 }
 .foundation-page button,
-.foundation-link,
 .avatar-dialog button {
   min-height: 44px;
   padding: 10px 16px;
@@ -144,47 +143,6 @@
 .foundation-form select:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--theme-accent) 45%, transparent);
   outline-offset: 2px;
-}
-.timezone-picker {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
-}
-.timezone-combobox {
-  position: relative;
-  min-width: 0;
-}
-.timezone-options {
-  position: absolute;
-  z-index: 20;
-  inset: calc(100% + 4px) 0 auto;
-  max-height: 240px;
-  overflow-y: auto;
-  margin: 0;
-  padding: 4px;
-  list-style: none;
-  border: 1px solid #8884;
-  border-radius: 12px;
-  background: var(--theme-background);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
-}
-.timezone-option {
-  padding: 10px 12px;
-  border-radius: 8px;
-  overflow-wrap: anywhere;
-  cursor: pointer;
-}
-.timezone-option[aria-selected="true"],
-.timezone-option:hover {
-  background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-background));
-}
-.foundation-page .timezone-use-device {
-  justify-self: start;
-  min-height: 36px;
-  padding: 4px 0;
-  border: 0;
-  background: none;
-  color: var(--theme-accent);
 }
 .foundation-form textarea {
   min-height: 120px;
@@ -283,19 +241,6 @@
 }
 .foundation-page .danger-button {
   color: #a33f42;
-}
-.foundation-confirm p {
-  font-size: 0.85em;
-}
-.list-header {
-  margin: 20px 0 28px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
-.list-header h1 {
-  margin: 0 0 12px;
 }
 .character-list {
   padding: 0;

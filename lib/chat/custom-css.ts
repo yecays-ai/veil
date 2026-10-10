@@ -22,15 +22,6 @@ export const CHAT_SESSION_CSS_EXAMPLE = `/* Only this conversation */
   background: var(--c-input);
 }`;
 
-/** Legacy import stripper, kept for callers that only need to drop imports (case-insensitive). */
-export function removeCssImports(raw: string): string {
-  if (!raw || !/@import/i.test(raw)) return raw;
-  return raw.replace(
-    /@import\s+(?:url\(\s*(['"]?)([^'")]+)\1\s*\)|(['"])([^'"]+)\3)[^;]*;/gi,
-    "",
-  );
-}
-
 export type SessionCssResult = { css: string; errors: string[] };
 
 const KEYFRAME_PREFIX = "veil-session-";
@@ -64,11 +55,6 @@ export function analyzeSessionCSS(raw: string, scope: string): SessionCssResult 
   }
   const names = collectKeyframeNames(raw);
   return { css: scopeBlock(raw, scope, names, note), errors };
-}
-
-/** Back-compatible helper: the scoped CSS with rejected rules removed. */
-export function scopeSessionCSS(raw: string, scope: string): string {
-  return analyzeSessionCSS(raw, scope).css;
 }
 
 /** Errors that should stop a save; empty means every rule can be scoped. */

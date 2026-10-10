@@ -1,7 +1,6 @@
 import type {
   Coordinates,
   WeatherRequest,
-  WeatherProvider,
   WeatherState,
 } from "./participant-config";
 import { lookupPlace } from "./place-lookup";
@@ -157,10 +156,6 @@ export async function fetchCurrentWeather(
   return operation;
 }
 
-export const openMeteoWeatherProvider: WeatherProvider = {
-  getWeather: (request) => fetchCurrentWeather(request),
-};
-
 // One side of Here & There: saved coordinates win, otherwise the place name is
 // geocoded first. A name that cannot be resolved reports an error instead of
 // pretending the place was never set.
@@ -172,7 +167,7 @@ export async function loadWeatherState(
 ): Promise<WeatherState> {
   if (target.coordinates)
     return fetchCurrentWeather(
-      { coordinates: target.coordinates, timezone: "UTC" },
+      { coordinates: target.coordinates },
       fetcher,
       now,
       timeoutMs,
@@ -184,7 +179,7 @@ export async function loadWeatherState(
   const match = await lookupPlace(name, fetcher, now, timeoutMs);
   if (!match) return { status: "error", message: "Weather unavailable" };
   return fetchCurrentWeather(
-    { coordinates: match.coordinates, timezone: match.timezone ?? "UTC" },
+    { coordinates: match.coordinates },
     fetcher,
     now,
     Math.max(1, timeoutMs - (Date.now() - started)),

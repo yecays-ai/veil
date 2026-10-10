@@ -46,17 +46,6 @@
   overflow: hidden;
   display: flex;
 }
-.home-foreground {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.home-apps {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-}
 .home-app {
   display: flex;
   flex-direction: column;

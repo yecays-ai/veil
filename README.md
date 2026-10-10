@@ -35,7 +35,7 @@ for the protected invariants and how to add a focused maintenance check.
 
 The Home Screen reads the App Registry and links to Messages, Appearance, User Profile, Characters, and Universe.
 
-Character and user defaults live separately in `config/character.ts` and `config/user.ts`. The only placeholder names are `Character` and `User`; generic routes and UI remain independent of identity configuration.
+User defaults live in `config/user.ts`; Character identity comes from the Foundation document. The only placeholder names are `Character` and `User`; generic routes and UI remain independent of identity configuration.
 
 The Foundation and Home work without external services or credentials. Optional Character text chat uses a locally configured OpenAI-compatible provider and IndexedDB. See [Chat Core v1](docs/chat-core-v1.md) for API setup, Send versus Request Reply, storage and context behavior.
 
@@ -102,7 +102,7 @@ The edit-mode minus button removes only its Widget instance from the current des
 
 `lib/widget-registry.ts` owns supported sizes and normalized config; `components/widgets/widget-renderer.tsx` maps registered types to views. Adding a Widget requires its type, registry definition and view, without changing the Home grid. Clock reads local device time/date and updates every second. It remains registered, but fresh/restored default layouts only include Here & There; stored layouts keep their existing Widgets. Here & There reads the singleton User and selected Character from the Foundation provider; an unset timezone explicitly falls back to the device timezone. Without Characters it offers a link to create/select one.
 
-Each participant's location is either unset or a manually chosen label with optional latitude/longitude. `lib/participant-config.ts` defines the coordinates-based `WeatherProvider` type and weather state; `lib/weather.ts` implements it with Open-Meteo. Here & There requests current weather from `api.open-meteo.com` for a participant who has saved coordinates or a place name; a place name is first looked up through `geocoding-api.open-meteo.com`, so the coordinates or place name are sent to that keyless service. A participant with no location makes no request. Results are cached in memory (10 minutes, 1 minute for failures), requests have a deadline, and a failure shows the widget's weather-unavailable text. Names, locations and timezones are never stored in theme packages.
+Each participant's location is either unset or a manually chosen label with optional latitude/longitude. `lib/participant-config.ts` defines the weather state; `lib/weather.ts` fetches it from Open-Meteo. Here & There requests current weather from `api.open-meteo.com` for a participant who has saved coordinates or a place name; a place name is first looked up through `geocoding-api.open-meteo.com`, so the coordinates or place name are sent to that keyless service. A participant with no location makes no request. Results are cached in memory (10 minutes, 1 minute for failures), requests have a deadline, and a failure shows the widget's weather-unavailable text. Names, locations and timezones are never stored in theme packages.
 
 `npm test` exercises collision/bounds handling, full-layout normalization, legacy migration, preset/package round trips and IANA timezone/DST behavior using Node's built-in test runner. Test compilation goes to `node_modules/.cache/veil-desktop-tests`.
 

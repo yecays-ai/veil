@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { JSDOM } from "jsdom";
-import { analyzeSessionCSS, removeCssImports, scopeSessionCSS, validateSessionCSS } from "../lib/chat/custom-css";
+import { analyzeSessionCSS, validateSessionCSS } from "../lib/chat/custom-css";
 import { legacyRemoveCssImports, legacyScopeSessionCSS } from "./custom-css-legacy";
 
 const SCOPE = ".chat-room-wrapper";
@@ -94,7 +94,6 @@ test("@import in any case or escaped form is rejected with a clear error and nev
     assert.match(result.css, /\.chat-room-wrapper \.a \{ color: red \}/, "the safe rule beside it is preserved");
     assert.deepEqual(leaks(result.css), []);
   }
-  assert.doesNotMatch(removeCssImports('@IMPORT url("https://evil.test/x.css");\n.a{}'), /evil\.test/i);
   assert.deepEqual(validateSessionCSS(".a { color: red }"), []);
 });
 
@@ -139,8 +138,8 @@ body.dark .chat-bubble-role-user, .chat-input-bar { color: red; }
   assert.match(result.css, /@container \(min-width: 300px\) \{ \.chat-room-wrapper \.c/);
   assert.match(result.css, /\.chat-room-wrapper \.d\[data-x="a,b"\]/);
   assert.deepEqual(leaks(result.css), []);
-  assert.equal(scopeSessionCSS("", SCOPE), "");
-  assert.doesNotThrow(() => scopeSessionCSS(".broken { color: red", SCOPE));
+  assert.equal(analyzeSessionCSS("", SCOPE).css, "");
+  assert.doesNotThrow(() => analyzeSessionCSS(".broken { color: red", SCOPE));
 });
 
 test("hostile or malformed CSS cannot style anything outside the conversation root", () => {

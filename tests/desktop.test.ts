@@ -28,8 +28,6 @@ import { exportTheme, importTheme } from "../lib/theme-package";
 import { applyPreset, deletePreset, savePreset } from "../lib/theme-presets";
 import {
   getDeviceTimezone,
-  getSupportedTimezones,
-  getTimezoneOptions,
   localTime,
   resolveTimezone,
 } from "../lib/participant-config";
@@ -420,38 +418,6 @@ test("theme packages and presets round-trip positions, sizes and config without 
     current,
   );
   assert.deepEqual(normalizeSnapshot(current), current);
-});
-
-test("timezone options include supported, saved, device and UTC values", () => {
-  assert.deepEqual(
-    getTimezoneOptions("US/Pacific", "Pacific/Honolulu", [
-      "America/New_York",
-      "Europe/London",
-      "UTC",
-    ]),
-    [
-      "America/New_York",
-      "Europe/London",
-      "Pacific/Honolulu",
-      "US/Pacific",
-      "UTC",
-    ],
-  );
-  assert.deepEqual(getTimezoneOptions("US/Pacific", null, []), [
-    "US/Pacific",
-    "UTC",
-  ]);
-});
-
-test("supported browser timezone data includes a comprehensive IANA list", () => {
-  const intl = Intl as typeof Intl & {
-    supportedValuesOf?: (key: "timeZone") => string[];
-  };
-  if (typeof intl.supportedValuesOf === "function") {
-    const zones = getSupportedTimezones();
-    assert(zones.length > 100);
-    assert(zones.includes("Pacific/Auckland"));
-  }
 });
 
 test("IANA local times account for DST and device/fallback zones stay distinct", () => {

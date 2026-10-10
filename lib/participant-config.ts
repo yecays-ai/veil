@@ -19,30 +19,7 @@ export type WeatherState =
       updatedAt: string;
     }
   | { status: "error"; message: string };
-export type WeatherRequest = { coordinates: Coordinates; timezone: string };
-export interface WeatherProvider {
-  getWeather(request: WeatherRequest): Promise<WeatherState>;
-}
-
-type IntlWithTimezoneValues = typeof Intl & {
-  supportedValuesOf?: (key: "timeZone") => string[];
-};
-
-let cachedTimezoneValues: string[] | null = null;
-
-export function getSupportedTimezones(): string[] {
-  if (cachedTimezoneValues !== null) return cachedTimezoneValues;
-  const intl = Intl as IntlWithTimezoneValues;
-  try {
-    cachedTimezoneValues =
-      typeof intl.supportedValuesOf === "function"
-        ? intl.supportedValuesOf.call(Intl, "timeZone")
-        : [];
-  } catch {
-    cachedTimezoneValues = [];
-  }
-  return cachedTimezoneValues;
-}
+export type WeatherRequest = { coordinates: Coordinates };
 
 function validTimezone(value: string | null | undefined): value is string {
   if (!value) return false;
@@ -61,19 +38,6 @@ export function getDeviceTimezone(): string | null {
   } catch {
     return null;
   }
-}
-
-export function getTimezoneOptions(
-  savedTimezone: string | null,
-  deviceTimezone: string | null,
-  supported: readonly string[] = getSupportedTimezones(),
-): string[] {
-  return [...new Set([
-    ...supported,
-    ...(savedTimezone ? [savedTimezone] : []),
-    ...(deviceTimezone ? [deviceTimezone] : []),
-    "UTC",
-  ])].sort((a, b) => a.localeCompare(b));
 }
 
 export function resolveTimezone(

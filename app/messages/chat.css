@@ -568,8 +568,7 @@
   border-color: color-mix(in srgb, var(--theme-text) 17%, transparent);
   box-shadow: none;
 }
-.chat-input-shell textarea,
-.chat-api-settings input {
+.chat-input-shell textarea {
   width: 100%;
   min-width: 0;
   font: inherit;
@@ -948,29 +947,4 @@
   .chat-turn[data-active] { transition: none; }
   .conversation-row, .chat-app button.conversation-delete-action,
   .conversation-delete-label { transition: none; }
-}
-.chat-api-settings {
-  overflow: auto;
-  padding: max(18px, env(safe-area-inset-top))
-    max(20px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom))
-    max(20px, env(safe-area-inset-left));
-}
-.chat-api-settings h1 {
-  margin: 16px 0;
-}
-.chat-api-settings p {
-  font-size: 0.8em;
-  line-height: 1.5;
-}
-.chat-api-settings form,
-.chat-api-settings label {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.chat-api-settings form {
-  gap: 20px;
-}
-.chat-api-settings label {
-  font-size: 0.8em;
 }
