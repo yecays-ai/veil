@@ -15,7 +15,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/chatroom-next-split`；PR：创建后补链接。涉及：`components/chat/chat-multi-select-bar.tsx`（新增，纯展示）、`components/chat/chat-room.tsx`（一处 JSX 换成 `<ChatMultiSelectBar …/>`，新增一行导入）、`tests/chat-multi-select-bar.test.ts`（新增）、`docs/AUDIT_LEDGER.md`（停车场新增一条）。
+Claude；分支 `claude/chatroom-next-split`；PR：[#104](https://github.com/yecays-ai/veil/pull/104)。涉及：`components/chat/chat-multi-select-bar.tsx`（新增，纯展示）、`components/chat/chat-room.tsx`（一处 JSX 换成 `<ChatMultiSelectBar …/>`，新增一行导入）、`tests/chat-multi-select-bar.test.ts`（新增）、`docs/AUDIT_LEDGER.md`（停车场新增一条）。
 
 ## 选择依据
 
