@@ -1,12 +1,25 @@
 name: CI
 
 on:
+  # Branch pushes are covered by their pull_request run; only main needs its own run after a merge.
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same pull request supersedes the older run. Every other run gets its own group, so a run on
+# main is neither cancelled nor replaced while pending (GitHub keeps only one pending run per group).
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
