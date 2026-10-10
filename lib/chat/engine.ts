@@ -25,6 +25,7 @@ import { applyRegex } from "../regex-engine";
 import { loadWeatherState } from "../weather";
 import type { Coordinates, WeatherState } from "../participant-config";
 import { logPromptSummary, type CompletionSource, type CompletionRequestContext } from "./request-diagnostics";
+import { startGenerationPersistence, type GenerationPersistenceOutcome } from "./persistence-diagnostics";
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
@@ -107,6 +108,8 @@ export function createChatEngine(
     let rawContent = "", finishReason: string | undefined;
     let iterator: AsyncIterator<string> | undefined;
     let draftSaved = false;
+    const recordPersistence = startGenerationPersistence(source);
+    let persisted: GenerationPersistenceOutcome = "nothing-persisted";
     try {
       // Validate prerequisites before any ownership or pending-message claim; failures here
       // leave no attempt, claim or failed assistant behind.
@@ -171,6 +174,7 @@ export function createChatEngine(
       const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(rawContent), activation.nextState,
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
         attempt.id, finishReason, controller.signal);
+      persisted = "committed";
       try { onFinalized?.(completed); } catch { /* Presentation cannot undo a committed turn. */ }
       return completed[0];
     } catch (error) {
@@ -192,15 +196,29 @@ export function createChatEngine(
         if (controller.signal.aborted) return null;
         throw error;
       }
-      return await storage.failGeneration(sessionId, attempt.id, outcome,
-        outcome === "stopped" ? "Reply stopped. Retry or delete this attempt." :
-          error instanceof Error ? error.message : "Generation failed. Retry or delete this attempt.");
+      try {
+        const saved = await storage.failGeneration(sessionId, attempt.id, outcome,
+          outcome === "stopped" ? "Reply stopped. Retry or delete this attempt." :
+            error instanceof Error ? error.message : "Generation failed. Retry or delete this attempt.");
+        // null: the attempt no longer owns the session, so no marker was written.
+        persisted = saved ? (outcome === "stopped" ? "stopped-recorded" : "failure-recorded") : "owner-lost";
+        return saved;
+      } catch (markerError) {
+        persisted = "failure-record-failed";
+        throw markerError;
+      }
     } finally {
       unsubscribe();
       // Do not await an uncooperative provider's return(): Stop must settle now.
       if (controller.signal.aborted) void iterator?.return?.().catch(() => {});
+      let releaseFailed = false;
       try { if (attempt.id) await storage.releaseGeneration(sessionId, attempt.id); }
-      finally { if (active.get(sessionId) === attempt) active.delete(sessionId); }
+      catch (releaseError) { releaseFailed = true; throw releaseError; }
+      finally {
+        if (active.get(sessionId) === attempt) active.delete(sessionId);
+        // An attempt that never claimed ownership has no persisted state to report.
+        if (attempt.id) recordPersistence(attempt.id, persisted, releaseFailed);
+      }
     }
   }
   return {
