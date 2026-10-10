@@ -10,7 +10,7 @@ Character Presence 第一批 T3：作息生成。待审查。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-459m41`（T2 合并后从最新 main 重建）；PR 待创建后补链接；base `5d39599`。
+Claude；分支 `claude/project-thread-459m41`（T2 合并后从最新 main 重建）；PR [#111](https://github.com/yecays-ai/veil/pull/111)；base `5d39599`。
 新增：`lib/presence/routine.ts`、`tests/presence-routine.test.ts`、本记录。
 修改：`components/profile-pages.tsx`（保存角色成功后触发一次检查）、`lib/chat/request-diagnostics.ts`（请求来源加 `presence-routine`）。
 不碰 Foundation 数据结构、聊天、`lib/presence/storage.ts`、`compute.ts`，不碰任何界面元素。
