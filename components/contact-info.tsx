@@ -7,7 +7,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { useContacts } from "./use-contacts";
 import { Avatar } from "./profile-view";
-import { PresenceBadge, presenceLabel } from "./presence";
+import { CharacterPresenceLine } from "./presence";
 import { ImageCropDialog } from "./image-crop-dialog";
 import { readImage } from "../lib/theme-storage";
 import { chatStorage } from "../lib/chat/storage";
@@ -153,7 +153,7 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
         {draft ? <input className="contact-hero-name-input" aria-label="Contact name" value={draft.remark}
           maxLength={100} disabled={busy} placeholder={character.name}
           onChange={(event) => setDraft({ ...draft, remark: event.currentTarget.value })} /> : <h1>{name}</h1>}
-        <span className="contact-presence"><PresenceBadge presence={character.presence} />{presenceLabel(character.presence)}</span>
+        <CharacterPresenceLine character={character} />
         {character.statusMessage && <p className="contact-status">{character.statusMessage}</p>}
       </div>
       {draft?.heroBackground && <button type="button" className="contact-background-remove" disabled={busy}

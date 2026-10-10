@@ -14,7 +14,7 @@
 .contact-hero-identity .person-avatar { width: 88px; height: 88px; border-radius: 50%; box-shadow: 0 3px 14px rgb(0 0 0 / 9%); }
 .contact-hero-identity h1 { font-size: 26px; margin: 16px 0 8px; line-height: 1.2; overflow-wrap: anywhere; }
 .contact-hero-name-input { box-sizing: border-box; width: min(100%, 300px); height: 31px; margin: 16px 0 8px; padding: 0 8px; border: 1px solid color-mix(in srgb, var(--theme-text) 16%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--theme-surface) 88%, transparent); color: inherit; text-align: center; font: inherit; font-size: 24px; font-weight: 650; line-height: 1.2; }
-.contact-presence { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; opacity: .76; }
+.contact-presence { display: inline-flex; align-items: center; gap: 7px; min-height: 1.2em; font-size: 13px; opacity: .76; }
 .contact-presence .presence-badge { position: static; flex: none; }
 .contact-status { margin: 8px 0 0; font-size: 13px; opacity: .6; max-width: 100%; overflow-wrap: anywhere; }
 .contact-info-body { padding: 0 max(20px, var(--app-safe-right)) 0 max(20px, var(--app-safe-left)); }

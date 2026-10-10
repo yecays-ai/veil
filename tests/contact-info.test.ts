@@ -102,7 +102,7 @@ test("failed Contact save retains previous relationship data", async () => {
   assert.deepEqual(await store.load(), before);
 });
 
-test("Contact Info route structure has real actions and honest placeholders with no authoring or last-active UI", () => {
+test("Contact Info route structure has real actions and honest placeholders with no authoring UI", () => {
   const info = readFileSync("components/contact-info.tsx", "utf8");
   const list = readFileSync("components/contacts-pages.tsx", "utf8");
   assert.match(list, /contactDisplayName\(contactByCharacter/);
@@ -122,7 +122,7 @@ test("Contact Info route structure has real actions and honest placeholders with
   assert.match(info, /className="contact-delete-dialog"/);
   assert.match(info, /useLayoutEffect\(\(\) => \{[\s\S]*?showModal\(\);[\s\S]*?focus\(\{ preventScroll: true \}\)/);
   assert.match(info, /<dialog ref=\{ref\} tabIndex=\{-1\}/);
-  assert.match(info, /character\.presence/);
+  assert.match(info, /<CharacterPresenceLine character=\{character\} \/>/);
   assert.doesNotMatch(info, /occupation|location\.label|lastActive|Last active|\/characters\/|requestReply|chat\/provider|PageShell|primary-button/);
   const social = readFileSync("components/character-social-profile.tsx", "utf8");
   assert.doesNotMatch(social, /\/characters\/|personality|backstory|speakingStyle/);
