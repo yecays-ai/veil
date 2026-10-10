@@ -13,6 +13,7 @@ import { browserPresetStorage } from "./preset-storage";
 import { chatStorage } from "./chat/storage";
 import { sanitizeHistoryTimestamps } from "./chat/timestamp-sanitizer";
 import { createCompletionRequestContext, logPromptSummary } from "./chat/request-diagnostics";
+import { startHereThereDisposition, type HereThereOutcome, type HereThereStage } from "./here-there-diagnostics";
 import type { WidgetInstance } from "./widget-types";
 
 export const HERE_THERE_COMMENT_MIN_DELAY_MS = 60 * 60 * 1000;
@@ -99,6 +100,9 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
     try { await services.scheduleRetry(claimed, Date.now(), HERE_THERE_COMMENT_RETRY_DELAY_MS); }
     catch { /* Keep the last successful comment even when retry scheduling fails. */ }
   };
+  // Set once a model call is about to be made; remarks that never reach the model have no disposition to report.
+  let dispose: ((outcome: HereThereOutcome, stage: HereThereStage) => void) | undefined;
+  let stage: HereThereStage = "model", emptyRemark = false;
   try {
     const settings = await services.settings();
     if (!settings.hereThereEnabled) return;
@@ -130,18 +134,35 @@ export async function ensureHereThereComment(widget: WidgetInstance, context: Co
     let text = "";
     controller.signal.throwIfAborted();
     const request = createCompletionRequestContext("here-there-comment");
+    dispose = startHereThereDisposition(request.requestId);
     logPromptSummary(request, api.model, diagnostics, messages);
     for await (const part of services.provider(api, messages, controller.signal,
       { ...preset.generation, maxTokens: Math.min(preset.generation.maxTokens ?? 128, 128) },
       request)) text += part;
     text = sanitizeHistoryTimestamps(text).trim();
-    if (!text) throw new Error("Empty remark");
-    if (controller.signal.aborted || (context.isCurrent && !context.isCurrent())) { await giveBackOpportunity(); return; }
-    await commit((theme) => ({ ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((current) =>
-      current.id === widget.id && current.config.characterId === context.characterId
-        ? { ...current, config: { ...current.config, comment: { characterId: context.characterId,
-          text: text.slice(0, 500), generatedAt: context.now.toISOString() } } } : current) } }));
+    if (!text) { emptyRemark = true; throw new Error("Empty remark"); }
+    if (controller.signal.aborted || (context.isCurrent && !context.isCurrent())) {
+      dispose(controller.signal.aborted ? "cancelled" : "stale-discarded", stage);
+      await giveBackOpportunity();
+      return;
+    }
+    stage = "commit";
+    let written = false;
+    await commit((theme) => {
+      written = false; // the update may be replayed; only its last run counts
+      return { ...theme, current: { ...theme.current, widgets: theme.current.widgets.map((current) => {
+        if (current.id !== widget.id || current.config.characterId !== context.characterId) return current;
+        written = true;
+        return { ...current, config: { ...current.config, comment: { characterId: context.characterId,
+          text: text.slice(0, 500), generatedAt: context.now.toISOString() } } };
+      }) } };
+    });
+    // The commit can succeed without touching anything (widget deleted or rebound), so it is not proof of adoption.
+    dispose?.(written ? "adopted" : "stale-discarded", stage);
   } catch {
+    // Fixed priority: an abort or a stale owner explains the failure before its own cause does.
+    dispose?.(controller.signal.aborted ? "cancelled" : context.isCurrent && !context.isCurrent() ? "stale-discarded"
+      : emptyRemark ? "empty" : stage === "commit" ? "commit-failed" : "error", stage);
     await giveBackOpportunity();
   } finally {
     context.signal?.removeEventListener("abort", cancel);
