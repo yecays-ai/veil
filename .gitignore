@@ -4,3 +4,5 @@ out/
 .vercel/
 *.tsbuildinfo
 .env*
+test-results/
+playwright-report/

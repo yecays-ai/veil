@@ -23,6 +23,12 @@ npm test
 npm start
 ```
 
+`npm run test:browser` is a separate, local-only smoke test (not part of `npm test` or CI). It opens two real
+pages of one Chromium context and checks that a Chat message and a Character rename made in one tab reach the
+other, without a reload, and are stored in IndexedDB. Each test gets a fresh browser context, so it never touches
+real data and calls no model. It builds and starts the app on port 3123 (`VEIL_E2E_PORT` changes it) and needs
+Chromium: run `npx playwright install chromium` once, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to an existing one.
+
 `npm test` also reports the current rendering/navigation lifecycle regression
 contracts as JSON. See [Lifecycle regression contracts](docs/regression-contracts.md)
 for the protected invariants and how to add a focused maintenance check.
