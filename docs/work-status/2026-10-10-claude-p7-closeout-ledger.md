@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/docs-seventh-closeout`；PR：创建后补链接。涉及：`docs/AUDIT_LEDGER.md`、`docs/work-status/2026-10-10-claude-chatroom-multi-select-bar.md`、`…-ci-trigger-cost.md`、`…-dry01-dead-code.md`、`…-dry01-b01-b02-settings-record.md`、本文件。
+Claude；分支 `claude/docs-seventh-closeout`；PR：[#108](https://github.com/yecays-ai/veil/pull/108)。涉及：`docs/AUDIT_LEDGER.md`、`docs/work-status/2026-10-10-claude-chatroom-multi-select-bar.md`、`…-ci-trigger-cost.md`、`…-dry01-dead-code.md`、`…-dry01-b01-b02-settings-record.md`、本文件。
 
 ## 已完成
 
