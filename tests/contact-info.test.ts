@@ -128,7 +128,7 @@ test("Contact Info route structure has real actions and honest placeholders with
   assert.doesNotMatch(social, /\/characters\/|personality|backstory|speakingStyle/);
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
   assert.match(room, /contactDisplayName\(contact, character\.name\)/);
-  assert.match(room, /<Link href=\{`\/contacts\/\$\{encodeURIComponent\(character\.characterId\)\}\?from=direct`\}[\s\S]*?className="chat-contact-summary page-title"/);
+  // The Contact Info link target is asserted on the mounted header in chat-header.test.ts.
   const messages = readFileSync("components/chat/messages-home.tsx", "utf8");
   assert.match(messages, /if \(session\.type === "group"\) return session\.title \?\? "Group";[\s\S]*?contactDisplayName\(contactByCharacter/);
   assert.doesNotMatch(messages, /group \? session\.title \?\? "Group" : session\.remark/);

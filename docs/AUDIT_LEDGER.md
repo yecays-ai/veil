@@ -146,7 +146,7 @@ Low 接受风险（不追求清零；以下均不是已修复）：D1 键盘收�
 | 图片裁剪（Part 5 F9，#86） | 通过（回归层面）：选图→裁剪弹窗→拖动/缩放/Save crop→重开选另一张图（显示新图、缩放拖动正常）→Use original 保存当前图→取消后重开，五项均正常；聊天背景裁剪、壁纸裁剪也正常。未试：损坏图片的报错路径（手机上不方便造假图） |
 
 ## 停车场
-- ChatRoom 拆分（Lan 2026-10-10 决定，未施工）：只拆 Chat Header，行为与布局不变，验收后再做在线状态/个性签名；以后做 Reaction 时再评估消息区；其余 ChatRoom 暂不重构，不做整体拆分。Header 拆分开工时再登记范围与验收。
+- ChatRoom 拆分（Lan 2026-10-10 决定）：只拆 Chat Header，行为与布局不变，验收后再做在线状态/个性签名；以后做 Reaction 时再评估消息区；其余 ChatRoom 暂不重构，不做整体拆分。Header 拆分已开工（2026-10-10，基线 `a9d770de1f2b726c851426671ef5cd414b31a496`，记录见 `docs/work-status/2026-10-10-claude-chat-header-split.md`）：范围仅新增 `components/chat/chat-header.tsx`（纯展示），加载态与已加载态用同一组件、同一 key 渲染，设置按钮 ref、焦点来源记录、键盘/安全区副作用留在 ChatRoom；不改 CSS、行为与数据结构；同时把 `chat-layout-ui` 与 `contact-info` 各一条源码文字断言改为新增的挂载测试，另有一条仅因文件移动而失败的导航源码断言改读新文件。验收：真机三项（从 Chats 进入聊天无首帧闪动；打开设置再关闭焦点回到按钮；点联系人名进入联系人资料）。状态：待审查，真机未验证。
 - 下一轮候选（只列不做，2026-10-10 整理）：F10② 空列表/无匹配提示（待 Lan 的统一 UI 整理）；R4 聊天未发送草稿离开即丢；owner 检查早于 commit 队列导致可能采用旧评论（B3 旁支）；`releaseGeneration` 抛错盖掉已提交返回值（B2 旁支）；`failureStage=provider` 包含流式写入存储失败（B2 旁支）；布局导入可能带入多个 Here & There；README/Chat Core 其余未核对段落；联系人与气泡时间导出/恢复接口只有测试调用；源码字符串测试清点与故障注入覆盖清单（待 Opus 只读核查）。
 - Home 的 Add Widget、Edit Pages：Lan 与 GPT 早先留下的计划功能，目前按钮已禁用（Part 5 F11，#89），功能未开发、未删除。启用 Add Widget 时需落实 Lan 的产品决定：整个 Home 最多一个 Here & There（Part 5 R3）。
 - Part 5 F10②：Chats 空列表/搜索无匹配提示。`bce4305` 曾有意移除，是否恢复待 Lan 在后续统一 UI 整理时决定（暂停，非缺陷）。
