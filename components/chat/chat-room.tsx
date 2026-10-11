@@ -140,7 +140,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const chatBackground = useChatBackground(session, { characterId });
   const [publishedSessionId, setPublishedSessionId] = useState<string | null>(null);
   const frameReady = !!loadError || (!!session && chatBackground.readyForFrame && regexReady);
-  useEffect(() => {
+  // Publish the complete session frame before the browser can paint the shell-only commit.
+  // A passive effect here produces one visible shell → chat transition on every entry.
+  useLayoutEffect(() => {
     if (session && frameReady && publishedSessionId !== session.id) setPublishedSessionId(session.id);
   }, [session, frameReady, publishedSessionId]);
   const framePublished = !!loadError || (!!session && publishedSessionId === session.id);
