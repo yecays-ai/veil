@@ -476,3 +476,23 @@
   line-height: 1.5;
 }
 
+.settings-backup-result {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+.settings-app .settings-backup-action:not(:disabled) {
+  cursor: pointer;
+}
+.settings-app .settings-backup-action:disabled {
+  opacity: 0.6;
+}
+.settings-backup-preview {
+  display: grid;
+  gap: 8px;
+}
+.settings-backup-preview ul {
+  margin: 0;
+  padding-left: 18px;
+}

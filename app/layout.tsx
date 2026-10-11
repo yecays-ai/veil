@@ -4,6 +4,7 @@ import { PhoneShell } from "../components/phone-shell";
 import { ThemeProvider } from "../components/theme-provider";
 import { FoundationProvider } from "../components/foundation-provider";
 import { StandaloneMode } from "../components/standalone-mode";
+import { RestoreGate } from "../components/restore-gate";
 import { ProductBootstrap } from "../components/product-bootstrap";
 import { ChatDiagnosticsGate } from "../components/diagnostics/chat-diagnostics";
 import "./globals.css";
@@ -72,14 +73,16 @@ export default function RootLayout({
           } catch {}
         `}</Script>
         <StandaloneMode />
-        <ProductBootstrap />
-        <main className="app-root">
-          <PhoneShell>
-            <ThemeProvider>
-              <FoundationProvider><ChatDiagnosticsGate>{children}</ChatDiagnosticsGate></FoundationProvider>
-            </ThemeProvider>
-          </PhoneShell>
-        </main>
+        <RestoreGate>
+          <ProductBootstrap />
+          <main className="app-root">
+            <PhoneShell>
+              <ThemeProvider>
+                <FoundationProvider><ChatDiagnosticsGate>{children}</ChatDiagnosticsGate></FoundationProvider>
+              </ThemeProvider>
+            </PhoneShell>
+          </main>
+        </RestoreGate>
       </body>
     </html>
   );
