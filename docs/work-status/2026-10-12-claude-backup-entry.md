@@ -12,7 +12,7 @@ S11 第 18 单（原审计第 8 阶段：用户入口与 iPhone 文件流程）�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-entry`。新增 `lib/backup/backup-flow.ts`、`components/restore-gate.tsx`、两个测试文件、`docs/backup-entry.md`；改 `components/settings/backup-restore.tsx`、`app/layout.tsx`（包一层 RestoreGate）、`app/settings/settings.css`、`tests/settings-backup-entry.test.ts`。
+Claude；分支 `claude/backup-entry`；PR [#138](https://github.com/yecays-ai/veil/pull/138)。新增 `lib/backup/backup-flow.ts`、`components/restore-gate.tsx`、两个测试文件、`docs/backup-entry.md`；改 `components/settings/backup-restore.tsx`、`app/layout.tsx`（包一层 RestoreGate）、`app/settings/settings.css`、`tests/settings-backup-entry.test.ts`。
 
 ## 已完成与证据
 
