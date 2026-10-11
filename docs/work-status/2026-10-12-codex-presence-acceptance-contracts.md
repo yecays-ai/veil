@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/presence-acceptance-contracts`；PR 待创建。
+Codex；branch `codex/presence-acceptance-contracts`；PR [#145](https://github.com/yecays-ai/veil/pull/145)，未合并。
 仅新增 `tests/presence-action-commit.test.ts` 与本记录。无业务改动，无未合并依赖。总账在夜间交接文档 PR 统一对账，不覆写他人的任务记录。
 
 ## 已完成
