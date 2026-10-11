@@ -9,7 +9,9 @@ async function requestBody(baseUrl: string, generation: Parameters<ReturnType<ty
   let sent: Record<string, unknown> | undefined, calls = 0;
   t.mock.method(globalThis, "fetch", async (_url: string, init?: RequestInit) => { calls++; sent = JSON.parse(String(init?.body)); return sse(); });
   const config = { id: "x", baseUrl, apiKey: "k", model: "deepseek-flash" };
-  for await (const _part of createOpenAITextProvider()(config, [{ role: "user", content: "hi" }], new AbortController().signal, generation));
+  let reply = "";
+  for await (const part of createOpenAITextProvider()(config, [{ role: "user", content: "hi" }], new AbortController().signal, generation)) reply += part;
+  assert.equal(reply, "ok");
   assert.equal(calls, 1, "one request, never a retry");
   return sent!;
 }
