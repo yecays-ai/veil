@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import type { PersistenceWriteScope } from "../lib/backup/persistence-write-gate";
+import { runQueuedWrite } from "../lib/backup/write-queue";
 import { browserFoundationStorage } from "../lib/foundation-storage";
 import { CharacterConflictError } from "../lib/foundation";
 import {
@@ -96,7 +97,7 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
     const owner = lifecycle.current;
     // Serialize this provider's writes and their publication; a delayed earlier
     // transaction result cannot replace a later successful snapshot.
-    const operation = queue.current.then(async () => {
+    return runQueuedWrite(queue, async (owned) => {
       // After a failed read, re-read once before writing; if it still fails nothing is written.
       if (failure.current || !loaded.current) {
         await refreshNow.current?.();
@@ -104,7 +105,7 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
           throw new Error(failure.current ?? "Profile data could not be loaded. Nothing was changed.");
       }
       try {
-        const next = await browserFoundationStorage.transact(update, scope);
+        const next = await browserFoundationStorage.transact(update, owned);
         if (owner === lifecycle.current) { setDocument(next); setError(""); }
         return next;
       } catch (reason) {
@@ -116,9 +117,7 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
         }
         throw reason;
       }
-    });
-    queue.current = operation.catch(() => {});
-    return operation;
+    }, scope);
   }
   return (
     <FoundationContext.Provider value={{ document, ready, commit }}>
