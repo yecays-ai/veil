@@ -147,6 +147,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
     [confirmDelete, setConfirmDelete] = useState(false),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
+    [routineNote, setRoutineNote] = useState(""),
     [impact, setImpact] = useState<DeletionImpact | null>(null),
     [unfinished, setUnfinished] = useState<CleanupReport["failed"]>([]);
   const [baseline, setBaseline] = useState<Character | null>(null);
@@ -242,7 +243,9 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
               );
               // Drafts a life rhythm in the background when the settings behind it are new or changed; no-op otherwise.
               const savedId = characterId ?? saved.characters.at(-1)?.characterId;
-              if (savedId) void ensureRoutineAfterSave(savedId);
+              // Silent on success; a failure is named once, since an empty rhythm otherwise just reads as Offline.
+              setRoutineNote("");
+              if (savedId) void ensureRoutineAfterSave(savedId).then((outcome) => setRoutineNote(C.characters.routineFailed[outcome] ?? ""));
               if (isNew) {
                 const created = saved.characters.at(-1);
                 if (!created) throw new Error(C.characters.notFound);
@@ -254,6 +257,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
         </>
       ) : (
         <>
+          {routineNote && <p role="status">{routineNote}</p>}
           <ProfileView profile={character!} kind="character">
             <button onClick={() => { setBaseline(structuredClone(character!)); setEditing(true); }}>{C.common.edit}</button>
           </ProfileView>

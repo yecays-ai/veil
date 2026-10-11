@@ -51,6 +51,12 @@ export const FOUNDATION_COPY = {
     edit: "Edit Character",
     create: "Create Character",
     deleted: "Character deleted.",
+    routineFailed: {
+      "no-api": "Life rhythm not generated: no Text API is available for this Character.",
+      error: "Life rhythm not generated: the model request failed.",
+      truncated: "Life rhythm not generated: the model's reply was cut off.",
+      invalid: "Life rhythm not generated: the model's reply was not a valid rhythm.",
+    } as Record<string, string | undefined>,
     notFound: "Character not found.",
     deleteQuestion: "Delete this Character? This cannot be undone. Deleting will also remove:",
     impactLoading: "Checking what will be removed…",

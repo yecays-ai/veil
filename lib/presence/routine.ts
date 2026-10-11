@@ -2,6 +2,7 @@ import { browserApiConfigStorage } from "../api-config-storage";
 import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "../api-config";
 import { browserBindingStorage } from "../binding-storage";
 import { normalizeBindingSlot, type BindingDocument } from "../bindings";
+import { isTruncatedReason } from "../chat/types";
 import { openAITextProvider, validateApiConfig, type TextProvider } from "../chat/provider";
 import { createCompletionRequestContext, logPromptSummary } from "../chat/request-diagnostics";
 import { browserFoundationStorage } from "../foundation-storage";
@@ -16,7 +17,9 @@ import { browserPresenceStorage, normalizeRoutine, presenceRecord, setRoutine, t
 // that leaves the basis unchanged finds the stored routine current and makes no request.
 
 const SOURCE_PREFIX = "generated:";
-export const ROUTINE_MAX_TOKENS = 700;
+// Reasoning models spend most of their output budget thinking before the short JSON appears, so the budget is
+// generous but fixed. It is used as is: a chat preset's maxTokens is sized for chat replies and must not cap it.
+export const ROUTINE_MAX_TOKENS = 3000;
 export const ROUTINE_TIMEOUT_MS = 90_000;
 const ROUTINE_MAX_REPLY_CHARACTERS = 8_000;
 const PROMPT_FIELD_LIMIT = 1_500;
@@ -48,12 +51,17 @@ export function routinePrompt(character: Pick<Character, "name" | "occupation" |
   ].join("\n") }];
 }
 
-function minutes(value: unknown): number | null {
+/** "HH:MM" as minutes of the day. An end time may be "24:00" (midnight, the end of that day); a start may not. */
+function minutes(value: unknown, isEnd = false): number | null {
   const match = typeof value === "string" ? /^\s*(\d{1,2}):(\d{2})\s*$/.exec(value) : null;
   if (!match) return null;
-  const total = Number(match[1]) * 60 + Number(match[2]);
-  return Number(match[1]) < 24 && Number(match[2]) < 60 ? total : null;
+  const hour = Number(match[1]), minute = Number(match[2]);
+  if (isEnd && hour === 24 && minute === 0) return 0;
+  return hour < 24 && minute < 60 ? hour * 60 + minute : null;
 }
+// Common harmless deviations only: a number or day written as digits in a string, a status in other case.
+const count = (value: unknown) => typeof value === "string" && /^\s*\d{1,4}\s*$/.test(value) ? Number(value) : value;
+const label = (value: unknown) => typeof value === "string" ? value.trim().toLowerCase() : value;
 /** Reads the model's JSON reply into a routine, or null when anything is missing or out of range. */
 export function parseRoutine(reply: string): PresenceRoutine | null {
   const start = reply.indexOf("{"), end = reply.lastIndexOf("}");
@@ -61,19 +69,21 @@ export function parseRoutine(reply: string): PresenceRoutine | null {
   let data: unknown;
   try { data = JSON.parse(reply.slice(start, end + 1)); } catch { return null; }
   const raw = data as { defaultStatus?: unknown; jitterMinutes?: unknown; blocks?: unknown };
-  if (!raw || !Array.isArray(raw.blocks) || !raw.blocks.length || typeof raw.jitterMinutes !== "number") return null;
+  const jitter = count(raw?.jitterMinutes);
+  if (!raw || !Array.isArray(raw.blocks) || !raw.blocks.length || typeof jitter !== "number") return null;
   const blocks = [];
   for (const item of raw.blocks) {
     const block = item as { days?: unknown; start?: unknown; end?: unknown; status?: unknown };
-    const startMinute = minutes(block?.start), endMinute = minutes(block?.end);
+    const startMinute = minutes(block?.start), endMinute = minutes(block?.end, true);
     if (startMinute === null || endMinute === null || !Array.isArray(block.days)) return null;
-    blocks.push({ days: block.days, startMinute, endMinute, status: block.status });
+    blocks.push({ days: block.days.map(count), startMinute, endMinute, status: label(block.status) });
   }
-  if (normalizePresence(raw.defaultStatus) !== raw.defaultStatus) return null;
-  return normalizeRoutine({ blocks, defaultStatus: raw.defaultStatus, jitterMinutes: raw.jitterMinutes });
+  const defaultStatus = label(raw.defaultStatus);
+  if (normalizePresence(defaultStatus) !== defaultStatus) return null;
+  return normalizeRoutine({ blocks, defaultStatus, jitterMinutes: jitter });
 }
 
-export type RoutineOutcome = "current" | "busy" | "no-character" | "no-api" | "generated" | "invalid" | "stale" | "cancelled" | "error";
+export type RoutineOutcome = "current" | "busy" | "no-character" | "no-api" | "generated" | "invalid" | "truncated" | "stale" | "cancelled" | "error";
 type Services = {
   foundation: () => Promise<FoundationDocument>; presence: () => Promise<PresenceDocument>;
   bindings: () => Promise<BindingDocument>; presets: () => Promise<PresetDocument>;
@@ -113,16 +123,17 @@ export async function ensureRoutine(characterId: string, signal?: AbortSignal, d
     const preset = presetForBinding(await deps.presets(), binding.presetId);
     const messages = routinePrompt(character), request = createCompletionRequestContext("presence-routine");
     logPromptSummary(request, api.model, [{ identifier: "presence-routine", role: "system", characterLength: messages[0].content.length }], messages);
-    let reply = "";
+    let reply = "", finishReason: string | undefined;
     controller.signal.throwIfAborted();
     for await (const part of deps.provider(api, messages, controller.signal,
-      { ...preset.generation, maxTokens: Math.min(preset.generation.maxTokens ?? ROUTINE_MAX_TOKENS, ROUTINE_MAX_TOKENS) }, request)) {
+      { ...preset.generation, maxTokens: ROUTINE_MAX_TOKENS }, request, (reason) => { finishReason = reason; })) {
       reply += part;
       if (reply.length > ROUTINE_MAX_REPLY_CHARACTERS) return "invalid";
     }
     controller.signal.throwIfAborted();
     const routine = parseRoutine(reply);
-    if (!routine) return "invalid";
+    // A reply cut off at the token limit usually holds only the model's reasoning; say so instead of "invalid".
+    if (!routine) return isTruncatedReason(finishReason) ? "truncated" : "invalid";
     // The Character may have been edited or deleted while the model was thinking; a routine for an old basis is dropped.
     const latest = (await deps.foundation()).characters.find((item) => item.characterId === characterId);
     if (!latest || routineBasis(latest) !== basis) return "stale";
