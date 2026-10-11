@@ -1,7 +1,7 @@
 # STATUS — 2026-10-11-codex-backup-idb-write-gate
 
 更新人：Codex
-更新时间：2026-10-11T15:14:13+08:00
+更新时间：2026-10-11T15:16:11+08:00
 发现范围：正式仓库最新 origin/main 与 S11；GitHub #121 合并证据，全部开放 PR #117 的 head/changed files 及已有交接范围，fetch 后远程分支；未发布本地工作不可见。#117 改 engine/presence/UI，不改本单四库文件；Lan 的 T8 UI 在另一 work，本单不改 UI。
 
 ## 当前任务
@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/backup-idb-write-gate`；PR 尚未创建。
+Codex；branch `codex/backup-idb-write-gate`；PR [#123](https://github.com/yecays-ai/veil/pull/123)，已提交，未合并。
 base/main `33404fc828f0da9860a4d680019e64720b9eb6e8`。
 改 `lib/core-document-storage.ts`、`lib/api-config-storage.ts`、`lib/appearance-image-storage.ts`、`lib/chat/storage.ts` 的统一事务入口；新增 `lib/backup/persistence-write-gate.ts`、`tests/backup-persistence-write-gate.test.ts`、`docs/backup-idb-write-gate.md`、本记录；更新总账 S11 状态；补齐 `tests/generation-lock-fixture.ts` 的 shared/exclusive 排队模拟，保持生成锁 ifAvailable 测试。
 
@@ -38,4 +38,4 @@ base/main `33404fc828f0da9860a4d680019e64720b9eb6e8`。
 
 ## 下一步
 
-本单施工完成，提交 PR 后停止；不自动合并，不启动第 5 单，不持续轮询 CodeRabbit。
+本单已提交并停止；不自动合并，不启动第 5 单，不持续轮询 CodeRabbit。
