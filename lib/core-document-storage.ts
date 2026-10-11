@@ -30,9 +30,15 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
-  private open(scope?: PersistenceWriteScope): Promise<IDBDatabase> {
-    if (this.database) return this.database;
-    return runPersistenceWrite(this.writeGate, () => this.openDatabase(), scope);
+  private open(scope?: PersistenceWriteScope, identify?: (cached: Promise<IDBDatabase>) => void): Promise<IDBDatabase> {
+    const open = () => {
+      const cached = this.openDatabase();
+      // The gate returns a wrapper; recovery must identify the actual cached open.
+      identify?.(cached);
+      return cached;
+    };
+    if (this.database) return open();
+    return runPersistenceWrite(this.writeGate, open, scope);
   }
 
   private openDatabase(): Promise<IDBDatabase> {
@@ -93,16 +99,16 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
   }
 
   private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
-    const opening = this.open(scope);
-    const database = await opening;
+    let opening!: Promise<IDBDatabase>;
+    const database = await this.open(scope, (cached) => { opening = cached; });
     let transaction: IDBTransaction;
     try {
       transaction = database.transaction(DOCUMENT_STORE, mode);
     } catch (error) {
       if (!isInvalidStateError(error)) throw error;
       if (this.database === opening) this.database = undefined;
-      const recoveredOpening = this.open(scope);
-      const recoveredDatabase = await recoveredOpening;
+      let recoveredOpening!: Promise<IDBDatabase>;
+      const recoveredDatabase = await this.open(scope, (cached) => { recoveredOpening = cached; });
       try {
         transaction = recoveredDatabase.transaction(DOCUMENT_STORE, mode);
       } catch (retryError) {

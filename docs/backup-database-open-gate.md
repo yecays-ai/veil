@@ -18,6 +18,8 @@ readwrite 事务创建自己的 scope，再把 scope 传入 open/连接恢复：
 
 error/blocked 拒绝标记统一保留到请求生命周期结束。之后再收到 upgrade，不建表而 abort；再收到 success，关闭得到的连接并返回，不重置缓存、不执行后续事务。原错误文案、缓存失败清理、关闭/版本变化处理和创建事务重试保留，不扩展修复其他存储问题。
 
+首次 open 经 gate 返回的是包装 Promise，与缓存的原生 open Promise 不是同一身份。Chat 与 Core 的 InvalidStateError 恢复路径通过 open 回调取得实际缓存 Promise 后再比较清理，保证 pending-close 连接被丢弃、只重试一次；API、Appearance 没有该恢复路径，不受影响。
+
 ## 证据和限制
 
 新增测试用 fake-indexeddb、模拟同 origin Web Locks 和受控迟到回调；没有真实 VEIL 数据访问。修正第 4 单的测试前提：先初始化空库，再验证**已有连接**的只读路径不等写锁，首次初始化由本单新测试覆盖。

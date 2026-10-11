@@ -1,7 +1,7 @@
 # STATUS — 2026-10-11-codex-backup-database-open-gate
 
-更新人：Codex
-更新时间：2026-10-11T16:34:21+08:00
+更新人：Claude（接手 Codex 记录）
+更新时间：2026-10-11T17:40:00+08:00
 发现范围：本轮 fetch 正式仓库 latest origin/main、S11；GitHub #125 具体评价、修复提交复审覆盖和完整讨论分页；全部开放 PR #117 的 head/changed files 与既有交接。本单不碰 Presence/engine/UI，未发布本地工作不可见。
 
 ## 当前任务
@@ -24,7 +24,7 @@ base/main `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`。
 ## 已完成
 
 - #126 本次复审仅处理 ChatStorage 首次 open 的 Promise 身份及 InvalidStateError 重试。模拟 pending-close 后，首次读/写及二次失败收尾三个回归修复前全部失败；通过 open 回调识别实际缓存 Promise，保持身份比较及一次重试，不缓存排队中的 gate Promise。修复后定向 34/34、提交前单轮全量 978/978、typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。未访问真实 VEIL 数据。
-- CodeRabbit 同一评论附带 Core 同类意见，登记为本次授权范围外；本轮未修改或验证 Core 的该路径，不将本次 Chat 修复表述为整条评论全部解决。
+- CodeRabbit 同一评论附带的 Core 同类意见经 Lan 授权后核实成立：`lib/core-document-storage.ts` 首次 open 时 `performTransaction` 拿到的是 gate 包装 Promise，`this.database === opening` 恒为 false，pending-close 连接不会被清理，重试复用同一失效连接后失败。按 Chat 同一做法最小修复（open 回调识别实际缓存 Promise），未改 API/Appearance（二者无 InvalidStateError 恢复路径）。新增 `tests/core-document-storage-open-recovery.test.ts` 3 条（首次读/首次写各重试一次、二次失败后收尾并可再次打开），修复前 3 条全部失败、修复后通过。定向 39/39；提交前全量 981/981（Node 24.21.0）、typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。仅模拟数据。
 
 - #125 审查发现早已失败的子 Promise 被移出集合，父范围可能误报成功。新增回归修复前失败，保留所有子结果到收尾，父异常优先；修复后定向 10/10、全量 959/959 及 typecheck/lint/build/diff check 通过。
 - 修复提交 `f5eebf356a7cb3047afeec5305d9a8a0d70b44d0` 的 verify 与 CodeRabbit 通过，coverage 精确覆盖该 SHA，唯一意见 resolved、分页完整。按 Lan 本次单次授权合并 #125，merge/main 为 `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`；不授权合并本单或后续 PR。
@@ -41,4 +41,4 @@ base/main `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`。
 
 ## 下一步
 
-本次定向修复推送后核对最新 CI / CodeRabbit，随后停止，等待 Lan 手动合并 #126，不启动后续单。
+Core 修补已推送，等待 CI / CodeRabbit 复审及 Lan 手动合并 #126；合并前不启动第 8 单。
