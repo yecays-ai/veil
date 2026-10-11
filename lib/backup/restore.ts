@@ -170,14 +170,19 @@ async function rollbackTarget(run: Run, journal: RestoreJournal): Promise<Static
  * Puts every unit back to its pre-restore state. A unit that holds neither that state nor what this restore wrote
  * stops the rollback (`target-changed`): it is never overwritten.
  */
-async function rollback(run: Run, journal: RestoreJournal): Promise<void> {
+async function rollback(run: Run, journal: RestoreJournal, written: ReadonlySet<RestoreUnit> = new Set()): Promise<void> {
   const target = await rollbackTarget(run, journal);
-  const state = await digestUnits(await readStaticBackupSource(run.device));
+  let state: Record<RestoreUnit, string>;
+  try { state = await digestUnits(await readStaticBackupSource(run.device)); } catch { throw new RestoreError("rollback-failed", "kept"); }
   for (const unit of [...RESTORE_UNITS].reverse())
-    if (state[unit] !== before(journal, unit) && state[unit] !== journal.expected[unit]) throw new RestoreError("target-changed", "kept", unit);
-  for (const unit of [...RESTORE_UNITS].reverse()) if (state[unit] !== before(journal, unit))
-    await (journal.kind === "replace" ? run.writers[unit].write(target) : run.writers[unit].clear());
-  const after = await digestUnits(await readStaticBackupSource(run.device));
+    // A unit this very run wrote is ours to undo even if it stored something other than expected (failed verification).
+    if (state[unit] !== before(journal, unit) && state[unit] !== journal.expected[unit] && !written.has(unit)) throw new RestoreError("target-changed", "kept", unit);
+  for (const unit of [...RESTORE_UNITS].reverse()) if (state[unit] !== before(journal, unit)) {
+    try { await (journal.kind === "replace" ? run.writers[unit].write(target) : run.writers[unit].clear()); }
+    catch { throw new RestoreError("rollback-failed", "kept", unit); }
+  }
+  let after: Record<RestoreUnit, string>;
+  try { after = await digestUnits(await readStaticBackupSource(run.device)); } catch { throw new RestoreError("rollback-failed", "kept"); }
   const left = RESTORE_UNITS.find((unit) => after[unit] !== before(journal, unit));
   if (left) throw new RestoreError("rollback-failed", "kept", left);
   await finish(run, journal);
@@ -195,15 +200,17 @@ async function finish(run: Run, journal: RestoreJournal): Promise<void> {
 }
 
 /** Writes units still in their old state, skips units already equal to the backup, refuses anything else; then verifies. */
-async function applyUnits(run: Run, journal: RestoreJournal, snapshot: StaticBackupSnapshot): Promise<{ failedUnit?: RestoreUnit; verified: boolean }> {
+async function applyUnits(run: Run, journal: RestoreJournal, snapshot: StaticBackupSnapshot): Promise<{ failedUnit?: RestoreUnit; verified: boolean; written: Set<RestoreUnit> }> {
+  const written = new Set<RestoreUnit>();
   for (const unit of RESTORE_UNITS) {
     const state = (await digestUnits(await readStaticBackupSource(run.device)))[unit];
     if (state === journal.expected[unit]) continue;
     if (state !== before(journal, unit)) throw new RestoreError("target-changed", "kept", unit);
-    try { await run.writers[unit].write(snapshot); } catch { return { failedUnit: unit, verified: false }; }
+    written.add(unit);
+    try { await run.writers[unit].write(snapshot); } catch { return { failedUnit: unit, verified: false, written }; }
   }
   const after = await digestUnits(await readStaticBackupSource(run.device));
-  return { verified: RESTORE_UNITS.every((unit) => after[unit] === journal.expected[unit]) };
+  return { verified: RESTORE_UNITS.every((unit) => after[unit] === journal.expected[unit]), written };
 }
 
 async function runRestore(kind: RestoreJournal["kind"], manifestJson: string, files: ReadonlyMap<string, Uint8Array>,
@@ -238,7 +245,7 @@ async function runRestore(kind: RestoreJournal["kind"], manifestJson: string, fi
     try { result = await applyUnits(run, journal, snapshot); }
     catch (error) { throw error instanceof RestoreError ? error : new RestoreError("resume-failed", "kept"); }
     if (result.failedUnit || !result.verified) {
-      await rollback(run, journal);
+      await rollback(run, journal, result.written);
       throw new RestoreError(result.failedUnit ? "restore-failed-rolled-back" : "verify-failed-rolled-back", "none", result.failedUnit);
     }
     await finish(run, journal);
