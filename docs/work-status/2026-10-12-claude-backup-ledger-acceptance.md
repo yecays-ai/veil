@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-ledger-acceptance`；PR：见 PR 页。涉及：`docs/AUDIT_LEDGER.md`（仅 S11 行末追加一句）。
+Claude；分支 `claude/backup-ledger-acceptance`；PR：https://github.com/yecays-ai/veil/pull/141。涉及：`docs/AUDIT_LEDGER.md`（仅 S11 行末追加一句）。
 
 ## 已完成
 
