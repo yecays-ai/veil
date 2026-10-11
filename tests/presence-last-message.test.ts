@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
+import { sentRecorder } from "../lib/chat/engine";
 import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
+import { createPresenceStorage, PRESENCE_STORAGE_KEY } from "../lib/presence/storage";
 
 async function setup() {
   const storage = new ChatStorage(() => new IDBFactory());
@@ -63,4 +65,17 @@ test("a Presence write that fails or throws cannot change the committed reply", 
       assert.equal(JSON.stringify(warnings).includes("quota"), false, "the error text is not logged");
     } finally { console.warn = original; }
   }
+});
+
+test("the Presence recorder raises lastMessageAt and never lowers it", async () => {
+  const values = new Map<string, string>(), storage = { getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+  const record = sentRecorder(createPresenceStorage(() => storage, () => undefined));
+  const read = () => (JSON.parse(values.get(PRESENCE_STORAGE_KEY)!).characters as { characterId: string; lastMessageAt: number }[])
+    .map((c) => [c.characterId, c.lastMessageAt]);
+  await record("a", AT.getTime());
+  assert.deepEqual(read(), [["a", AT.getTime()]]);
+  await record("a", AT.getTime() - 60_000);
+  await record("b", AT.getTime() - 1);
+  assert.deepEqual(read(), [["a", AT.getTime()], ["b", AT.getTime() - 1]], "an older time changes nothing; Characters are separate");
 });

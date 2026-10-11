@@ -16,7 +16,7 @@ import {
 import { ChatStorage, chatStorage } from "./storage";
 import type { ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
-import { advanceLastSeen, browserPresenceStorage } from "../presence/storage";
+import { advanceLastSeen, browserPresenceStorage, type PresenceStorage } from "../presence/storage";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
@@ -30,8 +30,10 @@ import { startGenerationPersistence, type GenerationPersistenceOutcome } from ".
 
 /** Records when a Character's reply was committed, for Last Seen. Resolves once saved. */
 type SentRecorder = (characterId: string, sentAt: number) => Promise<void>;
-const recordSentToPresence: SentRecorder = (characterId, sentAt) => typeof window === "undefined" ? Promise.resolve()
-  : browserPresenceStorage.transact((document) => advanceLastSeen(document, characterId, { lastMessageAt: sentAt }, sentAt)).then(() => {});
+export const sentRecorder = (presence: Pick<PresenceStorage, "transact">): SentRecorder => (characterId, sentAt) =>
+  presence.transact((document) => advanceLastSeen(document, characterId, { lastMessageAt: sentAt }, sentAt)).then(() => {});
+const recordSentToPresence: SentRecorder = (characterId, sentAt) =>
+  typeof window === "undefined" ? Promise.resolve() : sentRecorder(browserPresenceStorage)(characterId, sentAt);
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
