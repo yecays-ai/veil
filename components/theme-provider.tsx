@@ -10,6 +10,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import type { PersistenceWriteScope } from "../lib/backup/persistence-write-gate";
 import { browserThemeStorage } from "../lib/theme-storage";
 import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 import { browserAppearanceImageStorage } from "../lib/appearance-image-storage";
@@ -26,7 +27,7 @@ type ThemeContextValue = {
   ready: boolean;
   /** The first load has finished, successfully or not. Until then the document is only the built-in default. */
   settled: boolean;
-  commit: (update: (document: ThemeDocument) => ThemeDocument) => Promise<void>;
+  commit: (update: (document: ThemeDocument) => ThemeDocument, scope?: PersistenceWriteScope) => Promise<void>;
   resolveImage: (source: string | null) => string | null;
   updateProfile: (
     update: (profile: ThemeProfile) => ThemeProfile,
@@ -163,6 +164,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   function commit(
     update: (document: ThemeDocument) => ThemeDocument,
+    scope?: PersistenceWriteScope,
   ): Promise<void> {
     const owner = lifecycle.current;
     const live = () => owner === lifecycle.current && mounted.current;
@@ -176,7 +178,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (!live() || !writable.current)
         throw failure instanceof Error ? failure
           : new Error("Appearance has not loaded. Existing data has not been changed.");
-      await browserThemeStorage.transact(update);
+      await browserThemeStorage.transact(update, scope);
       // The write is durable here; a failed refresh must not report it as a failed save.
       if (live()) {
         try { await refresh.current?.(); }

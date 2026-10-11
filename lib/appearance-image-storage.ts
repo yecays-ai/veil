@@ -83,10 +83,11 @@ export class AppearanceImageStorage {
     return this.database;
   }
 
-  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    return mode === "readwrite"
-      ? withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope))
-      : this.performTransaction(mode, run);
+  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, outer?: PersistenceWriteScope): Promise<T> {
+    if (mode !== "readwrite") return this.performTransaction(mode, run, outer);
+    return outer
+      ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, outer), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope));
   }
 
   private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
@@ -142,7 +143,7 @@ export class AppearanceImageStorage {
 
   // The existing asset transaction serializes Theme publication and collection across tabs.
   // publish is synchronous: no unrelated asynchronous work is performed inside the transaction.
-  async publish<T>(publish: (available: ReadonlySet<string>) => T): Promise<T> {
+  async publish<T>(publish: (available: ReadonlySet<string>) => T, scope?: PersistenceWriteScope): Promise<T> {
     let published = false;
     let result!: T;
     try {
@@ -150,7 +151,7 @@ export class AppearanceImageStorage {
         const ids = await request<IDBValidKey[]>(store.getAllKeys());
         result = publish(new Set(ids.filter((id): id is string => typeof id === "string")));
         published = true;
-      });
+      }, scope);
     } catch (error) {
       // No assets are changed in this transaction. Once synchronous localStorage publication
       // succeeded, a later transaction abort cannot undo that successful Theme write.
@@ -167,7 +168,7 @@ export class AppearanceImageStorage {
     });
   }
 
-  collect(resolveUsedIds: () => ReadonlySet<string>): Promise<void> {
+  collect(resolveUsedIds: () => ReadonlySet<string>, scope?: PersistenceWriteScope): Promise<void> {
     return this.transaction("readwrite", async (store) => {
       const saved = await request<ImageAsset[]>(store.getAll());
       // Read the persisted authority while holding the same transaction lock as publishers.
@@ -180,7 +181,7 @@ export class AppearanceImageStorage {
       for (const asset of saved)
         if (!usedIds.has(asset.id) && !held(asset) && now - asset.createdAt >= COLLECT_GRACE_MS)
           await request(store.delete(asset.id));
-    });
+    }, scope);
   }
 }
 

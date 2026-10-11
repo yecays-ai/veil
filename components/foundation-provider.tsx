@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { PersistenceWriteScope } from "../lib/backup/persistence-write-gate";
 import { browserFoundationStorage } from "../lib/foundation-storage";
 import { CharacterConflictError } from "../lib/foundation";
 import {
@@ -21,6 +22,7 @@ type Context = {
   ready: boolean;
   commit: (
     update: (document: FoundationDocument) => FoundationDocument,
+    scope?: PersistenceWriteScope,
   ) => Promise<FoundationDocument>;
 };
 const FoundationContext = createContext<Context | null>(null);
@@ -88,6 +90,7 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
   }, []);
   async function commit(
     update: (document: FoundationDocument) => FoundationDocument,
+    scope?: PersistenceWriteScope,
   ) {
     if (!ready && !failure.current) throw new Error("Profile data is still loading.");
     const owner = lifecycle.current;
@@ -101,7 +104,7 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
           throw new Error(failure.current ?? "Profile data could not be loaded. Nothing was changed.");
       }
       try {
-        const next = await browserFoundationStorage.transact(update);
+        const next = await browserFoundationStorage.transact(update, scope);
         if (owner === lifecycle.current) { setDocument(next); setError(""); }
         return next;
       } catch (reason) {

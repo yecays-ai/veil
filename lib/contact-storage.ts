@@ -1,5 +1,5 @@
 import type { StringStorage } from "./storage-types";
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 
 export const CONTACT_STORAGE_KEY = "veil.contacts.v1";
 export type ContactRemarkChange = { type: "remark-changed"; fromRemark: string | null; toRemark: string | null; createdAt: number };
@@ -105,12 +105,12 @@ export function createContactStorage(getStorage: () => StringStorage,
     }
     throw new Error("Contacts changed in another tab. Nothing was saved; try again.");
   };
-  const transact = (update: (current: ContactDocument) => ContactDocument) => {
-    const run = () => writeGate.withWrite(async () => {
+  const transact = (update: (current: ContactDocument) => ContactDocument, scope?: PersistenceWriteScope) => {
+    const run = () => runPersistenceWrite(writeGate, async () => {
       const locks = getLocks();
       return locks ? await locks.request(CONTACT_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
         : commit(update);
-    });
+    }, scope);
     const operation = queue.then(run, run);
     queue = operation.then(() => {}, () => {});
     return operation;

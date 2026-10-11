@@ -1,3 +1,4 @@
+import type { PersistenceWriteScope } from "./backup/persistence-write-gate";
 import { normalizeDocument, type ThemeDocument } from "./theme-types";
 import { encodeStoredImage } from "./image-processing";
 import { browserAppearanceImageStorage, withThemeImageSource, type AppearanceImageStorage } from "./appearance-image-storage";
@@ -6,7 +7,7 @@ import { themeImageAssetIds } from "./theme-types";
 export interface ThemeStorage {
   load(): Promise<ThemeDocument>;
   save(document: ThemeDocument): Promise<void>;
-  transact(update: (document: ThemeDocument) => ThemeDocument): Promise<ThemeDocument>;
+  transact(update: (document: ThemeDocument) => ThemeDocument, scope?: PersistenceWriteScope): Promise<ThemeDocument>;
 }
 
 const KEY = "companion-phone.appearance.v1";
@@ -19,7 +20,7 @@ export function createThemeStorage(
     try { return normalizeDocument(raw ? JSON.parse(raw) : null, false); }
     catch { throw new Error("Saved appearance is invalid. Existing data has not been changed."); }
   };
-  const transact = async (update: (document: ThemeDocument) => ThemeDocument) => {
+  const transact = async (update: (document: ThemeDocument) => ThemeDocument, scope?: PersistenceWriteScope) => {
     const document = await images.publish((available) => {
       const next = normalizeDocument(update(read()), false);
       if ([...themeImageAssetIds(next)].some((id) => !available.has(id)))
@@ -27,8 +28,8 @@ export function createThemeStorage(
       try { getStorage().setItem(KEY, JSON.stringify(next)); }
       catch { throw new Error("Could not save Appearance. Browser storage may be unavailable."); }
       return next;
-    });
-    try { await images.collect(() => themeImageAssetIds(read())); }
+    }, scope);
+    try { await images.collect(() => themeImageAssetIds(read()), scope); }
     catch { /* A successful publication must not fail because optional cleanup failed. */ }
     return document;
   };
