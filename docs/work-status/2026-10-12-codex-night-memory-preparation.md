@@ -2,7 +2,7 @@
 
 更新人：Codex
 更新时间：2026-10-12T04:01:43+08:00
-发现范围：开工 fetch canonical yecays-ai/veil 的 main/base `e7b86d0726e603f55232c9f3f52cf43e98f0da8d`，当时无开放 PR；核对 #141/#142 已合并。远端状态持续核对至本更新时间，当前相关开放 PR 为本任务独立创建的 #143/#144/#145，本文档 PR 未发布；均不改本 PR 文档路径。另一个旧 Settings UI 本地 worktree 不动；未发布执行器工作不可见。使用最新总账、执行基线、v2 Q1–Q7、架构护栏背景，不进入参考仓库，不重新启用 MPB 为必读/阻塞/验收项。
+发现范围：开工 fetch canonical yecays-ai/veil 的 main/base `e7b86d0726e603f55232c9f3f52cf43e98f0da8d`，当时无开放 PR；核对 #141/#142 已合并。代码审查核对时间 2026-10-12T04:01:43+08:00；发布后再核对远端 refs（完整分页）：相关开放 PR 为本任务独立创建的 #143/#144/#145/#146。旧 `claude/presence-routine-fix` head `d6aac5773970c5b643a0833790d175f5ca54c62d` 为 #127 的验收同步提交，共同祖先到该 head 无文件差异，作息源码与 main 相同，不当作新在途业务。另一个旧 Settings UI 本地 worktree 不动；未发布执行器工作不可见。使用最新总账、执行基线、v2 Q1–Q7、架构护栏背景，不进入参考仓库，不重新启用 MPB 为必读/阻塞/验收项。
 
 ## 当前任务
 
@@ -32,7 +32,7 @@ Codex；branch `codex/night-memory-preparation`；PR [#146](https://github.com/y
 
 ## 尚未验证
 
-- 本文档 PR 的 CI/CodeRabbit 尚待发布后核对。
+- 本文档 PR 的 CI/CodeRabbit 已开始，最终结果在交接回复/GitHub 核对；此记录是提交时快照，不把处理中写为通过。
 - Safari/iPhone 中断页/页面终止、原生锁/内存，以及 T6–T8 真实模型合理性/手机展示；明早由 Lan 决定验收或接受保留缺口。
 - Vercel Preview 未申请，额度受限不算代码失败；无任何生产部署。
 - 其他执行器的未发布本地工作不可见，既有无 Web Locks 多标签页和软键盘暂移为已接受风险，未扩大整改。
