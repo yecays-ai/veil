@@ -7,7 +7,7 @@ import { presenceText, presenceView, relativeAge } from "../lib/presence/view";
 const HOUR = 3_600_000, MINUTE = 60_000, NOW = Date.UTC(2026, 9, 12, 12, 0);
 const character = { characterId: "a", timezone: "UTC" };
 const onlineRoutine: PresenceRoutine = { blocks: [], defaultStatus: "online", jitterMinutes: 0 };
-const record = (patch: Partial<PresenceRecord>): PresenceRecord => ({ characterId: "a", routine: null, situations: [], signature: null,
+const record = (patch: Partial<PresenceRecord>): PresenceRecord => ({ characterId: "a", routine: null, situations: [], signature: null, situationChange: null,
   lastOnlineAt: null, lastMessageAt: null, ...patch });
 const busy = (startsAt: number, endsAt: number) => ({ status: "busy" as const, reason: null, startsAt, endsAt, changedAt: startsAt, source: null });
 

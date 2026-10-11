@@ -84,9 +84,35 @@ test("the cooldown is the Character's own and is judged from its last change, no
   await apply("a", { situation: { status: "away", durationMinutes: 600 } }, T + SITUATION_COOLDOWN_MS, "m3");
   assert.equal(presenceRecord(state.presence, "a")!.situations.at(-1)!.status, "away");
   assert.deepEqual(actionAllowance(undefined, T), { situation: true, signature: true });
-  const userMade = { characterId: "a", routine: null, signature: null, lastOnlineAt: null, lastMessageAt: null,
-    situations: [{ status: "busy" as const, reason: null, startsAt: T, endsAt: T + MIN * 5, changedAt: T, source: null }] };
+  const userMade = { characterId: "a", routine: null, signature: null, lastOnlineAt: null, lastMessageAt: null, situations: [],
+    situationChange: { changedAt: T, source: null } };
   assert.equal(actionAllowance(userMade, T).situation, true, "only the Character's own changes start its cooldown");
+});
+
+test("ending or cancelling a situation also starts the cooldown, but doing nothing does not", async () => {
+  const planned = stores();
+  await planned.apply("a", { situation: { status: "away", startInMinutes: 120 } }, T, "m1");
+  await planned.apply("a", { cancelUpcoming: true }, T + SITUATION_COOLDOWN_MS, "m2");
+  await planned.apply("a", { situation: { status: "busy" } }, T + SITUATION_COOLDOWN_MS + 1, "m3");
+  assert.equal(presenceRecord(planned.state.presence, "a")!.situations.length, 0, "cancelling started a cooldown");
+  const running = stores();
+  await running.apply("a", { situation: { status: "busy", durationMinutes: 600 } }, T, "m1");
+  await running.apply("a", { endSituation: "all" }, T + SITUATION_COOLDOWN_MS, "m2");
+  await running.apply("a", { situation: { status: "away" } }, T + SITUATION_COOLDOWN_MS + 1, "m3");
+  assert.equal(presenceRecord(running.state.presence, "a")!.situations.some((s) => s.status === "away"), false, "ending started a cooldown");
+  const idle = stores();
+  await idle.apply("a", { cancelUpcoming: true, endSituation: "all" }, T, "m1");
+  await idle.apply("a", { situation: { status: "away" } }, T + 1, "m2");
+  assert.equal(presenceRecord(idle.state.presence, "a")!.situations.length, 1, "a no-op change costs nothing");
+});
+
+test("a tag quoted in the middle of a reply is hidden but never applied; only the closing line acts", () => {
+  const quoted = splitActions(`You could write ${tag('{"signature":"busy"}')} to change it, I'll skip that.`);
+  assert.equal(quoted.actions, null);
+  assert.equal(quoted.text, "You could write  to change it, I'll skip that.");
+  const both = splitActions(`Example ${tag('{"signature":"a"}')} done.\n${tag('{"signature":"b"}')}\n`);
+  assert.deepEqual(both.actions, { signature: "b" });
+  assert.doesNotMatch(both.text, /veil-action/);
 });
 
 test("a signature action reaches Foundation, marks the change, honours its cooldown, and skips no-ops", async () => {
@@ -111,7 +137,7 @@ test("the Character is told how to change itself only for what it may change now
   assert.match(text(undefined), /end the reply with one line <veil-action>/);
   assert.match(text(undefined), /"signature"[\s\S]*"situation"/);
   assert.match(text(undefined), /never for something you merely recall or tell about/);
-  const recent = { characterId: "a", routine: null, lastOnlineAt: null, lastMessageAt: null, situations: [],
+  const recent = { characterId: "a", routine: null, situationChange: null, lastOnlineAt: null, lastMessageAt: null, situations: [],
     signature: { changedAt: T - MIN, source: "character:x" } };
   assert.doesNotMatch(text(recent), /"signature":/);
   assert.match(text(recent), /"situation":/);
