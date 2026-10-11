@@ -12,7 +12,7 @@ S11 第 17 单（原审计第 7 阶段：显式覆盖现有数据）。已施工
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-replace`。新增 `lib/backup/safety-copy.ts`、`tests/backup-replace.test.ts`、`docs/backup-replace.md`；改 `lib/backup/restore.ts`（日志增加 kind 与 previous，新增 `replaceWithBackup`）。
+Claude；分支 `claude/backup-replace`；PR [#137](https://github.com/yecays-ai/veil/pull/137)。新增 `lib/backup/safety-copy.ts`、`tests/backup-replace.test.ts`、`docs/backup-replace.md`；改 `lib/backup/restore.ts`（日志增加 kind 与 previous，新增 `replaceWithBackup`）。
 
 ## 已完成与证据
 
