@@ -4,6 +4,7 @@ import type { ApiConfigStorage } from "../api-config-storage";
 import { completionUrl, validateApiConfig } from "../chat/provider";
 import type { BindingDocument } from "../bindings";
 import { withoutApiConfigBinding } from "../bindings";
+import { browserPersistenceWriteGate, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { completionTerminalOutcome, createCompletionRequestContext, logCompletionStart, logCompletionUsage,
   parseCompletionUsage, startCompletionTerminal, type CompletionErrorCategory,
   type CompletionTerminal, type CompletionUsage } from "../chat/request-diagnostics";
@@ -13,17 +14,23 @@ class ApiRequestError extends Error {
   constructor(message: string, readonly category: CompletionErrorCategory, readonly httpStatus?: number) { super(message); }
 }
 
-export async function deleteApiConfigAndBindings(
+/** The configuration delete, its Binding cleanup and any rollback hold one backup lease, so a snapshot sees none of the steps half-done. */
+export function deleteApiConfigAndBindings(
   id: string, storage: ApiConfigStorage, bindings: Pick<BindingStorage, "transact">,
-  expected?: NamedApiConfig,
+  expected?: NamedApiConfig, writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
 ): Promise<void> {
-  const previous = expected ?? await storage.getApiConfig(id);
+  return withPersistenceWriteScope(writeGate, (scope) => deleteWithScope(id, storage, bindings, expected, scope));
+}
+
+async function deleteWithScope(id: string, storage: ApiConfigStorage, bindings: Pick<BindingStorage, "transact">,
+  expected: NamedApiConfig | undefined, scope: PersistenceWriteScope): Promise<void> {
+  const previous = expected ?? await storage.getApiConfig(id, scope);
   if (!previous) return;
-  await storage.deleteApiConfig(id, previous);
+  await storage.deleteApiConfig(id, previous, scope);
   try {
-    await bindings.transact((current) => withoutApiConfigBinding(current, id));
+    await bindings.transact((current) => withoutApiConfigBinding(current, id), scope);
   } catch (reason) {
-    if (!await storage.restoreApiConfigIfAbsent(previous))
+    if (!await storage.restoreApiConfigIfAbsent(previous, scope))
       throw new Error("Text API changed while deletion cleanup failed. Newer data was kept.", { cause: reason });
     throw reason;
   }
