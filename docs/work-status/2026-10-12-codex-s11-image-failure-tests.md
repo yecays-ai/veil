@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/s11-image-failure-tests`；PR 待创建。
+Codex；branch `codex/s11-image-failure-tests`；PR [#143](https://github.com/yecays-ai/veil/pull/143)，未合并。
 只改测试：`tests/backup-fixture.ts`、`tests/backup-restore.test.ts`、`tests/backup-image-recovery.test.ts`，以及本记录；不改共享总账，最终夜间交接 PR 统一对账。
 
 ## 已完成
