@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/backup-database-open-gate`；PR 尚未创建。
+Codex；branch `codex/backup-database-open-gate`；PR [#126](https://github.com/yecays-ai/veil/pull/126)，已提交，未合并。
 base/main `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`。
 修改四库存储文件、`lib/backup/persistence-write-gate.ts` 的 scope 排队 options 转发及 `tests/backup-persistence-write-gate.test.ts` 初始化前提；新增 `tests/backup-database-open-gate.test.ts`、`docs/backup-database-open-gate.md`、本记录；只更新总账 S11。
 
@@ -38,4 +38,4 @@ base/main `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`。
 
 ## 下一步
 
-本单验证完成，提交 PR 后停止，不合并、不启动后续单，不持续轮询 CodeRabbit。
+本单已提交并停止，不合并、不启动后续单，不持续轮询 CodeRabbit。
