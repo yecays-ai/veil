@@ -10,7 +10,7 @@ Character Presence 第二批 T5：记录角色最后一条消息的发送时间�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/presence-t5-last-message`；PR 见 GitHub；base `9431f04`。
+Claude；分支 `claude/presence-t5-last-message`；PR [#114](https://github.com/yecays-ai/veil/pull/114)；base `9431f04`。
 修改：`lib/chat/engine.ts`、`docs/AUDIT_LEDGER.md`（只加一条验收记录，记录 T4 已知限制）。新增：`tests/presence-last-message.test.ts`、本记录。不碰 Presence 存储结构、界面、Header、提示词、T6–T8。
 
 ## 已完成
