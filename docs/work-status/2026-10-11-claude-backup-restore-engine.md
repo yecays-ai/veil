@@ -15,9 +15,10 @@ S11 第 16 单（原审计第 5、6 阶段合并：恢复日志 + 空环境完�
 
 Claude；分支 `claude/backup-restore-engine`；PR [#136](https://github.com/yecays-ai/veil/pull/136)。新增 `lib/backup/restore.ts`、`tests/backup-restore.test.ts`、`docs/backup-restore-engine.md`；小改 `lib/backup/restore-preview.ts`（拆出 `previewValidatedBackup`）与四个存储类（新增恢复专用 `replaceAll*`）。
 
-## 已完成与证据
+## 已完成
 
-见 `docs/backup-restore-engine.md`。自动化测试证据，仅模拟数据。
+- 施工见 `docs/backup-restore-engine.md`；本单 31 个自动化测试（fake-indexeddb，仅模拟数据）。
+- Node 24：`npm test` 1067 pass / 0 fail；`typecheck`、`lint`（0 error）、`build --webpack` 通过。验证版本：分支 `claude/backup-restore-engine` 提交 80db2c1。
 
 ## 尚未验证
 
