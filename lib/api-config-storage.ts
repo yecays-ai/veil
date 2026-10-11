@@ -61,10 +61,13 @@ export class ApiConfigStorage {
     return this.database;
   }
 
-  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    return mode === "readwrite"
-      ? withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope))
-      : this.performTransaction(mode, run);
+  // A caller that already owns a write scope passes it so this write joins that lease instead of requesting its own.
+  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>,
+    outer?: PersistenceWriteScope): Promise<T> {
+    if (mode !== "readwrite") return this.performTransaction(mode, run);
+    return outer
+      ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, outer), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope));
   }
 
   private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
@@ -113,19 +116,19 @@ export class ApiConfigStorage {
     });
   }
 
-  deleteApiConfig(id: string, expected?: NamedApiConfig): Promise<void> {
+  deleteApiConfig(id: string, expected?: NamedApiConfig, scope?: PersistenceWriteScope): Promise<void> {
     return this.transaction("readwrite", async (store) => {
       checkExpected(await request<ApiConfig | undefined>(store.get(id)), expected);
       await request(store.delete(id));
-    });
+    }, scope);
   }
 
-  restoreApiConfigIfAbsent(config: NamedApiConfig): Promise<boolean> {
+  restoreApiConfigIfAbsent(config: NamedApiConfig, scope?: PersistenceWriteScope): Promise<boolean> {
     return this.transaction("readwrite", async (store) => {
       if (await request(store.get(config.id))) return false;
       await request(store.put(normalizeApiConfig(config)));
       return true;
-    });
+    }, scope);
   }
 }
 
