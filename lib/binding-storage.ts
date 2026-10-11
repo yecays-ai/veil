@@ -1,6 +1,6 @@
 import { cleanStaleBindings, normalizeBindings, type AvailableBindingResources, type BindingDocument } from "./bindings";
 import type { StringStorage } from "./storage-types";
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 
 export const BINDING_STORAGE_KEY = "veil.bindings.v1";
 export function normalizeBindingDocument(value: unknown): BindingDocument {
@@ -38,17 +38,18 @@ export function createBindingStorage(getStorage: () => StringStorage,
     }
     throw new Error("Bindings changed in another tab. Nothing was saved; try again.");
   };
-  const enqueue = (operation: () => BindingDocument | Promise<BindingDocument>) => {
-    const run = () => writeGate.withWrite(async () => {
-      const locks = getLocks();
-      return locks ? await locks.request(BINDING_STORAGE_KEY, { mode: "exclusive" }, operation)
-        : operation();
-    });
-    const pending = queue.then(run, run);
-    queue = pending.then(() => {}, () => {});
-    return pending;
-  };
-  const transact = (update: (current: BindingDocument) => BindingDocument) => enqueue(() => commit(update));
+  const enqueue = (operation: () => BindingDocument | Promise<BindingDocument>, scope?: PersistenceWriteScope) =>
+    runPersistenceWrite(writeGate, async () => {
+      const run = async () => {
+        const locks = getLocks();
+        return locks ? await locks.request(BINDING_STORAGE_KEY, { mode: "exclusive" }, operation)
+          : operation();
+      };
+      const pending = queue.then(run, run);
+      queue = pending.then(() => {}, () => {});
+      return pending;
+    }, scope);
+  const transact = (update: (current: BindingDocument) => BindingDocument, scope?: PersistenceWriteScope) => enqueue(() => commit(update), scope);
   // The boundary must keep resource authority protected until its synchronous write callback
   // returns. Run it AFTER acquiring the existing Binding lock, including on retries/queued work.
   const cleanStale = (withResources: (write: (available: AvailableBindingResources) => BindingDocument)
