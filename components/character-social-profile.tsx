@@ -3,7 +3,7 @@
 import { useFoundation } from "./foundation-provider";
 import { PageShell } from "./page-shell";
 import { Avatar } from "./profile-view";
-import { PresenceBadge, presenceLabel } from "./presence";
+import { CharacterPresenceLine } from "./presence";
 
 export function CharacterSocialProfile({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -13,7 +13,7 @@ export function CharacterSocialProfile({ characterId }: { characterId: string })
     {!ready ? <p>Loading profile…</p> : !character ? <p>Profile not found.</p> : <div className="profile-hero">
       <Avatar avatar={character.avatar} name={character.name} large />
       <h1>{character.name}</h1>
-      <span className="contact-presence"><PresenceBadge presence={character.presence} />{presenceLabel(character.presence)}</span>
+      <CharacterPresenceLine character={character} />
       {character.statusMessage && <p>{character.statusMessage}</p>}
     </div>}
   </PageShell>;
