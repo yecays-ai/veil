@@ -14,7 +14,7 @@ S11 第 9 单（原审计第 3 阶段"快照一致性边界"）：Presence 存�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-presence-write-gate`；PR 待创建后补链接；base `3ac899498ca64f68d4ed672e1b4a3b29c7dc0d62`。修改 `lib/presence/storage.ts`；新增 `tests/backup-presence-write-gate.test.ts`、`docs/backup-presence-write-gate.md`、本记录；只更新总账 S11。
+Claude；分支 `claude/backup-presence-write-gate`；PR [#129](https://github.com/yecays-ai/veil/pull/129)；base `3ac899498ca64f68d4ed672e1b4a3b29c7dc0d62`。修改 `lib/presence/storage.ts`；新增 `tests/backup-presence-write-gate.test.ts`、`docs/backup-presence-write-gate.md`、本记录；只更新总账 S11。
 
 ## 已完成
 
