@@ -9,6 +9,7 @@ import { selfState, selfStateContent } from "../lib/chat/self-context";
 import { defaultFoundation, normalizeCharacterInput, type FoundationDocument } from "../lib/foundation-types";
 import { NOTE_COOLDOWN_MS, actionAllowance, characterActionApplier, cleanUserNote, splitActions } from "../lib/presence/actions";
 import { characterNoteEventText, userNoteEventText } from "../lib/presence/note-events";
+import { addContact, remarkChangeMade, updateContact } from "../lib/contact-storage";
 import { emptyPresenceDocument, normalizePresenceDocument, presenceRecord, type PresenceDocument } from "../lib/presence/storage";
 
 const T = new Date("2026-10-11T03:00:00Z").getTime(), MIN = 60_000;
@@ -131,4 +132,31 @@ test("while the message menu is open the history no longer traps the lifted mess
   assert.match(css, /\[data-context-menu-open\] > \.chat-history \{ z-index: auto; \}/);
   assert.match(css, /\.chat-turn\[data-active\] \{[^}]*z-index: 65/);
   assert.match(css, /\.chat-context-backdrop \{[^}]*z-index: 40/);
+});
+
+test("a Contact save reports a remark change only when that write made one", () => {
+  const base = addContact({ version: 1, contacts: [] }, "a", T);
+  const named = updateContact(base, "a", { remark: "Soap", heroBackground: null }, T + 1);
+  assert.equal(remarkChangeMade(base, named, "a")?.toRemark, "Soap");
+  // Another tab already set "Soap"; this save only touches the background and keeps that change as it is.
+  const background = updateContact(named, "a", { remark: "Soap", heroBackground: null }, T + 2, { remark: "Soap", heroBackground: null });
+  assert.equal(remarkChangeMade(named, background, "a"), null);
+});
+
+test("a long note of astral characters survives a reload, and an event as the last message does not become the preview", async () => {
+  const note = "😀".repeat(100);
+  const doc = { version: 1, characters: [{ characterId: "a", routine: null, situations: [], signature: null, lastOnlineAt: null, lastMessageAt: null,
+    userNote: { text: note, changedAt: 1, source: "character:m" } }] };
+  assert.equal(normalizePresenceDocument(doc).characters[0].userNote!.text, note);
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "Hello");
+  const batch = (await storage.beginReply(session.id))!;
+  const [reply] = await storage.finalizeReply(batch.assistant.id, "Hi.");
+  await storage.appendSystemEvent("a", "Ghost has changed your nickname to “X”", T);
+  const extra = await storage.send(session.id, "More");
+  await storage.deleteMessages(session.id, [extra.id]);
+  const after = (await storage.readSession(session.id)).session;
+  assert.equal(after.lastMessageId, reply.id);
+  assert.equal(after.lastMessagePreview, "Hi.");
 });

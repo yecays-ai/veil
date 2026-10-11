@@ -66,6 +66,12 @@ export function updateContact(document: ContactDocument, characterId: string,
         : { type: "remark-changed", fromRemark: contact.remark, toRemark: remark, createdAt: now } };
   }) };
 }
+/** The remark change `next` made relative to `before` for one Contact, or null when this write left the remark alone. */
+export function remarkChangeMade(before: ContactDocument, next: ContactDocument, characterId: string): ContactRemarkChange | null {
+  const was = before.contacts.find((item) => item.characterId === characterId)?.lastRemarkChange ?? null;
+  const now = next.contacts.find((item) => item.characterId === characterId)?.lastRemarkChange ?? null;
+  return now && now !== was ? now : null;
+}
 export function removeContact(document: ContactDocument, characterId: string): ContactDocument {
   return { ...document, contacts: document.contacts.filter((item) => item.characterId !== characterId) };
 }

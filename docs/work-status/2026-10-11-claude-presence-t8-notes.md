@@ -12,7 +12,7 @@ Character Presence T8：两个方向的备注各自独立保存；两个方向�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/presence-t8-notes`；base `cbe117b`。
+Claude；分支 `claude/presence-t8-notes`；PR [#127](https://github.com/yecays-ai/veil/pull/127)；base `cbe117b`。
 新增：`lib/presence/note-events.ts`、`tests/presence-notes.test.ts`、本记录。修改：`lib/presence/storage.ts`、`lib/presence/actions.ts`、`lib/chat/self-context.ts`、`lib/chat/engine.ts`、`lib/chat/storage.ts`、`lib/chat/prompt.ts`、`components/chat/chat-room.tsx`、`components/contact-info.tsx`、`app/messages/chat.css`，以及三处旧测试断言（`presence-self-context`、`presence-actions`、`chat-layout-ui`）。
 
 ## 已完成
@@ -26,7 +26,7 @@ Claude；分支 `claude/presence-t8-notes`；base `cbe117b`。
 
 ## 本地验证（Node v24.21.0）
 
-typecheck、lint（3 条既有警告，0 错误）、`npm test`（982/982，新增 9 条）、`npm run build` 通过。
+typecheck、lint（3 条既有警告，0 错误）、`npm test`（984/984，新增 11 条）、`npm run build` 通过。
 
 ## 尚未验证
 
@@ -36,4 +36,4 @@ typecheck、lint（3 条既有警告，0 错误）、`npm test`（982/982，新�
 
 ## 下一步
 
-开 PR，同步验收分支，等 Lan 真机验收并手动合并。
+PR #127 已开，验收分支已同步（Vercel 预览因每日额度未运行）；等 Lan 真机验收并手动合并。

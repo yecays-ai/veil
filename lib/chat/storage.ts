@@ -869,7 +869,7 @@ export class ChatStorage {
           await request(table.put(next));
         remaining[index] = next;
       }
-      const last = remaining.at(-1);
+      const last = remaining.findLast((message) => message.role !== "system");
       await request(sessions.put({ ...session, updatedAt: Date.now(),
         nextOrder: remaining.length + 1, lastMessageId: last?.id,
         lastMessagePreview: last?.content.slice(0, 120) || "" }));
@@ -1127,7 +1127,7 @@ export class ChatStorage {
           await request(table.put({ ...message, order: index + 1 }));
         message.order = index + 1;
       }
-      const last = ordered.at(-1)!;
+      const last = ordered.findLast((message) => message.role !== "system") ?? ordered.at(-1)!;
       await request(sessions.put({ ...session, generation: undefined, nextOrder: ordered.length + 1,
         updatedAt: Date.now(), lastMessageId: last.id, lastMessagePreview: last.content.slice(0, 120) }));
       if (worldBookState) await commitWorldBookState(tx, draft.sessionId, worldBookState);
