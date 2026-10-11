@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/backup-consistency`；PR 尚未创建。
+Codex；branch `codex/backup-consistency`；PR [#121](https://github.com/yecays-ai/veil/pull/121)，已提交，等待审核。
 base/main `c813d48fa96594d216e9cce1c323d45af8f0a8a3`。
 新增 `lib/backup/coordination.ts`、`tests/backup-coordination.test.ts`、`docs/backup-coordination.md`、本记录；只更新总账 S11 的交付状态与本 agent 第 2 张授权合并证据。
 
@@ -30,11 +30,14 @@ base/main `c813d48fa96594d216e9cce1c323d45af8f0a8a3`。
 
 - 提交前全量仅执行一次：918 条中 917 通过，CF-02 Retry（总账已登记的偶发用例）失败；未将整套记为通过。仅复跑该失败用例 1/1 通过，不重复全套、不改聊天逻辑。typecheck、lint（0 错误，3 条既有警告）、build、diff check 通过。Node 24.19.0、npm 10.9.4、TypeScript 5.9.3；未修改依赖。
 
+- 已提交 #121，代码提交 `d48e3ce5f14f8396f4e24a1a8df7f75f0ac677c2`；未合并。
+
 ## 尚未验证
 
 
+- 最新提交 GitHub verify / CodeRabbit 待复审；为减少等待及额度消耗，不持续轮询。
 - Safari/iOS 原生锁和真机行为未测试；现有业务写入尚未接入，正式快照、下载、恢复及 UI 未实施。
 
 ## 下一步
 
-提交本张独立 PR 后停止，等待审核；不持续轮询 CodeRabbit，不自动合并或启动业务写入接入。
+本张已停止，等待审核；不持续轮询 CodeRabbit，不自动合并或启动业务写入接入。
