@@ -1,7 +1,7 @@
 import { BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, BackupValidationError,
   type BackupManifest, type BackupData, type BackupDomain, type BackupWarning } from "./format";
 import { validateBackupPackage } from "./validation";
-import { readStaticBackupSource, type StaticBackupSource } from "./static-source";
+import { readStaticBackupSource, type StaticBackupSnapshot, type StaticBackupSource } from "./static-source";
 
 export type StaticBackupMetadata = Pick<BackupManifest, "backupId" | "createdAt" | "sourceCommit">;
 export type StaticBackupPackage = { manifestJson: string; files: ReadonlyMap<string, Uint8Array>; warnings: BackupWarning[] };
@@ -56,9 +56,12 @@ function recordCount(domain: BackupDomain, value: unknown): number {
   return rows.length;
 }
 
-/** Internal static export only: not wired to the app, download UI, recovery, or a consistency lock. */
-export async function exportStaticBackup(source: StaticBackupSource, metadata: StaticBackupMetadata): Promise<StaticBackupPackage> {
+/** Internal static export only: not wired to the app, download UI or recovery. Call it through `exportStaticBackupSnapshot` for a consistent capture. */
+export async function exportStaticBackup(source: StaticBackupSource, metadata: StaticBackupMetadata,
+  options: { inspect?: (snapshot: StaticBackupSnapshot) => Promise<void> } = {}): Promise<StaticBackupPackage> {
   const snapshot = await readStaticBackupSource(source);
+  // The caller may refuse here, after the read and before any package byte is produced.
+  await options.inspect?.(snapshot);
   const apiConfigs = snapshot.apiConfigs.map((item, index) => {
     const path = `apiConfigs[${index}]`;
     if (!item || typeof item !== "object" || Array.isArray(item)) fail("invalid-source-data", path);
