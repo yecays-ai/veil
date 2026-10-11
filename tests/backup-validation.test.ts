@@ -160,6 +160,31 @@ test("shared multi-bubble turn ownership remains isolated after the first bubble
   await assert.rejects(validate(await packageFixture(data)), failure("cross-session-reference"));
 });
 
+test("message references do not acquire ownership from another session's identically named turn", async () => {
+  const data = backupData();
+  data.chat.messages[1].turnId = "local-turn";
+  data.chat.sessions[1].nextOrder = 2;
+  data.chat.messages.push({ ...data.chat.messages[1], id: "group-reply", sessionId: "empty-group", order: 1,
+    turnId: "reply-test", quote: undefined });
+  // requestedBy refers to the local message reply-test, not the group's turn reply-test.
+  const result = await validate(await packageFixture(data));
+  assert.deepEqual(result.data, JSON.parse(JSON.stringify(data)));
+});
+
+test("turn references use surviving turn ownership even when another session has the same message ID", async () => {
+  const data = backupData();
+  data.chat.messages[1].turnId = "deleted-first-bubble";
+  data.chat.messages.push({ ...data.chat.messages[1], id: "retry-local", order: 3,
+    turnId: "retry-local", attemptFor: "deleted-first-bubble", status: "error", quote: undefined });
+  data.chat.sessions[0].nextOrder = 4;
+  data.chat.sessions[1].nextOrder = 2;
+  data.chat.messages.push({ ...data.chat.messages[1], id: "deleted-first-bubble", sessionId: "empty-group",
+    order: 1, turnId: "group-turn", quote: undefined });
+  assert.deepEqual((await validate(await packageFixture(data))).data, JSON.parse(JSON.stringify(data)));
+  data.chat.messages[2].attemptFor = "group-turn";
+  await assert.rejects(validate(await packageFixture(data)), failure("cross-session-reference"));
+});
+
 test("active generation and streaming are rejected without changing or calling their owner", async () => {
   const data = backupData(); Object.assign(data.chat.sessions[0], { generation: { id: "active", stage: "provider" } });
   await assert.rejects(validate(await packageFixture(data)), failure("invalid-data"));

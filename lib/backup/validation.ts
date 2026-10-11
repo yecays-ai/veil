@@ -166,13 +166,13 @@ function validateChat(value: unknown) {
       const target = messages.get(row.quote.messageId);
       check(!target || target.sessionId === row.sessionId, path, "cross-session-reference");
     }
-    // A turn ID can outlive its first bubble; attemptFor can outlive a regenerated/deleted turn.
-    // Only existing targets must belong to the same conversation.
-    for (const key of ["requestedBy", "turnId", "attemptFor"]) {
-      const target = messages.get(row[key]);
-      check(!target || target.sessionId === row.sessionId, path, "cross-session-reference");
-      check(!turns.has(row[key]) || turns.get(row[key]) === row.sessionId, path, "cross-session-reference");
-    }
+    // requestedBy is a message reference; an identically named turn is a separate namespace.
+    const requested = messages.get(row.requestedBy);
+    check(!requested || requested.sessionId === row.sessionId, path, "cross-session-reference");
+    // turnId ownership was checked above. attemptFor stores target.turnId ?? target.id;
+    // surviving turn ownership wins, with a message-ID fallback for legacy replies.
+    const attemptOwner = turns.has(row.attemptFor) ? turns.get(row.attemptFor) : messages.get(row.attemptFor)?.sessionId;
+    check(attemptOwner === undefined || attemptOwner === row.sessionId, path, "cross-session-reference");
   });
   value.sessions.forEach((row, index) => {
     if (row.lastMessageId !== undefined) check(messages.get(row.lastMessageId)?.sessionId === row.id,
