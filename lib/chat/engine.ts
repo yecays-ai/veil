@@ -4,10 +4,12 @@ import { browserBindingStorage } from "../binding-storage";
 import { browserApiConfigStorage } from "../api-config-storage";
 import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "../api-config";
 import { browserFoundationStorage } from "../foundation-storage";
-import type { FoundationDocument } from "../foundation-types";
+import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
 import { assembleChatPrompt } from "./prompt";
+import { selfState, type SelfState } from "./self-context";
+import { browserContactStorage } from "../contact-storage";
 import {
   openAITextProvider,
   validateApiConfig,
@@ -16,7 +18,7 @@ import {
 import { ChatStorage, chatStorage } from "./storage";
 import type { ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
-import { advanceLastSeen, browserPresenceStorage, type PresenceStorage } from "../presence/storage";
+import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
@@ -34,6 +36,20 @@ export const sentRecorder = (presence: Pick<PresenceStorage, "transact">): SentR
   presence.transact((document) => advanceLastSeen(document, characterId, { lastMessageAt: sentAt }, sentAt)).then(() => {});
 const recordSentToPresence: SentRecorder = (characterId, sentAt) =>
   typeof window === "undefined" ? Promise.resolve() : sentRecorder(browserPresenceStorage)(characterId, sentAt);
+
+/** What this Character knows about itself right now: the user's remark, its status, situation and signature. */
+type SelfLoader = (character: Character, now: number) => Promise<SelfState | undefined>;
+const loadSelfState: SelfLoader = async (character, now) => {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const [contacts, presence] = await Promise.all([browserContactStorage.load(), browserPresenceStorage.load()]);
+    return selfState(character, contacts.contacts.find((item) => item.characterId === character.characterId),
+      presenceRecord(presence, character.characterId), now);
+  } catch {
+    console.warn("[Presence] own state was not added to the reply context");
+    return undefined;
+  }
+};
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
@@ -61,6 +77,7 @@ export function createChatEngine(
   weatherLoader: WeatherLoader = (target) => loadWeatherState(target),
   apiConfig: (id: string) => Promise<ApiConfig | undefined> = (id) => browserApiConfigStorage.getApiConfig(id),
   recordSent: SentRecorder = recordSentToPresence,
+  self: SelfLoader = loadSelfState,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   let stopSequence = 0;
@@ -160,7 +177,8 @@ export function createChatEngine(
         } : {}),
       })), controller.signal);
       const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, undefined, preset,
-        now(), activation, regexGroups, weather);
+        now(), activation, regexGroups, weather,
+        await awaited(self(character, now().getTime()), controller.signal));
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
       const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };

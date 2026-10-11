@@ -402,30 +402,12 @@
   font-size: 14px;
 }
 .chat-message {
-  position: relative;
   max-width: 82%;
   min-width: 0;
 }
 .chat-turn-assistant .chat-message {
   max-width: calc(100% - var(--chat-avatar-size) - var(--chat-avatar-size) - var(--chat-avatar-gap) - var(--chat-avatar-gap));
 }
-.chat-app button.chat-message-actions-trigger {
-  position: absolute;
-  top: 2px;
-  left: calc(100% + 4px);
-  display: grid;
-  place-items: center;
-  width: 32px;
-  min-height: 32px;
-  padding: 4px;
-  border: 0;
-  background: transparent;
-}
-.chat-app .chat-turn-user button.chat-message-actions-trigger {
-  left: auto;
-  right: calc(100% + 4px);
-}
-.chat-message-actions-trigger svg { width: 18px; height: 18px; }
 .chat-typing-dots {
   display: inline-flex;
   align-items: center;
