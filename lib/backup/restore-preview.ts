@@ -137,7 +137,10 @@ export async function previewValidatedBackup(preview: RestorePreview, validated:
     preview.assets = { appearance: { backup: backupAssets("appearance"), current: snapshot.appearanceAssets.length },
       chat: { backup: backupAssets("chat"), current: snapshot.chat.assets.length } };
     preview.targetDigest = await digestTarget(snapshot);
-    const empty = Object.values(current).every((count) => count === 0)
+    // Recovery digests distinguish an absent document from an existing zero-record document.
+    // Existing documents need the replace safety copy even when every displayed count is zero.
+    const empty = Object.values(snapshot.documents).every((value) => value == null)
+      && Object.values(current).every((count) => count === 0)
       && preview.assets.appearance.current === 0 && preview.assets.chat.current === 0;
     preview.target = empty ? "empty" : "has-data";
   } catch (error) {
