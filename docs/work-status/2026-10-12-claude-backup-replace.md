@@ -14,9 +14,10 @@ S11 第 17 单（原审计第 7 阶段：显式覆盖现有数据）。已施工
 
 Claude；分支 `claude/backup-replace`；PR [#137](https://github.com/yecays-ai/veil/pull/137)。新增 `lib/backup/safety-copy.ts`、`tests/backup-replace.test.ts`、`docs/backup-replace.md`；改 `lib/backup/restore.ts`（日志增加 kind 与 previous，新增 `replaceWithBackup`）。
 
-## 已完成与证据
+## 已完成
 
-见 `docs/backup-replace.md`。自动化测试证据，仅模拟数据。
+- 施工见 `docs/backup-replace.md`；本单 15 个自动化测试（fake-indexeddb，仅模拟数据）。
+- Node 24：`npm test` 1083 pass / 0 fail（另有一次全量运行 1 个失败：聊天重试 CF-02，与本单无关，CI 与本地复跑均通过）；`typecheck`、`lint`（0 error）、`build --webpack` 通过。验证版本：提交 e562461。
 
 ## 尚未验证
 
