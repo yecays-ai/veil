@@ -127,7 +127,7 @@ export async function ensureRoutine(characterId: string, signal?: AbortSignal, d
     let reply = "", finishReason: string | undefined;
     controller.signal.throwIfAborted();
     for await (const part of deps.provider(api, messages, controller.signal,
-      { ...preset.generation, maxTokens: ROUTINE_MAX_TOKENS }, request, (reason) => { finishReason = reason; })) {
+      { ...preset.generation, maxTokens: ROUTINE_MAX_TOKENS, thinking: "disabled" }, request, (reason) => { finishReason = reason; })) {
       reply += part;
       if (reply.length > ROUTINE_MAX_REPLY_CHARACTERS) return "invalid";
     }

@@ -186,7 +186,8 @@ test("the token budget is the routine's own: a chat preset's smaller maxTokens d
   const seen: unknown[] = [];
   f.deps.provider = async function* (_c, _m, _s, generation) { seen.push(generation); yield goodReply; };
   assert.equal(await ensureRoutine(ID, undefined, f.deps), "generated");
-  assert.deepEqual(seen, [{ temperature: 0.4, maxTokens: 3000 }]);
+  // The background request asks for no reasoning phase; the provider decides which servers get the field.
+  assert.deepEqual(seen, [{ temperature: 0.4, maxTokens: 3000, thinking: "disabled" }]);
 });
 
 test("failures are told apart: no API, request failure, truncated output and an invalid reply", async () => {
