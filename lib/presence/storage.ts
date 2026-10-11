@@ -29,6 +29,8 @@ export type PresenceRecord = {
   situations: StoredSituation[];
   /** Only the change mark: the signature text itself stays on the Character. */
   signature: ChangeMark | null;
+  /** When and from which message the Character last changed its own situation (set, ended or cancelled one); drives its cooldown. */
+  situationChange: ChangeMark | null;
   /** Latest simulated online time, and latest time the Character sent a message. Neither ever goes down. */
   lastOnlineAt: number | null;
   lastMessageAt: number | null;
@@ -36,7 +38,7 @@ export type PresenceRecord = {
 export type PresenceDocument = { version: 1; characters: PresenceRecord[] };
 
 const emptyRecord = (characterId: string): PresenceRecord =>
-  ({ characterId, routine: null, situations: [], signature: null, lastOnlineAt: null, lastMessageAt: null });
+  ({ characterId, routine: null, situations: [], signature: null, situationChange: null, lastOnlineAt: null, lastMessageAt: null });
 export const emptyPresenceDocument = (): PresenceDocument => ({ version: 1, characters: [] });
 
 function validId(value: unknown): value is string {
@@ -100,6 +102,7 @@ function normalizeRecord(value: unknown): PresenceRecord | null {
   return { characterId: raw.characterId,
     routine: routine ? { routine, ...markOf(raw.routine) } : null, situations,
     signature: raw.signature ? markOf(raw.signature) : null,
+    situationChange: raw.situationChange ? markOf(raw.situationChange) : null,
     lastOnlineAt: time(raw.lastOnlineAt), lastMessageAt: time(raw.lastMessageAt) };
 }
 export function normalizePresenceDocument(value: unknown): PresenceDocument {
@@ -171,6 +174,9 @@ export function endSituation(document: PresenceDocument, characterId: string, no
 }
 export function markSignatureChange(document: PresenceDocument, characterId: string, mark: ChangeMark): PresenceDocument {
   return update(document, characterId, (current) => ({ ...current, signature: markOf(mark) }));
+}
+export function markSituationChange(document: PresenceDocument, characterId: string, mark: ChangeMark): PresenceDocument {
+  return update(document, characterId, (current) => ({ ...current, situationChange: markOf(mark) }));
 }
 /** Raises Last Seen values; lower, equal, invalid or future (beyond a small clock skew) values are ignored. */
 export function advanceLastSeen(document: PresenceDocument, characterId: string,

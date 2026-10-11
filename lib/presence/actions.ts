@@ -1,7 +1,7 @@
 import { PRESENCE_VALUES, type Character, type FoundationDocument } from "../foundation-types";
 import { normalizeSituation } from "./compute";
 import {
-  addSituation, cancelUpcoming, endSituation, markSignatureChange, presenceRecord,
+  addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord,
   type PresenceDocument, type PresenceRecord,
 } from "./storage";
 
@@ -31,8 +31,10 @@ export function splitActions(raw: string): { text: string; actions: CharacterAct
     text += rest.slice(0, start);
     const end = rest.indexOf(CLOSE, start);
     if (end < 0) { rest = ""; break; } // Unfinished tag: cut it, so a half-written action is never shown.
-    actions = parseActions(rest.slice(start + OPEN.length, end)) ?? actions;
+    const parsed = parseActions(rest.slice(start + OPEN.length, end));
     rest = rest.slice(end + CLOSE.length);
+    // Only a tag that ends the reply is an action; one quoted mid-reply is stripped but never applied.
+    if (parsed && !rest.trim()) actions = parsed;
   }
   text += rest;
   // A tag that is only starting to stream ("<veil-act") is held back until it is clearly not a tag.
@@ -69,13 +71,13 @@ function parseActions(json: string): CharacterActions | null {
 }
 
 export type ActionAllowance = { situation: boolean; signature: boolean };
-const lastBy = (marks: { changedAt: number; source: string | null }[]) =>
-  marks.filter((mark) => mark.source?.startsWith(CHARACTER_SOURCE_PREFIX)).reduce((latest, mark) => Math.max(latest, mark.changedAt), -Infinity);
+const ownChangeAt = (mark: { changedAt: number; source: string | null } | null | undefined) =>
+  mark?.source?.startsWith(CHARACTER_SOURCE_PREFIX) ? mark.changedAt : -Infinity;
 
-/** Whether the Character may change each thing now. Only its own earlier changes count; the user's and the schedule's do not. */
+/** Whether the Character may change each thing now. Only its own earlier changes count (including ending or cancelling a situation). */
 export function actionAllowance(record: PresenceRecord | undefined, now: number): ActionAllowance {
-  const situationAt = lastBy(record?.situations ?? []), signatureAt = lastBy(record?.signature ? [record.signature] : []);
-  return { situation: !(now - situationAt < SITUATION_COOLDOWN_MS), signature: !(now - signatureAt < SIGNATURE_COOLDOWN_MS) };
+  return { situation: !(now - ownChangeAt(record?.situationChange) < SITUATION_COOLDOWN_MS),
+    signature: !(now - ownChangeAt(record?.signature) < SIGNATURE_COOLDOWN_MS) };
 }
 
 /** Applies the situation part to Presence. Never writes the past: a start before `now` is moved to `now`. */
@@ -93,7 +95,8 @@ export function applySituationActions(document: PresenceDocument, character: Pic
       ...(draft.durationMinutes !== undefined && draft.durationMinutes > 0 ? { endsAt: startsAt + draft.durationMinutes * 60_000 } : {}) }, now);
     if (situation) next = addSituation(next, id, situation, mark, now);
   }
-  return next;
+  // Only a real change starts the cooldown: ending or cancelling nothing costs nothing.
+  return next === document ? document : markSituationChange(next, id, mark);
 }
 
 export type ActionDeps = {
