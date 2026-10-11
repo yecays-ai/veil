@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-legacy-remark`；PR：见 PR 页。涉及：`lib/backup/static-export.ts`、`tests/backup-static-export.test.ts`。
+Claude；分支 `claude/backup-legacy-remark`；PR：https://github.com/yecays-ai/veil/pull/140。涉及：`lib/backup/static-export.ts`、`tests/backup-static-export.test.ts`。
 
 ## 核对结论（源码阅读）
 
