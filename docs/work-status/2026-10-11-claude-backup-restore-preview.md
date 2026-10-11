@@ -6,14 +6,14 @@
 
 ## 当前任务
 
-S11 第 13 单（原审计第 4 阶段"恢复预检"）：只读预检；已施工，PR 待创建。
+S11 第 13 单（原审计第 4 阶段"恢复预检"）：只读预检；已施工，PR #134 待审。
 
 【不做】任何恢复写入、第 5 到 8 阶段、导出格式。
 【停止条件】提交独立 PR 后停止，等待 Lan 手动合并。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-restore-preview`；PR 待创建；base `35cf77dcb0754e53639a7e94e52ff21e2dd10f1d`。新增 `lib/backup/restore-preview.ts`、`tests/backup-restore-preview.test.ts`、`docs/backup-restore-preview.md`、本记录；小改 `lib/backup/static-export.ts`（导出 `recordCount`）、`lib/backup/snapshot-export.ts`（抽出 `generationHeld`）；只更新总账 S11 行（与 #133 会在该行冲突，合并时处理）。
+Claude；分支 `claude/backup-restore-preview`；PR [#134](https://github.com/yecays-ai/veil/pull/134)；base `35cf77dcb0754e53639a7e94e52ff21e2dd10f1d`。新增 `lib/backup/restore-preview.ts`、`tests/backup-restore-preview.test.ts`、`docs/backup-restore-preview.md`、本记录；小改 `lib/backup/static-export.ts`（导出 `recordCount`）、`lib/backup/snapshot-export.ts`（抽出 `generationHeld`）；只更新总账 S11 行（与 #133 会在该行冲突，合并时处理）。
 
 ## 已完成与证据
 
