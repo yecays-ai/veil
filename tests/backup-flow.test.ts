@@ -105,7 +105,10 @@ test("user-facing messages are plain sentences and never echo codes for the comm
   const cases: [unknown, RegExp][] = [
     [new BackupValidationError("coordination-timeout", "coordination"), /Another VEIL tab/],
     [new BackupValidationError("generation-active", "chat"), /reply is being generated/],
-    [new BackupValidationError("invalid-data", "chat.sessions[0]"), /Open that conversation/],
+    [new BackupValidationError("invalid-data", "chat.sessions[0]", "unexpected-field:generation"), /Open that conversation/],
+    [new BackupValidationError("invalid-data", "chat.sessions[0]", "unexpected-field:generation,archived"), /Open that conversation.*Also blocking \(chat\.sessions\[0\]: unexpected-field:generation,archived\)/],
+    [new BackupValidationError("invalid-data", "chat.sessions[1]", "direct-has-title"), /Stored conversation 2 .*chat\.sessions\[1\]: direct-has-title/],
+    [new BackupValidationError("invalid-data", "chat.messages[0]"), /Some stored data cannot be backed up \(chat\.messages\[0\]\)/],
     [new RestoreError("restore-failed-rolled-back", "none", "chat"), /put back as it was/],
     [new RestoreError("rollback-failed", "kept"), /reopen this page/],
     [new Error("boom"), /Nothing was reported as completed/],
