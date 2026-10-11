@@ -1,5 +1,6 @@
 import { PRESENCE_VALUES, type Presence } from "../foundation-types";
 import type { StringStorage } from "../storage-types";
+import { browserPersistenceWriteGate, runPersistenceWrite, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { LAST_ONLINE_LOOKBACK_MS, MAX_JITTER_MINUTES, SITUATION_MAX_MS,
   type PresenceRoutine, type PresenceSituation } from "./compute";
 
@@ -204,6 +205,9 @@ export function removePresence(document: PresenceDocument, characterId: string):
 const WRITE_ATTEMPTS = 3;
 /**
  * Every write is one read-modify-write of the whole Presence document, coordinated like Contacts and Bindings:
+ * 0. Backup coordination comes first: each write holds a shared backup lease (or reuses its caller's scope),
+ *    so a snapshot never sees a half-finished write. Requested before the instance queue so a waiting
+ *    snapshot cannot be blocked by a queued call that is itself waiting for the lease.
  * 1. This instance runs its own writes in order.
  * 2. Across tabs each write holds an exclusive Web Lock (`PRESENCE_STORAGE_KEY`), so cooperating tabs never
  *    interleave. Without Web Locks (`getLocks()` undefined) only levels 1 and 3 apply.
@@ -213,7 +217,8 @@ const WRITE_ATTEMPTS = 3;
  * saved by a newer version, makes the read and every write fail; it is never replaced with an empty document.
  */
 export function createPresenceStorage(getStorage: () => StringStorage,
-  getLocks: () => Pick<LockManager, "request"> | undefined = () => globalThis.navigator?.locks) {
+  getLocks: () => Pick<LockManager, "request"> | undefined = () => globalThis.navigator?.locks,
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {
   let queue: Promise<unknown> = Promise.resolve();
   const parse = (raw: string | null): PresenceDocument => {
     const value: unknown = raw ? JSON.parse(raw) : null;
@@ -234,15 +239,16 @@ export function createPresenceStorage(getStorage: () => StringStorage,
     }
     throw new Error("Presence changed in another tab. Nothing was saved; try again.");
   };
-  const transact = (change: (current: PresenceDocument) => PresenceDocument) => {
-    const run = async () => {
-      const locks = getLocks();
-      return locks ? await locks.request(PRESENCE_STORAGE_KEY, { mode: "exclusive" }, async () => commit(change)) : commit(change);
-    };
-    const operation = queue.then(run, run);
-    queue = operation.then(() => {}, () => {});
-    return operation;
-  };
+  const transact = (change: (current: PresenceDocument) => PresenceDocument, scope?: PersistenceWriteScope) =>
+    runPersistenceWrite(writeGate, async () => {
+      const run = async () => {
+        const locks = getLocks();
+        return locks ? await locks.request(PRESENCE_STORAGE_KEY, { mode: "exclusive" }, async () => commit(change)) : commit(change);
+      };
+      const operation = queue.then(run, run);
+      queue = operation.then(() => {}, () => {});
+      return operation;
+    }, scope);
   return { load, transact };
 }
 export type PresenceStorage = ReturnType<typeof createPresenceStorage>;
