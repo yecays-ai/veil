@@ -14,9 +14,10 @@ S11 第 18 单（原审计第 8 阶段：用户入口与 iPhone 文件流程）�
 
 Claude；分支 `claude/backup-entry`；PR [#138](https://github.com/yecays-ai/veil/pull/138)。新增 `lib/backup/backup-flow.ts`、`components/restore-gate.tsx`、两个测试文件、`docs/backup-entry.md`；改 `components/settings/backup-restore.tsx`、`app/layout.tsx`（包一层 RestoreGate）、`app/settings/settings.css`、`tests/settings-backup-entry.test.ts`。
 
-## 已完成与证据
+## 已完成
 
-见 `docs/backup-entry.md`。自动化测试证据（含 jsdom），仅模拟数据。
+- 施工见 `docs/backup-entry.md`；新增 11 个自动化测试（fake-indexeddb、jsdom，仅模拟数据）。
+- Node 24：`npm test` 1104 pass / 0 fail；`typecheck`、`lint`（0 error）、`build --webpack` 通过。CI 首次因聊天重试 CF-02（与本单无关）失败，重跑通过。验证版本：提交 7575459。
 
 ## 尚未验证
 
