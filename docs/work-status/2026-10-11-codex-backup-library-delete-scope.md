@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/backup-library-delete-scope`；PR 尚未创建。
+Codex；branch `codex/backup-library-delete-scope`；PR [#125](https://github.com/yecays-ai/veil/pull/125)，已提交，未合并。
 base/main `45ceb79fe8be4b7664b5cdf58eb8d4684ec32d31`。
 修改 `lib/backup/persistence-write-gate.ts`、`lib/binding-storage.ts`、`lib/preset-storage.ts`、`lib/regex-worldbook-write-guard.ts`、`lib/regex-storage.ts`、`lib/worldbook-storage.ts`；新增 `tests/backup-library-delete-scope.test.ts`、`docs/backup-library-delete-scope.md`、本记录；仅更新总账 S11。
 
@@ -37,4 +37,4 @@ base/main `45ceb79fe8be4b7664b5cdf58eb8d4684ec32d31`。
 
 ## 下一步
 
-本单施工与验证完成，提交 PR 后停止，不合并、不启动后续单，不持续轮询 CodeRabbit。
+本单已提交并停止，不合并、不启动后续单，不持续轮询 CodeRabbit。
