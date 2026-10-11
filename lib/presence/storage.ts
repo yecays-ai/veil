@@ -105,7 +105,7 @@ function normalizeRecord(value: unknown): PresenceRecord | null {
     routine: routine ? { routine, ...markOf(raw.routine) } : null, situations,
     signature: raw.signature ? markOf(raw.signature) : null,
     ...(raw.situationChange ? { situationChange: markOf(raw.situationChange) } : {}),
-    ...(typeof record(raw.userNote).text === "string" ? { userNote: { text: (record(raw.userNote).text as string).trim().slice(0, 100), ...markOf(raw.userNote) } } : {}),
+    ...(typeof record(raw.userNote).text === "string" ? { userNote: { text: Array.from((record(raw.userNote).text as string).trim()).slice(0, 100).join(""), ...markOf(raw.userNote) } } : {}),
     lastOnlineAt: time(raw.lastOnlineAt), lastMessageAt: time(raw.lastMessageAt) };
 }
 export function normalizePresenceDocument(value: unknown): PresenceDocument {

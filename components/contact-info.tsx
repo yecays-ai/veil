@@ -13,7 +13,7 @@ import { readImage } from "../lib/theme-storage";
 import { chatStorage } from "../lib/chat/storage";
 import { prefetchChatSession } from "../lib/chat/session-prefetch";
 import { measureChatDiagnostic, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
-import { contactDisplayName, removeContact, updateContact } from "../lib/contact-storage";
+import { contactDisplayName, remarkChangeMade, removeContact, updateContact, type ContactRemarkChange } from "../lib/contact-storage";
 import { userNoteEventText } from "../lib/presence/note-events";
 import { contactReturnTarget, type ContactReturnSource } from "../lib/contact-navigation";
 import { confirmDiscard, guardLinkClicks } from "./leave-guard";
@@ -75,12 +75,15 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     const owner = lifetime.current;
     setBusy(true); setError("");
     try {
-      const before = contact?.lastRemarkChange?.createdAt;
-      const saved = await contacts.commit((current) => updateContact(current, characterId, draft, undefined, draft.base));
-      const change = saved.contacts.find((item) => item.characterId === characterId)?.lastRemarkChange;
+      const made: { change: ContactRemarkChange | null } = { change: null };
+      await contacts.commit((current) => {
+        const next = updateContact(current, characterId, draft, undefined, draft.base);
+        made.change = remarkChangeMade(current, next, characterId); // this commit's own change, not a stale rendered value
+        return next;
+      });
       // The grey chat line is a courtesy: the nickname is already saved, so a failed line is only logged.
-      if (change && change.createdAt !== before && character)
-        void chatStorage.appendSystemEvent(characterId, userNoteEventText(character.name, change.toRemark), change.createdAt)
+      if (made.change && character)
+        void chatStorage.appendSystemEvent(characterId, userNoteEventText(character.name, made.change.toRemark), made.change.createdAt)
           .catch(() => console.warn("[Contacts] the nickname was saved but its chat event was not"));
       if (owner === lifetime.current) setDraft(null);
     } catch (reason) {
