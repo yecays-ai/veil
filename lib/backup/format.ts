@@ -49,9 +49,10 @@ export type BackupData = {
 export type BackupWarning = { code: "credentials-required" | "external-image" | "missing-quote"; path: string };
 export type ValidatedBackup = { manifest: BackupManifest; data: BackupData; warnings: BackupWarning[] };
 export class BackupValidationError extends Error {
-  constructor(readonly code: string, readonly path: string) {
+  /** `detail` names the failed rule or field only (fixed words and stored field names), never a value. */
+  constructor(readonly code: string, readonly path: string, readonly detail?: string) {
     // Never include user text, provider URLs, keys, or native parser errors.
-    super(`Backup validation failed (${code}) at ${path}.`);
+    super(`Backup validation failed (${code}) at ${path}${detail ? ` [${detail}]` : ""}.`);
     this.name = "BackupValidationError";
   }
 }

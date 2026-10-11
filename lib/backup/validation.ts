@@ -28,12 +28,17 @@ const digest = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{
 const safePath = (v: unknown): v is string => typeof v === "string" && v.length <= 240
   && /^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+$/.test(v)
   && v.split("/").every((part) => part !== "." && part !== "..");
-function check(condition: unknown, path: string, code = "invalid-data"): asserts condition {
-  if (!condition) throw new BackupValidationError(code, path);
+function check(condition: unknown, path: string, code = "invalid-data", detail?: string): asserts condition {
+  if (!condition) throw new BackupValidationError(code, path, detail);
 }
+/** Field names come from stored rows; only plain identifiers are echoed, anything else is hidden. */
+const fieldNames = (names: string[]) => names.slice(0, 5).map((name) => /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name) ? name : "?").join(",");
 function keys(row: unknown, allowed: string[], required: string[], path: string): asserts row is Row {
-  check(record(row) && Object.keys(row).every((key) => allowed.includes(key))
-    && required.every((key) => Object.hasOwn(row, key)), path);
+  check(record(row), path, "invalid-data", "not-an-object");
+  const extra = Object.keys(row).filter((key) => !allowed.includes(key));
+  check(!extra.length, path, "invalid-data", `unexpected-field:${fieldNames(extra)}`);
+  const missing = required.filter((key) => !Object.hasOwn(row, key));
+  check(!missing.length, path, "invalid-data", `missing-field:${fieldNames(missing)}`);
 }
 function unique(rows: unknown, field: string, path: string): asserts rows is Row[] {
   check(Array.isArray(rows), path);
@@ -115,19 +120,25 @@ function validateChat(value: unknown) {
     const path = `chat.sessions[${index}]`;
     keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder"],
       ["id", "characterId", "updatedAt", "autoReplyOnKeyboardDismiss", "nextOrder"], path);
-    check(typeof row.characterId === "string" && integer(row.updatedAt) && integer(row.nextOrder) && (row.nextOrder as number) >= 1
-      && typeof row.autoReplyOnKeyboardDismiss === "boolean", path);
-    check(row.type === undefined || ["direct", "group"].includes(String(row.type)), path);
-    for (const key of ["pinned", "streamOnline"]) check(row[key] === undefined || typeof row[key] === "boolean", path);
-    for (const key of ["title", "lastMessagePreview", "customCSS"]) check(row[key] === undefined || typeof row[key] === "string", path);
-    for (const key of ["lastMessageId", "backgroundImage"]) check(row[key] === undefined || id(row[key]), path);
-    check(row.backgroundBlur === undefined || (number(row.backgroundBlur) && (row.backgroundBlur as number) >= 0 && (row.backgroundBlur as number) <= 20), path);
+    check(typeof row.characterId === "string", path, "invalid-data", "characterId-not-string");
+    check(integer(row.updatedAt), path, "invalid-data", "updatedAt-not-integer");
+    check(integer(row.nextOrder) && (row.nextOrder as number) >= 1, path, "invalid-data", "nextOrder-invalid");
+    check(typeof row.autoReplyOnKeyboardDismiss === "boolean", path, "invalid-data", "autoReplyOnKeyboardDismiss-not-boolean");
+    check(row.type === undefined || ["direct", "group"].includes(String(row.type)), path, "invalid-data", "type-invalid");
+    for (const key of ["pinned", "streamOnline"]) check(row[key] === undefined || typeof row[key] === "boolean", path, "invalid-data", `${key}-not-boolean`);
+    for (const key of ["title", "lastMessagePreview", "customCSS"]) check(row[key] === undefined || typeof row[key] === "string", path, "invalid-data", `${key}-not-string`);
+    for (const key of ["lastMessageId", "backgroundImage"]) check(row[key] === undefined || id(row[key]), path, "invalid-data", `${key}-invalid-id`);
+    check(row.backgroundBlur === undefined || (number(row.backgroundBlur) && (row.backgroundBlur as number) >= 0 && (row.backgroundBlur as number) <= 20),
+      path, "invalid-data", "backgroundBlur-out-of-range");
     if (row.type === "group") {
       check(Array.isArray(row.participantIds) && row.participantIds.every(id)
-        && new Set(row.participantIds).size === row.participantIds.length
-        && (row.participantIds.length ? row.participantIds.includes(row.characterId) : row.characterId === ""), path);
+        && new Set(row.participantIds).size === row.participantIds.length, path, "invalid-data", "participantIds-invalid");
+      check(row.participantIds.length ? row.participantIds.includes(row.characterId) : row.characterId === "",
+        path, "invalid-data", "group-characterId-mismatch");
     } else {
-      check(id(row.characterId) && row.participantIds === undefined && row.title === undefined, path);
+      check(id(row.characterId), path, "invalid-data", "direct-characterId-invalid");
+      check(row.participantIds === undefined, path, "invalid-data", "direct-has-participantIds");
+      check(row.title === undefined, path, "invalid-data", "direct-has-title");
       check(!direct.has(row.characterId), path, "duplicate-direct-chat"); direct.add(row.characterId);
     }
   });

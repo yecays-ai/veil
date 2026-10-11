@@ -79,9 +79,16 @@ export function describeBackupError(error: unknown): string {
       case "coordination-unavailable": return "This browser cannot coordinate VEIL tabs, so backups are unavailable here.";
       case "coordination-cancelled": return "Cancelled.";
       case "generation-active": return "A reply is being generated. Wait for it to finish and try again.";
-      case "invalid-data": return error.path.startsWith("chat.sessions")
-        ? "A conversation has an unfinished reply from an earlier crash. Open that conversation once, then try again."
-        : "Some stored data is not in a backupable shape.";
+      case "invalid-data": {
+        // Only this one rule is an unfinished reply; every other failure names its own path and rule (never a value).
+        if (error.path.startsWith("chat.sessions") && error.detail === "unexpected-field:generation")
+          return "A conversation has an unfinished reply from an earlier crash. Open that conversation once, then try again.";
+        const where = error.path.match(/^chat\.sessions\[(\d+)\]$/);
+        const rule = error.detail ? `: ${error.detail}` : "";
+        return where
+          ? `Stored conversation ${Number(where[1]) + 1} cannot be backed up (${error.path}${rule}). Nothing was changed.`
+          : `Some stored data cannot be backed up (${error.path}${rule}). Nothing was changed.`;
+      }
       default: return "This file is not a valid VEIL backup.";
     }
   }
