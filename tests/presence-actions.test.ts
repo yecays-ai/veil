@@ -224,7 +224,9 @@ test("Contact Info shows the signature under the status line, and nothing when e
     const { ContactInfo } = await import("../components/contact-info");
     const identity = (html: string) => html.slice(html.indexOf('contact-hero-identity'));
     const signed = identity(renderToString(createElement(ContactInfo, { characterId: "a" })));
-    assert.ok(signed.indexOf("contact-presence") < signed.indexOf('class="contact-status"'), "signature comes after the status line");
+    const presenceAt = signed.indexOf("contact-presence"), statusAt = signed.indexOf('class="contact-status"');
+    assert.ok(presenceAt >= 0 && statusAt >= 0, "both the status line and the signature are rendered");
+    assert.ok(presenceAt < statusAt, "signature comes after the status line");
     assert.match(signed, /class="contact-status">up early</);
     assert.doesNotMatch(signed, /TF141/);
     state.statusMessage = null;
