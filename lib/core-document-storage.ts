@@ -139,6 +139,14 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     }
   }
 
+  /** Restore only: replaces every stored document in one transaction. Callers hold the exclusive backup lock. */
+  replaceAllDocuments(rows: readonly StoredDocument[], scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (store) => {
+      await request(store.clear());
+      for (const row of rows) await request(store.put(row));
+    }, scope);
+  }
+
   read(key: string): Promise<string | null> {
     return this.transaction("readonly", async (store) => {
       const saved = await request<StoredDocument | undefined>(store.get(key));

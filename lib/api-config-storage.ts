@@ -89,6 +89,14 @@ export class ApiConfigStorage {
     }
   }
 
+  /** Restore only: replaces every stored config in one transaction. Rows carry no credential. */
+  replaceAllConfigs(rows: readonly Omit<NamedApiConfig, "apiKey">[], scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (store) => {
+      await request(store.clear());
+      for (const row of rows) await request(store.put(row));
+    }, scope);
+  }
+
   getApiConfig(id: string, scope?: PersistenceWriteScope): Promise<NamedApiConfig | undefined> {
     return this.transaction("readonly", async (store) => {
       const config = await request<ApiConfig | undefined>(store.get(id));

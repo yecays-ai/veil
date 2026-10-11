@@ -5,6 +5,7 @@ import { generationHeld } from "./snapshot-export";
 import { recordCount } from "./static-export";
 import { readStaticBackupSource, type StaticBackupSnapshot, type StaticBackupSource } from "./static-source";
 import { parseBackupManifest, validateBackupPackage } from "./validation";
+import type { ValidatedBackup } from "./format";
 
 export type RestoreBlocker =
   /** The package failed v1 validation (checksum, version, structure). `error` is the validation code. */
@@ -115,33 +116,39 @@ export async function previewRestore(manifestJson: string, files: ReadonlyMap<st
   }
   preview.backupId = validated.manifest.backupId;
   preview.warnings = validated.warnings;
-  await new BackupCoordinator(locks).withSnapshot(async () => {
-    let snapshot: StaticBackupSnapshot;
-    try { snapshot = await readStaticBackupSource(source); }
-    catch (error) {
-      if (!(error instanceof BackupValidationError)) throw error;
-      preview.blockers.push({ code: "target-unreadable", error: error.code, path: error.path });
-      return;
-    }
-    try {
-      const current = currentDomainCounts(snapshot);
-      for (const section of validated.manifest.domains) preview.domains[section.domain] = { backup: section.records, current: current[section.domain] };
-      const backupAssets = (domain: "appearance" | "chat") => validated.manifest.assets.filter((asset) => asset.domain === domain).length;
-      preview.assets = { appearance: { backup: backupAssets("appearance"), current: snapshot.appearanceAssets.length },
-        chat: { backup: backupAssets("chat"), current: snapshot.chat.assets.length } };
-      preview.targetDigest = await digestTarget(snapshot);
-      const empty = Object.values(current).every((count) => count === 0)
-        && preview.assets.appearance.current === 0 && preview.assets.chat.current === 0;
-      preview.target = empty ? "empty" : "has-data";
-    } catch (error) {
-      // A malformed local document cannot be counted: report it, never assume the device is empty.
-      if (!(error instanceof BackupValidationError)) throw error;
-      preview.blockers.push({ code: "target-unreadable", error: error.code, path: error.path });
-      preview.domains = {}; preview.assets = null; preview.targetDigest = null; preview.target = "unknown";
-      return;
-    }
-    preview.blockers.push(...await classifyTarget(snapshot, locks!));
-  }, lockOptions);
+  return new BackupCoordinator(locks).withSnapshot(() => previewValidatedBackup(preview, validated, source, locks!), lockOptions);
+}
+
+/** Compares an already validated package with this device. The caller must hold the exclusive snapshot lock. */
+export async function previewValidatedBackup(preview: RestorePreview, validated: ValidatedBackup,
+  source: StaticBackupSource, locks: BackupLockManager): Promise<RestorePreview> {
+  let snapshot: StaticBackupSnapshot;
+  try { snapshot = await readStaticBackupSource(source); }
+  catch (error) {
+    if (!(error instanceof BackupValidationError)) throw error;
+    preview.blockers.push({ code: "target-unreadable", error: error.code, path: error.path });
+    preview.mode = "blocked";
+    return preview;
+  }
+  try {
+    const current = currentDomainCounts(snapshot);
+    for (const section of validated.manifest.domains) preview.domains[section.domain] = { backup: section.records, current: current[section.domain] };
+    const backupAssets = (domain: "appearance" | "chat") => validated.manifest.assets.filter((asset) => asset.domain === domain).length;
+    preview.assets = { appearance: { backup: backupAssets("appearance"), current: snapshot.appearanceAssets.length },
+      chat: { backup: backupAssets("chat"), current: snapshot.chat.assets.length } };
+    preview.targetDigest = await digestTarget(snapshot);
+    const empty = Object.values(current).every((count) => count === 0)
+      && preview.assets.appearance.current === 0 && preview.assets.chat.current === 0;
+    preview.target = empty ? "empty" : "has-data";
+  } catch (error) {
+    // A malformed local document cannot be counted: report it, never assume the device is empty.
+    if (!(error instanceof BackupValidationError)) throw error;
+    preview.blockers.push({ code: "target-unreadable", error: error.code, path: error.path });
+    preview.domains = {}; preview.assets = null; preview.targetDigest = null; preview.target = "unknown";
+    preview.mode = "blocked";
+    return preview;
+  }
+  preview.blockers.push(...await classifyTarget(snapshot, locks));
   preview.mode = preview.blockers.length ? "blocked" : preview.target === "empty" ? "empty-restore" : "replace-required";
   return preview;
 }
