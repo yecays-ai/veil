@@ -23,7 +23,8 @@ Claude；分支 `claude/backup-snapshot-read-side`；PR [#131](https://github.co
 
 ## 尚未验证
 
-- GitHub verify / CodeRabbit 待 PR 发布；Vercel 受部署限制时记为未运行。
+- GitHub `verify` 在 f8efc8c 上已通过；CodeRabbit 首轮 1 条文档意见已处理，待复审。
+- Vercel 检查未运行：账号部署频率限制（api-deployments-free-per-day）；上述本地检查不等同 Vercel 结果。
 - iOS/Safari 原生 Web Locks 与真机未测。
 - 发现：旧的 `generation` 残留标记仍被 v1 校验以 `invalid-data` 拒绝，直到对话被恢复；入口开放时需处理，本单未改。
 
