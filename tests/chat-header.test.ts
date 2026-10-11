@@ -80,8 +80,10 @@ regressionContract("chat.header-keeps-identity", "render-lifecycle",
       const contact = header.querySelector<HTMLAnchorElement>("a.chat-contact-summary.page-title");
       assert.ok(contact);
       assert.equal(contact.getAttribute("href"), "/contacts/peter?from=direct");
-      assert.equal(contact.getAttribute("aria-label"), "Open Contact Info for Peter");
+      // The status joins the accessible name once Presence has loaded.
+      assert.match(contact.getAttribute("aria-label") ?? "", /^Open Contact Info for Peter(, .+)?$/);
       assert.equal(contact.querySelector("strong")?.textContent, "Peter");
+      assert.ok(contact.querySelector(".chat-contact-text > .chat-contact-status"), "the loaded header reserves the status line under the name");
       const button = header.querySelector<HTMLButtonElement>('[aria-label="Conversation settings"]');
       assert.ok(button);
       assert.equal(button === loadingButton, true, "the settings button keeps its DOM node");

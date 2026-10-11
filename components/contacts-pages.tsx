@@ -5,7 +5,7 @@ import { Circle, CircleCheck, Plus } from "lucide-react";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { Avatar } from "./profile-view";
-import { PresenceBadge } from "./presence";
+import { CharacterPresenceBadge } from "./presence";
 import { PageShell } from "./page-shell";
 import { chatStorage } from "../lib/chat/storage";
 import { contactMatches } from "../lib/contact-search";
@@ -86,7 +86,7 @@ export function ContactsHome({ mode, initialSelection = [] }: {
       : contacts.length === 0 ? <p>No matching contacts.</p> : <div className="social-list">
         {contacts.map((character) => {
           const content = <><span className="social-avatar"><Avatar avatar={character.avatar} name={character.name} />
-            <PresenceBadge presence={character.presence} /></span>
+            <CharacterPresenceBadge character={character} /></span>
             <span><strong>{contactDisplayName(contactByCharacter.get(character.characterId), character.name)}</strong>
               {character.statusMessage && <small>{character.statusMessage}</small>}</span>
             {mode === "multi" && <span className="contact-selection-mark" aria-hidden="true">
