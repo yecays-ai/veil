@@ -1,5 +1,6 @@
 import { cleanStaleBindings, normalizeBindings, type AvailableBindingResources, type BindingDocument } from "./bindings";
 import type { StringStorage } from "./storage-types";
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
 
 export const BINDING_STORAGE_KEY = "veil.bindings.v1";
 export function normalizeBindingDocument(value: unknown): BindingDocument {
@@ -21,7 +22,8 @@ const WRITE_ATTEMPTS = 3;
  * untouched and does not block later writes. Stored data is never migrated or reset here.
  */
 export function createBindingStorage(getStorage: () => StringStorage,
-  getLocks: () => Pick<LockManager, "request"> | undefined = () => globalThis.navigator?.locks) {
+  getLocks: () => Pick<LockManager, "request"> | undefined = () => globalThis.navigator?.locks,
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {
   let queue: Promise<unknown> = Promise.resolve();
   const parse = (raw: string | null) => normalizeBindingDocument(raw ? JSON.parse(raw) : null);
   const load = async (): Promise<BindingDocument> => parse(getStorage().getItem(BINDING_STORAGE_KEY));
@@ -37,11 +39,11 @@ export function createBindingStorage(getStorage: () => StringStorage,
     throw new Error("Bindings changed in another tab. Nothing was saved; try again.");
   };
   const enqueue = (operation: () => BindingDocument | Promise<BindingDocument>) => {
-    const run = async () => {
+    const run = () => writeGate.withWrite(async () => {
       const locks = getLocks();
       return locks ? await locks.request(BINDING_STORAGE_KEY, { mode: "exclusive" }, operation)
         : operation();
-    };
+    });
     const pending = queue.then(run, run);
     queue = pending.then(() => {}, () => {});
     return pending;

@@ -1,5 +1,6 @@
 import type { BindingStorage } from "./binding-storage";
 import type { StringStorage } from "./storage-types";
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
 import { withoutRegexBinding } from "./bindings";
 import { emptyRegexDocument, validateRegexDocument, type RegexDocument } from "./regex";
 import { DEFAULT_REGEX_GROUP_ID, defaultRegexGroup, withDefaultRegexGroup } from "./regex-defaults";
@@ -11,12 +12,13 @@ export interface RegexStorage {
   save(document: RegexDocument, expected?: RegexDocument): Promise<void>;
   transact(update: (current: RegexDocument) => RegexDocument, expected?: RegexDocument): Promise<RegexDocument>;
 }
-export function createRegexStorage(getStorage: () => StringStorage): RegexStorage {
+export function createRegexStorage(getStorage: () => StringStorage,
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate): RegexStorage {
   const { exclusive, assertSnapshot } = createRegexWorldBookWriteGuard(KEY, validateRegexDocument, {
     busy: "Regex is being saved elsewhere. Try again.",
     unsupported: "Safe Regex editing requires browser Web Locks. Your draft has been kept.",
     conflict: "Regex changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.",
-  });
+  }, writeGate);
   const load = (): RegexDocument => {
     const raw = getStorage().getItem(KEY);
     if (!raw) return emptyRegexDocument();

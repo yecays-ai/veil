@@ -10,6 +10,7 @@ import type { StringStorage } from "./storage-types";
 import { assertPresetUpdate, deletePreset } from "./preset-library";
 import { presetFingerprint } from "./preset";
 import { withoutPresetBinding } from "./bindings";
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
 
 export interface PresetStorage {
   load(): Promise<PresetDocument>;
@@ -29,20 +30,21 @@ function withCanonicalBuiltin(document: PresetDocument): PresetDocument {
   return validatePresetDocument({ ...document, presets: document.presets.map((preset) =>
     preset.id === BUILTIN_PRESET_ID ? createBuiltinPreset() : preset) });
 }
-export function createPresetStorage(getStorage: () => StringStorage): PresetStorage {
+export function createPresetStorage(getStorage: () => StringStorage,
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate): PresetStorage {
   // All cooperating tabs share one mutation boundary, including rollback.
   // Calls on this instance queue first; the browser lock is only for other tabs and clients, so
   // two reads in the same tab never see each other as "another tab".
   let queue: Promise<unknown> = Promise.resolve();
   const exclusive = <T>(operation: () => T): Promise<T> => {
-    const run = async (): Promise<T> => {
+    const run = (): Promise<T> => writeGate.withWrite(async () => {
       if (typeof navigator !== "undefined" && navigator.locks)
         return await navigator.locks.request(KEY, { ifAvailable: true }, async (lock) => {
           if (!lock) throw new Error("Presets are busy in another tab. Try again.");
           return operation();
         });
       return operation();
-    };
+    });
     const result = queue.then(run, run);
     queue = result.then(() => undefined, () => undefined);
     return result;
