@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/backup-local-write-gate`；PR 尚未创建。
+Codex；branch `codex/backup-local-write-gate`；PR [#124](https://github.com/yecays-ai/veil/pull/124)，已提交，未合并。
 base/main `3b9dfa7ea23097f53849a43bd7af40d8197a7404`，即 Lan 合并 #123 的 merge SHA。
 修改 `lib/binding-storage.ts`、`lib/contact-storage.ts`、`lib/preset-storage.ts`、`lib/regex-worldbook-write-guard.ts`、`lib/regex-storage.ts`、`lib/worldbook-storage.ts`；新增 `tests/backup-local-write-gate.test.ts`、`docs/backup-local-write-gate.md`、本记录；仅更新总账 S11 状态；调整 `tests/regex-worldbook-editor-safety.test.ts` 的锁夹具，复用已有 origin 锁模拟，保留域 busy/ifAvailable 断言。
 
@@ -41,4 +41,4 @@ base/main `3b9dfa7ea23097f53849a43bd7af40d8197a7404`，即 Lan 合并 #123 的 m
 
 ## 下一步
 
-本单完成，提交独立 PR 后停止，不合并，不启动下一单，不持续轮询 CodeRabbit。
+本单已提交并停止，不合并，不启动下一单，不持续轮询 CodeRabbit。
