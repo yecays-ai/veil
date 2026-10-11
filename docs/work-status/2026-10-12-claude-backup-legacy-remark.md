@@ -21,6 +21,7 @@ Claude；分支 `claude/backup-legacy-remark`；PR：https://github.com/yecays-a
 
 - 只在导出副本里去掉 `remark === null`；不改本机库、备份格式、校验规则。其他未知字段仍拒绝。
 - 测试：旧 null 字段导出并通过校验且源数据不变；非空 remark、其他未知字段仍 `invalid-data`。
+- 验证（Node v22.22.0，本地；CI 为 GitHub Actions `verify`）：`npx tsx --test tests/backup-static-export.test.ts` 15/15 通过；`npm run typecheck` 无输出；`npx eslint .` 0 错误、3 条既有警告（无新增）；`npm test` 1116 项中 1114 通过、2 失败（regex/worldbook 存储安全测试，未改动的 main 上同样失败，非本单引入）；CI `verify` 首次在仅文档提交上因已知不稳定的 `chat-regenerate-lock-ui` 失败，重跑一次后通过。
 
 ## 尚未验证
 
