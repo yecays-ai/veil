@@ -4,6 +4,8 @@ import { defaultFoundation, normalizeCharacterInput, type FoundationDocument } f
 import { createPresetDocument } from "../lib/preset";
 import type { TextProvider } from "../lib/chat/provider";
 import { ensureRoutine, ensureRoutineAfterSave, parseRoutine, routineBasis, routinePrompt, routineSource, ROUTINE_MAX_TOKENS } from "../lib/presence/routine";
+import { getRoutineIssue, setRoutineIssue } from "../lib/presence/routine-issue";
+import { effectivePresence } from "../lib/presence/compute";
 import { createPresenceStorage, presenceRecord, setRoutine, emptyPresenceDocument } from "../lib/presence/storage";
 
 const ID = "char-a";
@@ -173,4 +175,85 @@ test("a routine for an unrelated stored basis is replaced only for the same Char
   const document = await f.store.load();
   assert.equal(presenceRecord(document, "other")?.routine?.source, "x");
   assert.equal(presenceRecord(document, ID)?.routine?.changedAt, 1_000);
+});
+
+test("the token budget is the routine's own: a chat preset's smaller maxTokens does not cap it", async () => {
+  assert.equal(ROUTINE_MAX_TOKENS, 3000);
+  const f = fixture();
+  const presets = createPresetDocument();
+  presets.presets[0] = { ...presets.presets[0], generation: { temperature: 0.4, maxTokens: 512 } };
+  f.deps.presets = async () => presets;
+  const seen: unknown[] = [];
+  f.deps.provider = async function* (_c, _m, _s, generation) { seen.push(generation); yield goodReply; };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "generated");
+  // The background request asks for no reasoning phase; the provider decides which servers get the field.
+  assert.deepEqual(seen, [{ temperature: 0.4, maxTokens: 3000, thinking: "disabled" }]);
+});
+
+test("failures are told apart: no API, request failure, truncated output and an invalid reply", async () => {
+  const f = fixture();
+  f.state.api = false;
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "no-api");
+  f.state.api = true;
+  f.deps.provider = async function* () { throw new Error("HTTP 500"); };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "error");
+  // Reasoning-only output that ends at the token limit: nothing to parse, and the finish reason says why.
+  f.deps.provider = async function* (_c, _m, _s, _g, _r, terminal) { terminal?.("length"); yield ""; };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "truncated");
+  f.deps.provider = async function* (_c, _m, _s, _g, _r, terminal) { terminal?.("stop"); yield "Sorry, no."; };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "invalid");
+  // Cut off but still a complete, valid routine: it is used.
+  f.deps.provider = async function* (_c, _m, _s, _g, _r, terminal) { terminal?.("length"); yield goodReply; };
+  assert.equal(await ensureRoutine(ID, undefined, f.deps), "generated");
+  assert.equal(await f.record().then((r) => r?.routine?.routine.blocks.length), 2);
+});
+
+test("harmless format deviations are accepted, structural ones are not", () => {
+  const make = (patch: object, top: object = {}) => JSON.stringify({ defaultStatus: "online", jitterMinutes: 5,
+    blocks: [{ days: [1], start: "09:00", end: "10:00", status: "busy", ...patch }], ...top });
+  const lenient = parseRoutine(make({ days: ["1", 2], status: " Busy " }, { jitterMinutes: "45", defaultStatus: "ONLINE" }))!;
+  assert.deepEqual([lenient.jitterMinutes, lenient.defaultStatus, lenient.blocks[0].days, lenient.blocks[0].status], [45, "online", [1, 2], "busy"]);
+  for (const bad of [make({ start: "24:00" }), make({ end: "24:01" }), make({ days: ["mon"] }), make({ days: [7] }),
+    make({ status: "sleeping" }), make({}, { jitterMinutes: "soon" }), make({}, { defaultStatus: "gone" })])
+    assert.equal(parseRoutine(bad), null, bad);
+});
+
+test("24:00 as an end time keeps midnight-crossing ranges exact, with no zero-length or all-day misreading", () => {
+  const at = (routineJson: string, hour: number, minute = 0) => {
+    const routine = parseRoutine(routineJson)!;
+    // 2026-10-12 is a Monday; the Character lives in UTC and the routine has no jitter.
+    return effectivePresence({ characterId: ID, timezone: "UTC", routine, situations: [] }, Date.UTC(2026, 9, 12, hour, minute)).status;
+  };
+  const range = (start: string, end: string) => JSON.stringify({ defaultStatus: "online", jitterMinutes: 0,
+    blocks: [{ days: [0, 1, 2, 3, 4, 5, 6], start, end, status: "busy" }] });
+  const toMidnight = range("23:00", "24:00"), pastMidnight = range("23:00", "01:00"), wholeDay = range("00:00", "24:00");
+  assert.deepEqual(parseRoutine(toMidnight)!.blocks[0], { days: [0, 1, 2, 3, 4, 5, 6], startMinute: 1380, endMinute: 0, status: "busy" });
+  assert.deepEqual([at(toMidnight, 22, 59), at(toMidnight, 23), at(toMidnight, 23, 59), at(toMidnight, 0), at(toMidnight, 0, 1)],
+    ["online", "busy", "busy", "online", "online"]);
+  assert.deepEqual([at(pastMidnight, 22, 59), at(pastMidnight, 23), at(pastMidnight, 0, 30), at(pastMidnight, 1), at(pastMidnight, 12)],
+    ["online", "busy", "busy", "online", "online"]);
+  assert.deepEqual([0, 6, 12, 18, 23].map((hour) => at(wholeDay, hour)), ["busy", "busy", "busy", "busy", "busy"]);
+});
+
+test("a save records why generation failed, and a later save or success clears it", async () => {
+  const f = fixture();
+  const issue = () => getRoutineIssue(ID);
+  f.state.api = false;
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "no-api");
+  assert.equal(issue(), "no-api");
+  f.state.api = true;
+  f.deps.provider = async function* (_c, _m, _s, _g, _r, terminal) { terminal?.("length"); yield ""; };
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "truncated");
+  assert.equal(issue(), "truncated");
+  f.deps.provider = async function* () { throw new Error("HTTP 500"); };
+  await ensureRoutineAfterSave(ID, f.deps);
+  assert.equal(issue(), "error");
+  f.deps.provider = async function* () { yield goodReply; };
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "generated");
+  assert.equal(issue(), null);
+  // An up-to-date routine and an unknown Character are not failures.
+  setRoutineIssue(ID, "invalid");
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "current");
+  assert.equal(issue(), null);
+  assert.equal(getRoutineIssue(undefined), null);
 });

@@ -5,12 +5,13 @@ import {
 } from "../lib/character-deletion";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { findLeftovers, hasLeftovers, reconcileInertReferences, removeLeftovers, type Leftovers } from "../lib/character-leftovers";
 import { browserFoundationStorage } from "../lib/foundation-storage";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { UI_COPY as U } from "../lib/ui-copy";
 import { ensureRoutineAfterSave } from "../lib/presence/routine";
+import { getRoutineIssue, subscribeRoutineIssue } from "../lib/presence/routine-issue";
 import {
   createCharacter,
   saveUser,
@@ -151,6 +152,10 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
     [unfinished, setUnfinished] = useState<CleanupReport["failed"]>([]);
   const [baseline, setBaseline] = useState<Character | null>(null);
   const [formDirty, setFormDirty] = useState(false);
+  // Why the last life-rhythm generation failed, if it did. It arrives after the save, possibly after a new page
+  // instance has mounted (a created Character moves to its own page), so it lives outside this component.
+  const routineIssue = useSyncExternalStore(subscribeRoutineIssue, () => getRoutineIssue(characterId), () => null);
+  const routineNote = routineIssue ? C.characters.routineFailed[routineIssue] : "";
   const character = document.characters.find(
     (c) => c.characterId === characterId,
   );
@@ -242,6 +247,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
               );
               // Drafts a life rhythm in the background when the settings behind it are new or changed; no-op otherwise.
               const savedId = characterId ?? saved.characters.at(-1)?.characterId;
+              // Silent on success; a failure is recorded for this Character's page (see `routineNote`).
               if (savedId) void ensureRoutineAfterSave(savedId);
               if (isNew) {
                 const created = saved.characters.at(-1);
@@ -254,6 +260,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
         </>
       ) : (
         <>
+          {routineNote && <p role="status">{routineNote}</p>}
           <ProfileView profile={character!} kind="character">
             <button onClick={() => { setBaseline(structuredClone(character!)); setEditing(true); }}>{C.common.edit}</button>
           </ProfileView>

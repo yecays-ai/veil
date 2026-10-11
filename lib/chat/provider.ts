@@ -39,6 +39,22 @@ export function completionUrl(baseUrl: string): string {
     : `${path}/chat/completions`;
   return url.href;
 }
+/**
+ * Asks the model to answer without a reasoning phase. Only a background task whose reply is short and
+ * structured should ask; the field is sent only to hosts known to define it (see `supportsThinkingSwitch`).
+ */
+export type RequestOptions = GenerationParameters & { thinking?: "disabled" };
+/**
+ * DeepSeek's own API defines `thinking: {type: "disabled"}` and reasons at high effort unless told not to.
+ * Recognized by host only: a third-party relay or another OpenAI-compatible server may reject an unknown
+ * field, and a model name proves nothing about which server answers.
+ */
+export function supportsThinkingSwitch(baseUrl: string): boolean {
+  try {
+    const host = new URL(baseUrl.trim()).hostname.toLowerCase();
+    return host === "deepseek.com" || host.endsWith(".deepseek.com");
+  } catch { return false; }
+}
 export function validateApiConfig(config: ApiConfig) {
   completionUrl(config.baseUrl);
   if (!config.apiKey.trim() || !config.model.trim())
@@ -48,7 +64,7 @@ export type TextProvider = (
   config: ApiConfig,
   messages: PromptTurn[],
   signal: AbortSignal,
-  generation?: GenerationParameters,
+  generation?: RequestOptions,
   request?: CompletionRequestContext,
   terminal?: (finishReason: string) => void,
 ) => AsyncIterable<string>;
@@ -135,6 +151,8 @@ export function createOpenAITextProvider(
             ? { temperature: generation.temperature } : {}),
           ...(generation?.maxTokens !== undefined
             ? { max_tokens: generation.maxTokens } : {}),
+          ...(generation?.thinking === "disabled" && supportsThinkingSwitch(config.baseUrl)
+            ? { thinking: { type: "disabled" } } : {}),
         }),
       }), cancelRequest, "The API did not respond in time. Try again.", "connect");
     } catch (error) {
