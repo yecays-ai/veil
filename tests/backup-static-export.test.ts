@@ -13,6 +13,32 @@ const secret = "SIMULATED_API_KEY_DO_NOT_EXPORT";
 const png = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1cAAAAASUVORK5CYII=", "base64"));
 const blob = () => new Blob([png], { type: "image/png" });
 
+for (const event of ["error", "blocked", "upgradeneeded"] as const) {
+  test(`a rejected IndexedDB open (${event}) closes a late successful connection`, async () => {
+    const indexedDB = new IDBFactory();
+    let closes = 0, aborts = 0, reads = 0;
+    const request = Object.assign(new EventTarget(), {
+      onerror: null, onblocked: null, onupgradeneeded: null, onsuccess: null,
+      result: { close() { closes++; }, transaction() { reads++; throw new Error("Unexpected read"); } },
+      transaction: { abort() { aborts++; } },
+    }) as unknown as IDBOpenDBRequest;
+    indexedDB.databases = async () => [{ name: "veil-core-v1", version: 1 }];
+    indexedDB.open = () => request;
+    const pending = readStaticBackupSource({ indexedDB, localStorage: { getItem: () => null } });
+    await Promise.resolve();
+    const rejection = assert.rejects(pending, (error: unknown) =>
+      error instanceof BackupValidationError && error.code === "source-unavailable");
+    const failure = new Event(event);
+    request[`on${event}`]?.call(request, failure as IDBVersionChangeEvent);
+    request.dispatchEvent(failure);
+    await rejection;
+    request.onsuccess?.call(request, new Event("success"));
+    assert.equal(closes, 1);
+    assert.equal(reads, 0);
+    assert.equal(aborts, event === "upgradeneeded" ? 1 : 0);
+  });
+}
+
 /** Fixture writes happen before export; every database and credential is simulated. */
 async function seed(factory: IDBFactory, name: string, stores: Record<string, unknown[]>, version = 1, key = "id") {
   const db = await new Promise<IDBDatabase>((resolve, reject) => {

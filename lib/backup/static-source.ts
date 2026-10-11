@@ -31,12 +31,11 @@ async function readDatabase(factory: IDBFactory, definition: typeof DATABASES[nu
   try {
     database = await new Promise<IDBDatabase>((resolve, reject) => {
       const opening = factory.open(definition.name);
-      const error = () => reject(new BackupValidationError("source-unavailable", definition.name));
-      opening.onupgradeneeded = () => { opening.transaction?.abort(); error(); };
+      let rejected = false;
+      const error = () => { rejected = true; reject(new BackupValidationError("source-unavailable", definition.name)); };
+      opening.onupgradeneeded = () => { error(); opening.transaction?.abort(); };
       opening.onerror = error;
       opening.onblocked = error;
-      let rejected = false;
-      opening.addEventListener("blocked", () => { rejected = true; });
       opening.onsuccess = () => {
         if (rejected) { opening.result.close(); return; }
         resolve(opening.result);
