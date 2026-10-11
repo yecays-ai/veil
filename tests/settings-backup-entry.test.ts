@@ -13,13 +13,9 @@ test("Settings links to the Backup & Restore page", () => {
   assert.match(backupPage, /backHref="\/settings"/);
 });
 
-test("backup actions are clearly unavailable and cannot be activated", () => {
-  for (const label of ["Export Backup", "Import Backup"]) {
-    assert.match(backupSettings, new RegExp(`label: "${label}"`));
-  }
-  assert.match(backupSettings, /^\s+disabled\s*$/m);
-  assert.match(backupSettings, /Coming Soon/);
-  assert.match(backupSettings, /Not available yet\./);
-  assert.doesNotMatch(backupSettings, /onClick|onChange|lib\/backup|exportStaticBackup|importBackup/);
+test("backup actions are wired to the backup flow and no longer disabled placeholders", () => {
+  for (const label of ["Export Backup", "Import Backup"]) assert.match(backupSettings, new RegExp(`<strong>${label}</strong>`));
+  assert.doesNotMatch(backupSettings, /Coming Soon|Not available yet\./);
+  assert.match(backupSettings, /lib\/backup\/backup-flow/);
+  assert.match(backupSettings, /accept="\.zip,application\/zip"/);
 });
-

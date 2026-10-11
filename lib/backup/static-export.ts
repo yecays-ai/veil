@@ -42,7 +42,7 @@ function encodeJson(value: unknown, path: string): Uint8Array {
 }
 
 /** Count top-level persisted records using the v1 contract, without initializing absent documents. */
-function recordCount(domain: BackupDomain, value: unknown): number {
+export function recordCount(domain: BackupDomain, value: unknown): number {
   if (value === null) return 0;
   if (domain === "apiConfigs") return (value as unknown[]).length;
   if (domain === "chat") return Object.values(value as BackupData["chat"]).reduce((count, rows) => count + rows.length, 0);
