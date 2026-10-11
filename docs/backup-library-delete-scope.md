@@ -14,7 +14,7 @@
 
 `withPersistenceWriteScope` 在一次 shared 回调中创建只存在于内存的 scope。具体存储方法通过显式可选参数接收它，`runPersistenceWrite` 验证 scope 仍有效且属于同一 gate 后直接运行原域锁/事务，不再次请求 shared 锁。WeakMap 记录许可，不可从用户数据、空对象或另一个 gate 伪造；范围结束后旧 scope 拒绝写入。无全局“正在持锁”标志，因此其他并发操作不会误绕过锁。
 
-三项入口逐步 await 初始化、删除、Binding 清理，以及错误路径的原回退，再释放 outer lease。结束时仍在运行的 scope 子操作会先等待 settle，关闭后的 scope 不再接收新操作；收尾发现未完成子操作失败时不能返回成功。既有原异常、较新数据保护、幂等删除及 rollbackIfCurrent 规则保持。
+三项入口逐步 await 初始化、删除、Binding 清理，以及错误路径的原回退，再释放 outer lease。结束时仍在运行的 scope 子操作会先等待 settle，关闭后的 scope 不再接收新操作；所有子操作结果保留到收尾；即使子操作提前失败而父回调继续完成，范围也不能返回成功。父回调自身失败时保留父异常优先级。既有原异常、较新数据保护、幂等删除及 rollbackIfCurrent 规则保持。
 
 Bindings / Preset 的顺序调整为：**取得或复用 shared lease → 实例队列 → 原域锁**。尚未取得 shared lease 的独立调用不能先占据实例队列，阻塞正在持锁的整项删除。这避免“删除持 shared → snapshot 排 exclusive → 独立写入占实例队列等待 shared → 删除等待实例队列”的等待环；原域锁和队列仍串行提交同域操作。
 

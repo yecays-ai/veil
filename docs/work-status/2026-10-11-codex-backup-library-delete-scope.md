@@ -30,9 +30,13 @@ base/main `45ceb79fe8be4b7664b5cdf58eb8d4684ec32d31`。
 
 - 提交前全量只跑一轮：958/958 通过；typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。Node 24.19.0、npm 10.9.4、TypeScript 5.9.3，依赖未改；只用模拟数据，无真实 VEIL 数据访问。
 
+- 本轮核对 CodeRabbit 的具体意见：提前失败的未 await 子写入被删除，导致父范围可能误报成功，确认有效。新增回归修复前失败；修复保留所有子 Promise 到范围收尾，allSettled 后清空集合，父自身错误仍优先。修复后 scope 定向 10/10 通过；不以成功状态灯代替具体意见核对。
+
+- 审查修复本地全量一次 959/959、typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。按本次授权仅在最新复审无阻塞后才可合并 #125 并启动下一单。
+
 ## 尚未验证
 
-- 最新提交 GitHub verify / CodeRabbit 尚待 PR 发布后复审；不持续轮询。
+- 修复提交的最新 GitHub verify / CodeRabbit 待推送后复审。
 - iOS/Safari 原生锁和真机未测；Presence、其他跨域整项操作、图片和建库未全部覆盖，正式备份与恢复未实施。
 
 ## 下一步

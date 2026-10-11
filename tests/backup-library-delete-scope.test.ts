@@ -116,6 +116,21 @@ test("a child left pending cannot outlive the shared lease or silently fail afte
   }
 });
 
+test("a child rejected before its parent finishes cannot be forgotten or turn the scope into success", async () => {
+  const gate = createPersistenceWriteGate(() => undefined), failure = new Error("Simulated early child failure");
+  await assert.rejects(withPersistenceWriteScope(gate, async (scope) => {
+    const child = runPersistenceWrite(gate, async () => { throw failure; }, scope);
+    void child.catch(() => {});
+    await new Promise((resolve) => setImmediate(resolve));
+    return "must not succeed";
+  }), (error) => error === failure);
+  const parentFailure = new Error("Simulated parent failure");
+  await assert.rejects(withPersistenceWriteScope(gate, async (scope) => {
+    await assert.rejects(runPersistenceWrite(gate, async () => { throw failure; }, scope));
+    throw parentFailure;
+  }), (error) => error === parentFailure);
+});
+
 test("browser Regex initialization and deletion share the outer lease when an exclusive snapshot is queued", async () => {
   const origin = lockOrigin(), values = new Map<string, string>(), finish = deferred(), entered = deferred();
   values.set("veil.regex.v1", JSON.stringify({ version: 1, groups: [{ ...newRegexGroup(), id: "target" }] }));

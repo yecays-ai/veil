@@ -22,6 +22,7 @@ export function withPersistenceWriteScope<T>(gate: PersistenceWriteGate,
     state.active = false;
     // A child accidentally left unawaited still cannot outlive this shared lease.
     const children = await Promise.allSettled(state.pending);
+    state.pending.clear();
     if (failed) throw failure;
     const rejected = children.find((child) => child.status === "rejected");
     if (rejected?.status === "rejected") throw rejected.reason;
@@ -38,7 +39,8 @@ export function runPersistenceWrite<T>(gate: PersistenceWriteGate, operation: ()
     return Promise.reject(new BackupValidationError("invalid-write-scope", "coordination"));
   const pending = Promise.resolve().then(operation);
   state.pending.add(pending);
-  void pending.then(() => state.pending.delete(pending), () => state.pending.delete(pending));
+  // Observe rejection immediately, but retain its outcome until the owner collects every child.
+  void pending.then(() => undefined, () => undefined);
   return pending;
 }
 
