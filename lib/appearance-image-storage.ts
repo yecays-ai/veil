@@ -1,3 +1,4 @@
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
 import {
   THEME_IMAGE_ASSET_PREFIX,
   themeImageAssetId,
@@ -44,7 +45,8 @@ async function imageId(blob: Blob): Promise<string> {
 
 export class AppearanceImageStorage {
   private database?: Promise<IDBDatabase>;
-  constructor(private factory: () => IDBFactory = () => window.indexedDB, private now: () => number = Date.now) {}
+  constructor(private factory: () => IDBFactory = () => window.indexedDB, private now: () => number = Date.now,
+    private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
   private open(): Promise<IDBDatabase> {
     if (!this.database) {
@@ -74,6 +76,11 @@ export class AppearanceImageStorage {
   }
 
   private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+    const operation = () => this.performTransaction(mode, run);
+    return mode === "readwrite" ? this.writeGate.withWrite(operation) : operation();
+  }
+
+  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
     const db = await this.open();
     const tx = db.transaction(STORE, mode);
     const done = new Promise<void>((resolve, reject) => {
