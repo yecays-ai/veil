@@ -136,3 +136,36 @@ test("a failure recorded for a Character is visible when its page mounts, whatev
     } finally { setRoutineIssue("p", null); }
   });
 });
+
+test("creating a Character: the failure that arrives after the move to its new page is shown there", async () => {
+  await mounted(async (app) => {
+    const pages = await import("../components/profile-pages");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const original = browserApiConfigStorage.getApiConfig;
+    browserApiConfigStorage.getApiConfig = async () => { await gate; return undefined; };
+    let createdId = "";
+    try {
+      await app.render(createElement(pages.CharacterPage, {}));
+      await app.wait(() => !!app.container.querySelector("form"));
+      const name = [...app.container.querySelectorAll("label")].find((label) => label.textContent?.startsWith("Name"))!
+        .querySelector("input")!;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(Object.getPrototypeOf(name), "value")!.set!.call(name, "Ghost");
+        name.dispatchEvent(new app.dom.window.Event("input", { bubbles: true }));
+      });
+      await app.click(button(app.container, "Create Character")!);
+      await app.wait(() => app.pushed.length > 0);
+      createdId = decodeURIComponent(app.pushed[0].split("/").pop()!);
+      // The router moves to the new Character's page, a fresh instance; generation is still pending.
+      await app.render(createElement(pages.CharacterPage, { characterId: createdId }));
+      await app.wait(() => !!button(app.container, "Edit"));
+      assert.ok(!NOTE.test(app.container.textContent ?? ""));
+      release();
+      await app.wait(() => NOTE.test(app.container.textContent ?? ""));
+    } finally {
+      browserApiConfigStorage.getApiConfig = original;
+      if (createdId) setRoutineIssue(createdId, null);
+    }
+  });
+});

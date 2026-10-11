@@ -20,7 +20,7 @@ Claude；分支 `claude/presence-routine-fix`；PR 见 GitHub；base `3bb7b58`�
 - 失败原因：结果区分 `no-api`、`error`（请求失败）、`truncated`（`finish_reason` 为 length 且没有可用 JSON）、`invalid`。失败原因按角色保存在内存里（`routine-issue.ts`，只在本次会话有效，不写存储、不改 Presence 存储结构），角色资料页（`/characters/<id>` 查看模式）读取并显示一行提示：请求结束后自动出现，离开再返回仍在，下一次保存时清除，成功或已是最新时清除；新建角色跳转到新页面后也能看到。成功静默。
 - 兼容的格式偏差：结束时间 `24:00`（只限结束时间，等于 00:00 次日起点）、数字写成字符串、状态大小写/空白。周日写成 7、`24:01`、起始 `24:00`、缺字段、未知状态仍然整份拒绝。
 - 测试：新增 4 项（预算不被预设压低；四种失败原因及“截断但 JSON 完整仍可用”；宽容与严格边界；`23:00–24:00`、`23:00–01:00`、`00:00–24:00` 经 `effectivePresence` 验证无零长度或全天误判）。
-- 本地检查（Node 24.21.0）：`npm test` 856/856（含挂载真实角色页的流程测试：保存后异步出现、离开再返回仍在、下一次保存清除、一次保存只有一次 API 查找）；`npm run typecheck`；`npm run lint` 0 error / 3 条既有 warning；`npm run build` 均通过。证据级别：自动化测试，非真机。
+- 本地检查（Node 24.21.0）：`npm test` 857/857（含挂载真实角色页的流程测试，也覆盖新建后跳转再失败：保存后异步出现、离开再返回仍在、下一次保存清除、一次保存只有一次 API 查找）；`npm run typecheck`；`npm run lint` 0 error / 3 条既有 warning；`npm run build` 均通过。证据级别：自动化测试，非真机。
 
 ## 尚未验证
 
