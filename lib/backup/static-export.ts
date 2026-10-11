@@ -41,6 +41,20 @@ function encodeJson(value: unknown, path: string): Uint8Array {
   }
 }
 
+/**
+ * Early builds stored an always-null `remark` on every conversation row; Contact now owns the name. Only that provably
+ * empty legacy value is left out of the copy being exported. A non-null value is kept so validation still refuses
+ * rather than silently losing a name. The stored row is never touched.
+ */
+function withoutEmptyLegacyRemark(sessions: unknown[]): unknown[] {
+  return sessions.map((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row) || (row as Record<string, unknown>).remark !== null) return row;
+    const rest = { ...(row as Record<string, unknown>) };
+    delete rest.remark;
+    return rest;
+  });
+}
+
 /** Count top-level persisted records using the v1 contract, without initializing absent documents. */
 export function recordCount(domain: BackupDomain, value: unknown): number {
   if (value === null) return 0;
@@ -74,7 +88,7 @@ export async function exportStaticBackup(source: StaticBackupSource, metadata: S
     foundation: snapshot.documents.foundation, appearance: snapshot.documents.appearance,
     bindings: snapshot.documents.bindings, presets: snapshot.documents.presets, regex: snapshot.documents.regex,
     worldbooks: snapshot.documents.worldbooks, contacts: snapshot.documents.contacts, presence: snapshot.documents.presence,
-    chat: { sessions: snapshot.chat.sessions, messages: snapshot.chat.messages,
+    chat: { sessions: withoutEmptyLegacyRemark(snapshot.chat.sessions), messages: snapshot.chat.messages,
       chatSettings: snapshot.chat.chatSettings, worldBookStates: snapshot.chat.worldBookStates }, apiConfigs,
   };
   const manifest: BackupManifest = { schema: BACKUP_SCHEMA, version: BACKUP_VERSION, ...metadata,
