@@ -10,6 +10,7 @@ import { normalizePresence, type Character, type FoundationDocument } from "../f
 import { presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
 import { MAX_JITTER_MINUTES, type PresenceRoutine } from "./compute";
+import { reportedIssue, setRoutineIssue } from "./routine-issue";
 import { browserPresenceStorage, normalizeRoutine, presenceRecord, setRoutine, type PresenceDocument } from "./storage";
 
 // Routine generation: the model drafts a rough weekly rhythm once per Character life basis (occupation,
@@ -147,12 +148,17 @@ export async function ensureRoutine(characterId: string, signal?: AbortSignal, d
     inFlight.delete(characterId);
   }
 }
-/** Runs `ensureRoutine` and repeats it while another save arrives during a request; each repeat needs a new save. */
+/**
+ * Runs `ensureRoutine` and repeats it while another save arrives during a request; each repeat needs a new save.
+ * A save clears the Character's earlier failure note; a failed outcome records the new one for the Character page.
+ */
 export async function ensureRoutineAfterSave(characterId: string, deps: Services = services): Promise<RoutineOutcome> {
   // No caller signal: a repeat belongs to a later save, so cancelling the first request must not drop it.
+  setRoutineIssue(characterId, null);
   let outcome = await ensureRoutine(characterId, undefined, deps);
-  // A "busy" call left its marker for the wrapper that is already running; only that one repeats.
+  // A "busy" call left its marker for the wrapper that is already running; only that one repeats and reports.
   if (outcome === "busy") return outcome;
-  while (rerun.delete(characterId)) outcome = await ensureRoutine(characterId, undefined, deps);
+  while (rerun.delete(characterId)) { setRoutineIssue(characterId, null); outcome = await ensureRoutine(characterId, undefined, deps); }
+  setRoutineIssue(characterId, reportedIssue(outcome));
   return outcome;
 }

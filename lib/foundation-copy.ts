@@ -1,3 +1,4 @@
+import type { RoutineIssue } from "./presence/routine-issue";
 // Plain copy only: a practical localization seam, without an i18n runtime.
 export const FOUNDATION_COPY = {
   common: {
@@ -56,7 +57,7 @@ export const FOUNDATION_COPY = {
       error: "Life rhythm not generated: the model request failed.",
       truncated: "Life rhythm not generated: the model's reply was cut off.",
       invalid: "Life rhythm not generated: the model's reply was not a valid rhythm.",
-    } as Record<string, string | undefined>,
+    } satisfies Record<RoutineIssue, string>,
     notFound: "Character not found.",
     deleteQuestion: "Delete this Character? This cannot be undone. Deleting will also remove:",
     impactLoading: "Checking what will be removed…",

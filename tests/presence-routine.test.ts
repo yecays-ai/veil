@@ -4,6 +4,7 @@ import { defaultFoundation, normalizeCharacterInput, type FoundationDocument } f
 import { createPresetDocument } from "../lib/preset";
 import type { TextProvider } from "../lib/chat/provider";
 import { ensureRoutine, ensureRoutineAfterSave, parseRoutine, routineBasis, routinePrompt, routineSource, ROUTINE_MAX_TOKENS } from "../lib/presence/routine";
+import { getRoutineIssue, setRoutineIssue } from "../lib/presence/routine-issue";
 import { effectivePresence } from "../lib/presence/compute";
 import { createPresenceStorage, presenceRecord, setRoutine, emptyPresenceDocument } from "../lib/presence/storage";
 
@@ -231,4 +232,27 @@ test("24:00 as an end time keeps midnight-crossing ranges exact, with no zero-le
   assert.deepEqual([at(pastMidnight, 22, 59), at(pastMidnight, 23), at(pastMidnight, 0, 30), at(pastMidnight, 1), at(pastMidnight, 12)],
     ["online", "busy", "busy", "online", "online"]);
   assert.deepEqual([0, 6, 12, 18, 23].map((hour) => at(wholeDay, hour)), ["busy", "busy", "busy", "busy", "busy"]);
+});
+
+test("a save records why generation failed, and a later save or success clears it", async () => {
+  const f = fixture();
+  const issue = () => getRoutineIssue(ID);
+  f.state.api = false;
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "no-api");
+  assert.equal(issue(), "no-api");
+  f.state.api = true;
+  f.deps.provider = async function* (_c, _m, _s, _g, _r, terminal) { terminal?.("length"); yield ""; };
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "truncated");
+  assert.equal(issue(), "truncated");
+  f.deps.provider = async function* () { throw new Error("HTTP 500"); };
+  await ensureRoutineAfterSave(ID, f.deps);
+  assert.equal(issue(), "error");
+  f.deps.provider = async function* () { yield goodReply; };
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "generated");
+  assert.equal(issue(), null);
+  // An up-to-date routine and an unknown Character are not failures.
+  setRoutineIssue(ID, "invalid");
+  assert.equal(await ensureRoutineAfterSave(ID, f.deps), "current");
+  assert.equal(issue(), null);
+  assert.equal(getRoutineIssue(undefined), null);
 });
