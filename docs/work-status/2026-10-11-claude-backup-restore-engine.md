@@ -13,7 +13,7 @@ S11 第 16 单（原审计第 5、6 阶段合并：恢复日志 + 空环境完�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-restore-engine`。新增 `lib/backup/restore.ts`、`tests/backup-restore.test.ts`、`docs/backup-restore-engine.md`；小改 `lib/backup/restore-preview.ts`（拆出 `previewValidatedBackup`）与四个存储类（新增恢复专用 `replaceAll*`）。
+Claude；分支 `claude/backup-restore-engine`；PR [#136](https://github.com/yecays-ai/veil/pull/136)。新增 `lib/backup/restore.ts`、`tests/backup-restore.test.ts`、`docs/backup-restore-engine.md`；小改 `lib/backup/restore-preview.ts`（拆出 `previewValidatedBackup`）与四个存储类（新增恢复专用 `replaceAll*`）。
 
 ## 已完成与证据
 
