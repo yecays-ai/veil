@@ -16,6 +16,8 @@ export type SelfState = {
   status: Presence | null;
   situation: string | null;
   signature: string | null;
+  /** What the Character itself calls the user (its own note on them); null when none. */
+  userNote: string | null;
   /** What the Character may change in this reply (its own cooldowns applied); null when it may change nothing (Continue). */
   canChange: ActionAllowance | null;
 };
@@ -35,7 +37,7 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     ? { from: change.fromRemark, to: change.toRemark } : null;
   return { remark: normalizeContactRemark(contact?.remark), remarkChange, status: known ? effective.status : null,
     situation: effective.situation?.reason ?? null, signature: character.statusMessage?.trim() || null,
-    canChange: allowActions ? actionAllowance(record, now) : null };
+    userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null };
 }
 
 const quoted = (value: string) => JSON.stringify(value);
@@ -51,12 +53,14 @@ function remarkLines(state: SelfState): string[] {
 }
 
 function actionLines(allow: ActionAllowance | null): string[] {
-  if (!allow || (!allow.situation && !allow.signature)) return [];
+  if (!allow || (!allow.situation && !allow.signature && !allow.note)) return [];
   const fields = [
     allow.signature ? `"signature": your new signature text ("" clears it)` : null,
+    allow.note ? `"userNote": what you now call the user, a short nickname or note ("" clears it)` : null,
     allow.situation ? `"situation": {"status": "online"|"away"|"busy"|"dnd"|"offline", "reason": short text, "startInMinutes": optional, "durationMinutes": optional}, "endSituation": "current"|"all", "cancelUpcoming": true` : null,
   ].filter((field): field is string => field !== null);
-  return ["You may change your own " + [allow.signature ? "signature" : null, allow.situation ? "situation" : null].filter(Boolean).join(" and ") +
+  const names = [allow.signature ? "signature" : null, allow.note ? "note on the user" : null, allow.situation ? "situation" : null].filter(Boolean);
+  return ["You may change your own " + names.join(", ").replace(/, ([^,]*)$/, " and $1") +
     " when this conversation really gives you a reason; most replies need no change and you never have to explain one.",
   "Only for something happening now or about to happen, never for something you merely recall or tell about.",
   `To change, end the reply with one line <${ACTION_TAG}>{JSON}</${ACTION_TAG}> using only these optional fields: ${fields.join("; ")}. VEIL removes this line before anyone sees the reply; never mention it.`];
@@ -68,6 +72,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
   const lines = [
     state.status ? `Your current status: ${presenceLabel(state.status)}${state.situation ? ` (${state.situation})` : ""}.` : null,
     state.signature ? `Your signature: ${quoted(state.signature)}.` : null,
+    state.userNote ? `Your own note on the user, what you call them: ${quoted(state.userNote)}. Use it only when it fits naturally.` : null,
     ...remarkLines(state),
     ...actionLines(state.canChange),
   ].filter((line): line is string => line !== null);

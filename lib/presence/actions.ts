@@ -1,13 +1,15 @@
 import { PRESENCE_VALUES, type Character, type FoundationDocument } from "../foundation-types";
 import { normalizeSituation } from "./compute";
 import {
-  addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord,
+  addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord, setUserNote,
   type PresenceDocument, type PresenceRecord,
 } from "./storage";
 
 /** What a Character may change about itself in a reply. Parsed from one trailing tag, never shown to the user. */
 export type CharacterActions = {
   signature?: string | null;
+  /** What the Character calls the user; "" clears it. */
+  userNote?: string | null;
   situation?: { status: string; reason?: string; startInMinutes?: number; durationMinutes?: number };
   endSituation?: "current" | "all";
   cancelUpcoming?: true;
@@ -18,7 +20,9 @@ const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
 // that a real event can still change things the same evening.
 export const SITUATION_COOLDOWN_MS = 30 * 60_000;
 export const SIGNATURE_COOLDOWN_MS = 12 * 60 * 60_000;
+export const NOTE_COOLDOWN_MS = 12 * 60 * 60_000;
 const SIGNATURE_MAX = 200;
+const NOTE_MAX = 100;
 const MAX_START_IN_MS = 7 * 24 * 60 * 60_000;
 export const CHARACTER_SOURCE_PREFIX = "character:";
 
@@ -47,10 +51,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 
 /** Control, zero-width and bidi characters out, whitespace collapsed, at most 200 characters. */
-export function cleanSignature(value: string): string | null {
+const cleanText = (value: string, max: number): string | null => {
   const text = value.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim();
-  return Array.from(text).slice(0, SIGNATURE_MAX).join("").trim() || null;
-}
+  return Array.from(text).slice(0, max).join("").trim() || null;
+};
+export const cleanSignature = (value: string) => cleanText(value, SIGNATURE_MAX);
+/** Same cleaning as a signature, at most 100 characters (the length of the user's own remark). */
+export const cleanUserNote = (value: string) => cleanText(value, NOTE_MAX);
 
 function parseActions(json: string): CharacterActions | null {
   let value: unknown;
@@ -58,6 +65,7 @@ function parseActions(json: string): CharacterActions | null {
   if (!isRecord(value)) return null;
   const actions: CharacterActions = {};
   if (typeof value.signature === "string") actions.signature = cleanSignature(value.signature);
+  if (typeof value.userNote === "string") actions.userNote = cleanUserNote(value.userNote);
   const situation = value.situation;
   if (isRecord(situation) && typeof situation.status === "string") {
     const minutes = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? v : undefined;
@@ -70,14 +78,15 @@ function parseActions(json: string): CharacterActions | null {
   return Object.keys(actions).length ? actions : null;
 }
 
-export type ActionAllowance = { situation: boolean; signature: boolean };
+export type ActionAllowance = { situation: boolean; signature: boolean; note: boolean };
 const ownChangeAt = (mark: { changedAt: number; source: string | null } | null | undefined) =>
   mark?.source?.startsWith(CHARACTER_SOURCE_PREFIX) ? mark.changedAt : -Infinity;
 
 /** Whether the Character may change each thing now. Only its own earlier changes count (including ending or cancelling a situation). */
 export function actionAllowance(record: PresenceRecord | undefined, now: number): ActionAllowance {
   return { situation: !(now - ownChangeAt(record?.situationChange) < SITUATION_COOLDOWN_MS),
-    signature: !(now - ownChangeAt(record?.signature) < SIGNATURE_COOLDOWN_MS) };
+    signature: !(now - ownChangeAt(record?.signature) < SIGNATURE_COOLDOWN_MS),
+    note: !(now - ownChangeAt(record?.userNote) < NOTE_COOLDOWN_MS) };
 }
 
 /** Applies the situation part to Presence. Never writes the past: a start before `now` is moved to `now`. */
@@ -102,12 +111,30 @@ export function applySituationActions(document: PresenceDocument, character: Pic
 export type ActionDeps = {
   presence: { load(): Promise<PresenceDocument>; transact(change: (document: PresenceDocument) => PresenceDocument): Promise<PresenceDocument> };
   foundation: { transact(update: (document: FoundationDocument) => FoundationDocument): Promise<FoundationDocument> };
+  /** Tells the chat the Character changed its note on the user (null = removed); a failure never undoes the change. */
+  noteChanged?: (characterId: string, note: string | null, at: number) => Promise<void>;
 };
+/** The note is Presence data alone, so check and write happen in one transaction; the chat event follows only a real change. */
+async function applyUserNote(deps: ActionDeps, characterId: string, note: string | null, now: number, source: string) {
+  const text = note ?? "";
+  let changed = false;
+  await deps.presence.transact((document) => {
+    changed = false; // a retried write recomputes from the newer document
+    const current = presenceRecord(document, characterId);
+    if (!actionAllowance(current, now).note || (current?.userNote?.text ?? "") === text) return document;
+    changed = true;
+    return setUserNote(document, characterId, text, { changedAt: now, source });
+  });
+  if (!changed) return;
+  try { await deps.noteChanged?.(characterId, note, now); }
+  catch { console.warn("[Presence] the note change was saved but its chat event was not"); }
+}
 /** Applies a committed reply's actions. Presence and Foundation are separate stores, so the signature goes first (the real data) and its mark second. */
 export const characterActionApplier = (deps: ActionDeps) =>
   async (characterId: string, actions: CharacterActions, now: number, messageId: string): Promise<void> => {
     const source = `${CHARACTER_SOURCE_PREFIX}${messageId}`;
     await deps.presence.transact((document) => applySituationActions(document, { characterId }, actions, now, source));
+    if (actions.userNote !== undefined) await applyUserNote(deps, characterId, actions.userNote, now, source);
     if (actions.signature === undefined) return;
     const allowed = actionAllowance(presenceRecord(await deps.presence.load(), characterId), now).signature;
     if (!allowed) return;

@@ -83,7 +83,7 @@ test("the cooldown is the Character's own and is judged from its last change, no
   assert.deepEqual(presenceRecord(state.presence, "a")!.situations.map((s) => s.status), ["busy"], "too soon: ignored");
   await apply("a", { situation: { status: "away", durationMinutes: 600 } }, T + SITUATION_COOLDOWN_MS, "m3");
   assert.equal(presenceRecord(state.presence, "a")!.situations.at(-1)!.status, "away");
-  assert.deepEqual(actionAllowance(undefined, T), { situation: true, signature: true });
+  assert.deepEqual(actionAllowance(undefined, T), { situation: true, signature: true, note: true });
   const userMade = { characterId: "a", routine: null, signature: null, lastOnlineAt: null, lastMessageAt: null, situations: [],
     situationChange: { changedAt: T, source: null } };
   assert.equal(actionAllowance(userMade, T).situation, true, "only the Character's own changes start its cooldown");

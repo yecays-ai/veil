@@ -921,6 +921,24 @@ export class ChatStorage {
     await request(tx.objectStore("sessions").put(next));
     return next;
   }
+  /**
+   * Adds a grey system event (role "system", display only) to the Character's existing conversation, or does nothing
+   * when it has none. It is not a chat turn: the conversation's order, preview and update time stay as they were.
+   */
+  async appendSystemEvent(characterId: string, content: string, at = Date.now()): Promise<ChatMessage | null> {
+    const text = content.trim().slice(0, 300);
+    if (!characterId || !text) return null;
+    return this.transaction("readwrite", async (tx) => {
+      const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
+      const session = directSessionFor(sessions, characterId);
+      if (!session) return null;
+      const message: ChatMessage = { id: crypto.randomUUID(), sessionId: session.id, role: "system", content: text,
+        status: "complete", createdAt: at, order: session.nextOrder };
+      await request(tx.objectStore("messages").add(message));
+      await request(tx.objectStore("sessions").put({ ...session, nextOrder: message.order + 1 }));
+      return message;
+    }, STORES, (message) => message ? { domain: "messages", sessionId: message.sessionId } : null);
+  }
   async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
