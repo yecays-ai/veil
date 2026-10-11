@@ -293,9 +293,15 @@ export class ChatStorage {
     }, STORES, (changed) => changed ? { domain: "messages", sessionId, generationChanged: true } : null);
   }
 
-  private open(scope?: PersistenceWriteScope): Promise<IDBDatabase> {
-    if (this.database) return this.database;
-    return runPersistenceWrite(this.writeGate, () => this.openDatabase(), scope);
+  private open(scope?: PersistenceWriteScope, identify?: (cached: Promise<IDBDatabase>) => void): Promise<IDBDatabase> {
+    const open = () => {
+      const cached = this.openDatabase();
+      // The gate returns a wrapper; recovery must identify the actual cached open.
+      identify?.(cached);
+      return cached;
+    };
+    if (this.database) return open();
+    return runPersistenceWrite(this.writeGate, open, scope);
   }
 
   private openDatabase(): Promise<IDBDatabase> {
@@ -370,7 +376,8 @@ export class ChatStorage {
     scope?: PersistenceWriteScope,
   ): Promise<T> {
     signal?.throwIfAborted();
-    const opening = this.open(scope);
+    let cachedOpening!: Promise<IDBDatabase>;
+    const opening = this.open(scope, (cached) => { cachedOpening = cached; });
     const db = await opening;
     signal?.throwIfAborted();
     let tx: IDBTransaction;
@@ -382,12 +389,13 @@ export class ChatStorage {
     try { tx = db.transaction(stores, mode); }
     catch (error) {
       if (!invalid(error)) throw error;
-      discard(db, opening);
-      const recovery = this.open(scope), recovered = await recovery;
+      discard(db, cachedOpening);
+      let cachedRecovery!: Promise<IDBDatabase>;
+      const recovery = this.open(scope, (cached) => { cachedRecovery = cached; }), recovered = await recovery;
       signal?.throwIfAborted();
       try { tx = recovered.transaction(stores, mode); }
       catch (retryError) {
-        if (invalid(retryError)) discard(recovered, recovery);
+        if (invalid(retryError)) discard(recovered, cachedRecovery);
         throw retryError;
       }
     }

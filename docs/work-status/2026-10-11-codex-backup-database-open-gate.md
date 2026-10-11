@@ -23,6 +23,9 @@ base/main `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`。
 
 ## 已完成
 
+- #126 本次复审仅处理 ChatStorage 首次 open 的 Promise 身份及 InvalidStateError 重试。模拟 pending-close 后，首次读/写及二次失败收尾三个回归修复前全部失败；通过 open 回调识别实际缓存 Promise，保持身份比较及一次重试，不缓存排队中的 gate Promise。修复后定向 34/34、提交前单轮全量 978/978、typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。未访问真实 VEIL 数据。
+- CodeRabbit 同一评论附带 Core 同类意见，登记为本次授权范围外；本轮未修改或验证 Core 的该路径，不将本次 Chat 修复表述为整条评论全部解决。
+
 - #125 审查发现早已失败的子 Promise 被移出集合，父范围可能误报成功。新增回归修复前失败，保留所有子结果到收尾，父异常优先；修复后定向 10/10、全量 959/959 及 typecheck/lint/build/diff check 通过。
 - 修复提交 `f5eebf356a7cb3047afeec5305d9a8a0d70b44d0` 的 verify 与 CodeRabbit 通过，coverage 精确覆盖该 SHA，唯一意见 resolved、分页完整。按 Lan 本次单次授权合并 #125，merge/main 为 `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`；不授权合并本单或后续 PR。
 - 仅复用既有审计并读四库 open/transaction 与相关测试，没有重新全站扫描。等待复审期间仅只读准备，合并后才施工。
@@ -38,4 +41,4 @@ base/main `4fc53325536e1942d2f422c57c96cc2bcc4a2f73`。
 
 ## 下一步
 
-本单已提交并停止，不合并、不启动后续单，不持续轮询 CodeRabbit。
+本次定向修复推送后核对最新 CI / CodeRabbit，随后停止，等待 Lan 手动合并 #126，不启动后续单。
