@@ -61,6 +61,8 @@ export function ProfileView({
     (key) =>
       value(key) !== null && value(key) !== undefined && value(key) !== "",
   );
+  // A Character's subtitle is its own signature (nothing when empty); the occupation stays in its details.
+  const subtitle = kind === "character" ? profile.statusMessage : profile.occupation;
   const sections =
     kind === "user"
       ? (["appearance", "aboutMe"] as const)
@@ -70,7 +72,7 @@ export function ProfileView({
       <header className="profile-hero" ref={profileTop}>
         <Avatar avatar={profile.avatar} name={profile.name} large />
         <h1>{profile.name}</h1>
-        {profile.occupation && <p className="subtle">{profile.occupation}</p>}
+        {subtitle && <p className="subtle">{subtitle}</p>}
         <div className="foundation-actions">{children}</div>
       </header>
       <section className="profile-card">

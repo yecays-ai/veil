@@ -4,6 +4,7 @@ import { browserBindingStorage } from "../binding-storage";
 import { browserApiConfigStorage } from "../api-config-storage";
 import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "../api-config";
 import { browserFoundationStorage } from "../foundation-storage";
+import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
@@ -19,6 +20,7 @@ import { ChatStorage, chatStorage } from "./storage";
 import type { ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
+import { characterActionApplier, splitActions, type ActionApplier } from "../presence/actions";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
@@ -38,19 +40,27 @@ const recordSentToPresence: SentRecorder = (characterId, sentAt) =>
   typeof window === "undefined" ? Promise.resolve() : sentRecorder(browserPresenceStorage)(characterId, sentAt);
 
 /** What this Character knows about itself right now: the user's remark, its status, situation and signature. */
-type SelfLoader = (character: Character, now: number, reply: { lastReplyAt: number | null; announceChange: boolean }) =>
+type SelfLoader = (character: Character, now: number, reply: { lastReplyAt: number | null; announceChange: boolean; allowActions: boolean }) =>
   Promise<SelfState | undefined>;
 const loadSelfState: SelfLoader = async (character, now, reply) => {
   if (typeof window === "undefined") return undefined;
   try {
     const [contacts, presence] = await Promise.all([browserContactStorage.load(), browserPresenceStorage.load()]);
     return selfState(character, contacts.contacts.find((item) => item.characterId === character.characterId),
-      presenceRecord(presence, character.characterId), now, reply.lastReplyAt, reply.announceChange);
+      presenceRecord(presence, character.characterId), now, reply.lastReplyAt, reply.announceChange, reply.allowActions);
   } catch {
     console.warn("[Presence] own state was not added to the reply context");
     return undefined;
   }
 };
+
+const applyActionsToStores: ActionApplier = (characterId, actions, now, messageId) =>
+  typeof window === "undefined" ? Promise.resolve()
+    : characterActionApplier({ presence: browserPresenceStorage, foundation: browserFoundationStorage,
+      noteChanged: async (id, note, at) => {
+        const character = (await browserFoundationStorage.load()).characters.find((item) => item.characterId === id);
+        if (character) await chatStorage.appendSystemEvent(id, characterNoteEventText(character.name, note), at);
+      } })(characterId, actions, now, messageId);
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
@@ -79,6 +89,7 @@ export function createChatEngine(
   apiConfig: (id: string) => Promise<ApiConfig | undefined> = (id) => browserApiConfigStorage.getApiConfig(id),
   recordSent: SentRecorder = recordSentToPresence,
   self: SelfLoader = loadSelfState,
+  applyActions: ActionApplier = applyActionsToStores,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   let stopSequence = 0;
@@ -180,6 +191,7 @@ export function createChatEngine(
       const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, undefined, preset,
         now(), activation, regexGroups, weather,
         await awaited(self(character, now().getTime(), { announceChange: source !== "continue",
+          allowActions: source !== "continue",
           lastReplyAt: batch.messages.reduce<number | null>((latest, message) =>
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
               ? message.createdAt : latest, null) }), controller.signal));
@@ -196,19 +208,23 @@ export function createChatEngine(
         if (chunk.done) break;
         rawContent += chunk.value;
         controller.signal.throwIfAborted();
-        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(rawContent, true), status: "streaming" },
+        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(splitActions(rawContent).text, true), status: "streaming" },
           undefined, attempt.id, controller.signal);
       }
       controller.signal.throwIfAborted();
       await storage.generationStage(sessionId, attempt.id, "finalizing");
       controller.signal.throwIfAborted();
-      const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(rawContent), activation.nextState,
+      const { text: replyText, actions } = splitActions(rawContent);
+      const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(replyText), activation.nextState,
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
         attempt.id, finishReason, controller.signal);
       persisted = "committed";
       // Last Seen only: a failure here can neither undo the committed reply nor delay it.
       void Promise.resolve().then(() => recordSent(target.characterId, now().getTime()))
         .catch(() => { console.warn("[Presence] last message time was not saved"); });
+      // The Character's own changes: after the commit, once, and never for Continue, which only extends a reply.
+      if (actions && source !== "continue") void Promise.resolve().then(() => applyActions(target.characterId, actions, now().getTime(), completed[0].id))
+        .catch(() => { console.warn("[Presence] the Character's own change was not saved"); });
       try { onFinalized?.(completed); } catch { /* Presentation cannot undo a committed turn. */ }
       return completed[0];
     } catch (error) {

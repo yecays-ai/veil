@@ -678,7 +678,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     (generationActive && session?.streamOnline !== true && message.role === "assistant" && message.status === "streaming");
   const visibleMessages = messages.filter((message) => !hidden(message));
   const groupedMessages = groupVisibleMessages(visibleMessages);
-  const lastVisibleMessageId = groupedMessages.at(-1)?.message.id;
+  const lastVisibleMessageId = groupedMessages.findLast(({ message }) => message.role !== "system")?.message.id;
   const typing = !!revealState?.pending || (generationActive && session?.streamOnline !== true);
   const firstHiddenIndex = messages.findIndex(hidden);
   const typingBeforeId = firstHiddenIndex < 0 ? undefined :
@@ -741,7 +741,18 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </time>
             </div>}
-          <div
+          {message.role === "system" ? <div className={`chat-turn chat-system-event${selectedIds.has(message.id) ? " chat-turn-selected" : ""}${highlightedMessageId === message.id ? " chat-turn-search-highlight" : ""}`}
+            data-message-id={message.id} data-active={activeMessage?.id === message.id ? "" : undefined}
+            onClick={() => {
+              if (!multiSelect) return;
+              setSelectedIds((current) => { const next = new Set(current);
+                if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; });
+            }}>
+            {multiSelect && <span className="chat-selection-control" aria-hidden="true">
+              {selectedIds.has(message.id) ? "✓" : ""}
+            </span>}
+            <p className="chat-system-pill" onClick={(e) => openActions(e, message)}>{message.content}</p>
+          </div> : <div
             className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${groupClass}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}${highlightedMessageId === message.id ? " chat-turn-search-highlight" : ""}`}
             data-message-id={message.id}
             data-consecutive={!isGroupStart ? "" : undefined}
@@ -790,7 +801,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 </span>}
               </span>
             </div>
-          </div>
+          </div>}
           </Fragment>
         );})}
         {framePublished && !typingBeforeId && typingIndicator}
@@ -902,7 +913,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
             <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
-            <Action label="Edit" icon={Pencil} disabled={generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => { setEditingMessage(activeMessage);
+            <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => { setEditingMessage(activeMessage);
               setEditText(activeMessage.content); closeActions(); }} />
             <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => {
               setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
