@@ -214,3 +214,25 @@ test("static export makes no network/model requests and returns no UI or restore
   try { await exportStaticBackup(env.source, metadata); }
   finally { if (saved) Object.defineProperty(globalThis, "fetch", saved); else Reflect.deleteProperty(globalThis, "fetch"); }
 });
+
+test("an empty legacy session remark is left out of the export copy while stored data is untouched", async () => {
+  const env = await environment();
+  const rows = env.data.chat.sessions.map((row) => ({ ...row, remark: null }));
+  await seed(env.source.indexedDB, "veil-chat-v2", { sessions: rows });
+  const before = await readStaticBackupSource(env.source);
+  const result = await exportStaticBackup(env.source, metadata);
+  const checked = await validateBackupPackage(result.manifestJson, result.files);
+  assert.ok(checked.data.chat.sessions.every((row) => !("remark" in row)));
+  assert.deepEqual(await readStaticBackupSource(env.source), before);
+  assert.ok((before.chat.sessions as Array<Record<string, unknown>>).every((row) => row.remark === null));
+});
+
+test("a non-empty legacy remark and other unknown session fields still refuse the export", async () => {
+  for (const extra of [{ remark: "Simba" }, { remark: null, other: 1 }, { nickname: null }]) {
+    const env = await environment();
+    await seed(env.source.indexedDB, "veil-chat-v2", { sessions: env.data.chat.sessions.map((row) => ({ ...row, ...extra })) });
+    await assert.rejects(exportStaticBackup(env.source, metadata), (error: unknown) =>
+      error instanceof BackupValidationError && error.code === "invalid-data" && error.path === "chat.sessions[0]"
+      && /^unexpected-field:/.test(error.detail ?? ""));
+  }
+});
