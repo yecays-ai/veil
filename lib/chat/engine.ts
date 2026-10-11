@@ -16,6 +16,7 @@ import {
 import { ChatStorage, chatStorage } from "./storage";
 import type { ChatMessage } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
+import { advanceLastSeen, browserPresenceStorage, type PresenceStorage } from "../presence/storage";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
@@ -26,6 +27,13 @@ import { loadWeatherState } from "../weather";
 import type { Coordinates, WeatherState } from "../participant-config";
 import { logPromptSummary, type CompletionSource, type CompletionRequestContext } from "./request-diagnostics";
 import { startGenerationPersistence, type GenerationPersistenceOutcome } from "./persistence-diagnostics";
+
+/** Records when a Character's reply was committed, for Last Seen. Resolves once saved. */
+type SentRecorder = (characterId: string, sentAt: number) => Promise<void>;
+export const sentRecorder = (presence: Pick<PresenceStorage, "transact">): SentRecorder => (characterId, sentAt) =>
+  presence.transact((document) => advanceLastSeen(document, characterId, { lastMessageAt: sentAt }, sentAt)).then(() => {});
+const recordSentToPresence: SentRecorder = (characterId, sentAt) =>
+  typeof window === "undefined" ? Promise.resolve() : sentRecorder(browserPresenceStorage)(characterId, sentAt);
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
@@ -52,6 +60,7 @@ export function createChatEngine(
     ? Promise.resolve({ global: {}, characters: {} }) : browserBindingStorage.load(),
   weatherLoader: WeatherLoader = (target) => loadWeatherState(target),
   apiConfig: (id: string) => Promise<ApiConfig | undefined> = (id) => browserApiConfigStorage.getApiConfig(id),
+  recordSent: SentRecorder = recordSentToPresence,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   let stopSequence = 0;
@@ -175,6 +184,9 @@ export function createChatEngine(
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
         attempt.id, finishReason, controller.signal);
       persisted = "committed";
+      // Last Seen only: a failure here can neither undo the committed reply nor delay it.
+      void Promise.resolve().then(() => recordSent(target.characterId, now().getTime()))
+        .catch(() => { console.warn("[Presence] last message time was not saved"); });
       try { onFinalized?.(completed); } catch { /* Presentation cannot undo a committed turn. */ }
       return completed[0];
     } catch (error) {
