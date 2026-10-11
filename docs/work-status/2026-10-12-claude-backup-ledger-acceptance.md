@@ -2,7 +2,7 @@
 
 更新人：Claude
 更新时间：2026-10-11T18:55:00Z（UTC）
-发现范围：2026-10-11T18:52Z 基于 `origin/main` 57811f88e71fdd5c81e26287446eb50732fdea21 读取；GitHub 查询当时无开放 PR，未发现其他任务改动 `docs/AUDIT_LEDGER.md`。
+发现范围：2026-10-11T18:52Z 基于 `origin/main` 57811f88e71fdd5c81e26287446eb50732fdea21 读取；GitHub 查询当时无开放 PR（含草稿）。同时列出了远端 12 个非 main 分支（audit/frontend-f1-f5-device-notes-20261010、claude/docs-f5a-attribution、claude/network-timeouts-cancel、claude/presence-routine-fix、codex/chat-entry-performance、fix/chat-first-frame-complete、fix/chat-generation-safety、fix/chat-wallpaper-first-paint、fix/custom-css-isolation、fix/foundation-cross-tab-sync-20261008、fix/nav-contact-info-reentry 等），只核对了分支名，没有逐个检查改动路径或其任务记录，因此这些分支是否改动 `docs/AUDIT_LEDGER.md` 视为未知，无访问受限。
 
 ## 当前任务
 
@@ -20,6 +20,7 @@ Claude；分支 `claude/backup-ledger-acceptance`；PR：https://github.com/yeca
 ## 尚未验证
 
 - 中断恢复在真机上的表现。
+- Vercel 预览：上一提交（16cb0d7）的预览已就绪；本提交的预览以 PR 页为准，若因账号当日部署额度（100 次/天）未运行，记为未运行，不算通过；本改动只含文档，未运行其他替代检查。
 - S11 整体验收是否由 Lan 标记完成。
 
 ## 下一步
