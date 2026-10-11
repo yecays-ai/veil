@@ -5,6 +5,7 @@ import { APPEARANCE_IMAGE_DATABASE_NAME, APPEARANCE_IMAGE_DATABASE_VERSION } fro
 import { API_CONFIG_DATABASE_NAME, API_CONFIG_DATABASE_VERSION } from "../api-config-storage";
 import { parseBackupJson } from "./json";
 import { BackupValidationError, type BackupDomain } from "./format";
+import { SAFETY_DATABASE_NAME } from "./safety-copy";
 
 export const BACKUP_LOCAL_KEYS = {
   appearance: "companion-phone.appearance.v1", bindings: "veil.bindings.v1", presets: "veil.preset.v1",
@@ -83,6 +84,12 @@ export async function readStaticBackupSource(source: StaticBackupSource): Promis
     // Enumerate first: opening a missing DB would create one. Unsupported catalog APIs fail closed.
     catalog = await source.indexedDB.databases();
   } catch { return fail("source-catalog-unavailable", "databases"); }
+  // Unknown databases may own business data. Refuse the whole operation rather than silently omit them.
+  // The temporary rollback copy is the only explicit exclusion: it never belongs in a backup.
+  for (const entry of catalog) {
+    if (entry.name !== SAFETY_DATABASE_NAME && !DATABASES.some((definition) => definition.name === entry.name))
+      fail("unsupported-source-database", "databases");
+  }
   const snapshots: Record<string, Record<string, unknown[]>> = {};
   for (const definition of DATABASES) {
     const existing = catalog.find((entry) => entry.name === definition.name);

@@ -78,7 +78,6 @@ async function environment() {
   await seed(indexedDB, "veil-appearance-images-v1", { assets: [{ id: imageId, blob: blob(), type: "image/png", createdAt: TEST_NOW,
     holders: [{ id: "temporary-holder", at: TEST_NOW }] }] });
   await seed(indexedDB, "veil-api-config-v1", { configs: data.apiConfigs.map((row) => ({ ...row, apiKey: secret })) });
-  await seed(indexedDB, "unrelated-app", { records: [{ id: "unrelated", secret }] });
   const reads: string[] = [];
   const source: StaticBackupSource = { indexedDB, localStorage: { getItem(key) { reads.push(key); return values.get(key) ?? null; } } };
   return { source, data, values, reads, imageId };
