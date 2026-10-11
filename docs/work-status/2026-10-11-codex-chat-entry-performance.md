@@ -25,7 +25,7 @@ Codex；branch `codex/chat-entry-performance`；尚未创建 PR；计划涉及 `
 ## 尚未验证
 
 - 尚未在 iPhone Safari / Standalone 设备上复现或验收。
-- `npm test`、typecheck、lint、build 尚未完成：初始依赖目录缺少 `jsdom`；恢复依赖时本机 Node 22 与项目要求 Node 24 不匹配，改用 Node 24 后又被 Windows 锁定 `node_modules`（`EBUSY`）阻塞。依赖修复进程仍在运行；未将环境问题归因于改动。
+- 自动化：Node 24.19.0 下聚焦的 `chat-initial-render` 回归为 4/4 通过；`typecheck` 在 production build 刷新 `.next` 后通过；lint 通过；production build 通过；`git diff --check` 通过。完整 `npm test` 曾启动并完成依赖的测试编译与套件运行，但受本机命令包装器中断输出影响，未取得可靠汇总，故不将全套测试标记为通过。
 - 分支记录的初次推送被 GitHub 私有邮箱保护（GH007）拒绝；未修改用户 Git 配置。
 
 ## 下一步
