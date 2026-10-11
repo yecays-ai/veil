@@ -28,6 +28,6 @@ Foundation 与 Theme 两个 Provider 的 `commit` 都改为调用它；队列内
 
 ## 证据和限制
 
-`tests/backup-provider-write-order.test.ts` 4 条：新顺序下旧场景全部完成且按调用顺序执行；对照用例证明旧顺序在同一场景下永远等待（测试能看见这个环）；scoped 调用方不增加共享租约，无 scope 调用方恰好一个；多次提交保持请求顺序，失败不阻塞后续且租约释放。现有 Provider 与 Character 删除测试仍通过。fake-indexeddb 与模拟 Web Locks，仅模拟数据；真实 Safari/iOS Web Locks 授予顺序未验收。
+`tests/backup-provider-write-order.test.ts` 4 条：新顺序下旧场景全部完成且按调用顺序执行；对照用例证明旧顺序在同一场景下无法在测试窗口内完成（测试能看见这个环，随后取消卡住的请求）；scoped 调用方不增加共享租约，无 scope 调用方恰好一个；多次提交保持请求顺序，失败不阻塞后续且租约释放。现有 Provider 与 Character 删除测试仍通过。fake-indexeddb 与模拟 Web Locks，仅模拟数据；真实 Safari/iOS Web Locks 授予顺序未验收。
 
 第 3 阶段至此无阶段阻塞项；旧 `generation` 标记为入口阶段待办。

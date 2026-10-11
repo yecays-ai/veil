@@ -17,12 +17,15 @@ Claude；分支 `claude/backup-provider-write-order`；PR [#133](https://github.
 
 ## 已完成
 
-见 `docs/backup-provider-write-order.md`。
+见 `docs/backup-provider-write-order.md`。验证（Node v24.21.0，自动化测试证据，仅模拟数据）：
+- `npm run typecheck` 通过；`npm run lint` 0 错误、3 条既有警告；`npm test` 全量 1033/1033（含新增 4 条）；`next build --webpack` 通过。
+- 旧死锁场景在新顺序下完成，对照用例在旧顺序下卡住并被取消。
 
 ## 尚未验证
 
-- 全量测试、CI、CodeRabbit、Vercel 结果见 PR。
-- 真实 Safari/iOS Web Locks 授予顺序未测。
+- 默认 Turbopack `npm run build` 未在独立工作区运行（node_modules 为符号链接），以 `--webpack` 代替。
+- CI、CodeRabbit 以 PR 为准；Vercel 预览因账号部署额度限制未运行（api-deployments-free-per-day），以上本地检查不等同其结果。
+- 真实 Safari/iOS 的 Web Locks 授予顺序未测。
 
 ## 下一步
 

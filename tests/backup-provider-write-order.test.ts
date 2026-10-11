@@ -54,12 +54,15 @@ test("lease before queue: an unscoped commit, a scoped deletion and a queued sna
 });
 
 test("control: the old order (queue first, lease inside) is the cycle this unit removes", async () => {
+  const cancel = new AbortController();
   const run = await scenario((f, job, scope) => {
-    const operation = f.queue.current.then(() => scope ? job() : withPersistenceWriteScope(f.gate, job));
+    const operation = f.queue.current.then(() => scope ? job() : withPersistenceWriteScope(f.gate, job, { signal: cancel.signal }));
     f.queue.current = operation.then(() => {}, () => {});
     return operation;
   });
-  assert.equal(await run.finished, "stuck", "the legacy order waits forever, so the test can see the cycle");
+  assert.equal(await run.finished, "stuck", "the legacy order does not finish within the window: the cycle is visible");
+  // Cancel the stuck lease request so nothing outlives the test (it would otherwise wait for the 30 s lock timeout).
+  cancel.abort(); await settle(); await settle();
 });
 
 test("a scoped caller adds no second shared lease; an unscoped caller takes exactly one", async () => {
