@@ -71,7 +71,18 @@ export async function previewCharacterDeletion(foundation: FoundationDocument, c
  * is linked to the Character, so once the link is cleared a late result lands nowhere.
  */
 export function cleanupCharacterData(characterId: string, deps: CleanupDeps, writeGate: PersistenceWriteGate = browserPersistenceWriteGate): Promise<CleanupReport> {
-  return withPersistenceWriteScope(writeGate, (scope) => cleanupInScope(characterId, deps, scope));
+  return inScope(writeGate, async (scope, done) => { const report = await cleanupInScope(characterId, deps, scope); done(report); return report; });
+}
+
+/**
+ * Cleanup steps are always awaited and their failures belong in the report. The scope also re-throws a
+ * rejected child when it closes, so once the report exists it wins; a failure before any report (the lease
+ * itself, the Foundation commit) still propagates.
+ */
+async function inScope(writeGate: PersistenceWriteGate, work: (scope: PersistenceWriteScope, done: (report: CleanupReport) => void) => Promise<CleanupReport>): Promise<CleanupReport> {
+  let finished: CleanupReport | undefined;
+  try { return await withPersistenceWriteScope(writeGate, (scope) => work(scope, (report) => { finished = report; })); }
+  catch (error) { if (finished) return finished; throw error; }
 }
 
 async function cleanupInScope(characterId: string, deps: CleanupDeps, scope: PersistenceWriteScope): Promise<CleanupReport> {
@@ -124,8 +135,10 @@ export async function deleteCharacterWithData(options: {
     throw new Error("A reply is being generated in this Character's conversation. Stop it, then delete the Character. Nothing was changed.");
   // The commit and every cleanup step hold one shared lease, so a backup snapshot never lands between
   // "Character gone" and "its references removed". The generation check above stays outside it.
-  return withPersistenceWriteScope(writeGate, async (scope) => {
+  return inScope(writeGate, async (scope, done) => {
     await commitFoundation((document) => deleteCharacter(document, characterId, baseline), scope);
-    return cleanupInScope(characterId, deps, scope);
+    const report = await cleanupInScope(characterId, deps, scope);
+    done(report);
+    return report;
   });
 }

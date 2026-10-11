@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { BackupCoordinator, BACKUP_LOCK_NAME, type BackupLockManager } from "../lib/backup/coordination";
-import { createPersistenceWriteGate } from "../lib/backup/persistence-write-gate";
+import { createPersistenceWriteGate, runPersistenceWrite } from "../lib/backup/persistence-write-gate";
 import { cleanupCharacterData, deleteCharacterWithData, type CleanupDeps } from "../lib/character-deletion";
 import { acquireGenerationLock } from "../lib/chat/generation-lock";
 import { lockOrigin } from "./generation-lock-fixture";
@@ -102,4 +102,15 @@ test("a live reply's session lock never blocks the deletion or a queued snapshot
   assert.match(report.failed[0].message, /reply is in progress/);
   await reply!();
   assert.deepEqual((await cleanupCharacterData(A, world.deps, gate)).failed, [], "retry completes once the reply has ended");
+});
+
+test("a cleanup step failing inside the scope still yields the report, for deletion and for retry", async () => {
+  const { world, gate } = await fixture();
+  // The step's own storage call goes through the scope, so the scope records the rejection as a child.
+  const failing: CleanupDeps = { ...world.deps, presence: { ...world.deps.presence,
+    update: (_update, scope) => runPersistenceWrite(gate, () => Promise.reject(new Error("presence down")), scope) } };
+  const report = await deleteCharacterWithData({ characterId: A, commitFoundation: world.commitFoundation, deps: failing, writeGate: gate });
+  assert.deepEqual(report.failed, [{ step: "presence", message: "presence down" }]);
+  assert.equal(report.completed.length, 5);
+  assert.deepEqual((await cleanupCharacterData(A, failing, gate)).failed, [{ step: "presence", message: "presence down" }]);
 });

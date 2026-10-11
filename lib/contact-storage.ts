@@ -105,16 +105,19 @@ export function createContactStorage(getStorage: () => StringStorage,
     }
     throw new Error("Contacts changed in another tab. Nothing was saved; try again.");
   };
-  const transact = (update: (current: ContactDocument) => ContactDocument, scope?: PersistenceWriteScope) => {
-    const run = () => runPersistenceWrite(writeGate, async () => {
-      const locks = getLocks();
-      return locks ? await locks.request(CONTACT_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
-        : commit(update);
+  // Backup lease first, then the instance queue: a write waiting in the queue must never be the one a
+  // queued snapshot is waiting for (same order as Binding and Presence).
+  const transact = (update: (current: ContactDocument) => ContactDocument, scope?: PersistenceWriteScope) =>
+    runPersistenceWrite(writeGate, async () => {
+      const run = async () => {
+        const locks = getLocks();
+        return locks ? await locks.request(CONTACT_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
+          : commit(update);
+      };
+      const operation = queue.then(run, run);
+      queue = operation.then(() => {}, () => {});
+      return operation;
     }, scope);
-    const operation = queue.then(run, run);
-    queue = operation.then(() => {}, () => {});
-    return operation;
-  };
   const exportPortable = async () => JSON.stringify(await load());
   const restorePortable = async (serialized: string) => {
     const raw: unknown = JSON.parse(serialized);

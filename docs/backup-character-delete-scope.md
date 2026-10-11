@@ -17,6 +17,12 @@
 
 删除路径是：备份 lease → 域锁 / 会话生成锁。会话生成锁（`veil-chat-v2:generation:*`）以 `ifAvailable` 方式获取，永远不等待：回复正在生成时 `deleteSession` 立即报"A reply is in progress"，该步在报告里标为失败，lease 随之正常释放。因此不会出现"删除持有 lease 等会话锁、回复持有会话锁等 lease（排在独占快照之后）"的环。已缓存的数据库连接不再申请 lease，故各 Provider 在 scope 内的写后刷新不会嵌套取锁；连接被浏览器关闭后的重新打开属于与前几单相同的已知边界。
 
+## 审查后补充
+
+- 清理步骤经 scope 写入失败时，scope 关闭会重抛该子操作的拒绝，导致调用方拿不到 `CleanupReport`。现改为：报告生成后，scope 的重抛不覆盖报告；报告生成前的失败（取锁、Foundation 提交）仍原样抛出。
+- Contact 存储原先是"实例队列 → 备份 lease"，与 Binding、Presence 的"备份 lease → 实例队列"相反，已调为一致，避免排队中的写入挡住已持锁的删除。
+- 已知边界（未处理，待 Lan 决定）：Foundation / Theme Provider 的 `commit` 仍是"Provider 队列 → 存储 lease"。若同一页内有更早的无 scope 提交恰在独占快照排队后才申请 lease，而删除的 scoped 提交排在它后面，三者会互相等待。触发需要同时出现：未完成的 Provider 写入、备份快照请求、Character 删除；备份入口目前未开放。修复需调整两个 Provider 的排队与取锁顺序。
+
 ## 保留的行为与已知残余
 
 Foundation 删除仍是唯一提交点，其前只读；清理失败不阻断其他步骤且可重试；残余数据沿用原机制，未扩大。已记录：某一步失败时快照可在失败后、重试前取到"Character 已删但引用仍在"，导出校验会因 `missing-*` 报错，直到重试完成（原有设计，本单未改）。`reconcileInertReferences` / `removeLeftovers` 的单步写入未纳入。
