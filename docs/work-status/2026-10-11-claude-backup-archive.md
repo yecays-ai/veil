@@ -1,7 +1,7 @@
 # STATUS — 2026-10-11-claude-backup-archive
 
 更新人：Claude
-更新时间：2026-10-11T12:00:00+08:00（Asia/Shanghai）
+更新时间：2026-10-12T03:10:00+08:00
 发现范围：读取 origin/main `35cf77dcb0754e53639a7e94e52ff21e2dd10f1d`；未逐一检查其他开放 PR 的改动文件，改动路径均为新增文件，仅总账 S11 行追加一句；其他任务归属视为未知。
 
 ## 当前任务
@@ -10,7 +10,7 @@ S11 第 15 单：备份归档容器（纯逻辑）——待审查。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-archive-container`；PR 链接见 GitHub（创建后补）；base `35cf77dcb0754e53639a7e94e52ff21e2dd10f1d`。涉及：`lib/backup/archive.ts`、`tests/backup-archive.test.ts`、`docs/backup-archive.md`、本文件、`docs/AUDIT_LEDGER.md`（S11 行末追加一句）。
+Claude；分支 `claude/backup-archive-container`；PR [#135](https://github.com/yecays-ai/veil/pull/135)；base `35cf77dcb0754e53639a7e94e52ff21e2dd10f1d`。涉及：`lib/backup/archive.ts`、`tests/backup-archive.test.ts`、`docs/backup-archive.md`、本文件、`docs/AUDIT_LEDGER.md`（S11 行末追加一句）。
 
 ## 已完成
 
