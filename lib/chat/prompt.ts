@@ -44,7 +44,7 @@ function directRelations({ foundation, character }: PromptRuntimeContext) {
 }
 function eligibleMessages(context: PromptRuntimeContext) {
   return context.currentMessages.filter((message) =>
-    message.content && (message.role !== "assistant" || message.status === "complete"));
+    message.content && message.role !== "system" && (message.role !== "assistant" || message.status === "complete"));
 }
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
   const body = message.role === "user" || message.role === "assistant"

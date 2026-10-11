@@ -4,6 +4,7 @@ import { browserBindingStorage } from "../binding-storage";
 import { browserApiConfigStorage } from "../api-config-storage";
 import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "../api-config";
 import { browserFoundationStorage } from "../foundation-storage";
+import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
@@ -55,7 +56,11 @@ const loadSelfState: SelfLoader = async (character, now, reply) => {
 
 const applyActionsToStores: ActionApplier = (characterId, actions, now, messageId) =>
   typeof window === "undefined" ? Promise.resolve()
-    : characterActionApplier({ presence: browserPresenceStorage, foundation: browserFoundationStorage })(characterId, actions, now, messageId);
+    : characterActionApplier({ presence: browserPresenceStorage, foundation: browserFoundationStorage,
+      noteChanged: async (id, note, at) => {
+        const character = (await browserFoundationStorage.load()).characters.find((item) => item.characterId === id);
+        if (character) await chatStorage.appendSystemEvent(id, characterNoteEventText(character.name, note), at);
+      } })(characterId, actions, now, messageId);
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 
