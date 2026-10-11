@@ -14,6 +14,7 @@ import { chatStorage } from "../lib/chat/storage";
 import { prefetchChatSession } from "../lib/chat/session-prefetch";
 import { measureChatDiagnostic, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 import { contactDisplayName, removeContact, updateContact } from "../lib/contact-storage";
+import { userNoteEventText } from "../lib/presence/note-events";
 import { contactReturnTarget, type ContactReturnSource } from "../lib/contact-navigation";
 import { confirmDiscard, guardLinkClicks } from "./leave-guard";
 import "../app/contacts/contact-info.css";
@@ -74,7 +75,13 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
     const owner = lifetime.current;
     setBusy(true); setError("");
     try {
-      await contacts.commit((current) => updateContact(current, characterId, draft, undefined, draft.base));
+      const before = contact?.lastRemarkChange?.createdAt;
+      const saved = await contacts.commit((current) => updateContact(current, characterId, draft, undefined, draft.base));
+      const change = saved.contacts.find((item) => item.characterId === characterId)?.lastRemarkChange;
+      // The grey chat line is a courtesy: the nickname is already saved, so a failed line is only logged.
+      if (change && change.createdAt !== before && character)
+        void chatStorage.appendSystemEvent(characterId, userNoteEventText(character.name, change.toRemark), change.createdAt)
+          .catch(() => console.warn("[Contacts] the nickname was saved but its chat event was not"));
       if (owner === lifetime.current) setDraft(null);
     } catch (reason) {
       if (owner === lifetime.current) setError(reason instanceof Error ? reason.message : "Contact could not be saved.");
