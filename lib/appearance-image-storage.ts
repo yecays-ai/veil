@@ -1,4 +1,4 @@
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 import {
   THEME_IMAGE_ASSET_PREFIX,
   themeImageAssetId,
@@ -48,26 +48,34 @@ export class AppearanceImageStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB, private now: () => number = Date.now,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
-  private open(): Promise<IDBDatabase> {
+  private open(scope?: PersistenceWriteScope): Promise<IDBDatabase> {
+    if (this.database) return this.database;
+    return runPersistenceWrite(this.writeGate, () => this.openDatabase(), scope);
+  }
+
+  private openDatabase(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
         let operation: IDBOpenDBRequest;
+        let rejected = false;
         try { operation = this.factory().open(APPEARANCE_IMAGE_DATABASE_NAME, APPEARANCE_IMAGE_DATABASE_VERSION); }
         catch { reject(new Error("Appearance image storage is unavailable.")); return; }
         operation.onupgradeneeded = () => {
+          if (rejected) { operation.transaction?.abort(); return; }
           if (!operation.result.objectStoreNames.contains(STORE))
             operation.result.createObjectStore(STORE, { keyPath: "id" });
         };
         operation.onsuccess = () => {
           const db = operation.result;
+          if (rejected) { db.close(); return; }
           db.onversionchange = () => {
             db.close();
             if (this.database === opening) this.database = undefined;
           };
           resolve(db);
         };
-        operation.onerror = () => reject(new Error("Appearance image storage is unavailable."));
-        operation.onblocked = () => reject(new Error("Close other VEIL tabs to open Appearance image storage."));
+        operation.onerror = () => { rejected = true; reject(new Error("Appearance image storage is unavailable.")); };
+        operation.onblocked = () => { rejected = true; reject(new Error("Close other VEIL tabs to open Appearance image storage.")); };
       });
       this.database = opening;
       void opening.catch(() => { if (this.database === opening) this.database = undefined; });
@@ -76,12 +84,13 @@ export class AppearanceImageStorage {
   }
 
   private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    const operation = () => this.performTransaction(mode, run);
-    return mode === "readwrite" ? this.writeGate.withWrite(operation) : operation();
+    return mode === "readwrite"
+      ? withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope))
+      : this.performTransaction(mode, run);
   }
 
-  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    const db = await this.open();
+  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
+    const db = await this.open(scope);
     const tx = db.transaction(STORE, mode);
     const done = new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();

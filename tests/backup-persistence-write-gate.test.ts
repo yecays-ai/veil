@@ -42,13 +42,16 @@ function fixture(domain: typeof domains[number], writeGate: PersistenceWriteGate
 for (const domain of domains) {
   test(`${domain} waits before creating a write transaction and holds the gate through commit`, async () => {
     const entered = deferred(), permit = deferred();
-    let writes = 0, completed = 0, released = false;
+    let writes = 0, completed = 0, released = false, initializing = true;
     const gate: PersistenceWriteGate = { async withWrite<T>(operation: () => Promise<T>) {
+      if (initializing) return operation();
       entered.resolve(); await permit.promise;
       try { return await operation(); }
       finally { assert.equal(completed, 1); released = true; }
     } };
     const env = fixture(domain, gate), original = IDBDatabase.prototype.transaction;
+    assert.equal(await env.read(), false); // First open now coordinates schema initialization.
+    initializing = false;
     IDBDatabase.prototype.transaction = function (...args: Parameters<typeof original>) {
       const tx = original.apply(this, args);
       if (args[1] === "readwrite") { writes++; tx.addEventListener("complete", () => { completed++; }); }
@@ -57,7 +60,7 @@ for (const domain of domains) {
     try {
       const writing = env.write(); await entered.promise;
       assert.equal(writes, 0); assert.equal(released, false);
-      assert.equal(await env.read(), false); // readonly calls do not wait for the write gate.
+      assert.equal(await env.read(), false); // Cached readonly calls do not wait for the write gate.
       permit.resolve(); await writing;
       assert.equal(writes, 1); assert.equal(completed, 1); assert.equal(released, true);
       assert.equal(await env.read(), true);

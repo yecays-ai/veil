@@ -11,7 +11,7 @@ const scopes = new WeakMap<PersistenceWriteScope, {
 
 /** One logical mutation owns the shared lease; explicitly passed scopes avoid nested requests. */
 export function withPersistenceWriteScope<T>(gate: PersistenceWriteGate,
-  operation: (scope: PersistenceWriteScope) => Promise<T>): Promise<T> {
+  operation: (scope: PersistenceWriteScope) => Promise<T>, options: BackupLockOptions = {}): Promise<T> {
   return gate.withWrite(async () => {
     const scope = Object.freeze({}) as PersistenceWriteScope;
     const state = { gate, active: true, pending: new Set<Promise<unknown>>() };
@@ -27,7 +27,7 @@ export function withPersistenceWriteScope<T>(gate: PersistenceWriteGate,
     const rejected = children.find((child) => child.status === "rejected");
     if (rejected?.status === "rejected") throw rejected.reason;
     return result;
-  });
+  }, options);
 }
 
 /** Reject forged, expired or foreign-owner scopes rather than bypassing the gate. */
