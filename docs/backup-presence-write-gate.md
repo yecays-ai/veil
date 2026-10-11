@@ -2,8 +2,10 @@
 
 基于 main 提交：`3ac899498ca64f68d4ed672e1b4a3b29c7dc0d62`，正式仓库 `yecays-ai/veil`。对应原审计第 3 阶段"快照一致性边界"。
 
+【总账 ID】S11
 【这一刀只解决】`veil.presence.v1`（localStorage）的写入接入备份 shared 锁，是 #124 五域之外唯一未协调的本地键。
 【验收话】独占快照持有期间 Presence 写入等待；写入失败释放锁且原字节不变；调用方传入 scope 时复用同一次 shared lease。
+【做完划掉】仅 Presence 键写入协调，S11 整体不核销。
 【不做】Character 删除六步清理、图片生命周期、导出/恢复/UI、Presence 业务逻辑、在线系统、Memory。
 【停止条件】提交独立 PR 后停止，等待 Lan 手动合并。
 

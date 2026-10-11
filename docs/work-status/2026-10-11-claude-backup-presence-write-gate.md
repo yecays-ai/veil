@@ -23,7 +23,9 @@ Claude；分支 `claude/backup-presence-write-gate`；PR [#129](https://github.c
 
 ## 尚未验证
 
-- GitHub verify / CodeRabbit 待 PR 发布后复审；iOS/Safari 原生 Web Locks 与真机未测。
+- Vercel 检查未运行：账号部署频率限制（api-deployments-free-per-day）；上述为本地替代检查，不等同 Vercel 结果。
+- CodeRabbit 首轮 2 条文档意见已处理，待复审。
+- iOS/Safari 原生 Web Locks 与真机未测。
 
 ## 下一步
 
