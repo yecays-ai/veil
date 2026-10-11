@@ -159,8 +159,8 @@ async function commitWorldBookState(tx: IDBTransaction, sessionId: string, state
       state: { ...state, prefix } }));
 }
 
-// No snapshot replacement/clear operation exists. Hydration only repairs proven orphans;
-// every mutation re-reads authoritative records inside an atomic transaction.
+// The only whole-store replacement is replaceAllRows, used by restore under the exclusive backup lock.
+// Hydration only repairs proven orphans; every other mutation re-reads authoritative records inside an atomic transaction.
 export class ChatStorage {
   private database?: Promise<IDBDatabase>;
   private lockFactory?: IDBFactory;
@@ -702,6 +702,18 @@ export class ChatStorage {
       );
       return asset?.blob ?? null;
     });
+  }
+
+  /** Restore only: replaces every row of every store in one transaction. Callers hold the exclusive backup lock. */
+  replaceAllRows(rows: Record<"sessions" | "messages" | "chatSettings" | "assets" | "worldBookStates", readonly unknown[]>,
+    scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      for (const name of STORES) {
+        const store = tx.objectStore(name);
+        await request(store.clear());
+        for (const row of rows[name as keyof typeof rows]) await request(store.put(row));
+      }
+    }, STORES, null, undefined, scope);
   }
 
   deleteChatImageIfUnused(id: string, scope?: PersistenceWriteScope): Promise<void> {

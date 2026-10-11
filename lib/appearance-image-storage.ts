@@ -11,7 +11,7 @@ const STORE = "assets";
 // A staging holder keeps an image from collection only for a lease: a tab that closed or crashed before
 // release() would otherwise pin the blob forever.
 type Holder = { id: string; at: number };
-type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: Holder[] };
+export type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: Holder[] };
 export const HOLDER_LEASE_MS = 24 * 60 * 60 * 1000;
 // Theme documents live in localStorage while images live here, and another tab's localStorage write
 // has no cross-process visibility guarantee. An image this young is never collected, so a collector
@@ -106,6 +106,14 @@ export class AppearanceImageStorage {
       await done.catch(() => {});
       throw error;
     }
+  }
+
+  /** Restore only: replaces every stored image in one transaction. Callers hold the exclusive backup lock. */
+  replaceAllAssets(rows: readonly ImageAsset[], scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (store) => {
+      await request(store.clear());
+      for (const row of rows) await request(store.put(row));
+    }, scope);
   }
 
   async saveBlobs(blobs: readonly Blob[]): Promise<string[]> {
