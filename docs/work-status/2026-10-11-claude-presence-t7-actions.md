@@ -1,10 +1,12 @@
 # STATUS — 2026-10-11-claude-presence-t7-actions
 
 更新人：Claude
-更新时间：2026-10-11T12:40+08:00
-发现范围：2026-10-11T12:25+08:00 起；`origin/main` = `1a281e33c8317f9ea9dbd71f5b700fc916dc2669`（含 T6 #115）；已读 `docs/AUDIT_LEDGER.md` 与 Presence 工单计划 T6–T8 定稿；GitHub 开放 PR 只有 #116（`codex/chat-entry-performance`，聊天进入首帧），与本任务文件无重叠。本分支从该 `origin/main` 创建。
+更新时间：2026-10-11T17:40+08:00
+发现范围：2026-10-11T12:25+08:00 起，17:25+08:00 复查；`origin/main` = `1a281e33c8317f9ea9dbd71f5b700fc916dc2669`（含 T6 #115）；已读 `docs/AUDIT_LEDGER.md` 与 Presence 工单计划 T6–T8 定稿；GitHub 开放 PR 只有 #116（`codex/chat-entry-performance`，聊天进入首帧），与本任务文件无重叠。本分支从该 `origin/main` 创建；17:25+08:00 已把最新 `origin/main`（`4fc5332`，含备份 #123–#125）合入本分支，与本任务文件无重叠、无冲突。
 
 ## 当前任务
+
+状态：待审查（等待 Lan 真机验收；Vercel 预览因每日部署额度用完未运行）。
 
 Character Presence T7：角色通过结构化动作自己改处境和签名；签名写入 Foundation `statusMessage`；角色资料页副标题改用签名。
 
@@ -26,14 +28,14 @@ Claude；分支 `claude/presence-t7-actions`；PR [#117](https://github.com/yeca
 
 ## 本地验证（Node v24.21.0）
 
-typecheck、lint（3 条既有警告，0 错误）、`npm test`、`npm run build` 均通过；测试数见 PR 说明。
+typecheck、lint（3 条既有警告，0 错误）、`npm test`（973/973）、`npm run build` 均通过。GitHub `verify`：首个提交上 CF-02（已知偶发）失败，按规则重跑失败任务一次后通过；之后各提交，包括 `eb1fb0f`，均通过。CodeRabbit 已复审并回复处理。
 
 ## 尚未验证
 
 - 真机：模型是否在合适时机发出动作、不乱改、不复述过去；资料页副标题显示；预览分支。
 - 暂定常量（冷却 30 分钟 / 12 小时、提前开始上限 7 天）待 Lan 验收后调整。
-- GitHub CI、CodeRabbit 与 Vercel 预览：创建时尚未运行。
+- Vercel 预览：因账号每日部署额度用完（100 次/天），`937b55a` 与 `eb1fb0f` 均未部署，记为未运行；验收分支同样未验证。
 
 ## 下一步
 
-开 PR，等 CI 与 CodeRabbit，同步临时验收分支，等 Lan 验收并手动合并；T8 等 Lan 确认。
+额度恢复后确认 Preview 部署版本并同步验收分支，等 Lan 真机验收并手动合并；T8 等 Lan 确认。
