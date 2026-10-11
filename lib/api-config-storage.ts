@@ -1,4 +1,5 @@
 import { normalizeApiConfig, type ApiConfig, type NamedApiConfig } from "./api-config";
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
 
 export const API_CONFIG_DATABASE_NAME = "veil-api-config-v1";
 export const API_CONFIG_DATABASE_VERSION = 1;
@@ -25,7 +26,8 @@ const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, r
 
 export class ApiConfigStorage {
   private database?: Promise<IDBDatabase>;
-  constructor(private factory: () => IDBFactory = () => window.indexedDB) {}
+  constructor(private factory: () => IDBFactory = () => window.indexedDB,
+    private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
   private open(): Promise<IDBDatabase> {
     if (!this.database) {
@@ -50,6 +52,11 @@ export class ApiConfigStorage {
   }
 
   private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+    const operation = () => this.performTransaction(mode, run);
+    return mode === "readwrite" ? this.writeGate.withWrite(operation) : operation();
+  }
+
+  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
     const db = await this.open();
     const tx = db.transaction(STORE, mode);
     const done = new Promise<void>((resolve, reject) => {

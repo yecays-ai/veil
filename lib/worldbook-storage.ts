@@ -1,5 +1,7 @@
 import type { BindingStorage } from "./binding-storage";
 import type { StringStorage } from "./storage-types";
+import { browserPersistenceWriteGate, withPersistenceWriteScope,
+  type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 import { emptyWorldBookDocument, validateWorldBookDocument, type WorldBookDocument } from "./worldbook";
 import { withoutWorldBookBinding } from "./bindings";
 import { createRegexWorldBookWriteGuard, EditorSnapshotConflict } from "./regex-worldbook-write-guard";
@@ -8,14 +10,15 @@ const KEY = "veil.worldbooks.v1";
 export interface WorldBookStorage {
   load(): Promise<WorldBookDocument>;
   save(document: WorldBookDocument, expected?: WorldBookDocument): Promise<void>;
-  transact(update: (current: WorldBookDocument) => WorldBookDocument, expected?: WorldBookDocument): Promise<WorldBookDocument>;
+  transact(update: (current: WorldBookDocument) => WorldBookDocument, expected?: WorldBookDocument, scope?: PersistenceWriteScope): Promise<WorldBookDocument>;
 }
-export function createWorldBookStorage(getStorage: () => StringStorage): WorldBookStorage {
+export function createWorldBookStorage(getStorage: () => StringStorage,
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate): WorldBookStorage {
   const { exclusive, assertSnapshot } = createRegexWorldBookWriteGuard(KEY, validateWorldBookDocument, {
     busy: "WorldBooks are being saved elsewhere. Try again.",
     unsupported: "Safe WorldBook editing requires browser Web Locks. Your draft has been kept.",
     conflict: "WorldBook changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.",
-  });
+  }, writeGate);
   const load = (): WorldBookDocument => {
     const raw = getStorage().getItem(KEY);
     if (!raw) return emptyWorldBookDocument();
@@ -28,7 +31,7 @@ export function createWorldBookStorage(getStorage: () => StringStorage): WorldBo
       assertSnapshot(load(), expected);
       getStorage().setItem(KEY, JSON.stringify(validateWorldBookDocument(document)));
     }, expected !== undefined); },
-    transact(update: (current: WorldBookDocument) => WorldBookDocument, expected?: WorldBookDocument) { return exclusive(() => {
+    transact(update: (current: WorldBookDocument) => WorldBookDocument, expected?: WorldBookDocument, scope?: PersistenceWriteScope) { return exclusive(() => {
       const before = getStorage().getItem(KEY);
       const current = load();
       assertSnapshot(current, expected);
@@ -37,7 +40,7 @@ export function createWorldBookStorage(getStorage: () => StringStorage): WorldBo
         throw new Error("WorldBook data changed while saving. Try again.");
       getStorage().setItem(KEY, JSON.stringify(next));
       return next;
-    }, expected !== undefined); },
+    }, expected !== undefined, scope); },
   };
 }
 export const browserWorldBookStorage = createWorldBookStorage(() => window.localStorage);
@@ -48,18 +51,24 @@ export async function deleteWorldBookAndBindings(
   bindings: BindingStorage,
   expected?: WorldBookDocument,
   assertOwner: () => void = () => {},
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
 ): Promise<WorldBookDocument> {
+  return withPersistenceWriteScope(writeGate, (scope) => deleteWorldBookWithScope(bookId, worldBooks, bindings, expected, assertOwner, scope));
+}
+
+async function deleteWorldBookWithScope(bookId: string, worldBooks: WorldBookStorage, bindings: BindingStorage,
+  expected: WorldBookDocument | undefined, assertOwner: () => void, scope: PersistenceWriteScope): Promise<WorldBookDocument> {
   let before!: WorldBookDocument;
   const after = await worldBooks.transact((current) => {
     assertOwner();
     if (!current.books.some((book) => book.id === bookId)) throw new Error("WorldBook not found.");
     before = structuredClone(current);
     return { ...current, books: current.books.filter((book) => book.id !== bookId) };
-  }, expected);
+  }, expected, scope);
   try {
-    await bindings.transact((current) => withoutWorldBookBinding(current, bookId));
+    await bindings.transact((current) => withoutWorldBookBinding(current, bookId), scope);
   } catch (reason) {
-    try { await worldBooks.transact(() => before, after); }
+    try { await worldBooks.transact(() => before, after, scope); }
     catch (rollback) {
       if (rollback instanceof EditorSnapshotConflict)
         throw new Error("WorldBooks changed while Binding cleanup failed. Newer data was kept; review WorldBooks and Bindings.", { cause: reason });

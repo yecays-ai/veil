@@ -137,7 +137,7 @@ test("the Character is told how to change itself only for what it may change now
   assert.match(text(undefined), /end the reply with one line <veil-action>/);
   assert.match(text(undefined), /"signature"[\s\S]*"situation"/);
   assert.match(text(undefined), /never for something you merely recall or tell about/);
-  const recent = { characterId: "a", routine: null, situationChange: null, lastOnlineAt: null, lastMessageAt: null, situations: [],
+  const recent = { characterId: "a", routine: null, lastOnlineAt: null, lastMessageAt: null, situations: [],
     signature: { changedAt: T - MIN, source: "character:x" } };
   assert.doesNotMatch(text(recent), /"signature":/);
   assert.match(text(recent), /"situation":/);
@@ -231,4 +231,12 @@ test("Contact Info shows the signature under the status line, and nothing when e
     const empty = renderToString(createElement(ContactInfo, { characterId: "a" }));
     assert.doesNotMatch(empty, /contact-status|TF141/, "no signature, no row, no occupation fallback");
   } finally { loader._load = original; }
+});
+
+test("a record without a situation change mark stays exactly as stored, so older data and backup packages still validate", async () => {
+  const { normalizePresenceDocument } = await import("../lib/presence/storage");
+  const old = { version: 1, characters: [{ characterId: "a", routine: null, situations: [], signature: null, lastOnlineAt: null, lastMessageAt: null }] };
+  assert.deepEqual(normalizePresenceDocument(old), old);
+  const marked = { ...old, characters: [{ ...old.characters[0], situationChange: { changedAt: 5, source: "character:m" } }] };
+  assert.deepEqual(normalizePresenceDocument(marked), marked);
 });

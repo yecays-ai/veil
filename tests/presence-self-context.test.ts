@@ -13,7 +13,7 @@ const NOW = new Date("2026-10-11T03:00:00Z");
 const character = (extra: Record<string, unknown> = {}) =>
   ({ characterId: "a", ...normalizeCharacterInput({ name: "A", ...extra }) });
 const record = (over: Partial<PresenceRecord>): PresenceRecord => ({ characterId: "a", routine: null, situations: [],
-  signature: null, situationChange: null, lastOnlineAt: null, lastMessageAt: null, ...over });
+  signature: null, lastOnlineAt: null, lastMessageAt: null, ...over });
 const contact = (remark: string | null, change: { from: string | null; to: string | null; at: number } | null = null) =>
   ({ remark, lastRemarkChange: change ? { type: "remark-changed" as const, fromRemark: change.from, toRemark: change.to, createdAt: change.at } : null });
 const situation = { status: "busy" as const, reason: "on a night shift", startsAt: NOW.getTime() - 3600_000,

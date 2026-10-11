@@ -16,6 +16,7 @@ import { historyFingerprint, type WorldBookActivationState } from "../worldbook-
 import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "../backup/persistence-write-gate";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
@@ -167,7 +168,8 @@ export class ChatStorage {
   private channel?: BroadcastChannel;
   private generationLocks = new Map<string, () => Promise<void>>();
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
-    private locks: () => LockManager | undefined = () => globalThis.navigator?.locks) {}
+    private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
+    private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
   private async acquireSessionLock(sessionId: string) {
     await this.open();
     return acquireGenerationLock(this.lockFactory!, sessionId, this.locks());
@@ -346,6 +348,17 @@ export class ChatStorage {
     run: (tx: IDBTransaction) => Promise<T>,
     stores: string[] = STORES,
     change: ChangeFor<T> = null,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    const operation = () => this.performTransaction(mode, run, stores, change, signal);
+    return mode === "readwrite" ? this.writeGate.withWrite(operation, { signal }) : operation();
+  }
+
+  private async performTransaction<T>(
+    mode: IDBTransactionMode,
+    run: (tx: IDBTransaction) => Promise<T>,
+    stores: string[],
+    change: ChangeFor<T>,
     signal?: AbortSignal,
   ): Promise<T> {
     signal?.throwIfAborted();

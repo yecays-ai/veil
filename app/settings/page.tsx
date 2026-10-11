@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { BookOpen, GitBranch, Regex, SlidersHorizontal } from "lucide-react";
+import { Archive, BookOpen, GitBranch, Regex, SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -56,6 +56,19 @@ export default function Page() {
           },
         ]}
       />
+      <CardGrid
+        label="Data"
+        items={[
+          {
+            id: "backup-and-restore",
+            label: "Backup & Restore",
+            description: "Export or import a local backup",
+            href: "/settings/backup",
+            icon: <Archive size={20} />,
+          },
+        ]}
+      />
     </PageShell>
   );
 }
+
