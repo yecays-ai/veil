@@ -1,4 +1,4 @@
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 
 export class EditorSnapshotConflict extends Error {}
 
@@ -8,8 +8,8 @@ export function createRegexWorldBookWriteGuard<D>(key: string, validate: (value:
   messages: { busy: string; unsupported: string; conflict: string },
   writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {
   return {
-    async exclusive<T>(operation: () => T, guarded: boolean): Promise<T> {
-      return writeGate.withWrite(async () => {
+    async exclusive<T>(operation: () => T, guarded: boolean, scope?: PersistenceWriteScope): Promise<T> {
+      return runPersistenceWrite(writeGate, async () => {
         if (typeof navigator !== "undefined" && navigator.locks)
           return await navigator.locks.request(key, { ifAvailable: true }, async (lock) => {
             if (!lock) throw new Error(messages.busy);
@@ -17,7 +17,7 @@ export function createRegexWorldBookWriteGuard<D>(key: string, validate: (value:
           });
         if (guarded && typeof window !== "undefined") throw new Error(messages.unsupported);
         return operation();
-      });
+      }, scope);
     },
     assertSnapshot(current: D, expected?: D) {
       if (expected && JSON.stringify(current) !== JSON.stringify(validate(expected)))
