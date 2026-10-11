@@ -149,5 +149,7 @@ export async function previewRestore(manifestJson: string, files: ReadonlyMap<st
 /** A report from before a restore is stale as soon as the device changed; the restore must preview again. */
 export function restorePreviewChanged(previous: RestorePreview, fresh: RestorePreview): boolean {
   return previous.mode !== fresh.mode || previous.targetDigest !== fresh.targetDigest
-    || JSON.stringify(previous.blockers) !== JSON.stringify(fresh.blockers) || previous.backupId !== fresh.backupId;
+    || JSON.stringify(previous.blockers) !== JSON.stringify(fresh.blockers) || previous.backupId !== fresh.backupId
+    || JSON.stringify(previous.domains) !== JSON.stringify(fresh.domains)
+    || JSON.stringify(previous.assets) !== JSON.stringify(fresh.assets);
 }

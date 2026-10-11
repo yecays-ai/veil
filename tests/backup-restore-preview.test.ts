@@ -140,3 +140,12 @@ test("the device is read inside the exclusive snapshot lock, and coordination er
   await assert.rejects(previewRestore(manifest, files, source, undefined),
     (error) => error instanceof BackupValidationError && error.code === "coordination-unavailable");
 });
+
+test("a report is also stale when the package counts change under the same backup id", async () => {
+  const { manager, empty, pack } = await fixture();
+  const [manifest, files] = await pack();
+  const first = await previewRestore(manifest, files, empty, manager);
+  const edited = { ...first, domains: { ...first.domains, chat: { backup: 99, current: 0 } } };
+  assert.equal(restorePreviewChanged(first, edited), true);
+  assert.equal(restorePreviewChanged(first, { ...first, assets: null }), true);
+});
