@@ -173,7 +173,19 @@ test("a write that silently stores the wrong thing is caught by verification and
   const writers = createUnitWriters(device);
   const lying = { ...writers, presets: { ...writers.presets, write: async () => { device.raw.set("veil.preset.v1", JSON.stringify({ wrong: true })); } } };
   await assert.rejects(restoreIntoEmpty(manifest, files, device, locks, { writers: lying }),
-    (e) => e instanceof RestoreError && (e.code === "verify-failed-rolled-back" || e.code === "target-changed"));
+    (e) => e instanceof RestoreError && e.code === "verify-failed-rolled-back" && e.journal === "none");
+  assert.equal(await emptyState(device), true);
+  assert.equal(device.raw.has("veil.restore-journal.v1"), false);
+});
+
+test("a rollback whose clear throws is reported as rollback-failed with the journal kept", async () => {
+  const { locks, device, manifest, files } = await setup();
+  const writers = createUnitWriters(device);
+  const broken = { ...writers,
+    presets: { ...writers.presets, write: async () => { throw new Error("write"); } },
+    chat: { ...writers.chat, clear: async () => { throw new Error("clear"); } } };
+  await assert.rejects(restoreIntoEmpty(manifest, files, device, locks, { writers: broken }),
+    (e) => e instanceof RestoreError && e.code === "rollback-failed" && e.journal === "kept" && e.unit === "chat");
 });
 
 test("the restore waits for in-flight logical writes (exclusive snapshot lock)", async () => {
