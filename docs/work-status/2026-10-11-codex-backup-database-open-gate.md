@@ -1,8 +1,12 @@
 # STATUS — 2026-10-11-codex-backup-database-open-gate
 
 更新人：Claude（接手 Codex 记录）
-更新时间：2026-10-11T17:40:00+08:00
+更新时间：2026-10-11T19:15:00+08:00
 发现范围：本轮 fetch 正式仓库 latest origin/main、S11；GitHub #125 具体评价、修复提交复审覆盖和完整讨论分页；全部开放 PR #117 的 head/changed files 与既有交接。本单不碰 Presence/engine/UI，未发布本地工作不可见。
+
+## 与最新 main 同步
+
+2026-10-11 将 `origin/main` `e568232d007ea5cd7dfc0acfa7c62070f1336a02`（含 #117 Presence T7、#127 T8）合并进本分支，无冲突；Presence 键写入仍未接入备份锁，不在本单范围。合并后 Node 24.21.0 下全量 1006/1006，typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。仅模拟数据。
 
 ## 当前任务
 
