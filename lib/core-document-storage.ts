@@ -1,3 +1,5 @@
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+
 export type StoredDocument = { key: string; value: string; updatedAt: number };
 
 export interface DocumentStorage {
@@ -25,7 +27,8 @@ function isInvalidStateError(error: unknown): boolean {
 export class IndexedDBDocumentStorage implements DocumentStorage {
   private database?: Promise<IDBDatabase>;
 
-  constructor(private factory: () => IDBFactory = () => window.indexedDB) {}
+  constructor(private factory: () => IDBFactory = () => window.indexedDB,
+    private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
   private open(): Promise<IDBDatabase> {
     if (!this.database) {
@@ -76,6 +79,11 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     mode: IDBTransactionMode,
     run: (store: IDBObjectStore) => Promise<T>,
   ): Promise<T> {
+    const operation = () => this.performTransaction(mode, run);
+    return mode === "readwrite" ? this.writeGate.withWrite(operation) : operation();
+  }
+
+  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
     const opening = this.open();
     const database = await opening;
     let transaction: IDBTransaction;
