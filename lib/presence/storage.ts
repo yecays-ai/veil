@@ -29,8 +29,8 @@ export type PresenceRecord = {
   situations: StoredSituation[];
   /** Only the change mark: the signature text itself stays on the Character. */
   signature: ChangeMark | null;
-  /** When and from which message the Character last changed its own situation (set, ended or cancelled one); drives its cooldown. */
-  situationChange: ChangeMark | null;
+  /** When and from which message the Character last changed its own situation (set, ended or cancelled one); drives its cooldown. Absent until it first does, so older data and backups read unchanged. */
+  situationChange?: ChangeMark;
   /** Latest simulated online time, and latest time the Character sent a message. Neither ever goes down. */
   lastOnlineAt: number | null;
   lastMessageAt: number | null;
@@ -38,7 +38,7 @@ export type PresenceRecord = {
 export type PresenceDocument = { version: 1; characters: PresenceRecord[] };
 
 const emptyRecord = (characterId: string): PresenceRecord =>
-  ({ characterId, routine: null, situations: [], signature: null, situationChange: null, lastOnlineAt: null, lastMessageAt: null });
+  ({ characterId, routine: null, situations: [], signature: null, lastOnlineAt: null, lastMessageAt: null });
 export const emptyPresenceDocument = (): PresenceDocument => ({ version: 1, characters: [] });
 
 function validId(value: unknown): value is string {
@@ -102,7 +102,7 @@ function normalizeRecord(value: unknown): PresenceRecord | null {
   return { characterId: raw.characterId,
     routine: routine ? { routine, ...markOf(raw.routine) } : null, situations,
     signature: raw.signature ? markOf(raw.signature) : null,
-    situationChange: raw.situationChange ? markOf(raw.situationChange) : null,
+    ...(raw.situationChange ? { situationChange: markOf(raw.situationChange) } : {}),
     lastOnlineAt: time(raw.lastOnlineAt), lastMessageAt: time(raw.lastMessageAt) };
 }
 export function normalizePresenceDocument(value: unknown): PresenceDocument {

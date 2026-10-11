@@ -44,7 +44,7 @@ test("the presence line shows status and Last Seen after loading, keeps its plac
     storage.setItem(PRESENCE_STORAGE_KEY, JSON.stringify({ version: 1, characters: [{ characterId: "a",
       routine: { routine: { blocks: [], defaultStatus: "online", jitterMinutes: 0 }, changedAt: 1, source: null },
       situations: [{ status: "busy", reason: null, startsAt: now - HOUR, endsAt: now + HOUR, changedAt: now - HOUR, source: null }],
-      signature: null, situationChange: null, lastOnlineAt: now - 3 * HOUR, lastMessageAt: null }, ] }));
+      signature: null, lastOnlineAt: now - 3 * HOUR, lastMessageAt: null }, ] }));
     const root = createRoot(container);
     try {
       await act(async () => { root.render(createElement("div", null, createElement(CharacterPresenceLine, { character }),
