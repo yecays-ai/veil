@@ -6,18 +6,18 @@
 
 ## 当前任务
 
-已完成并提交 PR，待审查：S11 第 2 张，全站静态导出。Lan 明确授权在复核并合并 #118 后启动；不包括本张自动合并或第 3 张。本轮按 Lan 指令仅修复两条审查意见，复审无阻塞后停止。
+已完成并合并：S11 第 2 张，全站静态导出。原授权只启动本张，审查修复后先停止；随后 Lan 本次单次授权复核无阻塞后合并 #119 并启动下一单。该例外已执行，不授权合并第 3 张或后续 PR。
 
 【总账 ID】S11。
 【这一刀只解决】静止权威存储的全域数据及图片生成经过 v1 校验的逻辑包。
 【验收话】固定模拟四库七键和图片往返一致；读失败、缺必需图片、不兼容数据不得返回成功包；无手机入口。
 【做完划掉】仅第 2 张静态导出施工；S11 整体仍未完成。
 【不做】快照写入协调、ZIP/下载、UI、恢复执行器、在线系统/Memory 业务逻辑。
-【停止条件】必要检查通过，提交本张 PR 后停止等待审核，不启动第 3 张。
+【停止条件】原要求提交 PR 后停止；随后 Lan 单次授权复核并合并 #119 后启动下一单，该例外已执行。
 
 ## 谁在改哪里
 
-Codex；branch `codex/backup-static-export`；PR [#119](https://github.com/yecays-ai/veil/pull/119)，等待 Lan 审核和手动合并。
+Codex；branch `codex/backup-static-export`；PR [#119](https://github.com/yecays-ai/veil/pull/119)，按 Lan 单次授权完成合并。
 base/main `e71eb9fbb0e5d2b8c93f652b0d159b506d45ba1f`。
 新增 `lib/backup/static-source.ts`、`lib/backup/static-export.ts`、`tests/backup-static-export.test.ts`、`docs/backup-static-export.md`、本记录；更新 S11 及本 agent 的 #118 完结交接记录。
 
@@ -33,12 +33,13 @@ base/main `e71eb9fbb0e5d2b8c93f652b0d159b506d45ba1f`。
 
 - 本轮定向 30/30（静态导出 13、格式校验 17）、全量 912/912、typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过；仅模拟数据。
 
+- 修复提交 `2127d4ae7133f9d73edca094c210f7ecf4351061` 的 verify 及 CodeRabbit 复审通过，coverage 精确覆盖该 SHA，两条讨论均 resolved。按 Lan 本次单次授权合并 #119，merge SHA `c813d48fa96594d216e9cce1c323d45af8f0a8a3`。
+
 ## 尚未验证
 
-- 本次修复提交的 GitHub verify / CodeRabbit 复审待推送后核实。
 - 跨库快照一致性未实施；无 UI、下载或恢复；iPhone 未测试。Vercel 不追踪，本张不需要 Preview。
 - #117 未合并的 Presence 字段不在此基线；在线系统完成后再增量补核。
 
 ## 下一步
 
-停止等待 Lan 审核和手动合并 #119；未合并此 PR，不启动第 3 张。
+本张已结束；第 3 张按 Lan 本次授权另开独立任务 [一致性协调核心](2026-10-11-codex-backup-coordination.md)，不延伸后续合并授权。
