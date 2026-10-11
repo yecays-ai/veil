@@ -29,4 +29,4 @@ Claude；分支 `claude/backup-image-lifecycle`；PR [#132](https://github.com/y
 
 ## 下一步
 
-提交 PR，等待 CI/CodeRabbit 与 Lan 手动合并。第 3 阶段剩余：Provider 排队顺序（入口开放前）。
+提交 PR，等待 CI/CodeRabbit 与 Lan 手动合并。第 3 阶段剩余（Lan 2026-10-11 分类）：阶段阻塞项仅 Provider 排队顺序，#132 合并后集中修复验收；旧 `generation` 标记不阻塞，记为入口阶段待办，不单独开 PR。
