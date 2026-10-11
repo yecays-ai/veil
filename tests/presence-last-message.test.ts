@@ -39,6 +39,17 @@ test("Regenerate is a new Character message and records the time too", async () 
   assert.equal(recorded.length, 2);
 });
 
+test("Continue records the Character's sent time too", async () => {
+  const app = await setup(), recorded: [string, number][] = [];
+  const engine = engineWith(app, async function* (_config, _messages, _signal, _generation, _request, terminal) {
+    yield "Hello"; terminal?.("length");
+  }, recorded);
+  const reply = await engine.requestReply(app.session.id);
+  await engine.continueMessage(reply!.id);
+  await flush();
+  assert.deepEqual(recorded, [["a", AT.getTime()], ["a", AT.getTime()]]);
+});
+
 test("a failed, stopped or unsaved reply records nothing", async () => {
   const failed = await setup(), failedRecords: [string, number][] = [];
   await engineWith(failed, async function* () { throw new Error("boom"); }, failedRecords).requestReply(failed.session.id);
