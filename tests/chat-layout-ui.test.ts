@@ -17,8 +17,10 @@ function rule(selector: string): string {
 }
 
 test("chat header is a glass overlay with the requested lightweight controls", () => {
-  for (const icon of ["ChevronLeft", "ChevronRight", "Ellipsis"])
+  for (const icon of ["ChevronLeft", "ChevronRight"])
     assert.match(room, new RegExp(`<${icon}`));
+  assert.doesNotMatch(room, /chat-message-actions-trigger|<Ellipsis/, "message bubbles open their menu by tap, with no separate ··· button");
+  assert.doesNotMatch(css, /chat-message-actions-trigger/);
   assert.doesNotMatch(room, /Video|>Back</);
   assert.match(css, /\.chat-header\s*\{[^}]*position:\s*absolute;[^}]*backdrop-filter:\s*blur/);
   assert.doesNotMatch(css, /\.chat-header\s*\{[^}]*(?:border-bottom|linear-gradient)/);

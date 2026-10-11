@@ -5,8 +5,8 @@ import { act, createElement, StrictMode } from "react";
 import { regressionContract } from "./regression-contract";
 import { lockOrigin } from "./generation-lock-fixture";
 
-regressionContract("chat.message-actions-keyboard-entry", "render-lifecycle",
-  "message buttons support keyboard actions without changing pointer, selection or restricted-state behavior", async () => {
+regressionContract("chat.message-actions-bubble-only", "render-lifecycle",
+  "tapping a message bubble opens its actions without a separate button, keeping selection, multi-select and restricted-state behavior", async () => {
     const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/messages/peter", pretendToBeVisual: true });
     const saved = new Map<string, PropertyDescriptor | undefined>();
     const install = (name: string, value: unknown) => {
@@ -62,11 +62,6 @@ regressionContract("chat.message-actions-keyboard-entry", "render-lifecycle",
       }
     };
     const row = (id: string) => container.querySelector<HTMLElement>(`[data-message-id="${id}"]`)!;
-    const entry = (id: string) => {
-      const target = row(id)?.querySelector<HTMLButtonElement>(".chat-message-actions-trigger");
-      assert.ok(target, "a message action entry is available");
-      return target;
-    };
     const menu = () => container.querySelector<HTMLElement>('[role="menu"]');
     const item = (label: string) => {
       const target = [...menu()!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
@@ -104,65 +99,24 @@ regressionContract("chat.message-actions-keyboard-entry", "render-lifecycle",
       await act(async () => { root.render(createElement(StrictMode, null,
         createElement(FoundationProvider, null, createElement(ChatRoom, { characterId: "peter" })))); });
       await waitFor(() => !!row(first.id));
-      const settings = container.querySelector<HTMLButtonElement>('[aria-label="Conversation settings"]')!;
-      const firstEntry = entry(first.id);
-      const secondEntry = entry(second.id);
-      assert.notEqual(firstEntry.getAttribute("aria-label"), secondEntry.getAttribute("aria-label"));
-      assert.equal(firstEntry.getAttribute("aria-label"), `Message actions for message ${first.order} from You`);
-      assert.equal(secondEntry.getAttribute("aria-label"), `Message actions for message ${second.order} from You`);
-      assert.equal(dom.window.document.getElementById(firstEntry.getAttribute("aria-describedby")!)?.textContent, first.content);
-      assert.equal(dom.window.document.getElementById(secondEntry.getAttribute("aria-describedby")!)?.textContent, second.content);
-      assert.equal(firstEntry.getAttribute("aria-haspopup"), "menu");
-
-      settings.focus();
-      await press(settings, "Tab");
-      assert.equal(dom.window.document.activeElement === firstEntry, true, "Tab reaches the first message entry");
-      await press(firstEntry, "Tab");
-      assert.equal(dom.window.document.activeElement === secondEntry, true, "Tab reaches the next message entry");
-      await press(secondEntry, "Tab", true);
-      assert.equal(dom.window.document.activeElement === firstEntry, true, "Shift+Tab returns to the previous entry");
-
-      await press(firstEntry, "Enter");
-      assert.ok(menu(), "Enter opens the existing menu");
-      assert.ok(row(first.id).hasAttribute("data-active"));
-      assert.equal(dom.window.document.activeElement === item("Copy"), true, "F3 focuses the first menu item");
-      await press(item("Copy"), "Tab", true);
-      assert.ok(menu()!.contains(dom.window.document.activeElement), "menu Tab navigation stays in the overlay");
-      await press(item("Copy"), "Enter");
-      assert.equal(copied, first.content, "keyboard Copy acts on the first message");
-      assert.equal(dom.window.document.activeElement === firstEntry, true, "Copy closes and restores the opener");
-
-      secondEntry.focus();
-      const history = container.querySelector<HTMLElement>(".chat-history")!;
-      history.scrollTop = 123;
-      const space = await press(secondEntry, " ");
-      assert.equal(space.defaultPrevented, true, "Space is consumed instead of scrolling");
-      assert.equal(history.scrollTop, 123);
-      assert.ok(row(second.id).hasAttribute("data-active"));
-      assert.equal(dom.window.document.activeElement === item("Copy"), true, "Space focuses Copy");
-      await press(item("Copy"), "Enter");
-      assert.equal(copied, second.content, "Space opens actions for the correct second message");
-      assert.equal(dom.window.document.activeElement === secondEntry, true, "Space Copy restores its opener");
-
-      await press(secondEntry, "Enter");
-      await closeMenu();
-      assert.equal(dom.window.document.activeElement === secondEntry, true, "Escape restores the keyboard opener");
-      await press(secondEntry, "Enter");
-      await click(container.querySelector<HTMLButtonElement>('[aria-label="Close message actions"]')!);
-      assert.equal(dom.window.document.activeElement === secondEntry, true, "backdrop close restores the opener");
+      assert.equal(container.querySelector(".chat-message-actions-trigger"), null, "no separate message action button is rendered");
+      assert.equal(container.querySelector('.chat-message button[aria-haspopup="menu"]'), null, "messages carry no menu button");
 
       const firstBubble = row(first.id).querySelector<HTMLElement>(".chat-bubble")!;
       assert.equal(firstBubble.tagName, "P", "selectable message text retains paragraph semantics");
       await click(firstBubble);
       assert.ok(row(first.id).hasAttribute("data-active"), "ordinary bubble click still opens actions");
+      await press(item("Copy"), "Enter");
+      assert.equal(copied, first.content, "Copy acts on the tapped message");
+      await click(firstBubble);
       await closeMenu();
       await touchDown(firstBubble);
       await click(firstBubble);
       assert.ok(menu(), "a touch tap still opens actions");
-      await closeMenu();
+      await click(container.querySelector<HTMLButtonElement>('[aria-label="Close message actions"]')!);
+      assert.equal(menu() === null, true, "backdrop closes the menu");
 
       const selection = dom.window.getSelection()!;
-      firstEntry.focus();
       const range = dom.window.document.createRange();
       range.selectNodeContents(firstBubble);
       selection.removeAllRanges();
@@ -173,24 +127,20 @@ regressionContract("chat.message-actions-keyboard-entry", "render-lifecycle",
       assert.equal(context.defaultPrevented, false, "native context menu remains available");
       await touchDown(firstBubble);
       await click(firstBubble);
-      await press(firstEntry, "Enter");
-      assert.equal(menu() === null, true, "text selection blocks pointer and keyboard menu activation");
+      assert.equal(menu() === null, true, "text selection blocks menu activation");
       assert.equal(selection.toString(), first.content, "selected text remains selected");
       selection.removeAllRanges();
       await act(async () => { dom.window.document.dispatchEvent(new dom.window.Event("selectionchange")); });
-      await press(firstEntry, "Enter");
+      await click(firstBubble);
       await press(item("Quote"), "Enter");
       assert.match(container.querySelector(".chat-quote-bar")!.textContent!, /First keyboard message/,
-        "keyboard Quote preserves the existing quote flow");
+        "Quote preserves the existing quote flow");
       await click(container.querySelector<HTMLButtonElement>('[aria-label="Cancel Quote"]')!);
 
-      firstEntry.focus();
-      await press(firstEntry, "Enter");
+      await click(firstBubble);
       await press(item("Select"), "Enter");
-      assert.equal(container.querySelector(".chat-message-actions-trigger") === null, true, "multi-select omits menu entries");
       await click(row(second.id).querySelector<HTMLElement>(".chat-bubble")!);
-      await press(row(second.id).querySelector<HTMLElement>(".chat-bubble")!, "Enter");
-      assert.equal(menu() === null, true, "multi-select bubble activation cannot open actions");
+      assert.equal(menu() === null, true, "multi-select bubble tap cannot open actions");
       assert.ok(row(second.id).classList.contains("chat-turn-selected"), "multi-select still selects the tapped message");
       await click([...container.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "Cancel")!);
 
@@ -203,26 +153,19 @@ regressionContract("chat.message-actions-keyboard-entry", "render-lifecycle",
         await chatStorage.updateReply(streamingId, { content: "Streaming reply", status: "streaming" });
       });
       await waitFor(() => !!row(streamingId));
-      assert.equal(row(streamingId).querySelector(".chat-message-actions-trigger") === null, true, "streaming has no action entry");
-      const streamBubble = row(streamingId).querySelector<HTMLElement>(".chat-bubble")!;
-      await click(streamBubble);
-      await press(streamBubble, "Enter");
-      await press(streamBubble, " ");
-      assert.equal(menu() === null, true, "streaming pointer and keyboard activation cannot open a menu");
-      entry(first.id).focus();
-      await press(entry(first.id), "Enter");
+      await click(row(streamingId).querySelector<HTMLElement>(".chat-bubble")!);
+      assert.equal(menu() === null, true, "a streaming message cannot open a menu");
+      await click(firstBubble);
       assert.equal(item("Edit").disabled, true, "existing generation-time action restrictions remain");
       await closeMenu();
       await act(async () => { await chatStorage.updateReply(streamingId, { content: "Finished reply", status: "complete" }); });
-      await waitFor(() => !!row(streamingId).querySelector(".chat-message-actions-trigger"));
 
-      const disappearingEntry = entry(second.id);
-      disappearingEntry.focus();
-      await press(disappearingEntry, "Enter");
+      await click(row(second.id).querySelector<HTMLElement>(".chat-bubble")!);
+      assert.ok(menu(), "the menu opens again once the reply finished");
       await act(async () => { await chatStorage.deleteMessages(session.id, [second.id]); });
       await waitFor(() => !row(second.id));
       await closeMenu();
-      assert.equal(dom.window.document.activeElement === settings, true, "removed entry uses F3's connected fallback");
+      assert.equal(container.querySelector(".chat-message-actions-trigger"), null, "still no separate message action button");
     } finally {
       await act(async () => root.unmount());
       browserFoundationStorage.load = originals.foundation;

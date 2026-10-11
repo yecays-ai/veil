@@ -6,6 +6,7 @@ import { messageHistoryContentWithBody } from "./quote";
 import type { WorldBookActivation } from "../worldbook-activation";
 import { applyRegex } from "../regex-engine";
 import type { RegexGroup } from "../regex";
+import { selfStateContent, type SelfState } from "./self-context";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -101,6 +102,7 @@ export function assembleChatPrompt(
   worldInfo?: WorldBookActivation,
   regexGroups: readonly RegexGroup[] = [],
   weather?: RuntimeWeatherContext,
+  self?: SelfState,
 ): { sections: PromptSection[]; messages: PromptTurn[]; diagnostics: PromptDiagnosticSection[] } {
   const time = foundation.runtime?.timeAware !== false
     ? buildTimeContext(now, foundation.user.timezone, character.timezone, undefined, weather) : undefined;
@@ -115,6 +117,12 @@ export function assembleChatPrompt(
     timeInjected = true;
     messages.push({ role: "system", content: time.content });
     diagnostics.push({ identifier: "runtime", role: "system", characterLength: time.content.length });
+  };
+  const selfContent = selfStateContent(self);
+  const injectSelf = () => {
+    if (!selfContent) return;
+    messages.push({ role: "system", content: selfContent });
+    diagnostics.push({ identifier: "self", role: "system", characterLength: selfContent.length });
   };
   for (const ordered of preset.promptOrder) {
     const entry = prompts.get(ordered.identifier);
@@ -143,6 +151,7 @@ export function assembleChatPrompt(
   diagnostics.push(...historyDiagnostics);
   // Runtime facts remain present even when a custom Preset omits History.
   injectTime();
+  injectSelf();
   // Pending input is request ownership, not configurable Preset content.
   const current = new Map(eligibleMessages(context).map((message) => [message.id, message]));
   const pendingTurns = [...new Set(pending.map((message) => message.id))]
