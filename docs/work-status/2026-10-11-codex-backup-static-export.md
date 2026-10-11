@@ -1,12 +1,12 @@
 # STATUS — 2026-10-11-codex-backup-static-export
 
 更新人：Codex
-更新时间：2026-10-11T14:19:00+08:00
+更新时间：2026-10-11T14:21:00+08:00
 发现范围：正式仓库 GitHub API 开放 PR #116/#117、changed files 和 head 交接记录；本张新增 source/export 模块及模拟测试，不覆盖其路径。未发布本地工作不可见。
 
 ## 当前任务
 
-已完成本地施工，待提交审查：S11 第 2 张，全站静态导出。Lan 明确授权在复核并合并 #118 后启动；不包括本张自动合并或第 3 张。
+已完成并提交 PR，待审查：S11 第 2 张，全站静态导出。Lan 明确授权在复核并合并 #118 后启动；不包括本张自动合并或第 3 张。本任务已停止。
 
 【总账 ID】S11。
 【这一刀只解决】静止权威存储的全域数据及图片生成经过 v1 校验的逻辑包。
@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/backup-static-export`；PR 尚未创建。
+Codex；branch `codex/backup-static-export`；PR [#119](https://github.com/yecays-ai/veil/pull/119)，等待 Lan 审核和手动合并。
 base/main `e71eb9fbb0e5d2b8c93f652b0d159b506d45ba1f`。
 新增 `lib/backup/static-source.ts`、`lib/backup/static-export.ts`、`tests/backup-static-export.test.ts`、`docs/backup-static-export.md`、本记录；更新 S11 及本 agent 的 #118 完结交接记录。
 
@@ -36,4 +36,4 @@ base/main `e71eb9fbb0e5d2b8c93f652b0d159b506d45ba1f`。
 
 ## 下一步
 
-提交独立 PR，然后停止等待 Lan 审核和手动合并，不启动第 3 张。
+停止等待 Lan 审核和手动合并 #119；未合并此 PR，不启动第 3 张。
