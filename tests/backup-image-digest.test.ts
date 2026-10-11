@@ -109,3 +109,33 @@ test("image read failures fail closed without exposing the underlying error", as
   await assert.rejects(digestImageRows([{ id: "simulated", blob: new UnreadableImage([firstBytes]) }]),
     (error) => error instanceof BackupValidationError && error.code === "asset-read-failed" && !error.message.includes("SIMULATED_PRIVATE_VALUE"));
 });
+
+test("image hashing retains at most one image read at a time", async () => {
+  let active = 0, peak = 0;
+  class ObservedImage extends Blob { override async arrayBuffer(): Promise<ArrayBuffer> {
+    active++; peak = Math.max(peak, active);
+    try { await new Promise<void>((resolve) => setImmediate(resolve)); return await super.arrayBuffer(); }
+    finally { active--; }
+  } }
+  const rows = Array.from({ length: 4 }, (_, id) => ({ id: String(id), blob: new ObservedImage([firstBytes], { type: "image/png" }) }));
+  const results = await digestImageRows(rows);
+  assert.equal(results.length, 4); assert.equal(peak, 1); assert.equal(active, 0);
+});
+
+test("pre-journal image hash failure leaves no safety copy, journal or changed data", async () => {
+  const { device, raw, locks, b, confirmed } = await setup(), original = new Map(raw), safety = createSafetyCopyStore(device.indexedDB);
+  const subtle = globalThis.crypto.subtle, native = subtle.digest;
+  let matchingReads = 0;
+  subtle.digest = async (algorithm, data) => {
+    const bytes = ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength) : new Uint8Array(data);
+    if (Buffer.from(bytes).equals(Buffer.from(nextBytes)) && ++matchingReads === 2) throw new Error("SIMULATED_PRIVATE_HASH_FAILURE");
+    return native.call(subtle, algorithm, data);
+  };
+  try {
+    await assert.rejects(replaceWithBackup(b.manifestJson, b.files, device, locks, { confirmed, safety, newId: () => "pre-journal-test" }),
+      (error) => error instanceof BackupValidationError && error.code === "hash-unavailable");
+  } finally { subtle.digest = native; }
+  assert.equal(matchingReads, 2); assert.deepEqual(raw, original);
+  assert.equal(await safety.load("pre-journal-test"), null);
+  assert.deepEqual(await imageBytes(device), firstBytes);
+});

@@ -231,12 +231,14 @@ async function runRestore(kind: RestoreJournal["kind"], manifestJson: string, fi
     const snapshot = snapshotFromBackup(validated, files);
     const current = kind === "replace" ? await readStaticBackupSource(device) : blankSnapshot();
     const restoreId = newId();
+    // Hash before saving the copy: a read/hash failure here must leave no orphan copy or journal.
+    const expected = await digestUnits(snapshot), previous = await digestUnits(current);
     if (kind === "replace") {
       // The copy must exist before the journal that depends on it, and before the first overwrite.
       try { await safety.save(restoreId, current, now()); } catch { throw new RestoreError("safety-copy-failed", "none"); }
     }
     const journal: RestoreJournal = { version: 1, kind, imageHashes: true, restoreId, backupId: validated.manifest.backupId, startedAt: now(),
-      expected: await digestUnits(snapshot), previous: await digestUnits(current) };
+      expected, previous };
     const run: Run = { device, writers, safety };
     try { device.localStorage.setItem(RESTORE_JOURNAL_KEY, JSON.stringify(journal)); }
     catch {
