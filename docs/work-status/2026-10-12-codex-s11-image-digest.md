@@ -1,7 +1,7 @@
 # STATUS — 2026-10-12-codex-s11-image-digest
 
 更新人：Codex
-更新时间：2026-10-12T03:40:00+08:00
+更新时间：2026-10-12T03:37:14+08:00
 发现范围：正式 yecays-ai/veil；main/base `e7b86d0726e603f55232c9f3f52cf43e98f0da8d`。独立于开放 #143（只改图片夹具/测试），无业务修改重叠，无未合并依赖；其 CI/CodeRabbit 已通过。夜间总工单明确授权修实际复现的 S11 缺陷。未发布的执行器工作不可见。
 
 ## 当前任务
@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/s11-image-digest`；PR 待创建。
+Codex；branch `codex/s11-image-digest`；PR [#144](https://github.com/yecays-ai/veil/pull/144)，未合并。
 修改 `lib/backup/restore.ts`、`lib/backup/restore-preview.ts`；新增两者共享的 `lib/backup/image-digest.ts`，新增 `tests/backup-image-digest.test.ts` 和本记录。基于 main 自有夹具，不依赖 #143 的 helper。
 
 ## 已完成
