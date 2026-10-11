@@ -76,7 +76,7 @@ test("the differing set is what the fixtures promise", async () => {
 for (const unit of ["chat", "apiConfigs", "worldbooks", "contacts"] as const) {
   for (const lands of [false, true]) {
     test(`a failure at ${unit}${lands ? " that lands before reporting failure" : ""} puts the device back exactly, including the API key`, async () => {
-      const { locks, device, b, confirmed, safety } = await setup();
+      const { locks, device, b, confirmed } = await setup();
       const original = await digests(device), originalRaw = new Map(device.raw);
       const originalKeys = await keys(device);
       assert.deepEqual(originalKeys, ["secret-key"]);
