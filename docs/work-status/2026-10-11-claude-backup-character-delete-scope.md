@@ -14,12 +14,12 @@ S11 第 10 单（原审计第 3 阶段"快照一致性边界"）：Character 删
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-character-delete-scope`；PR 待创建后补链接；base `5e3eb56e63133b5eb4625e6911ed0f5854ed4d59`。修改 `lib/character-deletion.ts`、`lib/foundation-storage.ts`、`lib/core-document-storage.ts`、`lib/theme-storage.ts`、`lib/appearance-image-storage.ts`、`lib/contact-storage.ts`、`lib/chat/storage.ts`、两个 Provider；测试夹具加可选 gate；新增 `tests/backup-character-delete-scope.test.ts`、`docs/backup-character-delete-scope.md`、本记录；只更新总账 S11。
+Claude；分支 `claude/backup-character-delete-scope`；PR [#130](https://github.com/yecays-ai/veil/pull/130)；base `5e3eb56e63133b5eb4625e6911ed0f5854ed4d59`。修改 `lib/character-deletion.ts`、`lib/foundation-storage.ts`、`lib/core-document-storage.ts`、`lib/theme-storage.ts`、`lib/appearance-image-storage.ts`、`lib/contact-storage.ts`、`lib/chat/storage.ts`、两个 Provider；测试夹具加可选 gate；新增 `tests/backup-character-delete-scope.test.ts`、`docs/backup-character-delete-scope.md`、本记录；只更新总账 S11。
 
 ## 已完成
 
 - scope 作为可选参数贯穿六个存储与两个 Provider；删除顺序、提交点和语义不变。
-- 4 条新测试（前两条修复前失败）；既有 character-deletion 测试 11 条仍通过。全量与 typecheck/lint/build 见 PR 描述。仅模拟数据。
+- 4 条新测试（前两条修复前失败）；既有 character-deletion 测试 11 条仍通过。全量 1019/1019（连续 6 次通过；开发中偶发 2 次 chat-regenerate-lock-ui UI 计时失败，未定位）、typecheck、lint、build 通过。仅模拟数据。
 
 ## 尚未验证
 
