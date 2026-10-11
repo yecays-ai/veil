@@ -15,13 +15,13 @@ S11 第 8 单（原审计第 3 阶段"快照一致性边界"）：Text API 删�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-text-api-delete-scope`；PR 创建后补链接；base `9973b356a631dd546849ff2831ecab2699739088`。修改 `lib/api-config-storage.ts`、`lib/settings/text-api.ts`；新增 `tests/backup-text-api-delete-scope.test.ts`、`docs/backup-text-api-delete-scope.md`、本记录；只更新总账 S11。
+Claude；分支 `claude/backup-text-api-delete-scope`；PR [#128](https://github.com/yecays-ai/veil/pull/128)；base `9973b356a631dd546849ff2831ecab2699739088`。修改 `lib/api-config-storage.ts`、`lib/settings/text-api.ts`；新增 `tests/backup-text-api-delete-scope.test.ts`、`docs/backup-text-api-delete-scope.md`、本记录；只更新总账 S11。
 
 ## 已完成
 
 - 删除、Binding 清理与回退共用一次 shared lease；ApiConfigStorage 的 delete/restore 接受可选 scope。设置页调用无需修改。
-- 新增 3 条测试：成功与失败回退两条修复前失败、修复后通过；冲突语义守卫修复前后均通过。
-- Node 24.21.0 下全量 1009/1009，typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。仅模拟数据，依赖未改。
+- 新增 4 条测试：成功、失败回退及未打开数据库的首次读取三条修复前失败、修复后通过；冲突语义守卫修复前后均通过。CodeRabbit 指出的首次读取二次取锁问题成立，已修（getApiConfig 带 scope）。
+- Node 24.21.0 下全量 1010/1010，typecheck、lint（0 错误/3 条既有警告）、build、diff check 通过。仅模拟数据，依赖未改。
 
 ## 尚未验证
 

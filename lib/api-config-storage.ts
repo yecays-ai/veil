@@ -61,10 +61,11 @@ export class ApiConfigStorage {
     return this.database;
   }
 
-  // A caller that already owns a write scope passes it so this write joins that lease instead of requesting its own.
+  // A caller that already owns a write scope passes it so this work joins that lease instead of requesting its own.
+  // A readonly call only needs it when the first open would otherwise request a second shared lease.
   private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>,
     outer?: PersistenceWriteScope): Promise<T> {
-    if (mode !== "readwrite") return this.performTransaction(mode, run);
+    if (mode !== "readwrite") return this.performTransaction(mode, run, outer);
     return outer
       ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, outer), outer)
       : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope));
@@ -88,11 +89,11 @@ export class ApiConfigStorage {
     }
   }
 
-  getApiConfig(id: string): Promise<NamedApiConfig | undefined> {
+  getApiConfig(id: string, scope?: PersistenceWriteScope): Promise<NamedApiConfig | undefined> {
     return this.transaction("readonly", async (store) => {
       const config = await request<ApiConfig | undefined>(store.get(id));
       return config ? normalizeApiConfig(config) : undefined;
-    });
+    }, scope);
   }
 
   listApiConfigs(): Promise<NamedApiConfig[]> {

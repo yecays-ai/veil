@@ -28,11 +28,11 @@ async function fixture() {
   const raw = { getItem: (key: string) => values.get(key) ?? null,
     setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
   const bindings = createBindingStorage(() => raw, () => origin.client(), gate);
-  const api = new ApiConfigStorage(() => new IDBFactory(), gate);
+  const factory = new IDBFactory(), api = new ApiConfigStorage(() => factory, gate);
   await api.saveApiConfig(config, null);
   await bindings.save({ global: { apiConfigId: "target" }, characters: {} });
   counts.shared = 0;
-  return { manager, gate, bindings, api, counts };
+  return { manager, gate, bindings, api, counts, factory };
 }
 
 for (const fails of [false, true]) {
@@ -72,4 +72,22 @@ test("a Text API changed elsewhere is kept and nothing in the failed cleanup is 
   await assert.rejects(deleteApiConfigAndBindings("target", env.api, env.bindings, stale, env.gate), ApiConfigConflictError);
   assert.equal((await env.api.getApiConfig("target"))?.name, "Newer");
   assert.equal((await env.bindings.load()).global.apiConfigId, "target");
+});
+
+test("the initial read joins the outer lease when the database is not yet open", async () => {
+  const env = await fixture();
+  const fresh = new ApiConfigStorage(() => env.factory, env.gate); // unopened: its first open must not request a second lease
+  const entered = deferred(), finish = deferred();
+  const paused: Pick<BindingStorage, "transact"> = { async transact(update, scope) {
+    entered.resolve(); await finish.promise; return env.bindings.transact(update, scope);
+  } };
+  const deleting = deleteApiConfigAndBindings("target", fresh, paused, undefined, env.gate);
+  await entered.promise;
+  let captured = false;
+  const capture = new BackupCoordinator(env.manager).withSnapshot(async () => { captured = true; });
+  await Promise.resolve();
+  assert.equal(env.counts.shared, 1, "open, read, delete and cleanup share one lease");
+  finish.resolve(); await deleting; await capture;
+  assert.equal(captured, true);
+  assert.equal(await env.api.getApiConfig("target"), undefined);
 });

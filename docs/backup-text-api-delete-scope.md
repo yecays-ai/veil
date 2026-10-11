@@ -12,7 +12,7 @@
 
 #125 把 Preset、Regex、WorldBook 的删除、Binding 清理和回退放进同一个 shared 范围，但 Text API 的 `deleteApiConfigAndBindings` 当时未接入：删除配置、清理 Binding、失败时恢复配置是三次各自取锁的写入，快照可以落在两步之间，导出时 Binding 会指向已不存在的 API 配置，校验报 `missing-binding-resource`。
 
-本单照搬 #125 的做法：`deleteApiConfigAndBindings` 通过 `withPersistenceWriteScope` 取得一次 shared lease，`ApiConfigStorage.deleteApiConfig` / `restoreApiConfigIfAbsent` 新增可选 scope 参数并经 `runPersistenceWrite` 校验后复用该 lease；Binding 的 `transact` 原本就接受 scope。不传 scope 的原有调用路径（独立保存/删除）不变。函数新增可选末位参数 `writeGate`，默认浏览器 gate，设置页调用不用改。
+本单照搬 #125 的做法：`deleteApiConfigAndBindings` 通过 `withPersistenceWriteScope` 取得一次 shared lease，`ApiConfigStorage.deleteApiConfig` / `restoreApiConfigIfAbsent` 新增可选 scope 参数并经 `runPersistenceWrite` 校验后复用该 lease；Binding 的 `transact` 原本就接受 scope。删除前的读取（未传 `expected` 时）也带 scope：数据库尚未打开时，首次 open 否则会再申请第二个 shared 锁，快照排在中间就会等到超时。不传 scope 的原有调用路径（独立保存/删除）不变。函数新增可选末位参数 `writeGate`，默认浏览器 gate，设置页调用不用改。
 
 ## 保留的行为
 
@@ -20,6 +20,6 @@
 
 ## 证据和限制
 
-新增 `tests/backup-text-api-delete-scope.test.ts` 3 条：成功与失败回退两条验证快照等整项结束、全程只有 1 次 shared 请求（修复前这两条失败）；第 3 条验证被别处修改时保持原冲突语义（修复前后均通过，作为行为保留的守卫）。仅 fake-indexeddb、模拟锁和模拟凭据，未接触真实数据；Safari/iOS 原生锁与真机未验收。
+新增 `tests/backup-text-api-delete-scope.test.ts` 4 条：成功与失败回退两条验证快照等整项结束、全程只有 1 次 shared 请求，另一条验证未打开的数据库其首次读取也不另取锁（修复前这三条失败）；第 3 条验证被别处修改时保持原冲突语义（修复前后均通过，作为行为保留的守卫）。仅 fake-indexeddb、模拟锁和模拟凭据，未接触真实数据；Safari/iOS 原生锁与真机未验收。
 
 仍未覆盖：Character 删除的六步清理、Presence 键写入（#117/#127 已合并，等后续单）、图片挂接生命周期，以及快照读取侧与导出的组合。正式备份入口仍未开放。

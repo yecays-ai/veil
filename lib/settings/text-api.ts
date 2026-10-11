@@ -24,7 +24,7 @@ export function deleteApiConfigAndBindings(
 
 async function deleteWithScope(id: string, storage: ApiConfigStorage, bindings: Pick<BindingStorage, "transact">,
   expected: NamedApiConfig | undefined, scope: PersistenceWriteScope): Promise<void> {
-  const previous = expected ?? await storage.getApiConfig(id);
+  const previous = expected ?? await storage.getApiConfig(id, scope);
   if (!previous) return;
   await storage.deleteApiConfig(id, previous, scope);
   try {
