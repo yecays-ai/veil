@@ -6,14 +6,14 @@
 
 ## 当前任务
 
-S11 第 14 单（原审计第 3 阶段最后一项）：Provider 提交顺序改为备份租约 → Provider 队列；已施工，待提交 PR。
+S11 第 14 单（原审计第 3 阶段最后一项）：Provider 提交顺序改为备份租约 → Provider 队列；已施工，PR #133 待审。
 
 【不做】格式、UI、恢复、Provider 加载逻辑、存储层。
 【停止条件】提交独立 PR 后停止，等待 Lan 手动合并。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-provider-write-order`；PR 待创建；base `35cf77dcb0754e53639a7e94e52ff21e2dd10f1d`。新增 `lib/backup/write-queue.ts`、`tests/backup-provider-write-order.test.ts`、`docs/backup-provider-write-order.md`、本记录；改 `components/foundation-provider.tsx`、`components/theme-provider.tsx`；只更新总账 S11 行（与第 13 单会在该行冲突，合并时处理）。
+Claude；分支 `claude/backup-provider-write-order`；PR [#133](https://github.com/yecays-ai/veil/pull/133)；base `35cf77dcb0754e53639a7e94e52ff21e2dd10f1d`。新增 `lib/backup/write-queue.ts`、`tests/backup-provider-write-order.test.ts`、`docs/backup-provider-write-order.md`、本记录；改 `components/foundation-provider.tsx`、`components/theme-provider.tsx`；只更新总账 S11 行（与第 13 单会在该行冲突，合并时处理）。
 
 ## 已完成
 
