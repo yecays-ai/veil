@@ -16,7 +16,7 @@ import { historyFingerprint, type WorldBookActivationState } from "../worldbook-
 import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "../backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
@@ -293,17 +293,29 @@ export class ChatStorage {
     }, STORES, (changed) => changed ? { domain: "messages", sessionId, generationChanged: true } : null);
   }
 
-  private open(): Promise<IDBDatabase> {
+  private open(scope?: PersistenceWriteScope, identify?: (cached: Promise<IDBDatabase>) => void): Promise<IDBDatabase> {
+    const open = () => {
+      const cached = this.openDatabase();
+      // The gate returns a wrapper; recovery must identify the actual cached open.
+      identify?.(cached);
+      return cached;
+    };
+    if (this.database) return open();
+    return runPersistenceWrite(this.writeGate, open, scope);
+  }
+
+  private openDatabase(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
-        const unavailable = () => reject(new Error(
-          "Chat storage is unavailable. Existing conversations have not been changed."));
+        let rejected = false;
+        const unavailable = () => { rejected = true; reject(new Error(
+          "Chat storage is unavailable. Existing conversations have not been changed.")); };
         let req: IDBOpenDBRequest;
         try { this.lockFactory = this.factory(); req = this.lockFactory.open(CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION); }
         catch (error) { logOpenFailure("open", error); unavailable(); return; }
         let stage = "open";
-        let blocked = false;
         req.onupgradeneeded = () => {
+          if (rejected) { req.transaction?.abort(); return; }
           stage = "upgrade";
           try {
             const transaction = req.transaction;
@@ -315,7 +327,7 @@ export class ChatStorage {
           }
         };
         req.onsuccess = () => {
-          if (blocked) {
+          if (rejected) {
             req.result.close();
             return;
           }
@@ -331,7 +343,7 @@ export class ChatStorage {
         };
         req.onblocked = () => {
           console.warn("[Chat storage] open-blocked");
-          blocked = true;
+          rejected = true;
           reject(new Error("Close other VEIL tabs to open chat storage."));
         };
       });
@@ -350,8 +362,9 @@ export class ChatStorage {
     change: ChangeFor<T> = null,
     signal?: AbortSignal,
   ): Promise<T> {
-    const operation = () => this.performTransaction(mode, run, stores, change, signal);
-    return mode === "readwrite" ? this.writeGate.withWrite(operation, { signal }) : operation();
+    return mode === "readwrite"
+      ? withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, stores, change, signal, scope), { signal })
+      : this.performTransaction(mode, run, stores, change, signal);
   }
 
   private async performTransaction<T>(
@@ -360,9 +373,11 @@ export class ChatStorage {
     stores: string[],
     change: ChangeFor<T>,
     signal?: AbortSignal,
+    scope?: PersistenceWriteScope,
   ): Promise<T> {
     signal?.throwIfAborted();
-    const opening = this.open();
+    let cachedOpening!: Promise<IDBDatabase>;
+    const opening = this.open(scope, (cached) => { cachedOpening = cached; });
     const db = await opening;
     signal?.throwIfAborted();
     let tx: IDBTransaction;
@@ -374,12 +389,13 @@ export class ChatStorage {
     try { tx = db.transaction(stores, mode); }
     catch (error) {
       if (!invalid(error)) throw error;
-      discard(db, opening);
-      const recovery = this.open(), recovered = await recovery;
+      discard(db, cachedOpening);
+      let cachedRecovery!: Promise<IDBDatabase>;
+      const recovery = this.open(scope, (cached) => { cachedRecovery = cached; }), recovered = await recovery;
       signal?.throwIfAborted();
       try { tx = recovered.transaction(stores, mode); }
       catch (retryError) {
-        if (invalid(retryError)) discard(recovered, recovery);
+        if (invalid(retryError)) discard(recovered, cachedRecovery);
         throw retryError;
       }
     }
