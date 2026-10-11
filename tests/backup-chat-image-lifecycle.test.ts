@@ -83,19 +83,23 @@ test("a failed attach removes only the picture it saved, keeps every other pictu
   const globalId = await store.setGlobalChatBackgroundImage(image("global"));
   const unattachedId = await store.saveChatImage(image("pending elsewhere"));
   counts.shared = 0;
+  // The setup calls above already resolved the signal; wait for this attempt's own pause.
+  store.entered = deferred();
   const gate = deferred(); store.pause = gate.promise;
   const failing = store.setSessionBackgroundImage("missing-session", image("new"));
   const outcome = failing.then(() => "ok", (error: Error) => error.message);
   await store.entered.promise;
-  let seen: Awaited<ReturnType<typeof capture>> | undefined;
+  let seen = undefined as Awaited<ReturnType<typeof capture>> | undefined;
   const snapshot = capture().then((value) => { seen = value; });
   await settle();
+  const taken = () => seen;
+  assert.equal(taken(), undefined, "the queued snapshot waits while the new picture is saved but not attached");
   gate.resolve();
   assert.equal(await outcome, "Conversation not found.", "the attach error reaches the caller");
   await snapshot;
   // The queued snapshot ran after the cleanup finished: no orphan from the failed attempt, nothing else lost.
-  assert.deepEqual(seen?.assets.sort(), [keptId, globalId, unattachedId].sort());
-  assert.deepEqual(seen?.refs.sort(), [keptId, globalId].sort());
+  assert.deepEqual(taken()?.assets.sort(), [keptId, globalId, unattachedId].sort());
+  assert.deepEqual(taken()?.refs.sort(), [keptId, globalId].sort());
   assert.equal(counts.shared, 1, "cleanup runs inside the same lease, so it needs no second one");
   assert.ok(a.id);
 });
