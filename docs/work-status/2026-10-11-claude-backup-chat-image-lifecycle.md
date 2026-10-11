@@ -6,7 +6,7 @@
 
 ## 当前任务
 
-S11 第 12 单（原审计第 3 阶段"快照一致性边界"，图片挂接生命周期）：聊天壁纸存图与挂接同一共享租约；已施工，待提交 PR。
+S11 第 12 单（原审计第 3 阶段"快照一致性边界"，图片挂接生命周期）：聊天壁纸存图与挂接同一共享租约；已施工，PR #132 待审。
 
 【这一刀只解决】聊天壁纸存图+挂接合一；挂接失败清理边界。
 【不做】导出格式、UI、Provider 排队顺序、Theme 图片、无关重构。
@@ -14,7 +14,7 @@ S11 第 12 单（原审计第 3 阶段"快照一致性边界"，图片挂接生�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-image-lifecycle`；PR 待创建；base `bb34c276605f257fb127c0e6b6a9513f3a96296d`。改 `lib/chat/storage.ts`、`components/chat/chat-background-settings.tsx`、`components/settings/global-profile-settings.tsx`、`tests/regex-background-ui.test.ts`；新增 `tests/backup-chat-image-lifecycle.test.ts`、`docs/backup-chat-image-lifecycle.md`、本记录；只更新总账 S11。
+Claude；分支 `claude/backup-image-lifecycle`；PR [#132](https://github.com/yecays-ai/veil/pull/132)；base `bb34c27…`，已合并 `66332931964ecc9af381ef099c7f95475a4798f5`（含 #131）。改 `lib/chat/storage.ts`、`components/chat/chat-background-settings.tsx`、`components/settings/global-profile-settings.tsx`、`tests/regex-background-ui.test.ts`；新增 `tests/backup-chat-image-lifecycle.test.ts`、`docs/backup-chat-image-lifecycle.md`、本记录；只更新总账 S11。
 
 ## 已完成
 
@@ -23,9 +23,9 @@ Claude；分支 `claude/backup-image-lifecycle`；PR 待创建；base `bb34c2766
 
 ## 尚未验证
 
-- GitHub `verify`、CodeRabbit、Vercel 尚未运行。
+- 合并 main 后的 GitHub `verify` 与 CodeRabbit 待出结果；Vercel 预览首次构建已就绪。
 - iOS/Safari 与真机未测。
-- 合并 #131 后须同步最新 main、处理总账冲突并回归。
+- #131 已合并；已同步该 main、解决总账 S11 行冲突并重跑回归（见上）。
 
 ## 下一步
 

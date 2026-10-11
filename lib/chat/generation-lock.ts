@@ -1,5 +1,7 @@
 // Web Locks survive navigation in another tab and are released by the browser
 // when their owning document dies. A persisted flag alone cannot prove liveness.
+/** The Web Lock a live reply holds; backup probes the same name to tell a live reply from a stale marker. */
+export const generationLockName = (sessionId: string) => `veil-chat-v2:generation:${sessionId}`;
 const testLocks = new WeakMap<IDBFactory, Set<string>>();
 export async function acquireGenerationLock(factory: IDBFactory, sessionId: string,
   manager: LockManager | undefined): Promise<(() => Promise<void>) | null> {
@@ -19,7 +21,7 @@ export async function acquireGenerationLock(factory: IDBFactory, sessionId: stri
   let ready!: (value: boolean) => void;
   let failed!: (error: unknown) => void;
   const acquired = new Promise<boolean>((resolve, reject) => { ready = resolve; failed = reject; });
-  const lifetime = manager.request(`veil-chat-v2:generation:${sessionId}`,
+  const lifetime = manager.request(generationLockName(sessionId),
     { mode: "exclusive", ifAvailable: true }, async (lock) => {
       ready(!!lock);
       if (lock) await held;
