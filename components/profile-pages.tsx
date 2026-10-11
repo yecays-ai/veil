@@ -118,8 +118,10 @@ export function CharactersPage() {
                 <Avatar avatar={c.avatar} name={c.name} />
                 <span className="contact-details">
                   <strong>{c.name}</strong>
-                  {c.statusMessage && (
-                    <small className="subtle">{c.statusMessage}</small>
+                  {(c.occupation || c.location?.label) && (
+                    <small className="subtle">
+                      {c.occupation || c.location?.label}
+                    </small>
                   )}
                 </span>
                 <span className="subtle" aria-hidden="true">

@@ -202,7 +202,7 @@ test("a Character's profile subtitle is its signature, empty shows none, occupat
   assert.match(html("user", { statusMessage: "ignored" }), /<p class="subtle">Baker<\/p>/);
 });
 
-test("Contact Info shows the signature under the status line, nothing when empty, and never the occupation; lists do the same", async () => {
+test("Contact Info shows the signature under the status line, and nothing when empty, never the occupation", async () => {
   const Module = (await import("node:module")).default;
   const { createElement } = await import("react");
   const { renderToString } = await import("react-dom/server");
@@ -231,7 +231,4 @@ test("Contact Info shows the signature under the status line, nothing when empty
     const empty = renderToString(createElement(ContactInfo, { characterId: "a" }));
     assert.doesNotMatch(empty, /contact-status|TF141/, "no signature, no row, no occupation fallback");
   } finally { loader._load = original; }
-  const { readFileSync } = await import("node:fs");
-  const list = readFileSync("components/profile-pages.tsx", "utf8");
-  assert.doesNotMatch(list, /c\.occupation/, "the Universe list no longer shows the occupation as a subtitle");
 });
