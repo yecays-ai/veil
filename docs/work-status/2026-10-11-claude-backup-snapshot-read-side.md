@@ -14,12 +14,12 @@ S11 第 11 单（原审计第 3 阶段"快照一致性边界"读取侧）：独�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-snapshot-read-side`；PR 待创建后补链接；base `bb34c276605f257fb127c0e6b6a9513f3a96296d`。新增 `lib/backup/snapshot-export.ts`；小改 `lib/backup/static-export.ts`（可选 `inspect` 参数）、`lib/chat/generation-lock.ts`（导出锁名函数）；新增 `tests/backup-snapshot-export.test.ts`、`docs/backup-snapshot-read-side.md`、本记录；只更新总账 S11。
+Claude；分支 `claude/backup-snapshot-read-side`；PR [#131](https://github.com/yecays-ai/veil/pull/131)；base `bb34c276605f257fb127c0e6b6a9513f3a96296d`。新增 `lib/backup/snapshot-export.ts`；小改 `lib/backup/static-export.ts`（可选 `inspect` 参数）、`lib/chat/generation-lock.ts`（导出锁名函数）；新增 `tests/backup-snapshot-export.test.ts`、`docs/backup-snapshot-read-side.md`、本记录；只更新总账 S11。
 
 ## 已完成
 
 - 锁内导出，检查与读取同处独占锁内；探测生成锁只尝试不等待。
-- 4 条新测试；现有静态导出、协调器测试仍通过。全量与检查结果见 PR 描述。仅模拟数据。
+- 4 条新测试；现有静态导出、协调器测试仍通过。Node 24 全量 1024/1024、typecheck、lint（0 错误/3 条既有警告）、build 通过。仅模拟数据。
 
 ## 尚未验证
 
