@@ -607,7 +607,7 @@ export class ChatStorage {
     backgroundImage?: string | null;
     backgroundBlur?: number | null;
     customCSS?: string | null;
-  }): Promise<void> {
+  }, scope?: PersistenceWriteScope): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
       const session: ChatSession | undefined = await request(table.get(sessionId));
@@ -648,10 +648,10 @@ export class ChatStorage {
       if (session.backgroundImage !== next.backgroundImage)
         await deleteUnusedChatImage(tx, session.backgroundImage);
     }, STORES, { domain: "session", sessionId,
-      backgroundChanged: patch.backgroundImage !== undefined || patch.backgroundBlur !== undefined });
+      backgroundChanged: patch.backgroundImage !== undefined || patch.backgroundBlur !== undefined }, undefined, scope);
   }
 
-  saveChatImage(blob: Blob): Promise<string> {
+  saveChatImage(blob: Blob, scope?: PersistenceWriteScope): Promise<string> {
     if (!blob.type.startsWith("image/"))
       return Promise.reject(new Error("Choose an image file."));
     if (!blob.size || blob.size > MAX_CHAT_IMAGE_BYTES)
@@ -666,7 +666,32 @@ export class ChatStorage {
       };
       await request(tx.objectStore("assets").add(asset));
       return asset.id;
-    }, STORES, { domain: "asset" });
+    }, STORES, { domain: "asset" }, undefined, scope);
+  }
+
+  /**
+   * Saves a picture and attaches it as this conversation's wallpaper under one backup shared lease, so a
+   * snapshot sees both steps or neither. If the attach fails, only the picture saved here is removed, and
+   * only when nothing references it; the attach error is what the caller gets.
+   */
+  setSessionBackgroundImage(sessionId: string, blob: Blob): Promise<string> {
+    return withPersistenceWriteScope(this.writeGate, (scope) =>
+      this.saveAndAttach(blob, scope, (id) => this.updateSessionSettings(sessionId, { backgroundImage: id }, scope)));
+  }
+
+  setGlobalChatBackgroundImage(blob: Blob): Promise<string> {
+    return withPersistenceWriteScope(this.writeGate, (scope) =>
+      this.saveAndAttach(blob, scope, (id) => this.updateGlobalChatBackground(id, scope)));
+  }
+
+  private async saveAndAttach(blob: Blob, scope: PersistenceWriteScope, attach: (id: string) => Promise<void>): Promise<string> {
+    const id = await this.saveChatImage(blob, scope);
+    try { await attach(id); return id; }
+    catch (error) {
+      // Best effort: a leftover unreferenced picture is reclaimed after the orphan grace period.
+      await this.deleteChatImageIfUnused(id, scope).catch(() => {});
+      throw error;
+    }
   }
 
   readChatImage(id: string): Promise<Blob | null> {
@@ -679,8 +704,8 @@ export class ChatStorage {
     });
   }
 
-  deleteChatImageIfUnused(id: string): Promise<void> {
-    return this.transaction("readwrite", (tx) => deleteUnusedChatImage(tx, id), STORES, { domain: "asset" });
+  deleteChatImageIfUnused(id: string, scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", (tx) => deleteUnusedChatImage(tx, id), STORES, { domain: "asset" }, undefined, scope);
   }
 
   readChatBackgroundSettings(): Promise<ChatBackgroundSettings> {
@@ -780,7 +805,7 @@ export class ChatStorage {
     }, ["chatSettings"], (scheduled) => scheduled ? { domain: "global-profile" } : null);
   }
 
-  updateGlobalChatBackground(backgroundImage: string | null): Promise<void> {
+  updateGlobalChatBackground(backgroundImage: string | null, scope?: PersistenceWriteScope): Promise<void> {
     return this.transaction("readwrite", async (tx) => {
       if (backgroundImage !== null) {
         if (!backgroundImage)
@@ -798,7 +823,7 @@ export class ChatStorage {
       await request(tx.objectStore("chatSettings").put(settings));
       if (current?.globalChatBackgroundImage !== settings.globalChatBackgroundImage)
         await deleteUnusedChatImage(tx, current?.globalChatBackgroundImage);
-    }, STORES, { domain: "chat-background" });
+    }, STORES, { domain: "chat-background" }, undefined, scope);
   }
 
   updateGlobalChatBackgroundBlur(blur: number): Promise<void> {
