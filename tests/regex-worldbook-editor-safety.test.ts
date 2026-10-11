@@ -6,6 +6,8 @@ import type { Root } from "react-dom/client";
 import { newRegexGroup, newRegexRule, type RegexDocument } from "../lib/regex";
 import { defaultRegexGroup } from "../lib/regex-defaults";
 import { normalizeWorldBook, type WorldBookDocument } from "../lib/worldbook";
+import { BACKUP_LOCK_NAME } from "../lib/backup/coordination";
+import { lockOrigin } from "./generation-lock-fixture";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -24,13 +26,18 @@ async function environment() {
   for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLInputElement", "HTMLTextAreaElement", "localStorage", "Event"] as const)
     install(name, dom.window[name]);
   const held = new Set<string>();
+  const manager = lockOrigin().client();
   Object.defineProperty(dom.window.navigator, "locks", { configurable: true, value: { async request<T>(name: string,
     options: LockOptions, callback: (lock: Lock | null) => T | Promise<T>) {
-    assert.equal(options.ifAvailable, true);
-    if (held.has(name)) return callback(null);
-    held.add(name);
-    try { return await callback({ name, mode: "exclusive" } as Lock); }
-    finally { held.delete(name); }
+    if (name !== BACKUP_LOCK_NAME) assert.equal(options.ifAvailable, true);
+    if (options.ifAvailable && held.has(name)) return callback(null);
+    return manager.request(name, options, async (lock) => {
+      if (!lock) return callback(null);
+      const track = options.mode !== "shared";
+      if (track) held.add(name);
+      try { return await callback(lock); }
+      finally { if (track) held.delete(name); }
+    });
   } } });
   dom.window.confirm = () => true;
   install("self", dom.window); install("IS_REACT_ACT_ENVIRONMENT", true);

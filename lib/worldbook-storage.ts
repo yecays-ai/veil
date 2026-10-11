@@ -1,5 +1,6 @@
 import type { BindingStorage } from "./binding-storage";
 import type { StringStorage } from "./storage-types";
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
 import { emptyWorldBookDocument, validateWorldBookDocument, type WorldBookDocument } from "./worldbook";
 import { withoutWorldBookBinding } from "./bindings";
 import { createRegexWorldBookWriteGuard, EditorSnapshotConflict } from "./regex-worldbook-write-guard";
@@ -10,12 +11,13 @@ export interface WorldBookStorage {
   save(document: WorldBookDocument, expected?: WorldBookDocument): Promise<void>;
   transact(update: (current: WorldBookDocument) => WorldBookDocument, expected?: WorldBookDocument): Promise<WorldBookDocument>;
 }
-export function createWorldBookStorage(getStorage: () => StringStorage): WorldBookStorage {
+export function createWorldBookStorage(getStorage: () => StringStorage,
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate): WorldBookStorage {
   const { exclusive, assertSnapshot } = createRegexWorldBookWriteGuard(KEY, validateWorldBookDocument, {
     busy: "WorldBooks are being saved elsewhere. Try again.",
     unsupported: "Safe WorldBook editing requires browser Web Locks. Your draft has been kept.",
     conflict: "WorldBook changed elsewhere or was deleted. Your draft has been kept. Copy it, then reopen the editor to review the latest data.",
-  });
+  }, writeGate);
   const load = (): WorldBookDocument => {
     const raw = getStorage().getItem(KEY);
     if (!raw) return emptyWorldBookDocument();

@@ -1,4 +1,5 @@
 import type { StringStorage } from "./storage-types";
+import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
 
 export const CONTACT_STORAGE_KEY = "veil.contacts.v1";
 export type ContactRemarkChange = { type: "remark-changed"; fromRemark: string | null; toRemark: string | null; createdAt: number };
@@ -82,7 +83,8 @@ const WRITE_ATTEMPTS = 3;
  * A failed write never changes stored data and never blocks later writes.
  */
 export function createContactStorage(getStorage: () => StringStorage,
-  getLocks: () => Pick<LockManager, "request"> | undefined = () => globalThis.navigator?.locks) {
+  getLocks: () => Pick<LockManager, "request"> | undefined = () => globalThis.navigator?.locks,
+  writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {
   let queue: Promise<unknown> = Promise.resolve();
   const parse = (raw: string | null) => normalizeContacts(raw ? JSON.parse(raw) : null);
   const load = async () => parse(getStorage().getItem(CONTACT_STORAGE_KEY));
@@ -98,11 +100,11 @@ export function createContactStorage(getStorage: () => StringStorage,
     throw new Error("Contacts changed in another tab. Nothing was saved; try again.");
   };
   const transact = (update: (current: ContactDocument) => ContactDocument) => {
-    const run = async () => {
+    const run = () => writeGate.withWrite(async () => {
       const locks = getLocks();
       return locks ? await locks.request(CONTACT_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
         : commit(update);
-    };
+    });
     const operation = queue.then(run, run);
     queue = operation.then(() => {}, () => {});
     return operation;
