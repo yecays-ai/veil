@@ -19,14 +19,13 @@ Claude；分支 `claude/presence-t5-last-message`；PR [#114](https://github.com
 - 记录发生在：普通回复、重新生成、继续生成成功提交之后。失败、停止、未保存的回复不记录。
 - 依赖注入：`createChatEngine` 末尾新增可选参数 `recordSent`，默认写入浏览器 Presence 存储（无 `window` 时不做事）。
 - 显示端不需要改动：T4 的 `lib/presence/view.ts` 已取 `lastMessageAt`、`lastOnlineAt` 与按作息推算的上线时间中最晚的一个。
-- 测试：新增 4 项（提交后记录一次且归属正确；重新生成也记录；失败/停止/最终写入失败不记录；记录失败或同步抛错不改变已提交回复且不泄露错误文本）。
-- 检查（Node 24.21.0，本地）：`npm run typecheck`、`npm run lint`（0 个错误，3 个原有警告）、`npm test` 872/872（CF-02 在一次全量运行中偶发失败，随后连续 3 次全量均通过，根因仍未查）、`npm run build`。证据级别：自动化测试，无真机。
+- 测试：新增 6 项（提交后记录一次且归属正确；重新生成与继续生成也记录；记录器本身只升不降、按角色分开；失败/停止/最终写入失败不记录；记录失败或同步抛错不改变已提交回复且不泄露错误文本）。
+- 检查（Node 24.21.0，本地）：`npm run typecheck`、`npm run lint`（0 个错误，3 个原有警告）、`npm test` 874/874（CF-02 在一次全量运行中偶发失败，随后连续 3 次全量均通过，根因仍未查）、`npm run build`。证据级别：自动化测试，无真机。
 
 ## 尚未验证
 
 - 真机：回复后 `veil.presence.v1` 里该角色的 `lastMessageAt` 是否写入，联系人页 Last seen 是否随之变化（由 Lan 在预览验收）。
 - 多标签页同时回复时的竞态沿用 T2 已记录的已知风险（无 Web Locks 时可能互相覆盖，仅丢失一次更新）。
-- 继续生成（Continue）的提交路径与重新生成共用同一处代码，但没有单独测试：它的资格条件依赖截断状态，测试里没有搭出该场景。
 - GitHub CI、CodeRabbit 与 Vercel 预览：创建时尚未运行。
 
 ## 下一步
