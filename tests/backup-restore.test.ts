@@ -9,7 +9,7 @@ import { createUnitWriters, digestUnits, snapshotFromBackup, recoverRestore, res
 import { validateBackupPackage } from "../lib/backup/validation";
 import { readStaticBackupSource } from "../lib/backup/static-source";
 import { lockOrigin } from "./generation-lock-fixture";
-import { packageFixture } from "./backup-fixture";
+import { packageFixture, packageFixtureWithImages } from "./backup-fixture";
 
 function newDevice() {
   const raw = new Map<string, string>();
@@ -23,9 +23,9 @@ function newDevice() {
   };
   return device;
 }
-async function setup() {
+async function setup(images = true) {
   const origin = lockOrigin(), locks = origin.client() as unknown as BackupLockManager;
-  const f = await packageFixture();
+  const f = await (images ? packageFixtureWithImages() : packageFixture());
   return { locks, device: newDevice(), manifest: JSON.stringify(f.manifest), files: f.files, f };
 }
 const digests = async (device: RestoreDevice) => digestUnits(await readStaticBackupSource(device));
@@ -66,22 +66,24 @@ test("restored API configs carry no credential", async () => {
 });
 
 const present = (async () => {
-  const f = await packageFixture(), v = await validateBackupPackage(JSON.stringify(f.manifest), f.files);
+  const f = await packageFixtureWithImages(), v = await validateBackupPackage(JSON.stringify(f.manifest), f.files);
   const state = await digestUnits(snapshotFromBackup(v, f.files));
   return RESTORE_UNITS.filter((unit) => state[unit] !== "empty");
 })();
 test("units the backup has nothing for are never written", async () => {
-  const { locks, device, manifest, files } = await setup();
+  const { locks, device, manifest, files } = await setup(false);
+  const state = await digestUnits(snapshotFromBackup(await validateBackupPackage(manifest, files), files));
   const writers = createUnitWriters(device), called: string[] = [];
   const spy = Object.fromEntries(RESTORE_UNITS.map((unit) => [unit, { ...writers[unit], write: async (s: never) => { called.push(unit); return writers[unit].write(s); } }])) as UnitWriters;
   await restoreIntoEmpty(manifest, files, device, locks, { writers: spy });
-  assert.deepEqual(called.sort(), [...await present].sort());
+  assert.deepEqual(called.sort(), RESTORE_UNITS.filter((unit) => state[unit] !== "empty").sort());
+  assert.equal(called.includes("appearanceAssets"), false);
 });
 
 for (const unit of RESTORE_UNITS) {
   for (const lands of [false, true]) {
-    test(`a failure at ${unit}${lands ? " that reports failure after landing" : ""} rolls everything back to empty`, async (t) => {
-      if (!(await present).includes(unit)) return t.skip("the fixture has nothing for this unit");
+    test(`a failure at ${unit}${lands ? " that reports failure after landing" : ""} rolls everything back to empty`, async () => {
+      assert.ok((await present).includes(unit), "every fault target must contain fixture data");
       const { locks, device, manifest, files } = await setup();
       await assert.rejects(restoreIntoEmpty(manifest, files, device, locks, { writers: faulty(device, { unit, lands }) }),
         (error) => error instanceof RestoreError && error.code === "restore-failed-rolled-back" && error.unit === unit && error.journal === "none");

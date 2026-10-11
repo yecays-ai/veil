@@ -75,3 +75,19 @@ export async function replacePayload(fixture: Fixture, domain: BackupDomain, val
   section.bytes = bytes.length; section.sha256 = await sha256(bytes);
   fixture.files.set(section.path, bytes);
 }
+
+/** Real image bytes in both image domains, used to exercise restore failures rather than skip them. */
+export async function packageFixtureWithImages(): Promise<Fixture> {
+  const bytes = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aS1cAAAAASUVORK5CYII=", "base64"));
+  const imageId = await sha256(bytes), data = backupData();
+  data.appearance!.current.profile.wallpaper.source = `appearance-asset:${imageId}`;
+  data.chat.sessions[0].backgroundImage = "simulated-chat-image";
+  const fixture = await packageFixture(data);
+  for (const domain of ["appearance", "chat"] as const) {
+    const path = `assets/${domain}/0.bin`;
+    fixture.manifest.assets.push({ domain, id: domain === "appearance" ? imageId : "simulated-chat-image",
+      path, bytes: bytes.length, sha256: imageId, mime: "image/png", createdAt: TEST_NOW });
+    fixture.files.set(path, bytes);
+  }
+  return fixture;
+}
