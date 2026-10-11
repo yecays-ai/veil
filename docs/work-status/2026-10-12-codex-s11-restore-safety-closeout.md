@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/s11-restore-safety-closeout`；PR 待创建。
+Codex；branch `codex/s11-restore-safety-closeout`；PR [#142](https://github.com/yecays-ai/veil/pull/142)，已提交、未合并。
 涉及 `lib/backup/restore-preview.ts`、`lib/backup/static-source.ts`、`tests/backup-safety-closeout.test.ts`、`tests/backup-static-export.test.ts`、总账 S11 和本记录。不改 #141 的任务记录。
 
 ## 已完成
@@ -33,7 +33,7 @@ Codex；branch `codex/s11-restore-safety-closeout`；PR 待创建。
 
 ## 尚未验证
 
-- 远端 CI / CodeRabbit 在新 PR 创建前未运行；PR 提交后不等待复审、不擅自修范围外意见，按本次停止条件交由 Lan 审查。
+- 远端 CI / CodeRabbit 结果尚未确认；PR 提交后不等待复审、不擅自修范围外意见，按本次停止条件交由 Lan 审查。
 - 本次修复的 iPhone/Safari 实际行为、中断恢复页真机表现未验证（原恢复过快未触发）。不要求用户反复拼手速，确定性自动化不升级为真机证据。
 - 两项既有外观图片失败注入用例因夹具无外观图片跳过（原审计 F6），本单不修 F3–F7。
 - Vercel Preview 不申请、不验收：按 Lan 指示不再处理每日部署额度；本地 build 不能当作部署通过。
@@ -46,4 +46,4 @@ Codex；branch `codex/s11-restore-safety-closeout`；PR 待创建。
 
 ## 下一步
 
-提交 PR 后立即停止；Lan 手动审查/合并，并决定 S11 验收，保持真机中断缺口明确。
+已提交 #142，工作停止；Lan 手动审查/合并，并决定 S11 验收，保持真机中断缺口明确。
