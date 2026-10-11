@@ -1,12 +1,12 @@
 # STATUS — 2026-10-11-codex-backup-format-validation
 
 更新人：Codex
-更新时间：2026-10-11T13:43:00+08:00
+更新时间：2026-10-11T13:45:00+08:00
 发现范围：2026-10-11，已 fetch 正式仓库 origin/main；GitHub API 列出全部开放 PR（含草稿）#116、#117 及 changed files，已读其 head 上任务记录并抽查 #117 存储 diff。未发布的本地工作不可见。当前任务路径不重叠。
 
 ## 当前任务
 
-已完成本地施工，待提交审查：S11 第 1 张，备份格式与只读校验。主系统仍未实现全站备份或恢复。
+已完成并提交 PR，待审查：S11 第 1 张，备份格式与只读校验。主系统仍未实现全站备份或恢复。本任务已停止。
 
 【总账 ID】S11（板块一，全站备份与恢复）。
 【这一刀只解决】定义当前全站逻辑备份格式并只读拒绝损坏、不兼容或引用不完整的输入。
@@ -17,7 +17,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `codex/backup-format-validation`；PR 尚未创建。
+Codex；分支 `codex/backup-format-validation`；PR [#118](https://github.com/yecays-ai/veil/pull/118)，等待 Lan 手动合并。
 base/main `1a281e33c8317f9ea9dbd71f5b700fc916dc2669`，正式仓库 `yecays-ai/veil`。
 仅新增 `lib/backup/{format,json,validation}.ts`、`tests/backup-{fixture,validation.test}.ts`、`docs/backup-format-v1.md`、本记录，并更新 `docs/AUDIT_LEDGER.md` 的 S11 施工顺序/产品决策。
 
@@ -37,4 +37,4 @@ base/main `1a281e33c8317f9ea9dbd71f5b700fc916dc2669`，正式仓库 `yecays-ai/v
 
 ## 下一步
 
-提交 PR，然后停止等待 Lan 审查和手动合并；不启动第 2 张。
+停止等待 Lan 审查和手动合并 #118；未自动合并，未启动第 2 张。
