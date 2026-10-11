@@ -18,7 +18,7 @@
 
 ## 谁在改哪里
 
-Codex；branch `codex/night-memory-preparation`；PR 待创建。只改上述四个文档，独立基于 main；#143/#144/#145 未合并，不作为 main。
+Codex；branch `codex/night-memory-preparation`；PR [#146](https://github.com/yecays-ai/veil/pull/146)，已提交、未合并。只改上述四个文档，独立基于 main；#143/#144/#145 未合并，不作为 main。
 
 ## 已完成
 

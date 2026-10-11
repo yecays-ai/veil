@@ -9,7 +9,7 @@
 | [#143](https://github.com/yecays-ai/veil/pull/143) / S11 原审计 F6 | 仅图片夹具、故障注入和四项图片中断继续/回滚测试 | 备份 218/218、全量 1133/1133，0 跳过 | `a8b07f2d566ad3e83f195b0bd05fadcdde2fe511` verify 成功；CodeRabbit 完成且覆盖该 SHA，无未解决讨论 |
 | [#144](https://github.com/yecays-ai/veil/pull/144) / S11 原审计 F5 | 图片字节 SHA-256 加入预检/恢复摘要；顺序哈希；预日志失败无主副本保护 | 10 个回归；备份 222 通过/2 main 跳过；全量 1137 通过/2 跳过，0 失败 | `2cfcc8a82cb17d572842f1f42d5126e312e03bd0` verify/CodeRabbit 成功，覆盖该 SHA；两条有效意见已修复并回复，无未解决讨论 |
 | [#145](https://github.com/yecays-ai/veil/pull/145) / 板块六“在线系统”原登记，Presence T5/T7/T8 | 仅失败/停止/未提交不产生状态副作用、Regenerate 一次应用，以及最新在线字段/两向事件的备份恢复往返 | 相关定向 123/123 + 三个完整恢复用例；全量 1134 通过/2 main 跳过，0 失败 | `10903a6cde1d4ceec13a5fba3bdf7a48cfd474a3` verify/CodeRabbit 成功，覆盖该 SHA；观察时间意见已修并回复，无未解决讨论 |
-| 本文档 PR / S11、在线登记、Memory 准备 | 总账只补当前证据/门禁；[M0–M2 七字段工单](memory-m0-m2-tickets.md)，本报告、独立任务记录 | 文档核对与 diff check；无业务代码，不为文档重复全量 | 发布后跟进 CI/CodeRabbit，最终结果见交接回复及 GitHub 最新 head |
+| [#146](https://github.com/yecays-ai/veil/pull/146) / S11、在线登记、Memory 准备 | 总账只补当前证据/门禁；[M0–M2 七字段工单](memory-m0-m2-tickets.md)，本报告、独立任务记录 | 文档核对与 diff check；无业务代码，不为文档重复全量 | 发布后跟进 CI/CodeRabbit，最终结果见交接回复及 GitHub 最新 head |
 
 各代码 PR 的 typecheck、lint（0 错误/3 既有警告）、build、diff check 均通过，运行环境 Node 24.19.0/npm 10.9.4/TS 5.9.3。npm 使用既有本地 CLI；依赖/锁文件未改；全为 fake IndexedDB、内存 Storage/JSDOM 与模拟 provider，不访问真实数据、不新增收费请求。
 
@@ -63,7 +63,7 @@ F3（其他已打开标签页不实时感知门禁）和其他历史非阻塞项
 
 ## E Lan 起床后只需要做什么
 
-1. 看最新 CI/CodeRabbit 后，优先手动合并 **#144 → #143 → #145 → 本文档 PR**。前三张独立基于 main，无串联依赖，顺序为便于先消除真实缺陷；不启用 automerge。
+1. 看最新 CI/CodeRabbit 后，优先手动合并 **#144 → #143 → #145 → #146**。前三张独立基于 main，无串联依赖，顺序为便于先消除真实缺陷；不启用 automerge。
 2. 在可访问的最新代码站点只开一个 VEIL 标签页。复用已有专用测试角色，做一次普通回复/观察 Last Seen；确认 Contact Info/资料页状态与签名、两方向备注灰色事件正常，观察或明确验收角色动作时机。无需重新跑 T1–T4 全套，也不要求强制制造中断。若实际站点尚未更新，设备验收等待其正常更新，不绕部署额度。
 3. 保留已有导出/覆盖真机证明；对“本次修复设备未验、真机中断未触发”选择接受自动化证据收尾或继续保留待验。正常覆盖前关闭其他标签、恢复后 Reload。不读取/删除你的真实数据来做演练。
 4. 明确记下 **S11 与在线系统整体通过或仍待验的具体项**。两者通过后，再下发 M0（M1 可独立安排）；M2 等 M0 基础完成。除此之外没有本轮发现的新架构/产品选择要你重新设计。
