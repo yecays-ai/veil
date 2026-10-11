@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MAX_ARCHIVE_BYTES } from "../../lib/backup/archive";
 import { applyBackup, browserBackup, createBackupFile, describeBackupError, inspectBackupFile,
   type InspectedBackup } from "../../lib/backup/backup-flow";
+import { RestoreError } from "../../lib/backup/restore";
 import type { RestoreBlocker } from "../../lib/backup/restore-preview";
 
 const DOMAIN_LABELS: Record<string, string> = {
@@ -62,7 +63,11 @@ export function BackupRestoreSettings() {
     try {
       await applyBackup(inspected, browserBackup(), { signal: next() });
       setView({ kind: "done", text: "Restore complete. Reload VEIL to use the restored data. Re-enter your API keys in API settings." });
-    } catch (error) { fail(error); }
+    } catch (error) {
+      // An unfinished restore leaves a journal; the app tree mounted before it, so only a reload puts RestoreGate in front of it.
+      if (error instanceof RestoreError && error.journal === "kept") { window.location.reload(); return; }
+      fail(error);
+    }
   }
 
   const busy = view.kind === "busy";

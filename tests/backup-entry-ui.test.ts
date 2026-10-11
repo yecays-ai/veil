@@ -85,12 +85,12 @@ test("the gate shows children normally and blocks them while a restore journal e
 
 test("the gate can roll back an unfinished restore from its screen and reloads", async () => {
   const { RestoreGate } = await import("../components/restore-gate");
-  await mounted({ journal: true }, async ({ render, click, button, text, dom }) => {
+  await mounted({ journal: true }, async ({ render, click, button, wait, dom }) => {
     await render(createElement(RestoreGate, null, createElement("p", null, "app content")));
     await click(button("Roll back"));
     // The journal here is garbage, which must be refused rather than acted on.
-    await new Promise((r) => setTimeout(r, 50));
-    assert.match(text(), /Restore failed|Something went wrong|restore/i);
+    await wait(() => !!dom.window.document.querySelector('[role="alert"]'));
+    assert.match(dom.window.document.querySelector('[role="alert"]')?.textContent ?? "", /journal-invalid/);
     assert.equal(hasRestoreJournal(dom.window.localStorage), true, "a journal that cannot be understood is kept");
   });
 });
