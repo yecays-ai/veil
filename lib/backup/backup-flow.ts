@@ -81,8 +81,11 @@ export function describeBackupError(error: unknown): string {
       case "generation-active": return "A reply is being generated. Wait for it to finish and try again.";
       case "invalid-data": {
         // Only this one rule is an unfinished reply; every other failure names its own path and rule (never a value).
-        if (error.path.startsWith("chat.sessions") && error.detail === "unexpected-field:generation")
-          return "A conversation has an unfinished reply from an earlier crash. Open that conversation once, then try again.";
+        const unfinished = "A conversation has an unfinished reply from an earlier crash. Open that conversation once, then try again.";
+        if (error.path.startsWith("chat.sessions") && error.detail === "unexpected-field:generation") return unfinished;
+        // generation is listed first, so it is never cut by the field-name cap; other blockers are still shown.
+        if (error.path.startsWith("chat.sessions") && error.detail?.startsWith("unexpected-field:generation,"))
+          return `${unfinished} Also blocking (${error.path}: ${error.detail}).`;
         const where = error.path.match(/^chat\.sessions\[(\d+)\]$/);
         const rule = error.detail ? `: ${error.detail}` : "";
         return where

@@ -274,3 +274,13 @@ test("group session rules report their own detail", async () => {
   row.participantIds = ["a", "b"]; row.characterId = "zzz";
   await assert.rejects(validate(await packageFixture(data)), (e: unknown) => e instanceof BackupValidationError && e.detail === "group-characterId-mismatch");
 });
+
+test("generation is always listed first among unexpected fields, even past the five-name cap", async () => {
+  const data = backupData();
+  const index = data.chat.sessions.findIndex((row) => row.type !== "group");
+  const row = data.chat.sessions[index] as unknown as Record<string, unknown>;
+  for (const key of ["a1", "a2", "a3", "a4", "a5", "a6"]) row[key] = 1;
+  row.generation = { id: "x", stage: "provider" };
+  await assert.rejects(validate(await packageFixture(data)), (e: unknown) =>
+    e instanceof BackupValidationError && e.detail === "unexpected-field:generation,a1,a2,a3,a4");
+});

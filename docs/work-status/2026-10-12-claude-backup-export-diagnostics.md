@@ -10,13 +10,14 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/backup-export-diagnostics`；PR 见 PR 页。涉及：`lib/backup/format.ts`（`BackupValidationError` 增加可选 `detail`）、`lib/backup/validation.ts`（`keys` 与会话行校验给出规则名/字段名，条件本身未变）、`lib/backup/backup-flow.ts`（`describeBackupError` 不再把所有 `chat.sessions` 的 `invalid-data` 解释成旧标记）、`tests/backup-validation.test.ts`、`tests/backup-flow.test.ts`。
+Claude；分支 `claude/backup-export-diagnostics`；PR：https://github.com/yecays-ai/veil/pull/139 。涉及：`lib/backup/format.ts`（`BackupValidationError` 增加可选 `detail`）、`lib/backup/validation.ts`（`keys` 与会话行校验给出规则名/字段名，条件本身未变）、`lib/backup/backup-flow.ts`（`describeBackupError` 不再把所有 `chat.sessions` 的 `invalid-data` 解释成旧标记）、`tests/backup-validation.test.ts`、`tests/backup-flow.test.ts`。
 
 ## 已完成
 
 - 只有 `unexpected-field:generation` 才显示“未完成回复”；其余显示“Stored conversation N cannot be backed up (chat.sessions[i]: <规则>)”。`detail` 只含固定规则词和字段名，字段名非普通标识符时显示 `?`，不含任何值。
 - 测试：新增 15 种会话行异常 + 2 种群聊规则的诊断断言，并断言消息不含存储内容；校验仍然拒绝导出（`code` 仍为 `invalid-data`）。
-- 命令与结果见 PR 描述（Node 24：`tsc --project tsconfig.tests.json` + 相关测试文件）。
+- 验证（Node 24，`export PATH=…/node/bin`）：`npm test` 通过（改动前后各一次，最新见 PR 页）；`npx tsc --noEmit` 无输出；`npx eslint lib/backup tests/backup-validation.test.ts tests/backup-flow.test.ts` 无输出；`npm run build -- --webpack` 成功。对应提交见 PR 页最新提交。
+- `generation` 在意外字段列表里始终排第一，不会被前 5 个字段的上限挤掉；与其他意外字段同时出现时仍给出“未完成回复”提示并附带其余字段名。
 
 ## 尚未验证
 

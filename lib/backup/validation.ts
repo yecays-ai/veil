@@ -35,7 +35,8 @@ function check(condition: unknown, path: string, code = "invalid-data", detail?:
 const fieldNames = (names: string[]) => names.slice(0, 5).map((name) => /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name) ? name : "?").join(",");
 function keys(row: unknown, allowed: string[], required: string[], path: string): asserts row is Row {
   check(record(row), path, "invalid-data", "not-an-object");
-  const extra = Object.keys(row).filter((key) => !allowed.includes(key));
+  // `generation` goes first so the five-name cap can never hide an unfinished reply.
+  const extra = Object.keys(row).filter((key) => !allowed.includes(key)).sort((a, b) => Number(b === "generation") - Number(a === "generation"));
   check(!extra.length, path, "invalid-data", `unexpected-field:${fieldNames(extra)}`);
   const missing = required.filter((key) => !Object.hasOwn(row, key));
   check(!missing.length, path, "invalid-data", `missing-field:${fieldNames(missing)}`);
