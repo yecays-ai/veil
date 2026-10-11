@@ -1,5 +1,6 @@
 import { IDBFactory } from "fake-indexeddb";
 import { createBindingStorage } from "../lib/binding-storage";
+import type { PersistenceWriteGate, PersistenceWriteScope } from "../lib/backup/persistence-write-gate";
 import type { CleanupDeps } from "../lib/character-deletion";
 import { ChatStorage } from "../lib/chat/storage";
 import { addContact, createContactStorage, updateContact } from "../lib/contact-storage";
@@ -19,15 +20,16 @@ export const HERO = "data:image/png;base64,iVBORw0KGgo=";
 const png = (label: string) => new Blob([label], { type: "image/png" });
 
 /** Real Foundation, Chat, Contacts, Bindings and Appearance stores over fake IndexedDB and an in-memory localStorage. */
-export async function buildWorld(options: { aBackground?: "shared" | "exclusive" } = {}) {
+export async function buildWorld(options: { aBackground?: "shared" | "exclusive"; gate?: PersistenceWriteGate } = {}) {
   const factory = new IDBFactory(), values = new Map<string, string>();
   const raw = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); },
     removeItem: (key: string) => { values.delete(key); } };
-  const foundation = createIndexedDBFoundationStorage(new IndexedDBDocumentStorage(() => factory));
-  const chat = new ChatStorage(() => factory);
-  const themeStore = createThemeStorage(() => raw, new AppearanceImageStorage(() => factory));
-  const contactStore = createContactStorage(() => raw), bindingStore = createBindingStorage(() => raw);
-  const presenceStore = createPresenceStorage(() => raw);
+  const { gate } = options, noLocks = () => undefined;
+  const foundation = createIndexedDBFoundationStorage(new IndexedDBDocumentStorage(() => factory, gate));
+  const chat = gate ? new ChatStorage(() => factory, noLocks, gate) : new ChatStorage(() => factory);
+  const themeStore = createThemeStorage(() => raw, new AppearanceImageStorage(() => factory, Date.now, gate));
+  const contactStore = createContactStorage(() => raw, gate && noLocks, gate), bindingStore = createBindingStorage(() => raw, gate && noLocks, gate);
+  const presenceStore = createPresenceStorage(() => raw, gate && noLocks, gate);
 
   await foundation.transact((document) => {
     let next: FoundationDocument = { ...document, characters: [A, B, C, D].map((characterId) => ({ characterId,
@@ -72,13 +74,13 @@ export async function buildWorld(options: { aBackground?: "shared" | "exclusive"
     { id: "preset-with-a", name: "With Alice", snapshot: layout(true) }, { id: "preset-without", name: "Without", snapshot: layout(false) }] }));
 
   const deps: CleanupDeps = {
-    theme: { load: () => themeStore.load(), update: (update) => themeStore.transact(update) },
-    contacts: { load: () => contactStore.load(), update: (update) => contactStore.transact(update) },
-    bindings: { load: () => bindingStore.load(), update: (update) => bindingStore.transact(update) },
-    presence: { load: () => presenceStore.load(), update: (update) => presenceStore.transact(update) },
+    theme: { load: () => themeStore.load(), update: (update, scope) => themeStore.transact(update, scope) },
+    contacts: { load: () => contactStore.load(), update: (update, scope) => contactStore.transact(update, scope) },
+    bindings: { load: () => bindingStore.load(), update: (update, scope) => bindingStore.transact(update, scope) },
+    presence: { load: () => presenceStore.load(), update: (update, scope) => presenceStore.transact(update, scope) },
     chat,
   };
-  const commitFoundation = (update: (document: FoundationDocument) => FoundationDocument) => foundation.transact(update);
+  const commitFoundation = (update: (document: FoundationDocument) => FoundationDocument, scope?: PersistenceWriteScope) => foundation.transact(update, scope);
   return { factory, foundation, chat, deps, commitFoundation, themeStore, contactStore, bindingStore, presenceStore, raw: values,
     ids: { sessionA, sessionB, trio, pair, duo, withDave, shared, exclusive }, snapshot: () => snapshot(factory, { foundation, themeStore, contactStore, bindingStore, presenceStore }) };
 }

@@ -170,8 +170,8 @@ export class ChatStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
-  private async acquireSessionLock(sessionId: string) {
-    await this.open();
+  private async acquireSessionLock(sessionId: string, scope?: PersistenceWriteScope) {
+    await this.open(scope);
     return acquireGenerationLock(this.lockFactory!, sessionId, this.locks());
   }
 
@@ -361,10 +361,12 @@ export class ChatStorage {
     stores: string[] = STORES,
     change: ChangeFor<T> = null,
     signal?: AbortSignal,
+    outer?: PersistenceWriteScope,
   ): Promise<T> {
-    return mode === "readwrite"
-      ? withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, stores, change, signal, scope), { signal })
-      : this.performTransaction(mode, run, stores, change, signal);
+    if (mode !== "readwrite") return this.performTransaction(mode, run, stores, change, signal, outer);
+    return outer
+      ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, stores, change, signal, outer), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, stores, change, signal, scope), { signal });
   }
 
   private async performTransaction<T>(
@@ -477,9 +479,9 @@ export class ChatStorage {
     };
   }
 
-  listSessions(): Promise<ChatSession[]> {
+  listSessions(scope?: PersistenceWriteScope): Promise<ChatSession[]> {
     return this.transaction("readonly", (tx) =>
-      request(tx.objectStore("sessions").getAll()),
+      request(tx.objectStore("sessions").getAll()), STORES, null, undefined, scope,
     );
   }
   /** Read-only message count for a conversation; never recovers or writes generation state. */
@@ -493,7 +495,7 @@ export class ChatStorage {
    * untouched (they carry no speaker, so none can be attributed to a removed member). Idempotent.
    * Resolves with the ids of the groups that changed.
    */
-  removeGroupMembers(characterIds: readonly string[]): Promise<string[]> {
+  removeGroupMembers(characterIds: readonly string[], scope?: PersistenceWriteScope): Promise<string[]> {
     const gone = new Set(characterIds);
     if (!gone.size) return Promise.resolve([]);
     return this.transaction("readwrite", async (tx) => {
@@ -510,7 +512,7 @@ export class ChatStorage {
         changed.push(session.id);
       }
       return changed;
-    }, ["sessions"], (changed) => changed.map((sessionId) => ({ domain: "session" as const, sessionId })));
+    }, ["sessions"], (changed) => changed.map((sessionId) => ({ domain: "session" as const, sessionId })), undefined, scope);
   }
   createGroupSession(participantIds: readonly string[], title: string): Promise<ChatSession> {
     const members = [...new Set(participantIds.filter(Boolean))];
@@ -897,15 +899,15 @@ export class ChatStorage {
     return this.resetSessionHistory(sessionId, false);
   }
 
-  async deleteSession(sessionId: string): Promise<void> {
-    await this.resetSessionHistory(sessionId, true);
+  async deleteSession(sessionId: string, scope?: PersistenceWriteScope): Promise<void> {
+    await this.resetSessionHistory(sessionId, true, scope);
   }
 
-  private async resetSessionHistory(sessionId: string, deleting: boolean): Promise<number> {
+  private async resetSessionHistory(sessionId: string, deleting: boolean, scope?: PersistenceWriteScope): Promise<number> {
     // Explicit whole-conversation deletion need not first allocate a recovered
     // error marker (which could fail at quota). The lock proves no live owner.
     const manager = this.locks();
-    const release = manager || typeof window === "undefined" ? await this.acquireSessionLock(sessionId) : undefined;
+    const release = manager || typeof window === "undefined" ? await this.acquireSessionLock(sessionId, scope) : undefined;
     if (release === null) throw new Error("A reply is in progress. Stop it before clearing this conversation.");
     try { return await this.transaction("readwrite", async (tx) => {
       const sessions = tx.objectStore("sessions");
@@ -917,7 +919,7 @@ export class ChatStorage {
         await deleteUnusedChatImage(tx, session.backgroundImage);
       }
       return deletedCount;
-    }, STORES, [{ domain: deleting ? "session" : "messages", sessionId }, { domain: "worldbook-state", sessionId }]);
+    }, STORES, [{ domain: deleting ? "session" : "messages", sessionId }, { domain: "worldbook-state", sessionId }], undefined, scope);
     } finally { await release?.(); }
   }
 

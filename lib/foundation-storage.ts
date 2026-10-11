@@ -3,6 +3,7 @@ import {
   normalizeFoundation,
   type FoundationDocument,
 } from "./foundation-types";
+import type { PersistenceWriteScope } from "./backup/persistence-write-gate";
 import {
   browserDocumentStorage,
   type DocumentStorage,
@@ -12,6 +13,7 @@ export interface FoundationStorage {
   load(): Promise<FoundationDocument>;
   transact(
     update: (document: FoundationDocument) => FoundationDocument,
+    scope?: PersistenceWriteScope,
   ): Promise<FoundationDocument>;
   subscribe(listener: () => void): () => void;
 }
@@ -36,7 +38,7 @@ export function createIndexedDBFoundationStorage(
       const raw = await readRaw();
       return raw === null ? defaultFoundation() : normalizeFoundation(JSON.parse(raw));
     },
-    async transact(update) {
+    async transact(update, scope) {
       for (let attempt = 0; attempt < 4; attempt++) {
         const before = await readRaw();
         const current = before === null
@@ -44,7 +46,7 @@ export function createIndexedDBFoundationStorage(
           : normalizeFoundation(JSON.parse(before));
         const next = normalizeFoundation(update(structuredClone(current)));
         const raw = JSON.stringify(next);
-        if (await documents.replaceIfCurrent(KEY, before, raw)) {
+        if (await documents.replaceIfCurrent(KEY, before, raw, scope)) {
           notify();
           return next;
         }

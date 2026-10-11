@@ -5,7 +5,7 @@ export type StoredDocument = { key: string; value: string; updatedAt: number };
 export interface DocumentStorage {
   read(key: string): Promise<string | null>;
   putIfAbsent(key: string, value: string): Promise<string>;
-  replaceIfCurrent(key: string, expected: string | null, value: string): Promise<boolean>;
+  replaceIfCurrent(key: string, expected: string | null, value: string, scope?: PersistenceWriteScope): Promise<boolean>;
   rollbackIfCurrent(key: string, expected: string, previous: string | null): Promise<boolean>;
 }
 
@@ -92,10 +92,12 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
   private async transaction<T>(
     mode: IDBTransactionMode,
     run: (store: IDBObjectStore) => Promise<T>,
+    outer?: PersistenceWriteScope,
   ): Promise<T> {
-    return mode === "readwrite"
-      ? withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope))
-      : this.performTransaction(mode, run);
+    if (mode !== "readwrite") return this.performTransaction(mode, run, outer);
+    return outer
+      ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, outer), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope));
   }
 
   private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
@@ -153,13 +155,13 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     });
   }
 
-  replaceIfCurrent(key: string, expected: string | null, value: string): Promise<boolean> {
+  replaceIfCurrent(key: string, expected: string | null, value: string, scope?: PersistenceWriteScope): Promise<boolean> {
     return this.transaction("readwrite", async (store) => {
       const saved = await request<StoredDocument | undefined>(store.get(key));
       if ((saved?.value ?? null) !== expected) return false;
       await request(store.put({ key, value, updatedAt: Date.now() } satisfies StoredDocument));
       return true;
-    });
+    }, scope);
   }
 
   rollbackIfCurrent(
