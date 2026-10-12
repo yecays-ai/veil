@@ -3,7 +3,7 @@ import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { createChatEngine } from "./chat-engine-fixture";
 import { ChatStorage } from "../lib/chat/storage";
-import { assembleChatPrompt, emptyMemorySlot, hasSystemMemorySlot, memoryConversationText } from "../lib/chat/prompt";
+import { assembleChatPrompt, emptyMemorySlot, hasSystemMemorySlot, memoryConversation, memoryConversationText } from "../lib/chat/prompt";
 import { logPromptSummary, promptSummary } from "../lib/chat/request-diagnostics";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { createBuiltinPreset, createPresetDocument } from "../lib/preset";
@@ -225,11 +225,11 @@ test("retrieval follows configured 40-message history, pending, edited bodies an
   const group: RegexGroup = { id: "regex", name: "test", description: "", enabled: true, createdAt: 0, updatedAt: 0,
     rules: [{ id: "replace", name: "replace", enabled: true, find: "garden", replace: "orchids", appliesTo: ["user"], mode: "prompt" }] };
   assert.deepEqual(memoryConversationText({ ...context, regexGroups: [group] }, preset), ["orchids"]);
-  assert.deepEqual(selectMemoryContext("a", [row()], memoryConversationText({ ...context, regexGroups: [group] }, preset)).ids, ["a"]);
+  assert.deepEqual(selectMemoryContext("a", [row()], memoryConversation({ ...context, regexGroups: [group] }, preset)).ids, ["a"]);
 });
 
 test("development Memory summary contains ids/count/reason only and production does not log", () => {
-  const selected = selectMemoryContext("a", [row()], ["orchids"]);
+  const selected = selectMemoryContext("a", [row()], {current: [{role: "user", content: "orchids"}], recent: [], earlier: []});
   const summary = promptSummary({ requestId: "req", source: "manual-reply" }, "model", [],
     [{ role: "system", content: row().text }], selected);
   assert.deepEqual(summary.memory, { ids: ["a"], characterLength: selected.characterLength, outcome: "selected" });
@@ -250,4 +250,37 @@ test("development Memory summary contains ids/count/reason only and production d
     else Reflect.set(process.env, "NODE_ENV", original);
     console.info = log;
   }
+});
+
+test("retrieval partitions the transmitted window into current, two completed exchanges and earlier History", () => {
+  const document = foundation(), preset = createBuiltinPreset(), character = document.characters[0];
+  const messages = Array.from({ length: 50 }, (_, i) => message(`m${i}`, `body${i}`, i,
+    i % 2 ? { role: "assistant", status: "complete" } : {}));
+  const pending = message("pending", "latest question", 50);
+  messages.push(pending);
+  const context = { foundation: document, character, currentMessages: messages, pending: [pending], memory: emptyMemorySlot() };
+  const before = structuredClone(context), assembledBefore = assembleChatPrompt(document, character, messages, [pending]);
+  const conversation = memoryConversation(context, preset);
+  assert.deepEqual(conversation.current, [{ role: "user", content: "latest question" }]);
+  assert.deepEqual(conversation.recent.map((turn) => turn.map((item) => item.content)), [["body46", "body47"], ["body48", "body49"]]);
+  assert.equal(conversation.earlier.length, 36);
+  assert.equal(conversation.earlier[0].content, "body10");
+  assert.deepEqual(assembleChatPrompt(document, character, messages, [pending]), assembledBefore);
+  assert.deepEqual(context, before);
+  preset.prompts.find((entry) => entry.source === "marker" && entry.marker === "history")!.enabled = false;
+  assert.deepEqual(memoryConversation(context, preset), { current: [{ role: "user", content: "latest question" }], recent: [], earlier: [] });
+});
+test("split assistant bubbles count as one exchange and no-pending requests use the latest transmitted user input", () => {
+  const document = foundation(), preset = createBuiltinPreset(), character = document.characters[0];
+  const messages = [message("u1", "old question", 1), message("a1", "old reply", 2, { role: "assistant", status: "complete" }),
+    message("u2", "latest question", 3), ...Array.from({ length: 4 }, (_, i) => message(`a2-${i}`, `part${i}`, 4 + i,
+      { role: "assistant", status: "complete", turnId: "t2" }))];
+  const conversation = memoryConversation({ foundation: document, character, currentMessages: messages, pending: [], memory: emptyMemorySlot() }, preset);
+  assert.deepEqual(conversation.current, [{ role: "user", content: "latest question" }]);
+  assert.equal(conversation.recent.length, 2);
+  assert.equal(conversation.recent[1].length, 4);
+  assert.equal(conversation.recent[1][0].role, "assistant");
+  preset.prompts.find((entry) => entry.source === "marker" && entry.marker === "history")!.enabled = false;
+  assert.deepEqual(memoryConversation({ foundation: document, character, currentMessages: messages, pending: [], memory: emptyMemorySlot() }, preset),
+    { current: [], recent: [], earlier: [] });
 });

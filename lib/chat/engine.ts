@@ -8,7 +8,7 @@ import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
-import { assembleChatPrompt, hasSystemMemorySlot, memoryConversationText } from "./prompt";
+import { assembleChatPrompt, hasSystemMemorySlot, memoryConversation } from "./prompt";
 import { browserMemoryStorage } from "../memory/browser";
 import { emptyMemoryContext, selectMemoryContext } from "../memory/context";
 import type { Memory } from "../memory/types";
@@ -186,7 +186,7 @@ export function createChatEngine(
       // Overlap the local read with existing weather/self preparation; no retries or Memory writes.
       const memoryRead = hasSystemMemorySlot(preset)
         ? Promise.resolve().then(() => memories(character.characterId)).then(
-          (rows) => selectMemoryContext(character.characterId, rows, memoryConversationText({
+          (rows) => selectMemoryContext(character.characterId, rows, memoryConversation({
             foundation: document, character, currentMessages: batch.messages, pending: batch.pending,
             memory: { entries: [] }, regexGroups,
           }, preset))).catch(() => emptyMemoryContext("unavailable"))
