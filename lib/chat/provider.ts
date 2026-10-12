@@ -123,7 +123,7 @@ export function createOpenAITextProvider(
   validateApiConfig(config);
   const context = request ?? createCompletionRequestContext("unclassified");
   let usage: CompletionUsage | null = null;
-  const finishTerminal = startCompletionTerminal(context);
+  const finishTerminal = startCompletionTerminal(context, { model: config.model, messages });
   let end: CompletionTerminal | null = null, lastFinishReason: string | undefined;
   logCompletionStart(context, config.model.trim(), messages, true);
   // The request has its own controller so a timeout can cancel it; the caller's Stop is forwarded to it.
@@ -246,7 +246,7 @@ export function createOpenAITextProvider(
     signal.removeEventListener("abort", forwardStop);
     logCompletionUsage(context, usage);
     // No outcome here means the caller stopped reading before the reply ended.
-    finishTerminal(end ?? { outcome: "abandoned", finishReason: lastFinishReason });
+    finishTerminal(end ?? { outcome: "abandoned", finishReason: lastFinishReason }, usage);
   }
   };
 }

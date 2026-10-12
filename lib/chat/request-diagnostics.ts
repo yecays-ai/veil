@@ -1,5 +1,6 @@
 import { isTruncatedReason, type PromptTurn } from "./types";
 import type { PromptDiagnosticSection } from "./prompt";
+import { appendUsageBaseline, buildUsageBaselineRecord, type UsageBaselineMeta } from "./usage-baseline";
 
 export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue"
   | "test-connection" | "here-there-comment" | "presence-routine" | "unclassified";
@@ -151,13 +152,21 @@ export function completionTerminalSummary(context: CompletionRequestContext, ter
   };
 }
 
-/** Starts the clock for one model call. The returned function records the first outcome and ignores any later one. */
-export function startCompletionTerminal(context: CompletionRequestContext): (terminal: CompletionTerminal) => void {
+/**
+ * Starts the clock for one model call. The returned function records the first outcome and ignores any later one.
+ * With `meta` it also appends exactly one content-free usage record (usage-baseline.ts) in every environment.
+ */
+export function startCompletionTerminal(context: CompletionRequestContext, meta?: UsageBaselineMeta):
+  (terminal: CompletionTerminal, usage?: CompletionUsage | null) => void {
   const started = Date.now();
   let recorded = false;
-  return (terminal) => {
+  return (terminal, usage = null) => {
     if (recorded) return;
     recorded = true;
+    if (meta) {
+      try { appendUsageBaseline(buildUsageBaselineRecord(meta, context.source, terminal.outcome, Date.now() - started, usage)); }
+      catch { /* Diagnostics must never affect generation. */ }
+    }
     if (process.env.NODE_ENV !== "development") return;
     try {
       console.info("[VEIL completion:terminal]", completionTerminalSummary(context, terminal, Date.now() - started));
