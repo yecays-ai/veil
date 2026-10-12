@@ -187,3 +187,29 @@ test("the Journal section adds a keyword entry apart from the memory list, and d
     assert.deepEqual(await storage.listSuppressions("p"), []);
   });
 });
+
+test("a Journal edit that collides with another tab keeps the user's text and saves on the second try", async () => {
+  await mounted(async (app) => {
+    const { MemoryBankPage } = await import("../components/memory-bank");
+    const { addJournalEntry, editJournalEntry } = await import("../lib/memory/bank");
+    let clock = 1000;
+    const storage = new MemoryStorage(() => app.factory, () => ++clock, passthrough);
+    await addJournalEntry(storage, "p", { text: "Lives by the sea", keywords: ["sea"] });
+    await app.render(createElement(MemoryBankPage, { characterId: "p", storage }));
+    await app.wait(() => !!button(app.container, "Edit"));
+    await app.click(button(app.container, "Edit")!);
+    const textarea = app.dom.window.document.querySelector("textarea")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(app.dom.window.HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "Lives in the mountains");
+      textarea.dispatchEvent(new app.dom.window.Event("input", { bubbles: true }));
+    });
+    const stored = (await storage.listMemories("p"))[0];
+    await editJournalEntry(new MemoryStorage(() => app.factory, () => ++clock, passthrough), stored, { text: "Moved to town", keywords: ["town"] });
+    await app.click(button(app.container, "Save")!);
+    await app.wait(() => app.dom.window.document.body.textContent!.includes("Your text is kept"));
+    assert.equal((await storage.listMemories("p"))[0].text, "Moved to town");
+    await app.click(button(app.container, "Save")!);
+    await app.wait(() => !app.dom.window.document.querySelector("form"));
+    assert.equal((await storage.listMemories("p"))[0].text, "Lives in the mountains");
+  });
+});

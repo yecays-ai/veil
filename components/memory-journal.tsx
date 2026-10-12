@@ -11,9 +11,8 @@ import { BottomSheet, ConfirmDialog } from "./settings/ui/modal";
 type Draft = { entry: Memory | null; text: string; keywords: string };
 
 const failureText = (error: unknown) =>
-  error instanceof MemoryConflictError ? "This entry changed somewhere else. Close it and open it again."
-    : error instanceof MemoryDuplicateError ? "This Character already has a Journal entry with the same text."
-      : error instanceof Error ? error.message : "The Journal entry could not be saved.";
+  error instanceof MemoryDuplicateError ? "This Character already has a Journal entry with the same text."
+  : error instanceof Error ? error.message : "The Journal entry could not be saved.";
 
 /**
  * The Journal section of the Memory Bank: the user's own keyword-triggered notes for this Character. Entries are
@@ -32,7 +31,16 @@ export function MemoryJournal({ characterId, characterName, entries, storage, bu
     const edit = { text: current.text, keywords: parseKeywords(current.keywords) };
     const failure = await write(() => current.entry ? editJournalEntry(storage, current.entry, edit) : addJournalEntry(storage, characterId, edit),
       () => { setDraft(null); setError(""); });
-    if (failure) setError(failureText(failure));
+    if (!failure) return;
+    if (failure instanceof MemoryConflictError && current.entry) {
+      // Changed in another tab: keep the user's text and retarget the edit at what is stored now.
+      const fresh = await storage.getMemory(current.entry.id).catch(() => undefined);
+      setDraft({ ...current, entry: fresh?.origin === "journal" ? fresh : null });
+      setError(fresh ? "This entry changed somewhere else. Your text is kept; saving again replaces the newer version."
+        : "This entry was deleted somewhere else. Your text is kept; saving adds it as a new entry.");
+      return;
+    }
+    setError(failureText(failure));
   }
 
   return <section className="memory-journal" aria-label="Journal">
