@@ -6,6 +6,7 @@ import { API_CONFIG_DATABASE_NAME, API_CONFIG_DATABASE_VERSION } from "../api-co
 import { parseBackupJson } from "./json";
 import { BackupValidationError, type BackupDomain } from "./format";
 import { SAFETY_DATABASE_NAME } from "./safety-copy";
+import { deleteLegacyChatDatabase, LEGACY_CHAT_DATABASE_NAME } from "./legacy-cleanup";
 
 export const BACKUP_LOCAL_KEYS = {
   appearance: "companion-phone.appearance.v1", bindings: "veil.bindings.v1", presets: "veil.preset.v1",
@@ -84,6 +85,13 @@ export async function readStaticBackupSource(source: StaticBackupSource): Promis
     // Enumerate first: opening a missing DB would create one. Unsupported catalog APIs fail closed.
     catalog = await source.indexedDB.databases();
   } catch { return fail("source-catalog-unavailable", "databases"); }
+  // Only the precisely named disposable development database may be deleted (Lan's S11 N1 decision).
+  if (catalog.some((entry) => entry.name === LEGACY_CHAT_DATABASE_NAME)) {
+    await deleteLegacyChatDatabase(source.indexedDB);
+    try { catalog = await source.indexedDB.databases(); }
+    catch { return fail("source-catalog-unavailable", "databases"); }
+    if (catalog.some((entry) => entry.name === LEGACY_CHAT_DATABASE_NAME)) fail("legacy-cleanup-failed", "databases");
+  }
   // Unknown databases may own business data. Refuse the whole operation rather than silently omit them.
   // The temporary rollback copy is the only explicit exclusion: it never belongs in a backup.
   for (const entry of catalog) {
