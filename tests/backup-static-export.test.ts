@@ -58,7 +58,7 @@ async function seed(factory: IDBFactory, name: string, stores: Record<string, un
 async function environment() {
   const indexedDB = new IDBFactory(), data = backupData(), values = new Map<string, string>(), imageId = await sha256(png);
   data.foundation!.universe.relations = [{ id: "relation-test", characterAId: "peter", characterBId: "pep",
-    label: "Friends", aToBContext: "Test A", bToAContext: "Test B", sharedHistory: "Test history" }];
+    kind: "friend", label: "Friends", aToBContext: "Test A", bToAContext: "Test B", sharedHistory: "Test history" }];
   data.foundation!.user.avatar = "data:image/png;base64," + Buffer.from(png).toString("base64");
   data.contacts!.contacts[0].heroBackground = data.foundation!.user.avatar;
   data.appearance!.current.profile.wallpaper.source = "appearance-asset:" + imageId;

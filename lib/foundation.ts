@@ -2,14 +2,17 @@ import {
   normalizeCharacterInput,
   normalizeFoundation,
   normalizePosition,
+  normalizeRelationKind,
   normalizeUser,
   optionalText,
   validBirthday,
   validTimezone,
   type CharacterInput,
+  type CharacterRelation,
   type FoundationDocument,
   type NodePosition,
   type RelationInput,
+  type RelationKind,
   type UserProfile,
 } from "./foundation-types";
 
@@ -105,6 +108,19 @@ export function saveUniverse(
     },
   };
 }
+const DEFAULT_COMMUNICATION_KINDS: ReadonlySet<RelationKind | null> = new Set([
+  "friend",
+  "family",
+  "romantic",
+]);
+/** Default Character-to-Character communication permission. Empty and other kinds grant nothing. */
+export function canCommunicate(
+  relation: Pick<CharacterRelation, "kind"> | null | undefined,
+): boolean {
+  return DEFAULT_COMMUNICATION_KINDS.has(
+    normalizeRelationKind(relation?.kind),
+  );
+}
 export function saveRelation(
   document: FoundationDocument,
   input: RelationInput,
@@ -132,7 +148,11 @@ export function saveRelation(
     throw new Error(
       "This pair already has a relationship. Edit its existing connection.",
     );
-  const relation = { ...input, id: id ?? crypto.randomUUID() };
+  const relation = {
+    ...input,
+    kind: normalizeRelationKind(input.kind),
+    id: id ?? crypto.randomUUID(),
+  };
   return normalizeFoundation({
     ...document,
     universe: {
