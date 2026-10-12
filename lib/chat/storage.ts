@@ -1,3 +1,5 @@
+import { allocateMemorySequence, memoryBirth, MEMORY_TRACKING_ENABLED } from "../memory/sequence";
+import { readExistingMemorySource } from "../memory/source-read";
 import {
   type ChatMessage,
   type ChatBackgroundSettings,
@@ -16,7 +18,7 @@ import { historyFingerprint, type WorldBookActivationState } from "../worldbook-
 import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
-import { browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
+import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
@@ -146,6 +148,7 @@ async function resetConversationHistory(tx: IDBTransaction, session: ChatSession
   for (const message of messages) await request(table.delete(message.id));
   await request(tx.objectStore("worldBookStates").delete(session.id));
   const resetSession: ChatSession = { ...session, generation: undefined, updatedAt: Date.now(), nextOrder: 1,
+    ...(session.memorySequence ? { memorySequence: { epoch: crypto.randomUUID(), nextSeq: 1 } } : {}),
     lastMessageId: undefined, lastMessagePreview: "" };
   await request(tx.objectStore("sessions").put(resetSession));
   return { session: resetSession, deletedCount: messages.length };
@@ -169,7 +172,21 @@ export class ChatStorage {
   private generationLocks = new Map<string, () => Promise<void>>();
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
-    private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
+    private writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
+    private memoryTracking = MEMORY_TRACKING_ENABLED) {}
+  private sequence(session: ChatSession, message: ChatMessage): ChatMessage {
+    return this.memoryTracking ? allocateMemorySequence(session, message) : message;
+  }
+
+  /** Explicit test/future M5b activation; unavailable on the production handle in M5a. */
+  activateMemoryTracking(sessionId: string, scope: PersistenceWriteScope): Promise<void> {
+    if (!this.memoryTracking) return Promise.reject(new Error("Memory tracking is disabled."));
+    return this.transaction("readwrite", async (tx) => {
+      const store = tx.objectStore("sessions"), session = await request<ChatSession | undefined>(store.get(sessionId));
+      if (!session || session.generation || session.type === "group") throw new Error("Memory tracking unavailable.");
+      if (!session.memorySequence) await request(store.put({ ...session, memorySequence: { epoch: crypto.randomUUID(), nextSeq: 1 } }));
+    }, ["sessions"], null, undefined, scope);
+  }
   private async acquireSessionLock(sessionId: string, scope?: PersistenceWriteScope) {
     await this.open(scope);
     return acquireGenerationLock(this.lockFactory!, sessionId, this.locks());
@@ -405,7 +422,7 @@ export class ChatStorage {
     signal?.addEventListener("abort", cancel, { once: true });
     const done = new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
-      tx.onabort = tx.onerror = () =>
+      tx.onabort = () =>
         reject(
           new Error(
             "Chat storage could not be saved. Existing data has been retained.",
@@ -485,12 +502,12 @@ export class ChatStorage {
     );
   }
   /** Read-only message count for a conversation; never recovers or writes generation state. */
-  countMessages(sessionId: string): Promise<number> {
+  countMessages(sessionId: string, scope?: PersistenceWriteScope): Promise<number> {
     return this.transaction("readonly", (tx) =>
-      request<number>(tx.objectStore("messages").index("sessionId").count(sessionId)), ["messages"]);
+      request<number>(tx.objectStore("messages").index("sessionId").count(sessionId)), ["messages"], null, undefined, scope);
   }
   /** Read-only: which of these message ids still exist in the conversation. */
-  existingMessageIds(sessionId: string, ids: readonly string[]): Promise<Set<string>> {
+  existingMessageIds(sessionId: string, ids: readonly string[], scope?: PersistenceWriteScope): Promise<Set<string>> {
     return this.transaction("readonly", async (tx) => {
       const found = new Set<string>();
       for (const id of ids) {
@@ -498,7 +515,21 @@ export class ChatStorage {
         if (row?.sessionId === sessionId) found.add(id);
       }
       return found;
-    }, ["messages"]);
+    }, ["messages"], null, undefined, scope);
+  }
+
+  /** Pure source authority: no orphan repair, generation lock, history filtering or writes. */
+  async readMemorySources(sessionId: string, scope: PersistenceWriteScope): Promise<{ session?: ChatSession; messages: ChatMessage[] }> {
+    assertExclusivePersistenceScope(this.writeGate, scope);
+    return await readExistingMemorySource(this.factory(), CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION, STORES, async (tx) => ({
+      session: await request<ChatSession | undefined>(tx.objectStore("sessions").get(sessionId)),
+      messages: await request<ChatMessage[]>(tx.objectStore("messages").index("sessionId").getAll(sessionId)),
+    })) ?? { messages: [] };
+  }
+  async listExistingSessions(scope: PersistenceWriteScope): Promise<ChatSession[]> {
+    assertExclusivePersistenceScope(this.writeGate, scope);
+    return await readExistingMemorySource(this.factory(), CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION, STORES,
+      (tx) => request<ChatSession[]>(tx.objectStore("sessions").getAll())) ?? [];
   }
   /**
    * Removes Characters from every group's member list. A group is never deleted, even when no member
@@ -913,15 +944,22 @@ export class ChatStorage {
       if (session.generation) throw new Error("A reply is in progress. Stop it before deleting messages.");
       const table = tx.objectStore("messages");
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
+      if (this.memoryTracking) all.sort((a, b) => a.order - b.order);
       const latestUserOrder = Math.max(0, ...all.filter((m) => m.role === "user").map((m) => m.order));
+      const previousNextSeq = session.memorySequence?.nextSeq;
       for (const message of all) if (message.role === "assistant" && message.order < latestUserOrder && !message.confirmed) {
         message.confirmed = true;
-        await request(table.put(message));
+        const sequenced = this.sequence(session, message);
+        Object.assign(message, sequenced);
+        await request(table.put(sequenced));
       }
       const deleting = all.filter((message) => targets.has(message.id));
       if (deleting.some((message) => message.status === "streaming"))
         throw new Error("A reply in progress cannot be deleted.");
-      if (!deleting.length) return 0;
+      if (!deleting.length) {
+        if (session.memorySequence?.nextSeq !== previousNextSeq) await request(sessions.put(session));
+        return 0;
+      }
       const deletedIds = new Set(deleting.map((message) => message.id));
       for (const message of deleting) await request(table.delete(message.id));
       const remaining = all.filter((message) => !deletedIds.has(message.id))
@@ -943,8 +981,8 @@ export class ChatStorage {
     }, STORES, (count) => count ? { domain: "messages", sessionId } : null);
   }
 
-  async clearSession(sessionId: string): Promise<number> {
-    return this.resetSessionHistory(sessionId, false);
+  async clearSession(sessionId: string, scope?: PersistenceWriteScope): Promise<number> {
+    return this.resetSessionHistory(sessionId, false, scope);
   }
 
   async deleteSession(sessionId: string, scope?: PersistenceWriteScope): Promise<void> {
@@ -1022,8 +1060,9 @@ export class ChatStorage {
         throw new Error("A reply is already in progress.");
       if (attemptId && session.generation?.id !== attemptId) throw new Error("Generation attempt is no longer active.");
       const previous: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(sessionId));
+      if (this.memoryTracking) previous.sort((a, b) => a.order - b.order);
       for (const message of previous) if (message.role === "assistant" && !message.confirmed)
-        await request(tx.objectStore("messages").put({ ...message, confirmed: true }));
+        await request(tx.objectStore("messages").put(this.sequence(session, { ...message, confirmed: true })));
       let quote;
       if (quoteMessageId !== undefined) {
         const target: ChatMessage | undefined = await request(tx.objectStore("messages").get(quoteMessageId));
@@ -1035,14 +1074,16 @@ export class ChatStorage {
         id: crypto.randomUUID(),
         sessionId,
         role: "user",
+        ...(this.memoryTracking ? memoryBirth(session) : {}),
         content: content.trim(),
         status: "sent",
         createdAt: Date.now(),
         order: session.nextOrder,
         ...(quote ? { quote } : {}),
       };
-      await this.append(tx, session, message);
-      return message;
+      const sequenced = this.sequence(session, message);
+      await this.append(tx, session, sequenced);
+      return sequenced;
     }, STORES, { domain: "messages", sessionId });
   }
 
@@ -1078,6 +1119,7 @@ export class ChatStorage {
           await request(table.put(message));
         }
         const assistant: ChatMessage = { id, turnId: id, attemptId: owned, sessionId, role: "assistant", content: "",
+          ...(this.memoryTracking ? memoryBirth(session) : {}),
           status: "streaming", createdAt: Date.now(), order: session.nextOrder,
           ...(target.length ? { attemptFor: target[0].turnId ?? target[0].id, attemptMode: mode } : {}) };
         session = { ...session, generation: { ...session.generation, id: owned, draftId: id, stage: "preparing" } };

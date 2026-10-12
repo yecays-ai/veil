@@ -16,6 +16,7 @@ const BLOCKER_TEXT: Record<RestoreBlocker["code"], string> = {
   "backup-invalid": "This backup file is damaged or not supported.",
   "backup-generation-marker": "This backup contains an unfinished reply marker and cannot be used.",
   "target-unreadable": "This device's data could not be read safely.",
+  "local-memory-batch-active": "A Memory operation has not finished safely. This device cannot be replaced yet.",
   "local-generation-active": "A reply is being generated on this device. Wait for it to finish.",
   "local-generation-stale": "A conversation has an unfinished reply from an earlier crash. Open that conversation once, then try again.",
 };

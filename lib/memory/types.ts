@@ -13,6 +13,8 @@ export type MemoryLineage = {
   mergedFrom?: string[];
   /** Set on a superseded original: the memory that replaced it. */
   supersededBy?: string;
+  /** Derived by automatic supersession, allowing source cleanup to recover the preceding status. */
+  previousStatus?: Exclude<MemoryStatus, "superseded">;
 };
 
 export type Memory = {
@@ -63,14 +65,19 @@ export type MemoryCursor = {
   characterId: string;
   sessionId: string;
   processedMessageId?: string;
+  extraction?: import("./progress-types").MemoryProgress;
   failureCount: number;
   failureReason?: string;
   clearRequestedAt?: number;
+  /** Local intent identity; timestamps alone cannot distinguish replacement within one millisecond. */
+  clearToken?: string;
   /**
    * Message ids that sources of this session pointed at when the clear was requested. Lets a later resume tell a
    * clear that happened (those messages are gone) from one that failed, and keeps sources of newer messages.
    * Absent on intents recorded before this field existed.
    */
   clearMessageIds?: string[];
+  /** Damaged lineage isolated during this clear; retain the intent even after source pointers were pruned. */
+  clearLineageIds?: string[];
   updatedAt: number;
 };

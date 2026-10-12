@@ -3,11 +3,11 @@ import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import type { PersistenceWriteGate } from "../lib/backup/persistence-write-gate";
 import { readAliveCharacters } from "../lib/memory/browser";
-import { recordClearIntent } from "../lib/memory/lifecycle";
+import { cancelClearIntent, recordClearIntent } from "../lib/memory/lifecycle";
 import { MemoryStorage } from "../lib/memory/storage";
 import { resumeStartupClears, type StartupClearDeps } from "../lib/memory/startup";
 
-const passthrough: PersistenceWriteGate = { withWrite: (operation) => operation() };
+const passthrough: PersistenceWriteGate = { withWrite: (operation) => operation(), withExclusiveWrite: (operation) => operation() };
 function setup() {
   const factory = new IDBFactory();
   const storage = new MemoryStorage(() => factory, () => 100, passthrough);
@@ -136,17 +136,17 @@ test("a legitimately empty Foundation cleans pending clears of vanished Characte
 
 test("readAliveCharacters: a saved empty list is an empty set, an unsaved or unreadable document is null", async () => {
   const documents = await import("../lib/core-document-storage");
-  const original = documents.browserDocumentStorage.read;
+  const original = documents.browserDocumentStorage.readExisting;
   try {
-    documents.browserDocumentStorage.read = async () => JSON.stringify({ version: 1, characters: [], universe: { relations: [], nodePositions: {} }, user: {} });
+    documents.browserDocumentStorage.readExisting = async () => JSON.stringify({ version: 1, characters: [], universe: { relations: [], nodePositions: {} }, user: {} });
     assert.deepEqual([...(await readAliveCharacters())!], []);
-    documents.browserDocumentStorage.read = async () => null;
+    documents.browserDocumentStorage.readExisting = async () => null;
     assert.equal(await readAliveCharacters(), null);
-    documents.browserDocumentStorage.read = async () => { throw new Error("down"); };
+    documents.browserDocumentStorage.readExisting = async () => { throw new Error("down"); };
     assert.equal(await readAliveCharacters(), null);
-    documents.browserDocumentStorage.read = async () => "{not json";
+    documents.browserDocumentStorage.readExisting = async () => "{not json";
     assert.equal(await readAliveCharacters(), null);
-  } finally { documents.browserDocumentStorage.read = original; }
+  } finally { documents.browserDocumentStorage.readExisting = original; }
 });
 
 test("with no pending intent nothing is read beyond the cursor list, and an aborted run does nothing", async () => {
@@ -158,4 +158,17 @@ test("with no pending intent nothing is read beyond the cursor list, and an abor
   const controller = new AbortController(); controller.abort();
   assert.equal((await resumeStartupClears(storage, deps, controller.signal)).completed, 0);
   assert.deepEqual(await ids(), ["m"]);
+});
+
+test("a same-millisecond replacement intent cannot receive a stale cleanup failure", async () => {
+  const { storage, deps, add } = setup(); await add("old", "A"); await recordClearIntent(storage, "c1", "A");
+  const old = (await storage.listCursors("c1"))[0], exclusive = storage.withExclusive.bind(storage); let calls = 0;
+  storage.withExclusive = async (work, options) => {
+    if (++calls === 2) { await cancelClearIntent(storage, "c1", "A"); await recordClearIntent(storage, "c1", "A"); }
+    return exclusive(work, options);
+  };
+  const broken = { ...deps, sessionIds: async () => new Set(["A"]), countMessages: async () => { throw new Error("injected"); } };
+  assert.equal((await resumeStartupClears(storage, broken)).failed, 1);
+  const current = (await storage.listCursors("c1"))[0]; assert.equal(current.clearRequestedAt, old.clearRequestedAt);
+  assert.notEqual(current.clearToken, old.clearToken); assert.equal(current.failureCount, 0);
 });

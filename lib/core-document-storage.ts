@@ -1,9 +1,10 @@
-import { browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
+import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
+import { readExistingMemorySource } from "./memory/source-read";
 
 export type StoredDocument = { key: string; value: string; updatedAt: number };
 
 export interface DocumentStorage {
-  read(key: string): Promise<string | null>;
+  read(key: string, scope?: PersistenceWriteScope): Promise<string | null>;
   putIfAbsent(key: string, value: string): Promise<string>;
   replaceIfCurrent(key: string, expected: string | null, value: string, scope?: PersistenceWriteScope): Promise<boolean>;
   rollbackIfCurrent(key: string, expected: string, previous: string | null): Promise<boolean>;
@@ -121,7 +122,7 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     }
     const done = new Promise<void>((resolve, reject) => {
       transaction.oncomplete = () => resolve();
-      transaction.onabort = transaction.onerror = () =>
+      transaction.onabort = () =>
         reject(new Error("Core storage transaction failed. Existing data has not been changed."));
     });
     try {
@@ -147,10 +148,19 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     }, scope);
   }
 
-  read(key: string): Promise<string | null> {
+  read(key: string, scope?: PersistenceWriteScope): Promise<string | null> {
     return this.transaction("readonly", async (store) => {
       const saved = await request<StoredDocument | undefined>(store.get(key));
       return saved?.value ?? null;
+    }, scope);
+  }
+
+  /** Raw saved authority only: missing storage stays missing. */
+  async readExisting(key: string, scope?: PersistenceWriteScope): Promise<string | null> {
+    if (scope) assertExclusivePersistenceScope(this.writeGate, scope);
+    return readExistingMemorySource(this.factory(), CORE_DATABASE_NAME, CORE_DATABASE_VERSION, [DOCUMENT_STORE], async (tx) => {
+      const row = await request<StoredDocument | undefined>(tx.objectStore(DOCUMENT_STORE).get(key));
+      return row?.value ?? null;
     });
   }
 
