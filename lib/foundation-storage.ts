@@ -23,7 +23,7 @@ const KEY = FOUNDATION_STORAGE_KEY;
 export function createIndexedDBFoundationStorage(
   documents: DocumentStorage,
 ): FoundationStorage {
-  const readRaw = () => documents.read(KEY);
+  const readRaw = (scope?: PersistenceWriteScope) => documents.read(KEY, scope);
   const listeners = new Set<() => void>();
   let channel: BroadcastChannel | undefined;
   const publish = () => listeners.forEach((listener) => {
@@ -40,7 +40,7 @@ export function createIndexedDBFoundationStorage(
     },
     async transact(update, scope) {
       for (let attempt = 0; attempt < 4; attempt++) {
-        const before = await readRaw();
+        const before = await readRaw(scope);
         const current = before === null
           ? defaultFoundation()
           : normalizeFoundation(JSON.parse(before));

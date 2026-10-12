@@ -1,4 +1,5 @@
-import { browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
+import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withExclusivePersistenceWriteScope, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
+import type { BackupLockOptions } from "../backup/coordination";
 import { memoryFingerprint } from "./fingerprint";
 import {
   MEMORY_DATABASE_NAME, MEMORY_DATABASE_VERSION, MEMORY_OPERATION_LIMIT,
@@ -90,35 +91,49 @@ export class MemoryStorage {
    * Run `run` in one transaction. Writes take the backup lease first, then the local queue
    * (via the write gate). `run` may only await requests of this transaction.
    */
-  async transaction<T>(mode: IDBTransactionMode, run: (tx: MemoryTx) => Promise<T>, outer?: PersistenceWriteScope): Promise<T> {
-    if (mode !== "readwrite") return this.perform(mode, run, outer);
+  async transaction<T>(mode: IDBTransactionMode, run: (tx: MemoryTx) => Promise<T>, outer?: PersistenceWriteScope, signal?: AbortSignal): Promise<T> {
+    if (mode !== "readwrite") return this.perform(mode, run, outer, signal);
     return outer
-      ? runPersistenceWrite(this.writeGate, () => this.perform(mode, run, outer), outer)
-      : withPersistenceWriteScope(this.writeGate, (scope) => this.perform(mode, run, scope));
+      ? runPersistenceWrite(this.writeGate, () => this.perform(mode, run, outer, signal), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.perform(mode, run, scope, signal), { signal });
   }
 
-  private async perform<T>(mode: IDBTransactionMode, run: (tx: MemoryTx) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
+  private async perform<T>(mode: IDBTransactionMode, run: (tx: MemoryTx) => Promise<T>, scope?: PersistenceWriteScope, signal?: AbortSignal): Promise<T> {
+    signal?.throwIfAborted();
     const db = await this.open(scope);
+    signal?.throwIfAborted();
     const tx = db.transaction([...MEMORY_STORES], mode);
+    const cancel = () => { try { tx.abort(); } catch { /* already completed */ } };
+    signal?.addEventListener("abort", cancel, { once: true });
     const done = new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
-      tx.onabort = tx.onerror = () => reject(new Error("Memory storage could not be saved."));
+      tx.onabort = () => reject(new Error("Memory storage could not be saved."));
     });
+    void done.catch(() => {});
     try {
       const result = await run({ store: (name) => tx.objectStore(name) });
+      signal?.throwIfAborted();
       await done;
       return result;
     } catch (error) {
       try { tx.abort(); } catch { /* already complete */ }
       await done.catch(() => {});
       throw error;
-    }
+    } finally { signal?.removeEventListener("abort", cancel); }
   }
 
   // ---- reads ----
 
-  listMemories(characterId: string): Promise<Memory[]> {
-    return this.transaction("readonly", (tx) => request<Memory[]>(tx.store("memories").index("characterId").getAll(characterId)));
+  withExclusive<T>(operation: (scope: PersistenceWriteScope) => Promise<T>, options?: BackupLockOptions): Promise<T> {
+    return withExclusivePersistenceWriteScope(this.writeGate, operation, options);
+  }
+  withShared<T>(operation: (scope: PersistenceWriteScope) => Promise<T>): Promise<T> {
+    return withPersistenceWriteScope(this.writeGate, operation);
+  }
+  assertExclusive(scope: PersistenceWriteScope): void { assertExclusivePersistenceScope(this.writeGate, scope); }
+
+  listMemories(characterId: string, scope?: PersistenceWriteScope): Promise<Memory[]> {
+    return this.transaction("readonly", (tx) => request<Memory[]>(tx.store("memories").index("characterId").getAll(characterId)), scope);
   }
 
   /** Every Character id that owns at least one row in any store. */
@@ -154,8 +169,8 @@ export class MemoryStorage {
     return this.transaction("readonly", (tx) => request<Suppression[]>(tx.store("suppressions").index("characterId").getAll(characterId)));
   }
 
-  listCursors(characterId: string): Promise<MemoryCursor[]> {
-    return this.transaction("readonly", (tx) => request<MemoryCursor[]>(tx.store("cursors").index("characterId").getAll(characterId)));
+  listCursors(characterId: string, scope?: PersistenceWriteScope): Promise<MemoryCursor[]> {
+    return this.transaction("readonly", (tx) => request<MemoryCursor[]>(tx.store("cursors").index("characterId").getAll(characterId)), scope);
   }
 
   /** Oldest first, newest last. */
@@ -169,12 +184,13 @@ export class MemoryStorage {
   /**
    * Apply puts, removals and suppressions as one transaction and record one undo operation (trimmed
    * to the last five per Character in the same transaction). Any failure rolls the whole batch back.
-   * `auto: true` marks an automatic edit, which may not touch manual memories. `expectUpdatedAt` maps memory ids
+   * The legacy `auto: true` route is refused; automatic writes require MemoryProgressProtocol. `expectUpdatedAt` maps memory ids
    * to the `updatedAt` the caller last read; if any row is gone or changed, nothing is written.
    */
   applyChange(characterId: string, label: string,
     change: { put?: readonly MemoryDraft[]; remove?: readonly string[]; suppress?: readonly Omit<Suppression, "characterId" | "createdAt">[] },
     options: { auto?: boolean; expectUpdatedAt?: Readonly<Record<string, number>> } = {}): Promise<MemoryOperation> {
+    if (options.auto) return Promise.reject(new MemoryProtectedError("automatic-batch-required"));
     return this.transaction("readwrite", async (tx) => {
       const memories = tx.store("memories");
       for (const [id, updatedAt] of Object.entries(options.expectUpdatedAt ?? {})) {
@@ -268,7 +284,14 @@ export class MemoryStorage {
       for (const name of MEMORY_STORES) {
         const store = tx.store(name);
         await request(store.clear());
-        for (const row of rows[name]) await request(store.put(row));
+        for (const row of rows[name]) {
+          // Restored progress keeps its logical ranges, but invalidates every pre-restore capability (ABA).
+          const cursor = row as MemoryCursor;
+          await request(store.put(name === "cursors" ? { ...cursor,
+            ...(cursor.extraction ? { extraction: { ...cursor.extraction, incarnation: crypto.randomUUID() } } : {}),
+            ...(cursor.clearRequestedAt !== undefined ? { clearToken: crypto.randomUUID() } : {}),
+          } : row));
+        }
       }
     }, scope);
   }

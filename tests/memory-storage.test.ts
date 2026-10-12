@@ -14,7 +14,7 @@ const draft = (id: string, characterId: string, text: string, extra: Partial<Mem
 function setup() {
   const factory = new IDBFactory();
   let writes = 0;
-  const gate: PersistenceWriteGate = { withWrite: (operation) => { writes++; return operation(); } };
+  const gate: PersistenceWriteGate = { withWrite: (operation) => { writes++; return operation(); }, withExclusiveWrite: (operation) => operation() };
   const make = () => new MemoryStorage(() => factory, () => 1000, gate);
   return { factory, make, storage: make(), writes: () => writes };
 }
@@ -178,8 +178,7 @@ test("a clear transaction that fails leaves data and the intent in place", async
   const { storage, factory } = setup();
   await seedClear(storage);
   await recordClearIntent(storage, "c1", "A");
-  let calls = 0;
-  const failing = new MemoryStorage(() => factory, () => { if (++calls > 1) throw new Error("boom"); return 1; });
+  const failing = new MemoryStorage(() => factory, () => { throw new Error("boom"); });
   await assert.rejects(completeClear(failing, "c1", "A"));
   assert.equal((await storage.listMemories("c1")).length, 8);
   assert.equal((await storage.listCursors("c1")).filter((row) => row.clearRequestedAt !== undefined).length, 1);

@@ -12,6 +12,7 @@ import { BACKUP_LOCAL_KEYS, readStaticBackupSource, type StaticBackupSnapshot } 
 import { validateBackupPackage } from "./validation";
 import { createSafetyCopyStore, type SafetyCopyStore } from "./safety-copy";
 import { digestImageRows } from "./image-digest";
+import type { MemoryCursor } from "../memory/types";
 
 import { RESTORE_JOURNAL_KEY } from "./restore-journal";
 export { RESTORE_JOURNAL_KEY } from "./restore-journal";
@@ -110,7 +111,17 @@ export async function digestUnits(snapshot: StaticBackupSnapshot, imageHashes = 
   const appearanceAssets = await digestImageRows(snapshot.appearanceAssets, imageHashes);
   const values: Record<RestoreUnit, unknown | null> = {
     chat: Object.values(chat).every((rows) => rows.length === 0) ? null : Object.fromEntries(CHAT_STORES.map((name) => [name, byId(name === "assets" ? chatAssets : chat[name] ?? [])])),
-    memory: Object.values(snapshot.memory).every((rows) => rows.length === 0) ? null : Object.fromEntries(MEMORY_STORES.map((name) => [name, byId(snapshot.memory[name])])),
+    memory: Object.values(snapshot.memory).every((rows) => rows.length === 0) ? null : Object.fromEntries(MEMORY_STORES.map((name) => [name, byId(snapshot.memory[name]).map((row) => {
+      // A restore rotates this local capability nonce. Logical progress/content still require exact verification.
+      const cursor = row as MemoryCursor;
+      if (name !== "cursors") return row;
+      const { clearToken: _token, ...logical } = cursor;
+      void _token;
+      if (!cursor.extraction) return logical;
+      const { incarnation: _nonce, ...extraction } = cursor.extraction;
+      void _nonce;
+      return { ...logical, extraction };
+    })])),
     appearanceAssets: appearanceAssets.length ? byId(appearanceAssets) : null,
     apiConfigs: snapshot.apiConfigs.length ? byId(snapshot.apiConfigs).map((row) => { const { apiKey: _key, ...rest } = row as { apiKey?: unknown }; void _key; return rest; }) : null,
     appearance: snapshot.documents.appearance ?? null, bindings: snapshot.documents.bindings ?? null,
@@ -196,6 +207,7 @@ async function rollback(run: Run, journal: RestoreJournal, written: ReadonlySet<
     // A unit this very run wrote is ours to undo even if it stored something other than expected (failed verification).
     if (state[unit] !== before(journal, unit) && state[unit] !== journal.expected[unit] && !written.has(unit)) throw new RestoreError("target-changed", "kept", unit);
   for (const unit of [...RESTORE_UNITS].reverse()) if (state[unit] !== before(journal, unit)
+    || (unit === "memory" && current.memory.cursors.some((row) => !!(row as MemoryCursor).extraction || (row as MemoryCursor).clearRequestedAt !== undefined))
     || (unit === "apiConfigs" && !sameApiCredentials(current, target))) {
     try { await (journal.kind === "replace" ? run.writers[unit].write(target) : run.writers[unit].clear()); }
     catch { throw new RestoreError("rollback-failed", "kept", unit); }
@@ -225,7 +237,8 @@ async function applyUnits(run: Run, journal: RestoreJournal, snapshot: StaticBac
   for (const unit of RESTORE_UNITS) {
     const current = await readStaticBackupSource(run.device);
     const state = (await digestUnits(current, journal.imageHashes === true))[unit];
-    if (state === journal.expected[unit] && !(unit === "apiConfigs" && hasApiKeys(current))) continue;
+    if (state === journal.expected[unit] && !(unit === "apiConfigs" && hasApiKeys(current))
+      && !(unit === "memory" && current.memory.cursors.some((row) => !!(row as MemoryCursor).extraction || (row as MemoryCursor).clearRequestedAt !== undefined))) continue;
     if (state !== before(journal, unit) && state !== journal.expected[unit]) throw new RestoreError("target-changed", "kept", unit);
     written.add(unit);
     try { await run.writers[unit].write(snapshot); } catch { return { failedUnit: unit, verified: false, written }; }

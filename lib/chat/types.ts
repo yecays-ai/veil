@@ -18,6 +18,8 @@ export type ChatSession = {
   backgroundBlur?: number;
   customCSS?: string;
   nextOrder: number;
+  /** Absent in production until M5b explicitly activates tracking; old messages are never backfilled. */
+  memorySequence?: import("../memory/sequence").SessionMemorySequence;
   generation?: { id: string; draftId?: string; targetId?: string; mode?: "regenerate" | "continue";
     stage: "preparing" | "provider" | "finalizing" };
 };
@@ -81,6 +83,7 @@ export type ChatMessage = {
   finishReason?: string;
   failureStage?: "preparing" | "provider" | "finalizing";
   confirmed?: boolean;
+  memorySequence?: import("../memory/sequence").MessageMemorySequence;
 };
 
 export type PromptTurn = { role: ChatMessage["role"]; content: string };

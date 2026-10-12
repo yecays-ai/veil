@@ -1,4 +1,5 @@
 import type { ChatSession } from "../chat/types";
+import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { chatStorage } from "../chat/storage";
 import { browserDocumentStorage } from "../core-document-storage";
 import { FOUNDATION_STORAGE_KEY } from "../foundation-storage";
@@ -24,25 +25,33 @@ export type MemoryClearOutcome<T> = { value: T; cleanupIncomplete: boolean };
  * `resumePendingClears` can finish it later.
  */
 export async function withMemoryClear<T>(session: Pick<ChatSession, "id" | "characterId" | "type" | "participantIds">,
-  chatOperation: () => Promise<T>, storage: MemoryStorage = browserMemoryStorage): Promise<MemoryClearOutcome<T>> {
-  const characterIds = owners(session), created: string[] = [];
-  let value: T;
-  try {
-    for (const characterId of characterIds) {
-      const existing = (await storage.listCursors(characterId)).find((row) => row.sessionId === session.id);
-      await recordClearIntent(storage, characterId, session.id);
-      if (existing?.clearRequestedAt === undefined) created.push(characterId);
-    }
-    value = await chatOperation();
-  }
-  catch (error) {
-    const cancelled = await Promise.allSettled(created.map((characterId) => cancelClearIntent(storage, characterId, session.id)));
-    if (cancelled.some((item) => item.status === "rejected"))
-      throw new Error("The conversation was not changed, but a Memory clear marker could not be withdrawn.", { cause: error });
+  chatOperation: (scope: PersistenceWriteScope) => Promise<T>, storage: MemoryStorage = browserMemoryStorage): Promise<MemoryClearOutcome<T>> {
+  let completed: MemoryClearOutcome<T> | undefined;
+  try { return await storage.withShared(async (scope) => {
+      const characterIds = owners(session), created: string[] = [];
+      let value: T;
+      try {
+        for (const characterId of characterIds) {
+          const existing = (await storage.listCursors(characterId, scope)).find((row) => row.sessionId === session.id);
+          await recordClearIntent(storage, characterId, session.id, scope);
+          if (existing?.clearRequestedAt === undefined) created.push(characterId);
+        }
+        value = await chatOperation(scope);
+      }
+      catch (error) {
+        const cancelled = await Promise.allSettled(created.map((characterId) => cancelClearIntent(storage, characterId, session.id, scope)));
+        if (cancelled.some((item) => item.status === "rejected"))
+          throw new Error("The conversation was not changed, but a Memory clear marker could not be withdrawn.", { cause: error });
+        throw error;
+      }
+      const done = await Promise.allSettled(characterIds.map((characterId) => completeClear(storage, characterId, session.id, undefined, scope)));
+      completed = { value, cleanupIncomplete: done.some((item) => item.status === "rejected") };
+      return completed;
+  }); } catch (error) {
+    // The scope collects failed children after releasing only completed/aborted transactions.
+    if (completed?.cleanupIncomplete) return completed;
     throw error;
   }
-  const done = await Promise.allSettled(characterIds.map((characterId) => completeClear(storage, characterId, session.id)));
-  return { value, cleanupIncomplete: done.some((item) => item.status === "rejected") };
 }
 
 /**
@@ -50,11 +59,14 @@ export async function withMemoryClear<T>(session: Pick<ChatSession, "id" | "char
  * saved (not bootstrapped yet), proves nothing and yields null. A saved document with an empty character list is
  * the legitimate "last Character was deleted" state and yields an empty set.
  */
-export async function readAliveCharacters(): Promise<ReadonlySet<string> | null> {
+export async function readAliveCharacters(scope?: PersistenceWriteScope): Promise<ReadonlySet<string> | null> {
   try {
-    const raw = await browserDocumentStorage.read(FOUNDATION_STORAGE_KEY);
+    const raw = await browserDocumentStorage.readExisting(FOUNDATION_STORAGE_KEY, scope);
     if (raw === null) return null;
-    return new Set(normalizeFoundation(JSON.parse(raw)).characters.map((item) => item.characterId));
+    const parsed = JSON.parse(raw);
+    if (parsed?.version !== 1 || !Array.isArray(parsed.characters) || parsed.characters.some((item: { characterId?: unknown } | null) =>
+      !item || typeof item.characterId !== "string" || !item.characterId)) return null;
+    return new Set(normalizeFoundation(parsed).characters.map((item) => item.characterId));
   } catch { return null; }
 }
 
@@ -62,9 +74,12 @@ export async function readAliveCharacters(): Promise<ReadonlySet<string> | null>
 export function resumeBrowserClears(signal?: AbortSignal) {
   const deps: StartupClearDeps = {
     aliveCharacters: readAliveCharacters,
-    sessionIds: async () => new Set((await chatStorage.listSessions()).map((session) => session.id)),
-    countMessages: (sessionId) => chatStorage.countMessages(sessionId),
-    existingMessageIds: (sessionId, ids) => chatStorage.existingMessageIds(sessionId, ids),
+    sessionIds: async (scope) => {
+      if (!scope) throw new Error("Startup Memory cleanup requires an exclusive scope.");
+      return new Set((await chatStorage.listExistingSessions(scope)).map((session) => session.id));
+    },
+    countMessages: (sessionId, scope) => chatStorage.countMessages(sessionId, scope),
+    existingMessageIds: (sessionId, ids, scope) => chatStorage.existingMessageIds(sessionId, ids, scope),
   };
   return resumeStartupClears(browserMemoryStorage, deps, signal);
 }

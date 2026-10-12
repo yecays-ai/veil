@@ -1,15 +1,17 @@
 import { completeClear, cancelClearIntent, deleteCharacterMemory } from "./lifecycle";
 import { request, type MemoryStorage } from "./storage";
 import type { MemoryCursor } from "./types";
+import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
+import { BackupValidationError } from "../backup/format";
 
 /** What the startup pass may read from the rest of the app. Every read is a single list/count/lookup call. */
 export type StartupClearDeps = {
   /** Existing Characters (possibly an empty set), or null when that is not proven: nothing is then changed. */
-  aliveCharacters(): Promise<ReadonlySet<string> | null>;
-  sessionIds(): Promise<ReadonlySet<string>>;
-  countMessages(sessionId: string): Promise<number>;
+  aliveCharacters(scope?: PersistenceWriteScope): Promise<ReadonlySet<string> | null>;
+  sessionIds(scope?: PersistenceWriteScope): Promise<ReadonlySet<string>>;
+  countMessages(sessionId: string, scope?: PersistenceWriteScope): Promise<number>;
   /** Which of these messages still exist in the session. */
-  existingMessageIds(sessionId: string, ids: readonly string[]): Promise<ReadonlySet<string>>;
+  existingMessageIds(sessionId: string, ids: readonly string[], scope?: PersistenceWriteScope): Promise<ReadonlySet<string>>;
 };
 export type StartupClearReport = { completed: number; cancelled: number; deferred: number; failed: number };
 
@@ -31,27 +33,36 @@ export async function resumeStartupClears(storage: MemoryStorage, deps: StartupC
   const cursors = await storage.transaction("readonly", (tx) => request<MemoryCursor[]>(tx.store("cursors").getAll()));
   const pending = cursors.filter((row) => row.clearRequestedAt !== undefined);
   if (!pending.length || signal?.aborted) return report;
-  let alive: ReadonlySet<string> | null, sessions: ReadonlySet<string>;
-  try { [alive, sessions] = await Promise.all([deps.aliveCharacters(), deps.sessionIds()]); }
-  catch { report.deferred = pending.length; return report; }
-  if (!alive) { report.deferred = pending.length; return report; }
   for (const row of pending) {
     if (signal?.aborted) { report.deferred++; continue; }
     try {
-      if (!alive.has(row.characterId)) { await deleteCharacterMemory(storage, row.characterId); report.completed++; continue; }
-      const targetIds = row.clearMessageIds;
-      const targets = targetIds && new Set(targetIds);
-      if (sessions.has(row.sessionId) && await deps.countMessages(row.sessionId) > 0) {
-        if (!targetIds) { await cancelClearIntent(storage, row.characterId, row.sessionId); report.cancelled++; continue; }
-        if (targetIds.length && (await deps.existingMessageIds(row.sessionId, targetIds)).size > 0) {
-          await cancelClearIntent(storage, row.characterId, row.sessionId); report.cancelled++; continue;
+      await storage.withExclusive(async (scope) => {
+        const current = (await storage.listCursors(row.characterId, scope)).find((cursor) => cursor.id === row.id);
+        if (!current || current.clearRequestedAt === undefined || current.clearToken !== row.clearToken) { report.deferred++; return; }
+        let alive: ReadonlySet<string> | null, sessions: ReadonlySet<string>;
+        try { [alive, sessions] = await Promise.all([deps.aliveCharacters(scope), deps.sessionIds(scope)]); }
+        catch { report.deferred++; return; }
+        if (!alive || signal?.aborted) { report.deferred++; return; }
+        if (!alive.has(current.characterId)) { await deleteCharacterMemory(storage, current.characterId, scope); report.completed++; return; }
+        const targetIds = current.clearMessageIds;
+        const targets = targetIds && new Set(targetIds);
+        if (sessions.has(current.sessionId) && await deps.countMessages(current.sessionId, scope) > 0) {
+          if (!targetIds) { await cancelClearIntent(storage, current.characterId, current.sessionId, scope); report.cancelled++; return; }
+          if (targetIds.length && (await deps.existingMessageIds(current.sessionId, targetIds, scope)).size > 0) {
+            await cancelClearIntent(storage, current.characterId, current.sessionId, scope); report.cancelled++; return;
+          }
         }
-      }
-      await completeClear(storage, row.characterId, row.sessionId, targets);
-      report.completed++;
-    } catch {
+        await completeClear(storage, current.characterId, current.sessionId, targets, scope);
+        report.completed++;
+      }, { signal });
+    } catch (error) {
+      if (error instanceof BackupValidationError || signal?.aborted) { report.deferred++; continue; }
       report.failed++;
-      try { await storage.saveCursor(row.characterId, row.sessionId, { failureCount: row.failureCount + 1, failureReason: "clear-cleanup-failed" }); }
+      try { await storage.withExclusive((scope) => storage.transaction("readwrite", async (tx) => {
+        const store = tx.store("cursors"), current = await request<MemoryCursor | undefined>(store.get(row.id));
+        if (current?.clearRequestedAt !== undefined && current.clearRequestedAt === row.clearRequestedAt && current.clearToken === row.clearToken)
+          await request(store.put({ ...current, failureCount: current.failureCount + 1, failureReason: "clear-cleanup-failed", updatedAt: storage.now() }));
+      }, scope), { signal }); }
       catch { /* the intent itself is still persisted; the next startup retries */ }
     }
   }

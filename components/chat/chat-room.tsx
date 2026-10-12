@@ -957,7 +957,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
           if (!session) return;
           try {
-            const { cleanupIncomplete } = await withMemoryClear(session, () => chatStorage.clearSession(session.id));
+            const { cleanupIncomplete } = await withMemoryClear(session, (scope) => chatStorage.clearSession(session.id, scope));
             revealQueue.cancel(); setConfirmClear(false);
             showFeedback(cleanupIncomplete ? "Conversation cleared. Memory cleanup is pending." : "Conversation cleared");
           }

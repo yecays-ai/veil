@@ -7,6 +7,8 @@ import { readStaticBackupSource, type StaticBackupSnapshot, type StaticBackupSou
 import { parseBackupManifest, validateBackupPackage } from "./validation";
 import type { ValidatedBackup } from "./format";
 import { digestImageRows } from "./image-digest";
+import { memoryBatchActive, validMemoryProgress } from "../memory/progress-types";
+import type { MemoryCursor } from "../memory/types";
 
 export type RestoreBlocker =
   /** The package failed v1 validation (checksum, version, structure). `error` is the validation code. */
@@ -18,7 +20,9 @@ export type RestoreBlocker =
   /** A reply is generating on this device right now (its generation lock is held). */
   | { code: "local-generation-active"; path: string }
   /** A local session carries a `generation` marker but no live reply holds it: a crash leftover. */
-  | { code: "local-generation-stale"; path: string };
+  | { code: "local-generation-stale"; path: string }
+  | { code: "local-memory-batch-active"; path: string };
+// A claimed or dispatched batch cannot be replaced beneath a live owner. Orphans need explicit protocol recovery.
 
 export type RestoreCount = { backup: number; current: number };
 /**
@@ -81,6 +85,13 @@ function packageHasGenerationMarker(manifestJson: string, files: ReadonlyMap<str
 
 async function classifyTarget(snapshot: StaticBackupSnapshot, locks: BackupLockManager): Promise<RestoreBlocker[]> {
   const blockers: RestoreBlocker[] = [];
+  for (const [index, value] of snapshot.memory.cursors.entries()) {
+    const row = value as MemoryCursor;
+    if (row.extraction && !validMemoryProgress(row.extraction)) {
+      blockers.push({ code: "target-unreadable", error: "invalid-memory-progress", path: `memory.cursors[${index}]` }); continue;
+    }
+    if (row.extraction?.batches.some(memoryBatchActive)) blockers.push({ code: "local-memory-batch-active", path: `memory.cursors[${index}]` });
+  }
   for (const [index, row] of snapshot.chat.sessions.entries()) {
     const session = row as { id?: unknown; generation?: unknown };
     if (!session.generation) continue;

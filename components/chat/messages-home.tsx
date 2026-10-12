@@ -113,7 +113,7 @@ export function MessagesHome() {
     setDeleteBusy(true);
     setDeleteError("");
     try {
-      const { cleanupIncomplete } = await withMemoryClear(deleteTarget, () => chatStorage.deleteSession(deleteTarget.id));
+      const { cleanupIncomplete } = await withMemoryClear(deleteTarget, (scope) => chatStorage.deleteSession(deleteTarget.id, scope));
       if (cleanupIncomplete) setDeleteError("Conversation deleted. Memory cleanup is pending.");
       setDeleteTarget(null);
       setOpenRowId(null);
