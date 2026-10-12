@@ -1,6 +1,9 @@
 import { isTruncatedReason, type PromptTurn } from "./types";
 import type { PromptDiagnosticSection } from "./prompt";
 import { appendUsageBaseline, buildUsageBaselineRecord, type UsageBaselineMeta } from "./usage-baseline";
+import type { MemoryContext } from "../memory/context";
+
+type MemorySummary = Pick<MemoryContext, "ids" | "characterLength" | "outcome">;
 
 export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue"
   | "test-connection" | "here-there-comment" | "presence-routine" | "unclassified";
@@ -52,7 +55,7 @@ export function completionStartSummary(context: CompletionRequestContext, model:
 }
 
 export function promptSummary(context: CompletionRequestContext, model: string,
-  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[]) {
+  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[], memory?: MemorySummary) {
   return {
     requestId: context.requestId,
     source: context.source,
@@ -61,6 +64,7 @@ export function promptSummary(context: CompletionRequestContext, model: string,
     sections: sections.map((section) => ({ ...section })),
     totalMessageCount: messages.length,
     totalCharacters: messages.reduce((total, message) => total + message.content.length, 0),
+    ...(memory ? { memory: { ids: [...memory.ids], characterLength: memory.characterLength, outcome: memory.outcome } } : {}),
   };
 }
 
@@ -90,9 +94,9 @@ export function logCompletionStart(context: CompletionRequestContext, model: str
 }
 
 export function logPromptSummary(context: CompletionRequestContext, model: string,
-  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[]) {
+  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[], memory?: MemorySummary) {
   if (process.env.NODE_ENV !== "development") return;
-  try { console.info("[VEIL prompt:summary]", promptSummary(context, model, sections, messages)); }
+  try { console.info("[VEIL prompt:summary]", promptSummary(context, model, sections, messages, memory)); }
   catch { /* Diagnostics must never affect generation. */ }
 }
 
