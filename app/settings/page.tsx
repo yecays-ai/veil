@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { Archive, BookOpen, GitBranch, Regex, SlidersHorizontal } from "lucide-react";
+import { Archive, BookOpen, Brain, GitBranch, Regex, SlidersHorizontal } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -65,6 +65,13 @@ export default function Page() {
             description: "Export or import a local backup",
             href: "/settings/backup",
             icon: <Archive size={20} />,
+          },
+          {
+            id: "memory-maintenance",
+            label: "Memory Maintenance",
+            description: "Automatic Memory on this device",
+            href: "/settings/memory",
+            icon: <Brain size={20} />,
           },
         ]}
       />
