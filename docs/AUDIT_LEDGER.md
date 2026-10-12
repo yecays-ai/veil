@@ -230,3 +230,10 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 - 未验证：当前 PR head 的 CI/预览/审查以 GitHub 实际结果为准；真实模型提取质量、Token/费用、iPhone 前后台/锁屏/强制关闭/多标签页及大 History 性能待另行授权。未启用生产 tracking/维护，未产生真实维护模型调用；字符护栏不是精确 Token 预算。
 - 保留边界：uncertain 不自动重发，失败/too-large/安全 claim 耗尽保留状态，不静默跨水位；无维护状态或重试 UI。旧版/不遵守写入协议的 tab 仍不在锁保护承诺内。M3 iPhone 基础操作和 M4 Pickles 正向观察保留，不当 M5 验收。Memory Bank UI 拥挤单独后移；不进入 M6–M8。
 
+## Memory M5b 决策规则与来源修复（新增，2026-10-12）
+
+基线 `main 68f003320b59b2fba85e2e0ca68f6dfc8485d4c4`。状态：已修待验（PR 待 Lan 审核合并，未合并、未部署）。
+
+- 已修：UPDATE 新条目继承旧来源并登记单元素 `mergedFrom`（来源删除时整体撤销、旧版恢复），SUPERSEDE 不变；决策提示词重排（先状态变化再 IGNORE）；候选预算只统计发给模型的 active 候选。不迁移旧 UPDATE 记录，不清理现有 Memory。
+- 自动化证据：fake IndexedDB/Web Locks/stub，memory-* 与 backup-validation 定向 310/310；新测试在旧代码上失败 6 项；typecheck、改动文件 lint 通过。详见 [施工记录](memory-m5b-decision-fix.md) 与 [任务状态](work-status/2026-10-13-claude-m5b-decision-fix.md)。
+- 未验证：真实模型是否照新提示词决策（待另批的小规模付费评估）；iPhone 真机；Memory Maintenance 开关关闭情况。

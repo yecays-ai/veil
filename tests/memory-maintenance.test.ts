@@ -83,8 +83,15 @@ for (const op of ["CREATE", "UPDATE", "SUPERSEDE", "MERGE", "REINFORCE", "ARCHIV
       assert.deepEqual(await f.memory.listOperations("c"), operations);
       assert.deepEqual((await f.progress())?.completed, [[2, 2]], "later completed range cannot skip earlier evidence");
     });
-    if (op === "UPDATE" || op === "SUPERSEDE") {
+    if (op === "UPDATE") {
+      assert.deepEqual((await f.memory.getMemory("fresh"))?.sources, [{ sessionId: f.session.id, messageId: first.id }, { sessionId: f.session.id, messageId: second.id }]);
+      assert.deepEqual((await f.memory.getMemory("fresh"))?.lineage.mergedFrom, ["old"]);
+      await completeClear(f.memory, "c", f.session.id, new Set([second.id]));
+      assert.equal(await f.memory.getMemory("fresh"), undefined);
+      assert.equal((await f.memory.getMemory("old"))?.status, "active");
+    } else if (op === "SUPERSEDE") {
       assert.deepEqual((await f.memory.getMemory("fresh"))?.sources, [{ sessionId: f.session.id, messageId: second.id }]);
+      assert.equal((await f.memory.getMemory("fresh"))?.lineage.mergedFrom, undefined);
       await completeClear(f.memory, "c", f.session.id, new Set([second.id]));
       assert.equal(await f.memory.getMemory("fresh"), undefined);
       assert.equal((await f.memory.getMemory("old"))?.status, "active");

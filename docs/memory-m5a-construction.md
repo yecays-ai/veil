@@ -46,7 +46,7 @@
 
 ## Lineage 清理
 
-来源清理保持 manual 正文、类型、主体和状态；仅移除删除的来源。自动 UPDATE/SUPERSEDE 在有效后继消失后恢复前值状态，部分链删除会接续至仍有效的后继。多层 MERGE 展开到有效 originals；REINFORCE 仅移除对应证据。manual 权威、仍有效的 suppression 和其他活跃覆盖阻止复活。
+来源清理保持 manual 正文、类型、主体和状态；仅移除删除的来源。自动 UPDATE/SUPERSEDE 在有效后继消失后恢复前值状态（M5b 修复后 UPDATE 后继继承旧来源并带 `mergedFrom`），部分链删除会接续至仍有效的后继。多层 MERGE 展开到有效 originals；REINFORCE 仅移除对应证据。manual 权威、仍有效的 suppression 和其他活跃覆盖阻止复活。
 
 缺失节点、环或不互相对应的合并链所在受影响自动组件保留正文、置 flagged，并保存 `clearLineageIds` 和清理意图；后续续做不会因来源已被剥离而误认为清理完成。manual 单独的历史 dangling metadata 不撤销用户权威。意图 clearToken 与恢复 nonce 防止同毫秒/恢复后的旧失败记录污染新意图。
 
