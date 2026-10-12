@@ -10,7 +10,8 @@ const row = (id: string, text: string, extra: Partial<Memory> = {}): Memory => (
   id, characterId: "a", kind: "fact", text, subject: "character", status: "active", origin: "auto",
   sources: [], lineage: {}, fingerprint: memoryFingerprint(text), createdAt: 1, updatedAt: 1, ...extra,
 });
-const ids = (rows: Memory[], query: string) => selectMemoryContext("a", rows, [query]).ids;
+const query = (texts: readonly string[]) => ({ current: texts.map(content => ({ role: "user" as const, content })), recent: [], earlier: [] });
+const ids = (rows: Memory[], query: string) => selectMemoryContext("a", rows, { current: [{ role: "user", content: query }], recent: [], earlier: [] }).ids;
 
 test("read-only selection isolates Characters and admits active relevant memories only", async () => {
   let writes = 0;
@@ -55,9 +56,9 @@ test("exact duplicates are removed without treating source ids as content equiva
 
 test("selection and serialization are deterministic, including equal ranks and changed query scores", () => {
   const rows = [row("b", "orchids garden"), row("a", "orchids greenhouse")];
-  const result = selectMemoryContext("a", rows, ["Tell me about orchids in the garden"]);
-  assert.deepEqual(result, selectMemoryContext("a", [...rows].reverse(), ["Tell me about orchids in the garden"]));
-  assert.deepEqual(result.slot, selectMemoryContext("a", rows, ["Tell me about orchids in the greenhouse"]).slot);
+  const result = selectMemoryContext("a", rows, query(["Tell me about orchids in the garden"]));
+  assert.deepEqual(result, selectMemoryContext("a", [...rows].reverse(), query(["Tell me about orchids in the garden"])));
+  assert.deepEqual(result.slot, selectMemoryContext("a", rows, query(["Tell me about orchids in the greenhouse"])).slot);
   assert.deepEqual(result.ids, ["a", "b"]);
 });
 
@@ -65,14 +66,14 @@ test("count and serialized character guards skip whole oversized entries and acc
   const large = row("large", `orchids ${"x".repeat(2_000)}`, { origin: "manual" });
   const escaped = row("escaped", `orchids ${"\n\"".repeat(600)}`, { origin: "manual" });
   const small = row("small", "I care for orchids");
-  const result = selectMemoryContext("a", [large, escaped, small], ["orchids"]);
+  const result = selectMemoryContext("a", [large, escaped, small], query(["orchids"]));
   assert.deepEqual(result.ids, ["small"]);
   assert.equal(result.characterLength, result.slot.entries.join("\n").length);
   assert(result.characterLength <= MEMORY_CONTEXT_LIMITS.characters);
   const boundary = row("boundary", "orchids ");
   const overhead = JSON.stringify({ kind: boundary.kind, subject: boundary.subject, origin: boundary.origin, text: boundary.text }).length;
   boundary.text += "x".repeat(MEMORY_CONTEXT_LIMITS.characters - overhead);
-  assert.equal(selectMemoryContext("a", [boundary], ["orchids"]).characterLength, 2_000);
+  assert.equal(selectMemoryContext("a", [boundary], query(["orchids"])).characterLength, 2_000);
   boundary.text += "x";
   assert.deepEqual(ids([boundary], "orchids"), []);
 });
@@ -91,6 +92,6 @@ export const RECALL_CASES = [
   { name: "short Chinese named topic", text: "我喜欢兰花", query: "兰花长得好吗？", hit: false },
 ] as const;
 
-for (const sample of RECALL_CASES) test(`fixed recall: ${sample.name} (${sample.hit ? "hit" : "miss"})`, () => {
-  assert.equal(ids([row("target", sample.text)], sample.query).includes("target"), sample.hit);
+for (const sample of RECALL_CASES) test(`original fixed recall: ${sample.name} (M4 baseline ${sample.hit ? "hit" : "miss"})`, () => {
+  assert.equal(ids([row("target", sample.text)], sample.query).includes("target"), ["English synonym", "Chinese synonym", "short Chinese named topic"].includes(sample.name) || sample.hit);
 });

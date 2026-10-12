@@ -7,6 +7,7 @@ import type { WorldBookActivation } from "../worldbook-activation";
 import { applyRegex } from "../regex-engine";
 import type { RegexGroup } from "../regex";
 import { selfStateContent, type SelfState } from "./self-context";
+import type { MemoryConversation, MemoryContextMessage } from "../memory/context";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -72,6 +73,27 @@ export function memoryConversationText(context: PromptRuntimeContext, preset: Pr
   return [...history, ...pendingMessages(context)]
     .filter((message) => message.status === "sent" || message.status === "complete")
     .map((message) => promptContent(message, context));
+}
+/** Same transmitted window, partitioned for retrieval only; no extra history reads or prompt changes. */
+export function memoryConversation(context: PromptRuntimeContext, preset: Preset): MemoryConversation {
+  const history = enabledMarkers(preset).some((entry) => entry.marker === "history") ? historyMessages(context)
+    .filter((message) => message.status === "sent" || message.status === "complete") : [];
+  const pending = pendingMessages(context).filter((message) => message.status === "sent" || message.status === "complete");
+  const current = pending.length ? pending : history.filter((message) => message.role === "user").slice(-1);
+  const currentIds = new Set(current.map((message) => message.id));
+  const groups: ChatMessage[][] = [];
+  for (const message of history) {
+    const last = groups.at(-1);
+    if (!last || (message.role === "user" && last.some((item) => item.role === "assistant"))) groups.push([message]);
+    else last.push(message);
+  }
+  const recentGroups = groups.filter((turn) => turn.some((message) => message.role === "user")
+    && turn.some((message) => message.role === "assistant")).slice(-2);
+  const recentIds = new Set(recentGroups.flat().map((message) => message.id));
+  const body = (message: ChatMessage): MemoryContextMessage => ({ role: message.role === "assistant" ? "assistant" : "user", content: promptContent(message, context) });
+  return { current: current.map(body),
+    recent: recentGroups.map((turn) => turn.filter((message) => !currentIds.has(message.id)).map(body)).filter((turn) => turn.length),
+    earlier: history.filter((message) => !currentIds.has(message.id) && !recentIds.has(message.id)).map(body) };
 }
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
   const body = message.role === "user" || message.role === "assistant"
