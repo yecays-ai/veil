@@ -75,6 +75,8 @@ test("validation rejects malformed Memory, unknown stores, wrong version and bro
     ["unknown Character", (d) => { d.memory.memories[1].characterId = "nobody"; }, "missing-character"],
     ["operation id mismatch", (d) => { d.memory.operations[0].id = "peter\u00009"; }, "invalid-data"],
     ["operation of another Character", (d) => { d.memory.operations[0].characterId = "pep"; d.memory.operations[0].id = "pep\u00001"; }, "cross-character-reference"],
+    ["clear targets without an intent", (d) => { d.memory.cursors[0].clearMessageIds = ["user-test"]; }, "invalid-data"],
+    ["duplicate clear targets", (d) => { Object.assign(d.memory.cursors[0], { clearRequestedAt: TEST_NOW, clearMessageIds: ["x", "x"] }); }, "invalid-data"],
     ["cursor id mismatch", (d) => { d.memory.cursors[0].id = "other"; }, "invalid-data"],
     ["source in another Character's chat", (d) => { d.memory.memories[1].characterId = "pep"; }, "cross-character-reference"],
     ["source message in another session", (d) => {

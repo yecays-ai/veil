@@ -66,5 +66,11 @@ export type MemoryCursor = {
   failureCount: number;
   failureReason?: string;
   clearRequestedAt?: number;
+  /**
+   * Message ids that sources of this session pointed at when the clear was requested. Lets a later resume tell a
+   * clear that happened (those messages are gone) from one that failed, and keeps sources of newer messages.
+   * Absent on intents recorded before this field existed.
+   */
+  clearMessageIds?: string[];
   updatedAt: number;
 };

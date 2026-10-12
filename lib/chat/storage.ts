@@ -489,6 +489,17 @@ export class ChatStorage {
     return this.transaction("readonly", (tx) =>
       request<number>(tx.objectStore("messages").index("sessionId").count(sessionId)), ["messages"]);
   }
+  /** Read-only: which of these message ids still exist in the conversation. */
+  existingMessageIds(sessionId: string, ids: readonly string[]): Promise<Set<string>> {
+    return this.transaction("readonly", async (tx) => {
+      const found = new Set<string>();
+      for (const id of ids) {
+        const row: ChatMessage | undefined = await request(tx.objectStore("messages").get(id));
+        if (row?.sessionId === sessionId) found.add(id);
+      }
+      return found;
+    }, ["messages"]);
+  }
   /**
    * Removes Characters from every group's member list. A group is never deleted, even when no member
    * remains; its `characterId` then becomes "" instead of keeping a removed Character's ID. Messages are
