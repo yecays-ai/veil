@@ -1,0 +1,8 @@
+.memory-bank .memory-bank-actions { margin: 12px 0 4px; }
+.memory-bank .memory-bank-hint { margin: 0 0 12px; font-size: 13px; }
+.memory-bank .memory-bank-filters { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
+.memory-bank .memory-bank-filters > input { grid-column: 1 / -1; }
+.memory-bank .memory-bank-list { display: grid; gap: 12px; margin: 0; padding: 0; list-style: none; }
+.memory-bank .memory-bank-list > li { display: grid; gap: 6px; }
+.memory-bank .memory-bank-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.memory-bank .memory-bank-source { display: block; }
