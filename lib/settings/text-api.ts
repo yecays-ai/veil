@@ -98,7 +98,7 @@ export async function testTextApiConnection(
   const messages = [{ role: "user" as const, content: "Reply with OK only." }];
   const request = createCompletionRequestContext("test-connection");
   let usage: CompletionUsage | null = null;
-  const finishTerminal = startCompletionTerminal(request);
+  const finishTerminal = startCompletionTerminal(request, { model: config.model, messages });
   let end: CompletionTerminal = { outcome: "abandoned" };
   logCompletionStart(request, config.model.trim(), messages, false);
   try {
@@ -126,7 +126,7 @@ export async function testTextApiConnection(
     throw error;
   } finally {
     logCompletionUsage(request, usage);
-    finishTerminal(end);
+    finishTerminal(end, usage);
   }
 }
 export async function fetchTextApiModels(
