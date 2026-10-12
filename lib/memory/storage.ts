@@ -14,6 +14,10 @@ export class MemoryProtectedError extends Error {
 export class MemoryDuplicateError extends Error {
   constructor(readonly existingId: string) { super("A memory with the same text already exists for this Character."); }
 }
+/** The row or undo record changed since the caller read it (for example in another tab); nothing was written. */
+export class MemoryConflictError extends Error {
+  constructor() { super("This memory changed somewhere else. Reload and try again."); }
+}
 
 export const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
@@ -165,13 +169,18 @@ export class MemoryStorage {
   /**
    * Apply puts, removals and suppressions as one transaction and record one undo operation (trimmed
    * to the last five per Character in the same transaction). Any failure rolls the whole batch back.
-   * `auto: true` marks an automatic edit, which may not touch manual memories.
+   * `auto: true` marks an automatic edit, which may not touch manual memories. `expectUpdatedAt` maps memory ids
+   * to the `updatedAt` the caller last read; if any row is gone or changed, nothing is written.
    */
   applyChange(characterId: string, label: string,
     change: { put?: readonly MemoryDraft[]; remove?: readonly string[]; suppress?: readonly Omit<Suppression, "characterId" | "createdAt">[] },
-    options: { auto?: boolean } = {}): Promise<MemoryOperation> {
+    options: { auto?: boolean; expectUpdatedAt?: Readonly<Record<string, number>> } = {}): Promise<MemoryOperation> {
     return this.transaction("readwrite", async (tx) => {
       const memories = tx.store("memories");
+      for (const [id, updatedAt] of Object.entries(options.expectUpdatedAt ?? {})) {
+        const current = await request<Memory | undefined>(memories.get(id));
+        if (current?.characterId !== characterId || current.updatedAt !== updatedAt) throw new MemoryConflictError();
+      }
       const changes: MemoryChange[] = [];
       const now = this.now();
       for (const draft of change.put ?? []) {
@@ -187,7 +196,8 @@ export class MemoryStorage {
           if (clash) throw new MemoryDuplicateError(clash.id);
         }
         const after: Memory = { ...draft, sources: normalizeSources(draft.sources), lineage: { ...draft.lineage },
-          fingerprint, createdAt: before?.createdAt ?? now, updatedAt: now };
+          // Strictly increasing per row, so a stale `expectUpdatedAt` is caught even within one millisecond.
+          fingerprint, createdAt: before?.createdAt ?? now, updatedAt: before ? Math.max(now, before.updatedAt + 1) : now };
         await request(memories.put(after));
         changes.push({ before, after });
       }
@@ -224,11 +234,18 @@ export class MemoryStorage {
     return operation;
   }
 
-  /** Revert the newest operation of a Character and drop its record. Returns it, or undefined if none. */
-  undoLastOperation(characterId: string): Promise<MemoryOperation | undefined> {
+  /**
+   * Revert the newest operation of a Character and drop its record. Returns it, or undefined if none. With
+   * `expected` (the newest operation the caller showed), a different newest operation fails with
+   * MemoryConflictError instead of undoing something the user did not see. Sequence numbers are reused after an
+   * undo, so the creation time and label are compared too.
+   */
+  undoLastOperation(characterId: string, expected?: Pick<MemoryOperation, "id" | "createdAt" | "label">): Promise<MemoryOperation | undefined> {
     return this.transaction("readwrite", async (tx) => {
       const operations = tx.store("operations");
       const last = (await request<MemoryOperation[]>(operations.index("characterId").getAll(characterId))).sort((a, b) => a.seq - b.seq).at(-1);
+      if (expected && (last?.id !== expected.id || last.createdAt !== expected.createdAt || last.label !== expected.label))
+        throw new MemoryConflictError();
       if (!last) return undefined;
       const memories = tx.store("memories");
       for (const { before, after } of [...last.changes].reverse()) {
