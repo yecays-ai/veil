@@ -237,6 +237,9 @@ test("deleting a Character lists what goes with it, reports an unfinished step h
   const { browserBindingStorage } = await import("../lib/binding-storage");
   const { browserThemeStorage } = await import("../lib/theme-storage");
   const { normalizeDocument } = await import("../lib/theme-types");
+  const { browserMemoryStorage } = await import("../lib/memory/browser");
+  let memoryDeletes = 0;
+  browserMemoryStorage.transaction = (async () => { memoryDeletes++; }) as never;
   const originals = { list: chatStorage.listSessions, count: chatStorage.countMessages, group: chatStorage.removeGroupMembers,
     contacts: browserContactStorage.load, bindingsLoad: browserBindingStorage.load, bindingsWrite: browserBindingStorage.transact, theme: browserThemeStorage.load };
   const session = { id: "s1", type: "direct", characterId: "p", backgroundImage: null, generation: undefined };
@@ -266,6 +269,7 @@ test("deleting a Character lists what goes with it, reports an unfinished step h
     await app.wait(() => app.container.textContent?.includes("did not finish") === true);
     assert.match(app.container.textContent!, /Binding overrides: bindings storage unavailable/);
     assert.deepEqual(deleted, ["s1"], "the other steps finished");
+    assert.equal(memoryDeletes, 1, "Memory cleanup ran too");
     assert.equal((await app.foundation.load()).characters.length, 0, "the Character itself is already gone");
     assert.deepEqual(app.pushes, [], "stays on the page while cleanup is unfinished");
     failBindings = false;
@@ -276,6 +280,7 @@ test("deleting a Character lists what goes with it, reports an unfinished step h
   } finally {
     Object.assign(chatStorage, { listSessions: originals.list, countMessages: originals.count, removeGroupMembers: originals.group });
     Reflect.deleteProperty(chatStorage, "deleteSession");
+    Reflect.deleteProperty(browserMemoryStorage, "transaction");
     browserContactStorage.load = originals.contacts; browserBindingStorage.load = originals.bindingsLoad;
     browserBindingStorage.transact = originals.bindingsWrite; browserThemeStorage.load = originals.theme;
     await app.cleanup();

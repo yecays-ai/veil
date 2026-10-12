@@ -5,6 +5,7 @@ import { CirclePlus, MessageCircle, Search, Users } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
+import { withMemoryClear } from "../../lib/memory/browser";
 import { prefetchChatSession } from "../../lib/chat/session-prefetch";
 import { lastSessionList, rememberSessionList } from "../../lib/chat/session-list-snapshot";
 import type { ChatSession } from "../../lib/chat/types";
@@ -112,7 +113,8 @@ export function MessagesHome() {
     setDeleteBusy(true);
     setDeleteError("");
     try {
-      await chatStorage.deleteSession(deleteTarget.id);
+      const { cleanupIncomplete } = await withMemoryClear(deleteTarget, () => chatStorage.deleteSession(deleteTarget.id));
+      if (cleanupIncomplete) setDeleteError("Conversation deleted. Memory cleanup is pending.");
       setDeleteTarget(null);
       setOpenRowId(null);
     } catch (reason) {

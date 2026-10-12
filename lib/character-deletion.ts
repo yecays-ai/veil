@@ -4,6 +4,8 @@ import { browserBindingStorage } from "./binding-storage";
 import { browserContactStorage, removeContact, type ContactDocument } from "./contact-storage";
 import { chatStorage, type ChatStorage } from "./chat/storage";
 import type { ChatSession } from "./chat/types";
+import { deleteCharacterMemory } from "./memory/lifecycle";
+import { browserMemoryStorage } from "./memory/browser";
 import { deleteCharacter } from "./foundation";
 import type { Character, FoundationDocument } from "./foundation-types";
 import { browserPresenceStorage, presenceRecord, removePresence, type PresenceDocument } from "./presence/storage";
@@ -19,6 +21,8 @@ export type CleanupDeps = {
   bindings: Access<BindingDocument>;
   presence: Access<PresenceDocument>;
   chat: Pick<ChatStorage, "listSessions" | "countMessages" | "deleteSession" | "removeGroupMembers">;
+  /** Removes every Memory row the Character owns (memories, suppressions, undo records, cursors). */
+  memory: { deleteCharacter(characterId: string, scope?: PersistenceWriteScope): Promise<void>; listCharacterIds(): Promise<string[]> };
 };
 /** `updateTheme` should be the mounted ThemeProvider's commit, so the open page sees the change. */
 export function browserCleanupDeps(updateTheme: Access<ThemeDocument>["update"]): CleanupDeps {
@@ -28,14 +32,16 @@ export function browserCleanupDeps(updateTheme: Access<ThemeDocument>["update"])
     bindings: { load: () => browserBindingStorage.load(), update: (update, scope) => browserBindingStorage.transact(update, scope) },
     presence: { load: () => browserPresenceStorage.load(), update: (update, scope) => browserPresenceStorage.transact(update, scope) },
     chat: chatStorage,
+    memory: { deleteCharacter: (characterId, scope) => deleteCharacterMemory(browserMemoryStorage, characterId, scope),
+      listCharacterIds: () => browserMemoryStorage.listCharacterIds() },
   };
 }
 
-export type CleanupStep = "widgets" | "groups" | "conversation" | "contact" | "bindings" | "presence";
+export type CleanupStep = "widgets" | "groups" | "conversation" | "contact" | "bindings" | "presence" | "memory";
 export type CleanupReport = { completed: CleanupStep[]; failed: { step: CleanupStep; message: string }[] };
 export const CLEANUP_STEP_LABEL: Record<CleanupStep, string> = {
   widgets: "Here & There widget links and comments", groups: "group memberships",
-  conversation: "private conversation", contact: "contact record", bindings: "Binding overrides", presence: "presence data",
+  conversation: "private conversation", contact: "contact record", bindings: "Binding overrides", presence: "presence data", memory: "memory",
 };
 const directSession = (sessions: readonly ChatSession[], characterId: string) =>
   sessions.find((session) => session.type !== "group" && session.characterId === characterId);
@@ -115,6 +121,7 @@ async function cleanupInScope(characterId: string, deps: CleanupDeps, scope: Per
     if (presenceRecord(await deps.presence.load(), characterId))
       await deps.presence.update((presence) => removePresence(presence, characterId), scope);
   });
+  await run("memory", async () => { await deps.memory.deleteCharacter(characterId, scope); });
   return report;
 }
 

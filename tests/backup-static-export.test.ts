@@ -75,6 +75,7 @@ async function environment() {
   await seed(indexedDB, "veil-chat-v2", { ...data.chat, assets: [
     { id: "chat-image-test", blob: blob(), createdAt: TEST_NOW }, { id: "chat-orphan", blob: blob(), createdAt: TEST_NOW - 1000 },
   ] });
+  await seed(indexedDB, "veil-memory-v1", data.memory);
   await seed(indexedDB, "veil-appearance-images-v1", { assets: [{ id: imageId, blob: blob(), type: "image/png", createdAt: TEST_NOW,
     holders: [{ id: "temporary-holder", at: TEST_NOW }] }] });
   await seed(indexedDB, "veil-api-config-v1", { configs: data.apiConfigs.map((row) => ({ ...row, apiKey: secret })) });
@@ -87,11 +88,12 @@ async function environment() {
 function byId(data: BackupData) {
   const result = structuredClone(data);
   for (const rows of Object.values(result.chat)) rows.sort((a, b) => a.id.localeCompare(b.id));
+  for (const rows of Object.values(result.memory)) rows.sort((a, b) => a.id.localeCompare(b.id));
   result.apiConfigs.sort((a, b) => a.id.localeCompare(b.id));
   return result;
 }
 
-test("four databases and seven keys round-trip through v1 validation with all owned data and image bytes", async () => {
+test("five databases and seven keys round-trip through v2 validation with all owned data and image bytes", async () => {
   const env = await environment(), before = await readStaticBackupSource(env.source);
   env.reads.length = 0;
   const localBefore = new Map(env.values), catalogBefore = await env.source.indexedDB.databases();
@@ -103,7 +105,7 @@ test("four databases and seven keys round-trip through v1 validation with all ow
   let result;
   try { result = await exportStaticBackup(env.source, metadata); }
   finally { IDBDatabase.prototype.transaction = original; }
-  assert.equal(modes.length, 4); assert.equal(env.reads.length, 7);
+  assert.equal(modes.length, 5); assert.equal(env.reads.length, 7);
   assert.deepEqual(new Set(env.reads), new Set(Object.values(BACKUP_LOCAL_KEYS)));
   assert.deepEqual(env.values, localBefore); assert.deepEqual(await env.source.indexedDB.databases(), catalogBefore);
   assert.deepEqual(await readStaticBackupSource(env.source), before);
@@ -127,6 +129,7 @@ test("exporting an empty environment neither creates databases nor writes defaul
   assert.deepEqual(await indexedDB.databases(), []); assert.equal(requested.length, 7);
   assert.equal(checked.data.foundation, null); assert.equal(checked.data.appearance, null); assert.equal(checked.data.presets, null);
   assert.deepEqual(checked.data.chat, { sessions: [], messages: [], chatSettings: [], worldBookStates: [] });
+  assert.deepEqual(checked.data.memory, { memories: [], suppressions: [], operations: [], cursors: [] });
 });
 
 test("the same fixed authorities and metadata produce the same bytes, IDs and counts", async () => {

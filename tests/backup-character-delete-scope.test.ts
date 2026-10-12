@@ -54,7 +54,7 @@ test("a failing cleanup step releases the lease, is reported, and leaves the oth
   const failing: CleanupDeps = { ...world.deps, presence: { ...world.deps.presence, update: () => Promise.reject(new Error("presence down")) } };
   const report = await deleteCharacterWithData({ characterId: A, commitFoundation: world.commitFoundation, deps: failing, writeGate: gate });
   assert.deepEqual(report.failed, [{ step: "presence", message: "presence down" }]);
-  assert.equal(report.completed.length, 5);
+  assert.equal(report.completed.length, 6);
   assert.equal(counts.shared, 1);
   // The lease is gone: an exclusive snapshot can run. The known leftover (presence data) is recorded, not hidden.
   let ran = false;
@@ -111,6 +111,6 @@ test("a cleanup step failing inside the scope still yields the report, for delet
     update: (_update, scope) => runPersistenceWrite(gate, () => Promise.reject(new Error("presence down")), scope) } };
   const report = await deleteCharacterWithData({ characterId: A, commitFoundation: world.commitFoundation, deps: failing, writeGate: gate });
   assert.deepEqual(report.failed, [{ step: "presence", message: "presence down" }]);
-  assert.equal(report.completed.length, 5);
+  assert.equal(report.completed.length, 6);
   assert.deepEqual((await cleanupCharacterData(A, failing, gate)).failed, [{ step: "presence", message: "presence down" }]);
 });

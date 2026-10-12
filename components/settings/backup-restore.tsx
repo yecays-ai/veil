@@ -10,7 +10,7 @@ import { BackupValidationError } from "../../lib/backup/format";
 
 const DOMAIN_LABELS: Record<string, string> = {
   foundation: "Profiles", appearance: "Appearance", bindings: "Bindings", presets: "Presets", regex: "Regex",
-  worldbooks: "World books", contacts: "Contacts", presence: "Presence", chat: "Chat records", apiConfigs: "API settings",
+  worldbooks: "World books", contacts: "Contacts", presence: "Presence", chat: "Chat records", memory: "Memory", apiConfigs: "API settings",
 };
 const BLOCKER_TEXT: Record<RestoreBlocker["code"], string> = {
   "backup-invalid": "This backup file is damaged or not supported.",

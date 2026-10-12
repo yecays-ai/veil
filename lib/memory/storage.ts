@@ -38,8 +38,8 @@ export function normalizeSources(sources: readonly MemorySource[]): MemorySource
 export const cursorId = (characterId: string, sessionId: string) => `${characterId}\u0000${sessionId}`;
 
 /**
- * Independent `veil-memory-v1` database. Nothing in the app opens it yet; the backup coverage
- * that must exist before production use lands in the next PR.
+ * Independent `veil-memory-v1` database. Full backup coverage (export, validation, restore) lives in
+ * lib/backup; the database must not be opened by anything that bypasses that coverage.
  */
 export class MemoryStorage {
   private database?: Promise<IDBDatabase>;
@@ -115,6 +115,25 @@ export class MemoryStorage {
 
   listMemories(characterId: string): Promise<Memory[]> {
     return this.transaction("readonly", (tx) => request<Memory[]>(tx.store("memories").index("characterId").getAll(characterId)));
+  }
+
+  /** Every Character id that owns at least one row in any store. */
+  listCharacterIds(): Promise<string[]> {
+    return this.transaction("readonly", async (tx) => {
+      const ids = new Set<string>();
+      for (const name of MEMORY_STORES) {
+        const cursor = tx.store(name).index("characterId").openKeyCursor(null, "nextunique");
+        await new Promise<void>((resolve, reject) => {
+          cursor.onerror = () => reject(new Error("Memory storage could not be read."));
+          cursor.onsuccess = () => {
+            const position = cursor.result;
+            if (!position) { resolve(); return; }
+            ids.add(String(position.key)); position.continue();
+          };
+        });
+      }
+      return [...ids].sort();
+    });
   }
 
   getMemory(id: string): Promise<Memory | undefined> {
@@ -224,6 +243,17 @@ export class MemoryStorage {
       await request(operations.delete(last.id));
       return last;
     });
+  }
+
+  /** Restore only: replaces every row of every store in one transaction. Callers hold the exclusive backup lock. */
+  replaceAllRows(rows: Record<MemoryStoreName, readonly unknown[]>, scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      for (const name of MEMORY_STORES) {
+        const store = tx.store(name);
+        await request(store.clear());
+        for (const row of rows[name]) await request(store.put(row));
+      }
+    }, scope);
   }
 
   /** Create or update the progress/failure row of a session; never touches a pending clear intent. */

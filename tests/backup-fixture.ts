@@ -4,10 +4,28 @@ import { createPresetDocument } from "../lib/preset";
 import { defaultRegexGroup } from "../lib/regex-defaults";
 import { normalizeContacts } from "../lib/contact-storage";
 import { normalizePresenceDocument } from "../lib/presence/storage";
+import { memoryFingerprint } from "../lib/memory/fingerprint";
+import type { Memory, Suppression } from "../lib/memory/types";
 import { BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, type BackupData, type BackupManifest, type BackupDomain } from "../lib/backup/format";
 
 export const TEST_COMMIT = "1a281e33c8317f9ea9dbd71f5b700fc916dc2669";
 export const TEST_NOW = 1_700_000_000_000;
+/** Memory rows for Character peter. One source points at a message that no longer exists, which the format allows. */
+export function memoryData(): BackupData["memory"] {
+  const memory = (id: string, text: string, extra: Partial<Memory> = {}): Memory => ({ id, characterId: "peter", kind: "fact", text, subject: "user",
+    status: "active", origin: "auto", sources: [{ sessionId: "character:peter", messageId: "user-test" }], lineage: {},
+    fingerprint: memoryFingerprint(text), createdAt: TEST_NOW, updatedAt: TEST_NOW, ...extra });
+  const suppression: Suppression = { id: "suppress-1", characterId: "peter", fingerprint: memoryFingerprint("old fact"), reason: "deleted",
+    sources: [{ sessionId: "character:peter", messageId: "reply-test" }], createdAt: TEST_NOW };
+  const first = memory("memory-1", "Likes tea");
+  return {
+    memories: [first, memory("memory-2", "Moved house", { origin: "manual", sources: [{ sessionId: "character:peter", messageId: "deleted-message" }] })],
+    suppressions: [suppression],
+    operations: [{ id: "peter\u00001", characterId: "peter", seq: 1, label: "add", createdAt: TEST_NOW, changes: [{ before: null, after: first }],
+      suppressionChanges: [{ before: null, after: suppression }] }],
+    cursors: [{ id: "peter\u0000character:peter", characterId: "peter", sessionId: "character:peter", processedMessageId: "reply-test", failureCount: 0, updatedAt: TEST_NOW }],
+  };
+}
 export function backupData(): BackupData {
   const foundation = normalizeFoundation({ ...defaultFoundation(), characters: [
     { characterId: "peter", name: "Peter", statusMessage: "Test signature" },
@@ -39,6 +57,7 @@ export function backupData(): BackupData {
         { id: "chat-background", blur: 3 }],
       worldBookStates: [{ id: "character:peter", state: { cycle: 1, prefix: [], entries: {} } }],
     },
+    memory: memoryData(),
     apiConfigs: [{ id: "api-test", name: "Test API", provider: "OpenAI-compatible", model: "test-model", baseUrl: "https://example.invalid/v1" }],
   };
 }
@@ -57,6 +76,7 @@ export async function packageFixture(data: BackupData = backupData()): Promise<F
     let records: number;
     if (payload === null) records = 0;
     else if (domain === "chat") records = Object.values(data.chat).reduce((sum, rows) => sum + rows.length, 0);
+    else if (domain === "memory") records = Object.values(data.memory).reduce((sum, rows) => sum + rows.length, 0);
     else if (domain === "apiConfigs") records = data.apiConfigs.length;
     else if (domain === "presets") records = data.presets!.presets.length;
     else if (domain === "regex") records = data.regex!.groups.length;

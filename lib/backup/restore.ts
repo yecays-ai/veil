@@ -2,6 +2,7 @@ import { ApiConfigStorage } from "../api-config-storage";
 import { AppearanceImageStorage, type ImageAsset } from "../appearance-image-storage";
 import { IndexedDBDocumentStorage } from "../core-document-storage";
 import { ChatStorage } from "../chat/storage";
+import { MemoryStorage, MEMORY_STORES } from "../memory/storage";
 import { FOUNDATION_STORAGE_KEY } from "../foundation-storage";
 import { BackupCoordinator, type BackupLockManager, type BackupLockOptions } from "./coordination";
 import { type BackupDomain, type ValidatedBackup } from "./format";
@@ -15,10 +16,11 @@ import { digestImageRows } from "./image-digest";
 import { RESTORE_JOURNAL_KEY } from "./restore-journal";
 export { RESTORE_JOURNAL_KEY } from "./restore-journal";
 /** Write order. Chat rows and chat images are one atomic transaction; the foundation document goes last. */
-export const RESTORE_UNITS = ["chat", "appearanceAssets", "apiConfigs", "appearance", "bindings", "presets", "regex",
+export const RESTORE_UNITS = ["chat", "memory", "appearanceAssets", "apiConfigs", "appearance", "bindings", "presets", "regex",
   "worldbooks", "contacts", "presence", "foundation"] as const;
 export type RestoreUnit = typeof RESTORE_UNITS[number];
 const EMPTY = "empty";
+const emptyMemory = (): StaticBackupSnapshot["memory"] => ({ memories: [], suppressions: [], operations: [], cursors: [] });
 const CHAT_STORES = ["sessions", "messages", "chatSettings", "assets", "worldBookStates"] as const;
 
 export type RestoreJournal = {
@@ -56,6 +58,7 @@ export function createUnitWriters(device: RestoreDevice): UnitWriters {
   const core = new IndexedDBDocumentStorage(factory, passthrough);
   const chat = new ChatStorage(factory, () => undefined, passthrough);
   const appearance = new AppearanceImageStorage(factory, Date.now, passthrough);
+  const memory = new MemoryStorage(factory, Date.now, passthrough);
   const api = new ApiConfigStorage(factory, passthrough);
   const none = { sessions: [], messages: [], chatSettings: [], assets: [], worldBookStates: [] };
   const local = (domain: keyof typeof BACKUP_LOCAL_KEYS) => ({
@@ -68,6 +71,7 @@ export function createUnitWriters(device: RestoreDevice): UnitWriters {
   });
   return {
     chat: { write: (s) => chat.replaceAllRows(s.chat as typeof none), clear: () => chat.replaceAllRows(none) },
+    memory: { write: (s) => memory.replaceAllRows(s.memory), clear: () => memory.replaceAllRows(emptyMemory()) },
     appearanceAssets: { write: (s) => appearance.replaceAllAssets(s.appearanceAssets as ImageAsset[]), clear: () => appearance.replaceAllAssets([]) },
     apiConfigs: { write: (s) => api.replaceAllConfigs(s.apiConfigs as never[]), clear: () => api.replaceAllConfigs([]) },
     appearance: local("appearance"), bindings: local("bindings"), presets: local("presets"), regex: local("regex"),
@@ -106,6 +110,7 @@ export async function digestUnits(snapshot: StaticBackupSnapshot, imageHashes = 
   const appearanceAssets = await digestImageRows(snapshot.appearanceAssets, imageHashes);
   const values: Record<RestoreUnit, unknown | null> = {
     chat: Object.values(chat).every((rows) => rows.length === 0) ? null : Object.fromEntries(CHAT_STORES.map((name) => [name, byId(name === "assets" ? chatAssets : chat[name] ?? [])])),
+    memory: Object.values(snapshot.memory).every((rows) => rows.length === 0) ? null : Object.fromEntries(MEMORY_STORES.map((name) => [name, byId(snapshot.memory[name])])),
     appearanceAssets: appearanceAssets.length ? byId(appearanceAssets) : null,
     apiConfigs: snapshot.apiConfigs.length ? byId(snapshot.apiConfigs).map((row) => { const { apiKey: _key, ...rest } = row as { apiKey?: unknown }; void _key; return rest; }) : null,
     appearance: snapshot.documents.appearance ?? null, bindings: snapshot.documents.bindings ?? null,
@@ -128,6 +133,7 @@ export function snapshotFromBackup(validated: ValidatedBackup, files: ReadonlyMa
     documents[domain] = validated.data[domain];
   return {
     documents,
+    memory: validated.data.memory,
     chat: { sessions, messages, chatSettings, worldBookStates,
       assets: assets("chat").map((a) => ({ id: a.id, blob: new Blob([bytes(a.path)] as BlobPart[], { type: a.mime }), createdAt: a.createdAt })) },
     appearanceAssets: assets("appearance").map((a) => ({ id: a.id, blob: new Blob([bytes(a.path)] as BlobPart[], { type: a.mime }), type: a.mime, createdAt: a.createdAt })),
@@ -146,7 +152,7 @@ export type RestoreOptions = BackupLockOptions & {
 
 type Run = { device: RestoreDevice; writers: UnitWriters; safety: SafetyCopyStore };
 
-const blankSnapshot = (): StaticBackupSnapshot => ({ documents: {}, appearanceAssets: [], apiConfigs: [],
+const blankSnapshot = (): StaticBackupSnapshot => ({ documents: {}, memory: emptyMemory(), appearanceAssets: [], apiConfigs: [],
   chat: { sessions: [], messages: [], chatSettings: [], assets: [], worldBookStates: [] } });
 const before = (journal: RestoreJournal, unit: RestoreUnit) => journal.kind === "replace" ? journal.previous[unit] : EMPTY;
 

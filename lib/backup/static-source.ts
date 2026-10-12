@@ -3,6 +3,8 @@ import { FOUNDATION_STORAGE_KEY } from "../foundation-storage";
 import { CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION } from "../chat/storage";
 import { APPEARANCE_IMAGE_DATABASE_NAME, APPEARANCE_IMAGE_DATABASE_VERSION } from "../appearance-image-storage";
 import { API_CONFIG_DATABASE_NAME, API_CONFIG_DATABASE_VERSION } from "../api-config-storage";
+import { MEMORY_DATABASE_NAME, MEMORY_DATABASE_VERSION } from "../memory/types";
+import { MEMORY_STORES } from "../memory/storage";
 import { parseBackupJson } from "./json";
 import { BackupValidationError, type BackupDomain } from "./format";
 import { SAFETY_DATABASE_NAME } from "./safety-copy";
@@ -15,6 +17,7 @@ export const BACKUP_LOCAL_KEYS = {
 const DATABASES = [
   { name: CORE_DATABASE_NAME, version: CORE_DATABASE_VERSION, stores: ["documents"], key: "key" },
   { name: CHAT_DATABASE_NAME, version: CHAT_DATABASE_VERSION, stores: ["sessions", "messages", "chatSettings", "assets", "worldBookStates"], key: "id" },
+  { name: MEMORY_DATABASE_NAME, version: MEMORY_DATABASE_VERSION, stores: MEMORY_STORES, key: "id" },
   { name: APPEARANCE_IMAGE_DATABASE_NAME, version: APPEARANCE_IMAGE_DATABASE_VERSION, stores: ["assets"], key: "id" },
   { name: API_CONFIG_DATABASE_NAME, version: API_CONFIG_DATABASE_VERSION, stores: ["configs"], key: "id" },
 ] as const;
@@ -22,6 +25,7 @@ export type StaticBackupSource = { localStorage: Pick<Storage, "getItem">; index
 export type StaticBackupSnapshot = {
   documents: Partial<Record<BackupDomain, unknown>>;
   chat: Record<string, unknown[]>;
+  memory: Record<typeof MEMORY_STORES[number], unknown[]>;
   appearanceAssets: unknown[];
   apiConfigs: unknown[];
 };
@@ -123,6 +127,7 @@ export async function readStaticBackupSource(source: StaticBackupSource): Promis
   const rawChat = snapshots[CHAT_DATABASE_NAME];
   return { documents,
     chat: Object.fromEntries(["sessions", "messages", "chatSettings", "assets", "worldBookStates"].map((key) => [key, rawChat[key] ?? []])),
+    memory: Object.fromEntries(MEMORY_STORES.map((key) => [key, snapshots[MEMORY_DATABASE_NAME][key] ?? []])) as StaticBackupSnapshot["memory"],
     appearanceAssets: snapshots[APPEARANCE_IMAGE_DATABASE_NAME].assets ?? [],
     apiConfigs: snapshots[API_CONFIG_DATABASE_NAME].configs ?? [],
   };
