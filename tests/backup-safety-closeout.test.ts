@@ -110,7 +110,7 @@ test("the internal safety-copy database is explicitly excluded from business exp
   const snapshot = await readStaticBackupSource(device);
   await createSafetyCopyStore(device.indexedDB).save("simulated-copy", snapshot, TEST_NOW);
   const result = await exportStaticBackup(device, { backupId: "test", createdAt: TEST_NOW, sourceCommit: TEST_COMMIT });
-  assert.equal(result.files.size, 10);
+  assert.equal(result.files.size, 11);
   assert.deepEqual(await readStaticBackupSource(device), snapshot);
 });
 

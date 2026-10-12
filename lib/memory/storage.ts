@@ -38,8 +38,8 @@ export function normalizeSources(sources: readonly MemorySource[]): MemorySource
 export const cursorId = (characterId: string, sessionId: string) => `${characterId}\u0000${sessionId}`;
 
 /**
- * Independent `veil-memory-v1` database. Nothing in the app opens it yet; the backup coverage
- * that must exist before production use lands in the next PR.
+ * Independent `veil-memory-v1` database. Full backup coverage (export, validation, restore) lives in
+ * lib/backup; the database must not be opened by anything that bypasses that coverage.
  */
 export class MemoryStorage {
   private database?: Promise<IDBDatabase>;
@@ -224,6 +224,17 @@ export class MemoryStorage {
       await request(operations.delete(last.id));
       return last;
     });
+  }
+
+  /** Restore only: replaces every row of every store in one transaction. Callers hold the exclusive backup lock. */
+  replaceAllRows(rows: Record<MemoryStoreName, readonly unknown[]>, scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (tx) => {
+      for (const name of MEMORY_STORES) {
+        const store = tx.store(name);
+        await request(store.clear());
+        for (const row of rows[name]) await request(store.put(row));
+      }
+    }, scope);
   }
 
   /** Create or update the progress/failure row of a session; never touches a pending clear intent. */

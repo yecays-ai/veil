@@ -59,7 +59,8 @@ function withoutEmptyLegacyRemark(sessions: unknown[]): unknown[] {
 export function recordCount(domain: BackupDomain, value: unknown): number {
   if (value === null) return 0;
   if (domain === "apiConfigs") return (value as unknown[]).length;
-  if (domain === "chat") return Object.values(value as BackupData["chat"]).reduce((count, rows) => count + rows.length, 0);
+  if (domain === "chat" || domain === "memory")
+    return Object.values(value as BackupData["chat"] | BackupData["memory"]).reduce((count, rows) => count + rows.length, 0);
   const arrayFields: Partial<Record<BackupDomain, string>> = {
     presets: "presets", regex: "groups", worldbooks: "books", contacts: "contacts", presence: "characters",
   };
@@ -89,7 +90,7 @@ export async function exportStaticBackup(source: StaticBackupSource, metadata: S
     bindings: snapshot.documents.bindings, presets: snapshot.documents.presets, regex: snapshot.documents.regex,
     worldbooks: snapshot.documents.worldbooks, contacts: snapshot.documents.contacts, presence: snapshot.documents.presence,
     chat: { sessions: withoutEmptyLegacyRemark(snapshot.chat.sessions), messages: snapshot.chat.messages,
-      chatSettings: snapshot.chat.chatSettings, worldBookStates: snapshot.chat.worldBookStates }, apiConfigs,
+      chatSettings: snapshot.chat.chatSettings, worldBookStates: snapshot.chat.worldBookStates }, memory: snapshot.memory, apiConfigs,
   };
   const manifest: BackupManifest = { schema: BACKUP_SCHEMA, version: BACKUP_VERSION, ...metadata,
     credentials: "excluded", domains: [], assets: [] };

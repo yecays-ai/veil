@@ -1,3 +1,4 @@
+import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { cursorId, request, type MemoryStorage } from "./storage";
 import type { Memory, MemoryCursor, MemoryOperation, MemorySource, Suppression } from "./types";
 
@@ -5,14 +6,14 @@ const withoutSession = (sources: readonly MemorySource[], sessionId: string) => 
 const touches = (sources: readonly MemorySource[], sessionId: string) => sources.some((item) => item.sessionId === sessionId);
 
 /** Delete every row a Character owns, in one transaction. */
-export function deleteCharacterMemory(storage: MemoryStorage, characterId: string): Promise<void> {
+export function deleteCharacterMemory(storage: MemoryStorage, characterId: string, scope?: PersistenceWriteScope): Promise<void> {
   return storage.transaction("readwrite", async (tx) => {
     for (const name of ["memories", "suppressions", "operations", "cursors"] as const) {
       const store = tx.store(name);
       for (const key of await request<IDBValidKey[]>(store.index("characterId").getAllKeys(characterId)))
         await request(store.delete(key));
     }
-  });
+  }, scope);
 }
 
 /** Step 1 of clearing session A: persist the intent so a crash or reload can finish it. */
@@ -24,6 +25,20 @@ export function recordClearIntent(storage: MemoryStorage, characterId: string, s
     const now = storage.now();
     await request(store.put({ failureCount: 0, ...previous, id, characterId, sessionId,
       clearRequestedAt: previous?.clearRequestedAt ?? now, updatedAt: now } satisfies MemoryCursor));
+  });
+}
+
+/** Withdraw an intent whose chat operation failed, so a later resume cannot erase memory for chat that still exists. */
+export function cancelClearIntent(storage: MemoryStorage, characterId: string, sessionId: string): Promise<void> {
+  return storage.transaction("readwrite", async (tx) => {
+    const store = tx.store("cursors");
+    const previous = await request<MemoryCursor | undefined>(store.get(cursorId(characterId, sessionId)));
+    if (!previous || previous.clearRequestedAt === undefined) return;
+    const { clearRequestedAt: _requested, ...rest } = previous;
+    void _requested;
+    // An intent-only row carries nothing else worth keeping.
+    if (rest.processedMessageId === undefined && rest.failureCount === 0 && rest.failureReason === undefined) await request(store.delete(previous.id));
+    else await request(store.put({ ...rest, updatedAt: storage.now() } satisfies MemoryCursor));
   });
 }
 

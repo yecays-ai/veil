@@ -9,13 +9,15 @@ import type { PresenceDocument } from "../presence/storage";
 import type { NamedApiConfig } from "../api-config";
 import type { ChatSession, ChatMessage, ChatBackgroundSettings, GlobalProfileSettings } from "../chat/types";
 import type { WorldBookActivationState } from "../worldbook-activation";
+import type { Memory, MemoryCursor, MemoryOperation, Suppression } from "../memory/types";
 
 export const BACKUP_SCHEMA = "veil.full-backup";
-export const BACKUP_VERSION = 1;
+/** 2 adds the `memory` domain. Version-1 packages are refused as unsupported; there is no compatibility layer. */
+export const BACKUP_VERSION = 2;
 /** Backup-domain versions describe this format, not IndexedDB versions or name suffixes. */
 export const BACKUP_DOMAIN_VERSIONS = {
   foundation: 1, appearance: 1, bindings: 1, presets: 3, regex: 1,
-  worldbooks: 1, contacts: 1, presence: 1, chat: 1, apiConfigs: 1,
+  worldbooks: 1, contacts: 1, presence: 1, chat: 1, memory: 1, apiConfigs: 1,
 } as const;
 export type BackupDomain = keyof typeof BACKUP_DOMAIN_VERSIONS;
 export type BackupAssetDomain = "appearance" | "chat";
@@ -44,6 +46,7 @@ export type BackupData = {
     chatSettings: (ChatBackgroundSettings | GlobalProfileSettings)[];
     worldBookStates: { id: string; state: WorldBookActivationState }[];
   };
+  memory: { memories: Memory[]; suppressions: Suppression[]; operations: MemoryOperation[]; cursors: MemoryCursor[] };
   apiConfigs: Omit<NamedApiConfig, "apiKey">[];
 };
 export type BackupWarning = { code: "credentials-required" | "external-image" | "missing-quote"; path: string };

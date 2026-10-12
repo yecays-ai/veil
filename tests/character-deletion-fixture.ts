@@ -2,6 +2,8 @@ import { IDBFactory } from "fake-indexeddb";
 import { createBindingStorage } from "../lib/binding-storage";
 import type { PersistenceWriteGate, PersistenceWriteScope } from "../lib/backup/persistence-write-gate";
 import type { CleanupDeps } from "../lib/character-deletion";
+import { deleteCharacterMemory } from "../lib/memory/lifecycle";
+import { MemoryStorage } from "../lib/memory/storage";
 import { ChatStorage } from "../lib/chat/storage";
 import { addContact, createContactStorage, updateContact } from "../lib/contact-storage";
 import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
@@ -73,16 +75,18 @@ export async function buildWorld(options: { aBackground?: "shared" | "exclusive"
   await themeStore.transact(() => ({ ...base, current: layout(true), presets: [
     { id: "preset-with-a", name: "With Alice", snapshot: layout(true) }, { id: "preset-without", name: "Without", snapshot: layout(false) }] }));
 
+  const memoryStorage = new MemoryStorage(() => factory, Date.now, gate);
   const deps: CleanupDeps = {
     theme: { load: () => themeStore.load(), update: (update, scope) => themeStore.transact(update, scope) },
     contacts: { load: () => contactStore.load(), update: (update, scope) => contactStore.transact(update, scope) },
     bindings: { load: () => bindingStore.load(), update: (update, scope) => bindingStore.transact(update, scope) },
     presence: { load: () => presenceStore.load(), update: (update, scope) => presenceStore.transact(update, scope) },
     chat,
+    memory: { deleteCharacter: (characterId, scope) => deleteCharacterMemory(memoryStorage, characterId, scope) },
   };
   const commitFoundation = (update: (document: FoundationDocument) => FoundationDocument, scope?: PersistenceWriteScope) => foundation.transact(update, scope);
   return { factory, foundation, chat, deps, commitFoundation, themeStore, contactStore, bindingStore, presenceStore, raw: values,
-    ids: { sessionA, sessionB, trio, pair, duo, withDave, shared, exclusive }, snapshot: () => snapshot(factory, { foundation, themeStore, contactStore, bindingStore, presenceStore }) };
+    memoryStorage, ids: { sessionA, sessionB, trio, pair, duo, withDave, shared, exclusive }, snapshot: () => snapshot(factory, { foundation, themeStore, contactStore, bindingStore, presenceStore }) };
 }
 
 function open(factory: IDBFactory, name: string): Promise<IDBDatabase> {

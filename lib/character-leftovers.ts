@@ -90,13 +90,16 @@ export async function removeLeftovers(leftovers: Leftovers, foundation: Foundati
     if (!await stillMissing(item.characterId)) { result.skipped++; continue; }
     try { await deps.chat.deleteSession(item.sessionId); result.removed++; }
     catch (reason) {
-      if (reason instanceof Error && reason.message === "Conversation not found.") result.removed++; else result.failed++;
+      if (reason instanceof Error && reason.message === "Conversation not found.") result.removed++; else { result.failed++; continue; }
     }
+    // The Character is confirmed gone, so whatever Memory it still owns goes with its conversation.
+    try { await deps.memory.deleteCharacter(item.characterId); } catch { result.failed++; }
   }
   for (const item of leftovers.contacts) {
     if (!await stillMissing(item.characterId)) { result.skipped++; continue; }
     try { await deps.contacts.update((contacts) => removeContact(contacts, item.characterId)); result.removed++; }
-    catch { result.failed++; }
+    catch { result.failed++; continue; }
+    try { await deps.memory.deleteCharacter(item.characterId); } catch { result.failed++; }
   }
   return result;
 }

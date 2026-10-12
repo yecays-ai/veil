@@ -50,7 +50,7 @@ function currentDomainCounts(snapshot: StaticBackupSnapshot): Record<BackupDomai
   const { assets: _assets, ...chat } = snapshot.chat;
   void _assets;
   const value: Record<BackupDomain, unknown> = { ...snapshot.documents as Record<BackupDomain, unknown>,
-    foundation: snapshot.documents.foundation ?? null, chat, apiConfigs: snapshot.apiConfigs };
+    foundation: snapshot.documents.foundation ?? null, chat, memory: snapshot.memory, apiConfigs: snapshot.apiConfigs };
   return Object.fromEntries(DOMAINS.map((domain) => [domain,
     domain === "chat" ? Object.values(chat).reduce((n, rows) => n + rows.length, 0)
       : recordCount(domain, value[domain] ?? null)])) as Record<BackupDomain, number>;
@@ -64,7 +64,7 @@ async function digestTarget(snapshot: StaticBackupSnapshot): Promise<string> {
     return rest;
   });
   return sha256(JSON.stringify({ documents: snapshot.documents,
-    chat: { ...snapshot.chat, assets: await digestImageRows(snapshot.chat.assets) },
+    chat: { ...snapshot.chat, assets: await digestImageRows(snapshot.chat.assets) }, memory: snapshot.memory,
     appearanceAssets: await digestImageRows(snapshot.appearanceAssets), apiConfigs: withoutKeys }));
 }
 

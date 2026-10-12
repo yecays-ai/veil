@@ -8,6 +8,8 @@ import { normalizeContacts } from "../contact-storage";
 import { normalizePresenceDocument } from "../presence/storage";
 import { isValidBubbleTimingDelay } from "../chat/types";
 import { APP_IDS } from "../app-registry";
+import { memoryFingerprint } from "../memory/fingerprint";
+import { MEMORY_OPERATION_LIMIT } from "../memory/types";
 import { parseBackupJson } from "./json";
 import {
   BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, BackupValidationError,
@@ -216,11 +218,99 @@ function validateChat(value: unknown) {
   });
 }
 
+const MEMORY_SOURCE_FIELDS = ["sessionId", "messageId"];
+function memorySources(value: unknown, path: string): asserts value is Row[] {
+  check(Array.isArray(value), path, "invalid-data", "sources-not-array");
+  const seen = new Set<string>();
+  value.forEach((source, index) => {
+    keys(source, MEMORY_SOURCE_FIELDS, MEMORY_SOURCE_FIELDS, `${path}[${index}]`);
+    check(id(source.sessionId) && id(source.messageId), `${path}[${index}]`, "invalid-data", "source-id-invalid");
+    const key = `${source.sessionId}\u0000${source.messageId}`;
+    check(!seen.has(key), `${path}[${index}]`, "duplicate-id"); seen.add(key);
+  });
+}
+function memoryRow(row: unknown, path: string): asserts row is Row {
+  const fields = ["id", "characterId", "kind", "text", "subject", "status", "origin", "sources", "lineage", "fingerprint", "createdAt", "updatedAt"];
+  keys(row, fields, fields, path);
+  check(id(row.id) && id(row.characterId), path, "invalid-data", "id-invalid");
+  check(typeof row.kind === "string" && typeof row.text === "string" && typeof row.subject === "string", path, "invalid-data", "text-field-not-string");
+  check(["active", "superseded", "archived", "flagged"].includes(String(row.status)), path, "invalid-data", "status-invalid");
+  check(["manual", "auto"].includes(String(row.origin)), path, "invalid-data", "origin-invalid");
+  memorySources(row.sources, `${path}.sources`);
+  keys(row.lineage, ["mergedFrom", "supersededBy"], [], `${path}.lineage`);
+  check(row.lineage.mergedFrom === undefined || (Array.isArray(row.lineage.mergedFrom) && row.lineage.mergedFrom.every(id)
+    && new Set(row.lineage.mergedFrom).size === row.lineage.mergedFrom.length && !row.lineage.mergedFrom.includes(row.id)),
+    path, "invalid-data", "mergedFrom-invalid");
+  check(row.lineage.supersededBy === undefined || (id(row.lineage.supersededBy) && row.lineage.supersededBy !== row.id), path, "invalid-data", "supersededBy-invalid");
+  // The fingerprint is always derived from the text; a stored value that disagrees is a damaged or edited file.
+  check(typeof row.fingerprint === "string" && !!row.fingerprint && row.fingerprint === memoryFingerprint(row.text as string), path, "invalid-data", "fingerprint-mismatch");
+  check(integer(row.createdAt) && integer(row.updatedAt), path, "invalid-data", "timestamp-invalid");
+}
+function suppressionRow(row: unknown, path: string): asserts row is Row {
+  const fields = ["id", "characterId", "fingerprint", "reason", "sources", "createdAt"];
+  keys(row, fields, fields, path);
+  check(id(row.id) && id(row.characterId) && typeof row.fingerprint === "string" && !!row.fingerprint, path, "invalid-data", "id-invalid");
+  check(["corrected", "deleted"].includes(String(row.reason)) && integer(row.createdAt), path, "invalid-data", "field-invalid");
+  memorySources(row.sources, `${path}.sources`);
+}
+
+/** Structure only; references to Characters and chat are checked in `references` once every domain is parsed. */
+function validateMemory(value: unknown) {
+  const stores = ["memories", "suppressions", "operations", "cursors"];
+  keys(value, stores, stores, "memory");
+  for (const name of stores) unique(value[name], "id", `memory.${name}`);
+  const { memories, suppressions, operations, cursors } = value as Record<string, Row[]>;
+  memories.forEach((row, index) => memoryRow(row, `memory.memories[${index}]`));
+  suppressions.forEach((row, index) => suppressionRow(row, `memory.suppressions[${index}]`));
+  const perCharacter = new Map<string, Set<number>>();
+  operations.forEach((row, index) => {
+    const path = `memory.operations[${index}]`;
+    keys(row, ["id", "characterId", "seq", "label", "createdAt", "changes", "suppressionChanges"], ["id", "characterId", "seq", "label", "createdAt", "changes"], path);
+    check(id(row.characterId) && integer(row.seq) && (row.seq as number) >= 1 && row.id === `${row.characterId}\u0000${row.seq}`, path, "invalid-data", "id-invalid");
+    check(typeof row.label === "string" && integer(row.createdAt) && Array.isArray(row.changes), path, "invalid-data", "field-invalid");
+    const seqs = perCharacter.get(row.characterId as string) ?? new Set<number>();
+    seqs.add(row.seq as number); perCharacter.set(row.characterId as string, seqs);
+    check(seqs.size <= MEMORY_OPERATION_LIMIT, path, "invalid-data", "operation-limit");
+    const owned = (item: Row, at: string) => check(item.characterId === row.characterId, at, "cross-character-reference");
+    (row.changes as unknown[]).forEach((change, at) => {
+      const where = `${path}.changes[${at}]`;
+      keys(change, ["before", "after"], ["before", "after"], where);
+      check(change.before !== null || change.after !== null, where, "invalid-data", "empty-change");
+      for (const side of ["before", "after"] as const)
+        if (change[side] !== null) { memoryRow(change[side], `${where}.${side}`); owned(change[side] as Row, where); }
+    });
+    if (row.suppressionChanges !== undefined) {
+      check(Array.isArray(row.suppressionChanges), path, "invalid-data", "suppressionChanges-not-array");
+      (row.suppressionChanges as unknown[]).forEach((change, at) => {
+        const where = `${path}.suppressionChanges[${at}]`;
+        keys(change, ["before", "after"], ["before", "after"], where);
+        suppressionRow(change.after, `${where}.after`); owned(change.after as Row, where);
+        if (change.before !== null) { suppressionRow(change.before, `${where}.before`); owned(change.before as Row, where); }
+      });
+    }
+  });
+  const cursorKeys = new Set<string>();
+  cursors.forEach((row, index) => {
+    const path = `memory.cursors[${index}]`;
+    keys(row, ["id", "characterId", "sessionId", "processedMessageId", "failureCount", "failureReason", "clearRequestedAt", "updatedAt"],
+      ["id", "characterId", "sessionId", "failureCount", "updatedAt"], path);
+    check(id(row.characterId) && id(row.sessionId) && row.id === `${row.characterId}\u0000${row.sessionId}`, path, "invalid-data", "id-invalid");
+    check(row.processedMessageId === undefined || id(row.processedMessageId), path, "invalid-data", "processedMessageId-invalid");
+    check(integer(row.failureCount) && integer(row.updatedAt) && (row.failureReason === undefined || typeof row.failureReason === "string")
+      && (row.clearRequestedAt === undefined || integer(row.clearRequestedAt)), path, "invalid-data", "field-invalid");
+    check(!cursorKeys.has(row.id as string), path, "duplicate-id"); cursorKeys.add(row.id as string);
+  });
+}
+
 function validateDomain(domain: BackupDomain, value: unknown): number {
   if (domain === "chat") {
     validateChat(value);
     const chat = value as BackupData["chat"];
     return chat.sessions.length + chat.messages.length + chat.chatSettings.length + chat.worldBookStates.length;
+  }
+  if (domain === "memory") {
+    validateMemory(value);
+    return Object.values(value as BackupData["memory"]).reduce((count, rows) => count + rows.length, 0);
   }
   if (domain === "apiConfigs") {
     unique(value, "id", domain);
@@ -284,6 +374,38 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
   const messages = new Set(data.chat.messages.map((row) => row.id));
   data.chat.messages.forEach((row, index) => {
     if (row.quote && !messages.has(row.quote.messageId)) warnings.push({ code: "missing-quote", path: `chat.messages[${index}]` });
+  });
+  // Memory keeps pointers, not chat text. A message may have been deleted since, so a missing message is allowed;
+  // a session must still exist unless a cleanup intent for it is pending. Nothing is invented to satisfy this.
+  const sessionsById = new Map(data.chat.sessions.map((row) => [row.id, row]));
+  const messagesById = new Map(data.chat.messages.map((row) => [row.id, row]));
+  const pendingClears = new Set(data.memory.cursors.filter((row) => row.clearRequestedAt !== undefined).map((row) => `${row.characterId}\u0000${row.sessionId}`));
+  const memoryPointer = (owner: string, sessionId: string, messageId: string | undefined, path: string) => {
+    const session = sessionsById.get(sessionId);
+    if (!session) { check(pendingClears.has(`${owner}\u0000${sessionId}`), path, "missing-session"); return; }
+    check(session.type === "group" ? !!session.participantIds?.includes(owner) : session.characterId === owner, path, "cross-character-reference");
+    const message = messageId === undefined ? undefined : messagesById.get(messageId);
+    check(!message || message.sessionId === sessionId, path, "cross-session-reference");
+  };
+  const memoryRows = (row: { characterId: string; sources: { sessionId: string; messageId: string }[] }, path: string) => {
+    character(row.characterId, path);
+    row.sources.forEach((source, at) => memoryPointer(row.characterId, source.sessionId, source.messageId, `${path}.sources[${at}]`));
+  };
+  const memoriesById = new Map(data.memory.memories.map((row) => [row.id, row]));
+  data.memory.memories.forEach((row, index) => {
+    const path = `memory.memories[${index}]`;
+    memoryRows(row, path);
+    for (const other of [...(row.lineage.mergedFrom ?? []), ...(row.lineage.supersededBy ? [row.lineage.supersededBy] : [])]) {
+      const target = memoriesById.get(other);
+      check(!target || target.characterId === row.characterId, path, "cross-character-reference");
+    }
+  });
+  data.memory.suppressions.forEach((row, index) => memoryRows(row, `memory.suppressions[${index}]`));
+  data.memory.operations.forEach((row, index) => character(row.characterId, `memory.operations[${index}]`));
+  data.memory.cursors.forEach((row, index) => {
+    const path = `memory.cursors[${index}]`;
+    character(row.characterId, path);
+    if (row.clearRequestedAt === undefined || sessionsById.has(row.sessionId)) memoryPointer(row.characterId, row.sessionId, row.processedMessageId, path);
   });
   const apis = new Set(data.apiConfigs.map((row) => row.id)), presets = new Set(data.presets?.presets.map((row) => row.id));
   if (!data.presets) presets.add(BUILTIN_PRESET_ID); // Absent library uses the app's official default.

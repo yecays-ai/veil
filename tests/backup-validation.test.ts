@@ -23,7 +23,7 @@ test("full simulated package preserves identities, ordering, remarks, Presence a
 
 test("empty environment retains absent documents instead of materializing defaults", async () => {
   const data: BackupData = { foundation: null, appearance: null, bindings: null, presets: null, regex: null,
-    worldbooks: null, contacts: null, presence: null, apiConfigs: [], chat: { sessions: [], messages: [], chatSettings: [], worldBookStates: [] } };
+    worldbooks: null, contacts: null, presence: null, apiConfigs: [], memory: { memories: [], suppressions: [], operations: [], cursors: [] }, chat: { sessions: [], messages: [], chatSettings: [], worldBookStates: [] } };
   const result = await validate(await packageFixture(data));
   assert.deepEqual(result.data, data); assert.deepEqual(result.warnings, []);
 });
@@ -32,9 +32,10 @@ test("manifest rejects missing/duplicate/unknown domains, future versions and cr
   for (const [change, code] of [
     [(f: Fixture) => { f.manifest.domains.pop(); }, "domain-coverage"],
     [(f: Fixture) => { f.manifest.domains[1] = { ...f.manifest.domains[0] }; }, "duplicate-domain"],
-    [(f: Fixture) => { Object.assign(f.manifest.domains[0], { domain: "memory" }); }, "unsupported-domain"],
+    [(f: Fixture) => { Object.assign(f.manifest.domains[0], { domain: "journal" }); }, "unsupported-domain"],
     [(f: Fixture) => { f.manifest.domains[0].version++; }, "unsupported-domain-version"],
-    [(f: Fixture) => { Object.assign(f.manifest, { version: 2 }); }, "unsupported-format"],
+    [(f: Fixture) => { Object.assign(f.manifest, { version: 3 }); }, "unsupported-format"],
+    [(f: Fixture) => { Object.assign(f.manifest, { version: 1 }); }, "unsupported-format"],
     [(f: Fixture) => { Object.assign(f.manifest, { credentials: "encrypted" }); }, "credentials-not-supported"],
     [(f: Fixture) => { Object.assign(f.manifest, { futureField: true }); }, "invalid-data"],
   ] as const) {
