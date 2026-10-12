@@ -6,11 +6,11 @@
 
 ## 当前任务
 
-M0 成本基线（docs/memory-m0-m2-tickets.md）：待审查（PR 创建后见下）。只做 M0，不进入 M1/M2/M3。
+M0 成本基线（docs/memory-m0-m2-tickets.md）：待审查（PR #152）。只做 M0，不进入 M1/M2/M3。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/memory-m0-cost-baseline`，base 978904d4396eda51377bc83284d2db940ca27655；PR：见 PR 描述/分支。
+Claude；分支 `claude/memory-m0-cost-baseline`，base 978904d4396eda51377bc83284d2db940ca27655；PR：https://github.com/yecays-ai/veil/pull/152（ready for review）。
 涉及：`lib/chat/usage-baseline.ts`（新）、`lib/chat/request-diagnostics.ts`（startCompletionTerminal 增加可选 meta/usage）、`lib/chat/provider.ts`、`lib/settings/text-api.ts`（各传一次 meta 和 usage）、`tests/usage-baseline.test.ts`（新）、本文件。
 
 ## 已完成
