@@ -496,3 +496,9 @@
   margin: 0;
   padding-left: 18px;
 }
+.settings-memory-maintenance { display: grid; gap: 12px; }
+.settings-memory-maintenance .settings-runtime-toggle { margin-bottom: 0; }
+.settings-memory-status { display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 14px; line-height: 1.5; }
+.settings-memory-status ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+.settings-memory-status li { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.settings-memory-status li > span, .settings-memory-status > span { font-size: 13px; opacity: .7; }
