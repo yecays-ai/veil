@@ -81,6 +81,22 @@ test("strict JSON rejects duplicate escaped members, unsafe keys, nonfinite valu
   await assert.rejects(validate(fixture), failure("invalid-json"));
 });
 
+test("foundation relation kind round-trips strictly and rejects unknown or missing values", async () => {
+  const withRelation = (kind?: unknown) => {
+    const data = backupData();
+    Object.assign(data.foundation!.universe, { relations: [{ id: "relation-kind", characterAId: "peter", characterBId: "pep",
+      label: "Friends", aToBContext: null, bToAContext: null, sharedHistory: null, ...(kind === undefined ? {} : { kind }) }] });
+    return data;
+  };
+  for (const kind of [null, "friend", "other"]) {
+    const result = await validate(await packageFixture(withRelation(kind)));
+    assert.equal(result.data.foundation!.universe.relations[0].kind, kind);
+  }
+  for (const kind of [undefined, "bogus"]) {
+    await assert.rejects(validate(await packageFixture(withRelation(kind))), failure("lossy-data"), String(kind));
+  }
+});
+
 test("unknown, truncated or normalized-away fields are rejected instead of repaired", async () => {
   for (const [domain, change] of [
     ["foundation", (d: BackupData) => { d.foundation!.characters.push(structuredClone(d.foundation!.characters[0])); }],

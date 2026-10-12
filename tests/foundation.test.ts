@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canCommunicate,
   createCharacter,
   updateCharacter,
   deleteCharacter,
@@ -84,6 +85,7 @@ test("stable Character IDs, directional Universe relationships and cascade delet
   const relation = {
     characterAId: a.characterId,
     characterBId: b.characterId,
+    kind: null,
     label: "Colleagues",
     aToBContext: "A knows B",
     bToAContext: "B knows A",
@@ -176,4 +178,37 @@ test("bindings resolve global → Character → Character×App with explicit cle
   );
   assert(!JSON.stringify(bindings).includes("oldBusinessApp"));
   assert(!Object.hasOwn(bindings.characters, "deleted"));
+});
+
+test("relation kind is optional, normalized, never guessed, and drives default communication only", () => {
+  const raw = (kind?: unknown) => ({
+    ...defaultFoundation(),
+    characters: [{ characterId: "a", name: "A" }, { characterId: "b", name: "B" }],
+    universe: { ...defaultFoundation().universe, relations: [{
+      id: "r1", characterAId: "a", characterBId: "b", label: "Friends",
+      ...(kind === undefined ? {} : { kind }),
+    }] },
+  });
+  for (const stored of [undefined, null, "", "bogus", 7, "Friend"]) {
+    const relation = normalizeFoundation(raw(stored)).universe.relations[0];
+    assert.equal(relation.kind, null, String(stored));
+    assert.equal(relation.label, "Friends");
+    assert.equal(canCommunicate(relation), false);
+  }
+  for (const kind of ["friend", "family", "romantic", "acquaintance", "colleague", "hostile", "other"] as const) {
+    const relation = normalizeFoundation(raw(kind)).universe.relations[0];
+    assert.equal(relation.kind, kind);
+    assert.equal(canCommunicate(relation), ["friend", "family", "romantic"].includes(kind), kind);
+  }
+  assert.equal(canCommunicate(null), false);
+  assert.equal(canCommunicate(undefined), false);
+
+  let d = normalizeFoundation(raw());
+  const input = { characterAId: "a", characterBId: "b", label: "Pals", aToBContext: null, bToAContext: null, sharedHistory: null };
+  d = saveRelation(d, { ...input, kind: "family" }, "r1");
+  assert.equal(d.universe.relations[0].kind, "family");
+  assert.equal(d.universe.relations[0].id, "r1");
+  d = saveRelation(d, { ...input, kind: "nonsense" as never }, "r1");
+  assert.equal(d.universe.relations[0].kind, null);
+  assert.equal(d.universe.relations[0].label, "Pals");
 });

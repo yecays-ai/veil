@@ -10,9 +10,11 @@ import {
   saveUniverse,
   setNodePosition,
 } from "../lib/foundation";
-import type {
-  FoundationDocument,
-  RelationInput,
+import {
+  RELATION_KINDS,
+  normalizeRelationKind,
+  type FoundationDocument,
+  type RelationInput,
 } from "../lib/foundation-types";
 
 import { RelationshipCanvas } from "./relationship-canvas";
@@ -42,6 +44,7 @@ function RelationForm({
     existing ?? {
       characterAId: document.characters[0]?.characterId ?? "",
       characterBId: document.characters[1]?.characterId ?? "",
+      kind: null,
       label: "",
       aToBContext: null,
       bToAContext: null,
@@ -104,6 +107,26 @@ function RelationForm({
             </div>
           </label>
         ))}
+        <label>
+          {C.relations.kind}
+          <select
+            autoComplete="off"
+            value={draft.kind ?? ""}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                kind: normalizeRelationKind(event.target.value),
+              })
+            }
+          >
+            <option value="">{C.relations.kindNone}</option>
+            {RELATION_KINDS.map((kind) => (
+              <option key={kind} value={kind}>
+                {C.relations.kinds[kind]}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           {C.relations.label}
           <input

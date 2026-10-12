@@ -34,7 +34,7 @@ export async function buildWorld(options: { aBackground?: "shared" | "exclusive"
   await foundation.transact((document) => {
     let next: FoundationDocument = { ...document, characters: [A, B, C, D].map((characterId) => ({ characterId,
       ...normalizeCharacterInput({ name: characterId.split("-")[1], avatar: HERO }) })) };
-    const relation = (a: string, b: string) => ({ characterAId: a, characterBId: b, label: `${a}-${b}`, aToBContext: null, bToAContext: null, sharedHistory: null });
+    const relation = (a: string, b: string) => ({ characterAId: a, characterBId: b, kind: null, label: `${a}-${b}`, aToBContext: null, bToAContext: null, sharedHistory: null });
     next = saveRelation(next, relation(A, B)); next = saveRelation(next, relation(B, C));
     for (const [index, id] of [A, B, C, D].entries()) next = setNodePosition(next, id, { x: 10 + index, y: 20 + index });
     return next;
