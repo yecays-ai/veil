@@ -9,9 +9,14 @@ export type MaintenanceSchedulerDependencies = {
 };
 /** Page-lifetime wakeups only. Durable Chat activity and M5a progress remain the authority. */
 export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencies) {
-  let stopped = false, reading = false, dirty = false;
+  let stopped = false, reading = false, dirty = false, readRetries = 0, retryVersion = 0;
+  let readRetry: unknown;
   const timers = new Map<string, unknown>(), running = new Map<string, AbortController>();
-  const clear = () => { for (const timer of timers.values()) deps.clearTimer(timer); timers.clear(); };
+  const clear = () => {
+    retryVersion++;
+    if (readRetry !== undefined) { deps.clearTimer(readRetry); readRetry = undefined; }
+    for (const timer of timers.values()) deps.clearTimer(timer); timers.clear();
+  };
   const wake = async (): Promise<void> => {
     if (stopped) return;
     if (reading) { dirty = true; return; }
@@ -19,7 +24,24 @@ export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencie
     try {
       clear();
       if (!deps.enabled() || !deps.runnable()) return;
-      const sessions = await deps.sessions();
+      let sessions: ChatSession[];
+      try { sessions = await deps.sessions(); }
+      catch {
+        // At most two local read retries per failure streak; lifecycle events may still recheck.
+        // This re-reads durable activity, never retries a dispatched model request.
+        dirty = false;
+        if (!stopped && deps.enabled() && deps.runnable() && readRetries < 2) {
+          readRetries++;
+          const version = retryVersion;
+          readRetry = deps.setTimer(() => {
+            if (stopped || version !== retryVersion) return;
+            readRetry = undefined;
+            void wake().catch(() => undefined);
+          }, 5_000);
+        }
+        return;
+      }
+      readRetries = 0;
       if (stopped || !deps.enabled() || !deps.runnable()) return;
       const characters = new Set(sessions.filter((s) => s.type !== "group" && s.memorySequence && s.memorySequence.nextSeq > 1).map((s) => s.characterId));
       for (const characterId of characters) {

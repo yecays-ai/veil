@@ -1,8 +1,8 @@
 # STATUS — 2026-10-13-codex-memory-m5b2
 
 更新人：Codex
-更新时间：2026-10-13T00:34:00+08:00
-发现范围：2026-10-12 至 2026-10-13 GitHub main/PR #160/开放 PR（含 draft）及远端 branch heads；最新 main 完整 SHA 见下。当前无开放 PR；远端遗留 Chat/网络分支仍存在，不接管或覆盖它们。读取当前 AUDIT_LEDGER、M5a/M5b1、handoff 与直接依赖；本地未发布任务不可见。旧 `veil-audit-main` 分支未动；独立目录的 634 份基线逐 blob 校验，发布走 GitHub API。
+更新时间：2026-10-13T01:01:06+08:00
+发现范围：2026-10-13T00:56:00+08:00 通过 GitHub API 复查 main、全部开放 PR（含 draft）、PR #161 当前 head/评论及全部远端 branch heads（均单页未达 100 条）；唯一开放 PR 为 #161，head `5c995b32aaab7c686d08ff65a2705dda0f25370c`，待审未合并；main 完整 SHA 见下。此前“无开放 PR”未标明观察时点，已用本次实际查询更正。远端遗留 Chat/网络分支仍存在，不接管或覆盖它们。读取当前 main AUDIT_LEDGER、既有 M5a/M5b1、handoff 与直接依赖；本地未发布任务不可见，远端查询成功但本地目录无 Git 元数据，不能把它当作已同步的工作树；旧 `veil-audit-main` 分支未动。独立目录的 634 份初始基线逐 blob 校验，发布走 GitHub API。
 
 ## 当前任务
 
@@ -20,6 +20,7 @@ Codex；分支 `codex/memory-m5b2-production-wiring`；[PR #161](https://github.
 - 非法/敏感预检，以及 safe claim 后来源全删，按既有失败协议保留空洞，不反复占 ready 队首、不跳水位、不产生模型调用。
 - 未启用生产 tracking/维护，无真实付费模型调用；默认关闭挂载/重挂载实测零存储读取、零请求。仅 stub/fake 数据。
 - 定向 645/645（零跳过）；类型检查、改动路径 lint、webpack build（24 页）通过。细节、命令、Red/Green、性能及保留状态见 [施工记录](../memory-m5b2-construction.md)。
+- #161 本次仅修复三条审查意见：将瞬时读取/refresh 错误排除于输入拒绝 failed 处理；会话读取失败最多两次 5 秒重查，clear/stop 使旧回调失效；更正上述发现范围。新增 6 项回归先 Red 后 Green，两份受影响测试 44/44、完整相关回归 651/651（零跳过）、typecheck、改动路径 lint、webpack build 通过；仅 stub，不启用维护、不调用真实模型。
 - 30 次 stub 暖演练：独占 hold p95 1.643 ms，runner p95 13.363 ms；注入 snapshot 争用约 19.5 ms。不是设备/真实网络保证。
 
 ## 尚未验证

@@ -100,10 +100,12 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
       outcome, messageCount: snapshot.messages.length, candidateCount: snapshot.candidates.length, inputCharacters,
       operationCount, discarded, durationMs: performance.now() - started });
     let input;
+    // Infrastructure/authority reads must leave ready work retryable, without spending a claim.
+    const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), snapshot.messages.map((m) => m.content).join("\n"));
+    ticket = await deps.protocol.refresh(ticket, selected.ids);
+    snapshot = await deps.protocol.readInput(ticket);
     try {
-      const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), snapshot.messages.map((m) => m.content).join("\n"));
-      ticket = await deps.protocol.refresh(ticket, selected.ids);
-      snapshot = await deps.protocol.readInput(ticket);
+      // Only this synchronous input validator defines unacceptable input; no storage awaits here.
       input = buildMaintenanceInput(snapshot, { characterId, context });
     }
     catch (error) {

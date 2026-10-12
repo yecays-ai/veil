@@ -58,6 +58,52 @@ test("mounted default-off gate stays inert across StrictMode, rerender, restore-
 
 const row = (id = "c"): ChatSession => ({ id, characterId: id, updatedAt: 1000, autoReplyOnKeyboardDismiss: false, nextOrder: 2,
   memorySequence: { epoch: id, nextSeq: 2 } });
+test("session read failure retries locally, rechecks five-minute gate and dispatches only once", async () => {
+  let reads = 0, calls = 0, next = 0, now = 1000 + MAINTENANCE_IDLE_MS - 10_000;
+  const timers = new Map<number, { cb: () => void; delay: number }>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => now,
+    sessions: async () => { if (++reads === 1) throw new Error("temporary read"); return [row()]; },
+    run: async () => { calls++; return false; }, setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; },
+    clearTimer: (id) => { timers.delete(id as number); } });
+  await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
+  const fire = async () => { const [id, timer] = [...timers][0]; timers.delete(id); timer.cb(); await new Promise((r) => setTimeout(r, 0)); };
+  assert.equal([...timers.values()][0].delay, 5000); now += 5000; await fire();
+  assert.equal(calls, 0); assert.equal([...timers.values()][0].delay, 5000);
+  now += 5000; await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
+});
+test("persistent session read failure has finite retries; cleared and stopped retry callbacks are inert", async () => {
+  let reads = 0, next = 0, enabled = true, calls = 0;
+  const timers = new Map<number, () => void>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => enabled, runnable: () => true, now: () => 1e6,
+    sessions: async () => { reads++; throw new Error("temporary read"); }, run: async () => { calls++; return false; },
+    setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
+  await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
+  const stale = [...timers.values()][0]; enabled = false; await scheduler.wake(); enabled = true; stale();
+  await new Promise((r) => setTimeout(r, 0)); assert.equal(reads, 1); assert.equal(timers.size, 0);
+  enabled = true; await scheduler.wake().catch(() => undefined);
+  let fired = 0;
+  while (timers.size && fired < 10) {
+    const [id, cb] = [...timers][0]; timers.delete(id); cb(); fired++; await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.ok(fired > 0 && fired <= 2); assert.equal(timers.size, 0); assert.equal(calls, 0);
+  scheduler.stop(); stale(); await new Promise((r) => setTimeout(r, 0)); assert.equal(timers.size, 0);
+});
+test("stop clears an outstanding read retry and a late rejection cannot create one", async () => {
+  let next = 0, calls = 0, reads = 0, reject!: (error: Error) => void;
+  const timers = new Map<number, () => void>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => 1e6,
+    sessions: () => { reads++; return Promise.reject(new Error("temporary read")); },
+    run: async () => { calls++; return false; }, setTimer: (cb) => { timers.set(++next, cb); return next; },
+    clearTimer: (id) => { timers.delete(id as number); } });
+  await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
+  const stale = [...timers.values()][0]; scheduler.stop(); assert.equal(timers.size, 0); stale();
+  await new Promise((r) => setTimeout(r, 0)); assert.equal(reads, 1); assert.equal(calls, 0);
+  const late = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => 1e6,
+    sessions: () => new Promise((_resolve, fail) => { reject = fail; }), run: async () => false,
+    setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
+  const waking = late.wake(); late.stop(); reject(new Error("late read")); await waking.catch(() => undefined);
+  assert.equal(timers.size, 0);
+});
 test("owner contention rechecks after bounded delay without treating it as model retry; repeated wake does not duplicate timers", async () => {
   let now = 1000 + MAINTENANCE_IDLE_MS, calls = 0, next = 0;
   const timers = new Map<number, { cb: () => void; delay: number }>();

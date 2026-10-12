@@ -16,6 +16,34 @@ import { FOUNDATION_STORAGE_KEY } from "../lib/foundation-storage";
 
 const ignore = JSON.stringify({ operations: [{ op: "IGNORE" }] });
 const signal = () => new AbortController().signal;
+for (const stage of ["listMemories", "refresh", "readInput"] as const) test(`transient preflight ${stage} failure retains retryable sources without dispatch or cursor advance`, async () => {
+  const f = await fixture(); await f.send();
+  if (stage === "listMemories") {
+    const original = f.memory.listMemories.bind(f.memory); let failed = false;
+    f.memory.listMemories = async (...args) => {
+      if (!args[1] && !failed) { failed = true; throw new Error("temporary read failure"); }
+      return original(...args);
+    };
+  } else if (stage === "refresh") {
+    const original = f.protocol.refresh.bind(f.protocol); let failed = false;
+    f.protocol.refresh = async (...args) => {
+      if (!failed) { failed = true; throw new Error("temporary refresh failure"); }
+      return original(...args);
+    };
+  } else {
+    const original = f.protocol.readInput.bind(f.protocol); let reads = 0;
+    f.protocol.readInput = async (...args) => {
+      if (++reads === 2) throw new Error("temporary snapshot failure");
+      return original(...args);
+    };
+  }
+  await f.run().catch(() => undefined);
+  const progress = (await f.progress())!;
+  assert.equal(progress.throughSeq, 0); assert.equal(progress.batches[0].state, "ready");
+  assert.equal(progress.batches[0].attempts, 0); assert.equal(f.calls(), 0);
+  assert.equal(await f.run(), true); assert.equal((await f.progress())!.throughSeq, 1);
+  assert.equal(f.calls(), 1); assert.equal(await f.run(), false); assert.equal(f.calls(), 1);
+});
 async function fixture(provider?: TextProvider) {
   const f = await progressFixture(); let calls = 0, clock = Date.now() + MAINTENANCE_IDLE_MS + 10_000, enabled = true;
   const deps: MaintenanceRunnerDependencies = { protocol: f.protocol, memory: f.memory,
