@@ -1,6 +1,7 @@
 import type { Character, FoundationDocument, ProfileBasics } from "../foundation-types";
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
 import type { ChatMessage, PromptTurn } from "./types";
+import { isAssistantBlankLinePlaceholder } from "./reply-splitter";
 import { buildTimeContext, historyTimestamp, type RuntimeWeatherContext } from "./time-context";
 import { messageHistoryContentWithBody } from "./quote";
 import type { WorldBookActivation } from "../worldbook-activation";
@@ -50,6 +51,7 @@ function eligibleMessages(context: PromptRuntimeContext) {
 function historyMessages(context: PromptRuntimeContext) {
   const pendingIds = new Set(context.pending.map((message) => message.id));
   return eligibleMessages(context).filter((message) => !pendingIds.has(message.id))
+    .filter((message) => message.role !== "assistant" || !isAssistantBlankLinePlaceholder(message.content))
     .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES);
 }
 function pendingMessages(context: PromptRuntimeContext) {
