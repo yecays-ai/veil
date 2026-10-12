@@ -457,7 +457,7 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
   if (!data.presets) presets.add(BUILTIN_PRESET_ID); // Absent library uses the app's official default.
   const books = new Set(data.worldbooks?.books.map((row) => row.id)), regex = new Set(data.regex?.groups.map((row) => row.id));
   const slot = (value: NonNullable<BackupData["bindings"]>["global"], path: string) => {
-    for (const [field, catalog] of [["apiConfigId", apis], ["presetId", presets]] as const)
+    for (const [field, catalog] of [["memoryApiConfigId", apis], ["apiConfigId", apis], ["presetId", presets]] as const)
       if (typeof value[field] === "string") check(catalog.has(value[field]), path, "missing-binding-resource");
     for (const resource of value.worldBookIds ?? []) check(books.has(resource), path, "missing-binding-resource");
     for (const resource of value.regexIds ?? []) check(regex.has(resource), path, "missing-binding-resource");

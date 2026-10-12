@@ -6,7 +6,7 @@ import type { MemoryContext } from "../memory/context";
 type MemorySummary = Pick<MemoryContext, "ids" | "characterLength" | "outcome">;
 
 export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue"
-  | "test-connection" | "here-there-comment" | "presence-routine" | "unclassified";
+  | "test-connection" | "here-there-comment" | "presence-routine" | "memory-maintenance" | "unclassified";
 export type CompletionRequestContext = { requestId: string; source: CompletionSource; sessionId?: string };
 export type CompletionUsage = {
   prompt_tokens: number | null;
