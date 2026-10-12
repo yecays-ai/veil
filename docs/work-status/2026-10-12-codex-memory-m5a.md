@@ -1,7 +1,7 @@
 # STATUS — 2026-10-12-codex-memory-m5a
 
 更新人：Codex
-更新时间：2026-10-12T20:40:00+08:00
+更新时间：2026-10-12T21:18:00+08:00
 发现范围：通过 GitHub integration 核实 main、开放 PR（含 draft）与远端分支；main 为 fa464aa380d548d1c5997989d62df12af8b9af80，开放 PR 为空。独立本地快照的 609 个版本文件逐一核对 Git blob SHA；未覆盖其他工作目录。无法观察未发布的本地任务。
 
 ## 当前任务
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 codex/memory-m5a-foundation；PR 创建后补充链接。基线 main fa464aa380d548d1c5997989d62df12af8b9af80。
+Codex；分支 codex/memory-m5a-foundation；[PR #159](https://github.com/yecays-ai/veil/pull/159)，待用户手动审查、合并与验收。基线 main fa464aa380d548d1c5997989d62df12af8b9af80。
 范围：Memory 存储/批次协议/序号/lineage/启动清理，Chat/Core 冷读取与 scope，Backup 校验/恢复授权，两个聊天清理调用的 scope 传递，现有 Backup 阻止替换提示，以及直接相关测试。
 
 ## 已完成
@@ -24,9 +24,9 @@ Codex；分支 codex/memory-m5a-foundation；PR 创建后补充链接。基线 m
 
 ## 尚未验证
 
-- 远端 PR/CI/预览状态待发布后核实；首次缓存目录创建受执行器拒绝，经批准的本地构建已通过。
+- PR #159 已发布；核对 33 个提交文件 blob 全部一致，main 仍为基线。发布时 GitHub verify 运行中、CodeRabbit pending，尚无远端通过结论；未主动部署。首次缓存目录创建受执行器拒绝，经批准的本地构建已通过。
 - 真浏览器跨标签页、iOS、真实 IndexedDB 大聊天容量与崩溃恢复验收。
 
 ## 下一步
 
-发布一个独立 PR，补充链接与远端状态；之后等待用户手动审查、合并和验收，不自动合并/部署，不启动 M5b。
+独立 PR #159 已提交，之后等待用户手动审查、合并和验收，不自动合并/部署，不启动 M5b。
