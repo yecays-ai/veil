@@ -251,6 +251,46 @@ export class MemoryProgressProtocol {
     });
   }
 
+  /** Return the verified input snapshot under the same ticket authority. Never call a provider in this lease. */
+  async readInput(ticket: MemoryBatchTicket) {
+    const state = this.ticket(ticket);
+    return this.exclusive(state.owner, async (scope) => {
+      const { characterId } = this.owner(state.owner);
+      const cursor = await this.memory.transaction("readonly", (tx) => this.cursor(tx, characterId, state), scope);
+      const batch = cursor.extraction!.batches.find((b) => b.id === state.batchId);
+      if (!batch || !["ready", "failed", "claimed"].includes(batch.state)) return fail();
+      const memories = await this.evidence(state.owner, state, batch, scope);
+      const chat = await this.authority(state.owner, state.sessionId, scope);
+      return { characterId, sessionId: state.sessionId,
+        messages: chat.messages.filter((m) => batch.sources.some((s) => s.messageId === m.id))
+          .sort((a, b) => a.memorySequence!.seq! - b.memorySequence!.seq!),
+        candidates: memories.filter((m) => batch.candidates.some((c) => c.id === m.id)),
+        manual: memories.filter((m) => m.origin === "manual"),
+        suppressions: await this.memory.listSuppressions(characterId, scope) };
+    });
+  }
+
+  /** Only genuine deleted-message holes may finish without dispatch. Not a general IGNORE shortcut. */
+  async completeEmpty(ticket: MemoryBatchTicket): Promise<void> {
+    const state = this.ticket(ticket);
+    return this.exclusive(state.owner, async (scope) => {
+      const { characterId } = this.owner(state.owner);
+      const cursor = await this.memory.transaction("readonly", (tx) => this.cursor(tx, characterId, state), scope);
+      if (state.completed) return;
+      const batch = cursor.extraction!.batches.find((b) => b.id === state.batchId);
+      if (!batch || batch.state !== "ready" || batch.attempts !== 0 || batch.sources.length || batch.candidates.length) return fail();
+      await this.evidence(state.owner, state, batch, scope);
+      await this.memory.transaction("readwrite", async (tx) => {
+        const current = await this.cursor(tx, characterId, state);
+        const target = current.extraction!.batches.find((b) => b.id === batch.id);
+        if (!target || target.state !== "ready" || target.attempts || target.sources.length || target.candidates.length) return fail();
+        finishMemoryRange(current.extraction!, target);
+        await request(tx.store("cursors").put({ ...current, updatedAt: this.memory.now() }));
+      }, scope);
+      state.completed = true;
+    });
+  }
+
   /** Unique automatic write route: no removals, suppression writes or user undo records. */
   async commitAutomatic(ticket: MemoryBatchTicket, change: { put: readonly MemoryDraft[] }, signal?: AbortSignal): Promise<"committed" | "already-committed"> {
     const state = this.ticket(ticket);
@@ -303,12 +343,14 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
     const sources = normalizeSources(draft.sources), fingerprint = memoryFingerprint(draft.text);
     // Session comes from the validated ticket/cursor, not a caller's invented pointer.
     if (!fingerprint || !sessionId || sources.some((s) => !(s.sessionId === sessionId && sourceKeys.has(s.messageId)) && !allowedSource.has(`${s.sessionId}\0${s.messageId}`))) return fail();
-    if (suppressions.some((s) => s.fingerprint === fingerprint) || existing.some((r) => r.origin === "manual" && r.fingerprint === fingerprint)) throw new MemoryProtectedError(draft.id);
+    if (suppressions.some((s) => s.fingerprint === fingerprint || s.sources.some((old) => sources.some((n) => n.sessionId === old.sessionId && n.messageId === old.messageId)))
+      || existing.some((r) => r.origin === "manual" && r.fingerprint === fingerprint)) throw new MemoryProtectedError(draft.id);
     if (!before && (!sources.some((s) => s.sessionId === sessionId && sourceKeys.has(s.messageId)) || draft.status === "superseded")) return fail();
     if (before && (draft.text !== before.text || draft.kind !== before.kind || draft.subject !== before.subject
       || before.sources.some((s) => !sources.some((n) => s.sessionId === n.sessionId && s.messageId === n.messageId))
       || JSON.stringify(draft.lineage.mergedFrom) !== JSON.stringify(before.lineage.mergedFrom)
-      || (draft.status !== before.status && (before.status === "superseded" || draft.status !== "superseded"))
+      || (draft.status !== before.status && (before.status === "superseded"
+        || !["superseded", "archived", "flagged"].includes(draft.status)))
       || (draft.status === "superseded" && !draft.lineage.supersededBy)
       || (draft.status === before.status && draft.lineage.supersededBy !== before.lineage.supersededBy))) return fail();
     const lineage = { ...draft.lineage };

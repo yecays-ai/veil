@@ -165,8 +165,8 @@ export class MemoryStorage {
       request<Memory[]>(tx.store("memories").index("characterFingerprint").getAll([characterId, fingerprint])));
   }
 
-  listSuppressions(characterId: string): Promise<Suppression[]> {
-    return this.transaction("readonly", (tx) => request<Suppression[]>(tx.store("suppressions").index("characterId").getAll(characterId)));
+  listSuppressions(characterId: string, scope?: PersistenceWriteScope): Promise<Suppression[]> {
+    return this.transaction("readonly", (tx) => request<Suppression[]>(tx.store("suppressions").index("characterId").getAll(characterId)), scope);
   }
 
   listCursors(characterId: string, scope?: PersistenceWriteScope): Promise<MemoryCursor[]> {

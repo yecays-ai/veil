@@ -12,8 +12,9 @@ import { DEFAULT_API_CONFIG_ID } from "../../../lib/api-config";
 import { BUILTIN_PRESET_ID } from "../../../lib/preset";
 import { useBindingManager, type BindingResources } from "./use-binding-manager";
 
-const FIELDS: { key: AppBindingCapability; label: string; multiple: boolean }[] = [
+const FIELDS: { key: ManagedBindingField; label: string; multiple: boolean }[] = [
   { key: "apiConfigId", label: "Text API", multiple: false },
+  { key: "memoryApiConfigId", label: "Memory Maintenance", multiple: false },
   { key: "presetId", label: "Preset", multiple: false },
   { key: "worldBookIds", label: "WorldBook", multiple: true },
   { key: "regexIds", label: "Regex", multiple: true },
@@ -22,11 +23,11 @@ const managedOverrideCount = (slot: BindingSlot | undefined) =>
   FIELDS.filter(({ key }) => slot && Object.hasOwn(slot, key)).length;
 export const bindingApps = bindingCapableApps(APP_REGISTRY);
 export function appBindingFields(app: { bindingCapabilities?: readonly AppBindingCapability[] }) {
-  return FIELDS.filter((field) => app.bindingCapabilities?.includes(field.key));
+  return FIELDS.filter((field) => field.key !== "memoryApiConfigId" && app.bindingCapabilities?.includes(field.key));
 }
 type Option = { id: string; name: string };
 function optionsFor(resources: BindingResources, field: ManagedBindingField): Option[] {
-  if (field === "apiConfigId") return resources.api;
+  if (field === "apiConfigId" || field === "memoryApiConfigId") return resources.api;
   if (field === "presetId") return resources.presets;
   if (field === "worldBookIds") return resources.worldBooks;
   return resources.regex;
@@ -38,8 +39,9 @@ function displayValue(field: ManagedBindingField, value: BindingSlot[ManagedBind
   if ((field === "worldBookIds" || field === "regexIds") && value === undefined) return "Default (All)";
   if (Array.isArray(value)) return value.length
     ? value.map((id) => options.find((item) => item.id === id)?.name ?? "Unavailable").join(" · ") : "None";
-  if (field === "apiConfigId") {
+  if (field === "apiConfigId" || field === "memoryApiConfigId") {
     if (value === null) return "None";
+    if (field === "memoryApiConfigId" && value === undefined) return "Use Character chat model";
     const id = value ?? DEFAULT_API_CONFIG_ID;
     return options.find((item) => item.id === id)?.name ?? "Not configured";
   }
@@ -162,11 +164,11 @@ function BindingFields({ title, fields, own, inherited, effective, resources, bu
               </button>}
               {!multiple && <>
                 {!inherited && <button type="button" disabled={busy} onClick={() => set(undefined)}>
-                  {key === "apiConfigId" ? "Use default Text API" : "Use active Preset"}
+                  {key === "memoryApiConfigId" ? "Use Character chat model" : key === "apiConfigId" ? "Use default Text API" : "Use active Preset"}
                   {!Object.hasOwn(own, key) && <span aria-hidden="true"> ✓</span>}
                 </button>}
                 <button type="button" disabled={busy} onClick={() => set(null)}>
-                  {key === "apiConfigId" ? "None · disable Text API" : "VEIL Default · clear Preset choice"}
+                  {key === "memoryApiConfigId" ? "None · disable maintenance" : key === "apiConfigId" ? "None · disable Text API" : "VEIL Default · clear Preset choice"}
                   {own[key] === null && <span aria-hidden="true"> ✓</span>}
                 </button>
                 {options.map((option) => <button type="button" key={option.id} disabled={busy}

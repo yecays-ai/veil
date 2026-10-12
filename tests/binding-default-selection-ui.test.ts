@@ -31,7 +31,8 @@ regressionContract("bindings.default-all-list-selection", "render-lifecycle",
     const originals = [browserFoundationStorage.load, browserApiConfigStorage.listApiConfigs,
       browserPresetStorage.load, browserWorldBookStorage.load, browserRegexStorage.load] as const;
     browserFoundationStorage.load = async () => foundation;
-    browserApiConfigStorage.listApiConfigs = async () => [];
+    browserApiConfigStorage.listApiConfigs = async () => [{ id: "maintenance-model", name: "Maintenance model", provider: "Custom",
+      model: "configured", apiKey: "test", baseUrl: "https://example.test" }];
     browserPresetStorage.load = async () => createPresetDocument();
     browserWorldBookStorage.load = async () => ({ books: [{ id: "b1", name: "Lore" }, { id: "b2", name: "Map" }] }) as never;
     browserRegexStorage.load = async () => ({ groups: [{ id: "r1", name: "Clean" }, { id: "r2", name: "Style" }] }) as never;
@@ -72,6 +73,16 @@ regressionContract("bindings.default-all-list-selection", "render-lifecycle",
       // Initial state: nothing stored; both resources are Default (All), never None.
       let unmount = await mount({});
       for (const label of ["WorldBook", "Regex"]) assert.equal(summary(label), "Default (All)");
+      assert.deepEqual(stored().global ?? {}, {});
+      await open("Memory Maintenance"); await click(choice("Memory Maintenance", "Maintenance model"));
+      await wait(() => summary("Memory Maintenance") === "Maintenance model");
+      assert.equal(stored().global.memoryApiConfigId, "maintenance-model");
+      assert.equal(stored().global.apiConfigId, undefined, "maintenance selection never changes chat binding");
+      await open("Memory Maintenance"); await click(choice("Memory Maintenance", "None · disable maintenance"));
+      await wait(() => summary("Memory Maintenance") === "None");
+      assert.equal(stored().global.memoryApiConfigId, null);
+      await open("Memory Maintenance"); await click(choice("Memory Maintenance", "Use Character chat model"));
+      await wait(() => summary("Memory Maintenance") === "Use Character chat model");
       assert.deepEqual(stored().global ?? {}, {});
       for (const label of ["WorldBook", "Regex"]) {
         // Explicit None persists [] (not undefined) and displays None.
