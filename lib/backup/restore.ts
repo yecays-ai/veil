@@ -12,7 +12,8 @@ import { validateBackupPackage } from "./validation";
 import { createSafetyCopyStore, type SafetyCopyStore } from "./safety-copy";
 import { digestImageRows } from "./image-digest";
 
-export const RESTORE_JOURNAL_KEY = "veil.restore-journal.v1";
+import { RESTORE_JOURNAL_KEY } from "./restore-journal";
+export { RESTORE_JOURNAL_KEY } from "./restore-journal";
 /** Write order. Chat rows and chat images are one atomic transaction; the foundation document goes last. */
 export const RESTORE_UNITS = ["chat", "appearanceAssets", "apiConfigs", "appearance", "bindings", "presets", "regex",
   "worldbooks", "contacts", "presence", "foundation"] as const;
