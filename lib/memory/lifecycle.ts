@@ -60,7 +60,7 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
         const { supersededBy, ...lineage } = current.lineage;
         if (supersededBy === merged.id) {
           // Do not revive an original whose text is already covered by another live memory.
-          const covered = [...rows.keys()].map(live).some((row) => row.id !== original.id && !deleted.has(row.id)
+          const covered = [...rows.keys()].map(live).some((row) => row.id !== original.id && row.id !== merged.id && !deleted.has(row.id)
             && (row.status === "active" || row.status === "flagged") && row.fingerprint === current.fingerprint);
           changed.set(original.id, { ...current, status: covered ? current.status : "active", lineage, updatedAt: storage.now() });
         }

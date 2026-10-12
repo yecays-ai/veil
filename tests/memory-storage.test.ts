@@ -219,6 +219,18 @@ test("undo also reverses the suppressions an operation wrote", async () => {
   assert.equal((await storage.listSuppressions("c1")).length, 0);
 });
 
+test("the merged memory being deleted does not count as coverage for a restored original", async () => {
+  const { storage } = setup();
+  const c = "c1";
+  await storage.applyChange(c, "seed", { put: [
+    draft("o1", c, "shared text", { status: "superseded", sources: [src("A"), src("B")], lineage: { supersededBy: "merged" } }),
+    draft("merged", c, "Shared text.", { sources: [src("A"), src("B")], lineage: { mergedFrom: ["o1"] } }),
+  ] });
+  await clearSession(storage, c, "A");
+  const rows = await storage.listMemories(c);
+  assert.deepEqual(rows.map((row) => [row.id, row.status]), [["o1", "active"]]);
+});
+
 test("clearing does not revive an original already covered by another live memory", async () => {
   const { storage } = setup();
   const c = "c1";
