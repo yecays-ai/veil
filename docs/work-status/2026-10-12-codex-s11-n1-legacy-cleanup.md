@@ -1,7 +1,7 @@
 # S11 N1 — 废弃测试聊天库清理
 
 更新人：Codex
-更新时间：2026-10-12T09:25:41.1937096+08:00
+更新时间：2026-10-12T09:26:34.8272446+08:00
 发现范围：本轮 fetch / GitHub 开放 PR 核对；main 为 b1b8e2468689f99c5b04e53044ec6d7e3475d95b，开放 PR 0。原 #143–#146 已合并；未发布的其他本地执行器不可见。
 
 ## 当前任务
@@ -10,7 +10,7 @@ S11 N1，施工完成、待 PR 审查。只清理精确名称废弃测试库并�
 
 ## 谁在改哪里
 
-Codex；分支 codex/s11-n1-legacy-cleanup；基线同上述 main；PR 待创建。
+Codex；分支 codex/s11-n1-legacy-cleanup；基线同上述 main；PR [#147](https://github.com/yecays-ai/veil/pull/147)。
 涉及 lib/backup/legacy-cleanup.ts、static-source.ts、backup-flow.ts、restore-preview.ts，components/settings/backup-restore.tsx，tests/backup-legacy-cleanup.test.ts、backup-entry-ui.test.ts，以及本记录和 docs/AUDIT_LEDGER.md 的 N1 记录。
 
 【总账 ID】S11 N1 / P1
@@ -38,4 +38,5 @@ Codex；分支 codex/s11-n1-legacy-cleanup；基线同上述 main；PR 待创建
 ## 下一步
 
 提交独立 PR，跟进有效审查；Lan 手动合并后在 iPhone 导出一次、导入预检并明确覆盖恢复/Reload，核对 v2 聊天和图片；有旧版本标签页占用时关闭其他 VEIL 标签页后重试。不要为验占用主动重开写入旧库的历史版本。无旧库设备仅验证无回归，不称旧库删除真机已验。
+
 
