@@ -233,3 +233,14 @@ test("Bank rows pass backup validation and restore with their ids, undo history 
   assert.equal((await restored.findByFingerprint("peter", "Allergic to cats")).length, 1);
   assert.equal((await restored.listSuppressions("peter")).length, 1); // the correction's suppression remains
 });
+
+test("two writes in the same millisecond still give a stale tab a conflict", async () => {
+  const factory = new IDBFactory();
+  const frozen = () => new MemoryStorage(() => factory, () => 5000, passthrough);
+  const tabA = frozen(), tabB = frozen();
+  await addManualMemory(tabA, "c1", { kind: "fact", text: "Same instant" });
+  const seen = await only(tabA, "c1");
+  await editMemory(tabB, seen, { kind: "fact", text: "Edited in B" });
+  await assert.rejects(deleteMemory(tabA, seen), MemoryConflictError);
+  assert.equal((await only(tabA, "c1")).text, "Edited in B");
+});

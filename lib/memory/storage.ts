@@ -196,7 +196,8 @@ export class MemoryStorage {
           if (clash) throw new MemoryDuplicateError(clash.id);
         }
         const after: Memory = { ...draft, sources: normalizeSources(draft.sources), lineage: { ...draft.lineage },
-          fingerprint, createdAt: before?.createdAt ?? now, updatedAt: now };
+          // Strictly increasing per row, so a stale `expectUpdatedAt` is caught even within one millisecond.
+          fingerprint, createdAt: before?.createdAt ?? now, updatedAt: before ? Math.max(now, before.updatedAt + 1) : now };
         await request(memories.put(after));
         changes.push({ before, after });
       }

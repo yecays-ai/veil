@@ -33,4 +33,4 @@ Claude；分支 `claude/memory-m3-bank-daase9`，base `5002239`。PR：https://g
 
 ## 下一步
 
-Lan 审查、回复两项待决并手动合并。M4 起由 Codex 接手，见 `docs/memory-m4-m8-handoff.md`。
+Lan 审查并手动合并。M4 起由 Codex 接手，见 `docs/memory-m4-m8-handoff.md`。
