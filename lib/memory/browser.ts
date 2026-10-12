@@ -1,4 +1,7 @@
 import type { ChatSession } from "../chat/types";
+import { chatStorage } from "../chat/storage";
+import { browserFoundationStorage } from "../foundation-storage";
+import { resumeStartupClears, type StartupClearDeps } from "./startup";
 import { cancelClearIntent, completeClear, recordClearIntent } from "./lifecycle";
 import { MemoryStorage } from "./storage";
 
@@ -38,4 +41,19 @@ export async function withMemoryClear<T>(session: Pick<ChatSession, "id" | "char
   }
   const done = await Promise.allSettled(characterIds.map((characterId) => completeClear(storage, characterId, session.id)));
   return { value, cleanupIncomplete: done.some((item) => item.status === "rejected") };
+}
+
+/** The one startup entry point: finish unfinished clears. Cancel it with the signal when the page goes away. */
+export function resumeBrowserClears(signal?: AbortSignal) {
+  const deps: StartupClearDeps = {
+    aliveCharacters: async () => {
+      try {
+        const { characters } = await browserFoundationStorage.load();
+        return characters.length ? new Set(characters.map((item) => item.characterId)) : null;
+      } catch { return null; }
+    },
+    sessionIds: async () => new Set((await chatStorage.listSessions()).map((session) => session.id)),
+    countMessages: (sessionId) => chatStorage.countMessages(sessionId),
+  };
+  return resumeStartupClears(browserMemoryStorage, deps, signal);
 }

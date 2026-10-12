@@ -27,7 +27,7 @@ Claude；分支 `claude/memory-m2-backup`；PR：见 GitHub（分支名 `claude/
 
 - 真机/真实浏览器行为（IndexedDB 升级、多标签页、真机中断恢复）。
 - Node 24 未运行；Node 22 上两项已知锁争用测试（Regex/WorldBook failed cleanup）失败，与本 PR 无关。
-- 开放项（需 Lan 决定设计）：无调用方会在启动时调用 `resumePendingClears`，崩溃或清理失败遗留的清空意图暂不会自动完成；恢复应在哪里运行（启动、打开会话、设置页）未定，本 PR 有意不接入。`withMemoryClear` 在清理失败时返回 `cleanupIncomplete`，界面提示“Memory cleanup is pending”，意图保留可续做。
+- 已由 memory-m2-startup-resume 取代（启动时恢复已定并接入）。原开放项：无调用方会在启动时调用 `resumePendingClears`，崩溃或清理失败遗留的清空意图暂不会自动完成；恢复应在哪里运行（启动、打开会话、设置页）未定，本 PR 有意不接入。`withMemoryClear` 在清理失败时返回 `cleanupIncomplete`，界面提示“Memory cleanup is pending”，意图保留可续做。
 - `findLeftovers` 现在列出只剩 Memory 的已删除 Character（`memories`）；确认删除界面的摘要文案未改，仅有 Memory 的情形摘要会显示 0 个会话。
 - 升级前遗留的未完成恢复日志（不含 `memory` 单元）会被判为 `journal-invalid`（按 Lan 决定不做旧格式兼容）。
 

@@ -45,8 +45,10 @@ export function cancelClearIntent(storage: MemoryStorage, characterId: string, s
 /**
  * Step 2: remove everything sourced from session A, then the cursor (and with it the intent), in one
  * transaction. Safe to run any number of times. No model calls: merged memories are unwound by lineage.
+ * With `cutoff` (the time the clear was requested), rows created after it are left alone: they belong to a
+ * conversation that was recreated under the same id, not to the one being cleared.
  */
-export function completeClear(storage: MemoryStorage, characterId: string, sessionId: string): Promise<void> {
+export function completeClear(storage: MemoryStorage, characterId: string, sessionId: string, cutoff?: number): Promise<void> {
   return storage.transaction("readwrite", async (tx) => {
     const memoriesStore = tx.store("memories");
     const rows = new Map((await request<Memory[]>(memoriesStore.index("characterId").getAll(characterId))).map((row) => [row.id, row]));
@@ -54,8 +56,9 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
     const changed = new Map<string, Memory>();
     const live = (id: string) => changed.get(id) ?? rows.get(id)!;
 
+    const after = (createdAt: number) => cutoff !== undefined && createdAt > cutoff;
     const dropSource = (memory: Memory) => {
-      if (!touches(memory.sources, sessionId)) return;
+      if (!touches(memory.sources, sessionId) || after(memory.createdAt)) return;
       const sources = withoutSession(memory.sources, sessionId);
       // Manual memories survive with the source removed; auto memories left with no source are removed.
       if (memory.origin === "auto" && sources.length === 0) { deleted.add(memory.id); changed.delete(memory.id); }
@@ -65,7 +68,7 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
     // Merged memories first: unwind originals by lineage, then drop the merged record.
     for (const merged of rows.values()) {
       const originals = merged.lineage.mergedFrom;
-      if (!originals?.length) continue;
+      if (!originals?.length || after(merged.createdAt)) continue;
       const originalRows = originals.map((id) => rows.get(id)).filter((row): row is Memory => !!row);
       if (!touches(merged.sources, sessionId) && !originalRows.some((row) => touches(row.sources, sessionId))) continue;
       for (const original of originalRows) {
@@ -91,7 +94,7 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
 
     const suppressions = tx.store("suppressions");
     for (const row of await request<Suppression[]>(suppressions.index("characterId").getAll(characterId))) {
-      if (!touches(row.sources, sessionId)) continue;
+      if (!touches(row.sources, sessionId) || after(row.createdAt)) continue;
       const sources = withoutSession(row.sources, sessionId);
       if (sources.length === 0) await request(suppressions.delete(row.id));
       else await request(suppressions.put({ ...row, sources }));
@@ -100,8 +103,8 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
     // Undo records could restore A-sourced memories, so any that reference A are dropped.
     const operations = tx.store("operations");
     for (const row of await request<MemoryOperation[]>(operations.index("characterId").getAll(characterId)))
-      if (row.changes.some((c) => touches(c.before?.sources ?? [], sessionId) || touches(c.after?.sources ?? [], sessionId))
-        || row.suppressionChanges?.some((c) => touches(c.before?.sources ?? [], sessionId) || touches(c.after.sources, sessionId)))
+      if (!after(row.createdAt) && (row.changes.some((c) => touches(c.before?.sources ?? [], sessionId) || touches(c.after?.sources ?? [], sessionId))
+        || row.suppressionChanges?.some((c) => touches(c.before?.sources ?? [], sessionId) || touches(c.after.sources, sessionId))))
         await request(operations.delete(row.id));
 
     await request(tx.store("cursors").delete(cursorId(characterId, sessionId)));
