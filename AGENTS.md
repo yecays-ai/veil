@@ -55,6 +55,25 @@ Browser data belongs to the user. Treat Character, User, Universe, chat, appeara
 - Report what was checked and any environment or device behavior that remains unverified.
 - Keep commits focused. Do not call the merge API, enable auto-merge, add the `automerge` label, or publish a release unless explicitly requested for that specific PR; the owner merges PRs manually.
 
+## Scoped checks by default
+
+These rules apply to every AI development task (Codex, Claude Code, and others). Lan set them on 2026-10-12.
+
+- **Default scope.** Check the task's files first, then their direct dependencies, then the affected interfaces, then targeted tests, then any regressions the change needs. A local task never means scanning the whole repository. Read the existing architecture docs, `docs/AUDIT_LEDGER.md`, and the relevant module docs first. Don't re-explore structure that is already documented.
+- **Test tiers.**
+  - *Everyday UI or small feature changes.* Check the changed files and the components they directly affect. Run targeted tests, the typecheck, and lint on what changed. Don't run a repository audit or the full test suite by default.
+  - *Cross-module changes.* Check the modules and data flows that are actually affected, and run those modules' regressions. Widen testing only where a clear impact calls for it.
+  - *High-risk changes* (backup, restore, data deletion, authentication, credentials, storage migration). Focus on the affected safety boundaries and write paths, and run targeted safety regressions. One full test-suite run is allowed when there is a good reason. A full test-suite run is not a source audit of the repository.
+- **Repository-wide audits.** Consider one only in three cases: the user explicitly asks for it; the core architecture is being restructured at scale; or there is concrete evidence that a problem spans several unknown modules and local checks cannot locate it. Before widening any check, state the reason, the scope, and the expected benefit, and wait for the user's authorization.
+- **Quota and context.**
+  - Don't repeatedly read the whole repository or regenerate a site-wide architecture analysis that already exists.
+  - Don't re-map every module for a single problem, or expand large numbers of source files indiscriminately.
+  - Prefer file paths, symbol search, `git diff`, existing tests, and earlier audit evidence.
+  - For large logs, read only the failure summary and the relevant excerpts.
+  - Reuse earlier results instead of starting from zero when a different agent picks up the task.
+  - Don't add unrelated scans for the sake of coverage.
+- **New findings.** You may record a real problem you notice in passing. It needs a minimal reproduction or specific code evidence (`file:line`). Say whether it blocks the current task or is an unrelated side issue, and give its risk level and practical impact. Don't widen the scope of work without the user's authorization. Don't open a new repository-wide audit on your own, and don't keep extending a project that has met its acceptance criteria.
+
 ## AI collaboration handoff
 
 - At startup, read this guide, applicable nested agent guides, and [work-status conventions](docs/work-status/README.md). Confirm `yecays-ai/veil`, the current branch/base, and local changes before editing.
