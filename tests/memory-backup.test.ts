@@ -11,10 +11,11 @@ import { exportStaticBackup } from "../lib/backup/static-export";
 import { readStaticBackupSource } from "../lib/backup/static-source";
 import { validateBackupPackage } from "../lib/backup/validation";
 import { withMemoryClear } from "../lib/memory/browser";
+import { findLeftovers, removeLeftovers } from "../lib/character-leftovers";
 import { cancelClearIntent, deleteCharacterMemory, recordClearIntent } from "../lib/memory/lifecycle";
 import { MemoryStorage } from "../lib/memory/storage";
 import { lockOrigin } from "./generation-lock-fixture";
-import { A, buildWorld } from "./character-deletion-fixture";
+import { A, B, buildWorld } from "./character-deletion-fixture";
 import { backupData, memoryData, packageFixture, replacePayload, TEST_COMMIT, TEST_NOW, type Fixture } from "./backup-fixture";
 
 function newDevice() {
@@ -224,7 +225,7 @@ test("clearing or deleting a session saves the intent first, then runs the chat 
     steps.push(`chat:${(await storage.listCursors("c1")).map((c) => `${c.sessionId}:${c.clearRequestedAt !== undefined}`).join(",")}`);
     return "done";
   }, storage);
-  assert.equal(result, "done");
+  assert.equal(result.value, "done"); assert.equal(result.cleanupIncomplete, false);
   assert.deepEqual(steps, ["chat:A:true"], "the intent was durable before the chat operation started");
   assert.deepEqual((await storage.listMemories("c1")).map((m) => m.id).sort(), ["both", "only-b"]);
   assert.deepEqual((await storage.getMemory("both"))!.sources, [{ sessionId: "B", messageId: "m" }]);
@@ -259,4 +260,45 @@ test("an intent that was saved but never finished survives reopening and can be 
 test("every restore unit has a writer and the Memory unit is ordered before Foundation", () => {
   assert.ok(RESTORE_UNITS.includes("memory"));
   assert.ok(RESTORE_UNITS.indexOf("memory") < RESTORE_UNITS.indexOf("foundation"));
+});
+
+test("a failed retry keeps a clear intent from an earlier attempt, and a failed withdrawal is reported", async () => {
+  const factory = new IDBFactory(), storage = new MemoryStorage(() => factory, () => 1, passthrough);
+  await recordClearIntent(storage, "c1", "A"); // earlier attempt, never finished
+  const session = { id: "A", characterId: "c1", type: "direct" as const };
+  await assert.rejects(withMemoryClear(session, async () => { throw new Error("chat down"); }, storage), /chat down/);
+  assert.equal((await storage.listCursors("c1"))[0].clearRequestedAt, 1, "the earlier intent survives");
+  // A fresh intent is withdrawn on failure; if the withdrawal itself fails the caller learns about it.
+  const fresh = { id: "B", characterId: "c1", type: "direct" as const };
+  await assert.rejects(withMemoryClear(fresh, async () => {
+    storage.transaction = (async () => { throw new Error("storage down"); }) as never;
+    throw new Error("chat down");
+  }, storage), (e) => e instanceof Error && /could not be withdrawn/.test(e.message) && (e.cause as Error).message === "chat down");
+});
+
+test("cleanup failing after the chat operation succeeded is reported as incomplete and keeps the intent", async () => {
+  const factory = new IDBFactory(), storage = new MemoryStorage(() => factory, () => 1, passthrough);
+  const outcome = await withMemoryClear({ id: "A", characterId: "c1", type: "direct" }, async () => {
+    const real = storage.transaction.bind(storage);
+    storage.transaction = ((mode: IDBTransactionMode, run: never, scope?: never) => {
+      if (mode === "readwrite") return Promise.reject(new Error("storage down"));
+      return real(mode, run, scope);
+    }) as never;
+    return "cleared";
+  }, storage);
+  assert.deepEqual(outcome, { value: "cleared", cleanupIncomplete: true });
+  Reflect.deleteProperty(storage, "transaction");
+  assert.equal((await storage.listCursors("c1"))[0].clearRequestedAt, 1, "resumable");
+});
+
+test("leftovers list Characters that only own Memory, and removal counts each Character once", async () => {
+  const world = await buildWorld();
+  const row = { id: "g1", characterId: "ghost", kind: "fact", text: "ghost fact", subject: "user", status: "active" as const, origin: "auto" as const, sources: [], lineage: {} };
+  await world.memoryStorage.applyChange("ghost", "add", { put: [row] });
+  await world.memoryStorage.applyChange(B, "add", { put: [{ ...row, id: "b1", characterId: B, text: "bob fact" }] });
+  const leftovers = await findLeftovers(world.foundation, world.deps);
+  assert.deepEqual(leftovers.memories, [{ characterId: "ghost" }]);
+  assert.deepEqual(await removeLeftovers(leftovers, world.foundation, world.deps), { removed: 1, skipped: 0, failed: 0 });
+  assert.deepEqual(await world.memoryStorage.listMemories("ghost"), []);
+  assert.equal((await world.memoryStorage.listMemories(B)).length, 1, "a living Character keeps its Memory");
 });

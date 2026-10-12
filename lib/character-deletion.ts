@@ -22,7 +22,7 @@ export type CleanupDeps = {
   presence: Access<PresenceDocument>;
   chat: Pick<ChatStorage, "listSessions" | "countMessages" | "deleteSession" | "removeGroupMembers">;
   /** Removes every Memory row the Character owns (memories, suppressions, undo records, cursors). */
-  memory: { deleteCharacter(characterId: string, scope?: PersistenceWriteScope): Promise<void> };
+  memory: { deleteCharacter(characterId: string, scope?: PersistenceWriteScope): Promise<void>; listCharacterIds(): Promise<string[]> };
 };
 /** `updateTheme` should be the mounted ThemeProvider's commit, so the open page sees the change. */
 export function browserCleanupDeps(updateTheme: Access<ThemeDocument>["update"]): CleanupDeps {
@@ -32,7 +32,8 @@ export function browserCleanupDeps(updateTheme: Access<ThemeDocument>["update"])
     bindings: { load: () => browserBindingStorage.load(), update: (update, scope) => browserBindingStorage.transact(update, scope) },
     presence: { load: () => browserPresenceStorage.load(), update: (update, scope) => browserPresenceStorage.transact(update, scope) },
     chat: chatStorage,
-    memory: { deleteCharacter: (characterId, scope) => deleteCharacterMemory(browserMemoryStorage, characterId, scope) },
+    memory: { deleteCharacter: (characterId, scope) => deleteCharacterMemory(browserMemoryStorage, characterId, scope),
+      listCharacterIds: () => browserMemoryStorage.listCharacterIds() },
   };
 }
 

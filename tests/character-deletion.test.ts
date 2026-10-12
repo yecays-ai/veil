@@ -22,7 +22,7 @@ const fails = (deps: CleanupDeps, step: CleanupStep): CleanupDeps => {
     case "bindings": return { ...deps, bindings: { ...deps.bindings, update: boom } };
     case "presence": return { ...deps, presence: { ...deps.presence, update: boom } };
     case "groups": return { ...deps, chat: Object.assign(Object.create(deps.chat as object), { removeGroupMembers: boom }) };
-    case "memory": return { ...deps, memory: { deleteCharacter: boom } };
+    case "memory": return { ...deps, memory: { ...deps.memory, deleteCharacter: boom } };
     case "conversation": return { ...deps, chat: Object.assign(Object.create(deps.chat as object), { deleteSession: boom }) };
   }
 };
@@ -218,7 +218,7 @@ test("an empty Foundation catalogue never turns every conversation and contact i
   const before = await world.snapshot();
   const empty = { load: async () => ({ ...(await world.foundation.load()), characters: [] }) };
   assert.equal(hasLeftovers(await findLeftovers(empty, world.deps)), false);
-  const stale = { conversations: [{ sessionId: world.ids.sessionA.id, characterId: A, messages: 3 }], contacts: [{ characterId: A }] };
+  const stale = { conversations: [{ sessionId: world.ids.sessionA.id, characterId: A, messages: 3 }], contacts: [{ characterId: A }], memories: [] };
   assert.deepEqual(await removeLeftovers(stale, empty, world.deps), { removed: 0, skipped: 2, failed: 0 });
   assert.deepEqual(await world.snapshot(), before);
 });

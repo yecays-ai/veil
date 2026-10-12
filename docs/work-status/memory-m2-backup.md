@@ -20,15 +20,15 @@ Claude；分支 `claude/memory-m2-backup`；PR：见 GitHub（分支名 `claude/
 
 - 导出含四个 store；校验严格（字段白名单、指纹须等于文本归一化指纹、Character/会话/消息引用规则；来源消息已删除允许，来源会话已删除仅在有待处理清空意图时允许，不伪造源消息）；空环境恢复、确认覆盖恢复、注入失败回滚、中断继续/回滚均保留稳定 ID；未知库版本/store 拒绝；旧格式不写设备。
 - 清空会话/删除会话：先 `recordClearIntent`，再执行聊天操作，再 `completeClear`；聊天操作失败则撤回意图并保留 Memory。群会话对每个成员处理。
-- 检查（Node v22.22.0，仓库要求 Node 24）：`npm run typecheck` 通过；`npm run lint` 0 错误（3 条既有 warning）；`npm run build` 通过；`npm test` 1228/1230 通过，2 项失败为已知 Node 22 锁争用测试（Regex/WorldBook failed cleanup）。
+- 检查（Node v22.22.0，仓库要求 Node 24）：`npm run typecheck` 通过；`npm run lint` 0 错误（3 条既有 warning）；`npm run build` 通过；`npm test` 1231/1233 通过，2 项失败为已知 Node 22 锁争用测试（Regex/WorldBook failed cleanup）。
 - 证据等级：仅自动化测试（fake-indexeddb / JSDOM）。
 
 ## 尚未验证
 
 - 真机/真实浏览器行为（IndexedDB 升级、多标签页、真机中断恢复）。
 - Node 24 未运行；Node 22 上两项已知锁争用测试（Regex/WorldBook failed cleanup）失败，与本 PR 无关。
-- 无调用方会在启动时调用 `resumePendingClears`（M2 不开放用户/自动写入调用方）；崩溃遗留的清空意图暂不会自动完成。
-- 孤儿 Memory（Character 已不存在且无会话/联系人）不会出现在 `findLeftovers` 清单里；需由 `cleanupCharacterData` 重试覆盖。
+- 开放项（需 Lan 决定设计）：无调用方会在启动时调用 `resumePendingClears`，崩溃或清理失败遗留的清空意图暂不会自动完成；恢复应在哪里运行（启动、打开会话、设置页）未定，本 PR 有意不接入。`withMemoryClear` 在清理失败时返回 `cleanupIncomplete`，界面提示“Memory cleanup is pending”，意图保留可续做。
+- `findLeftovers` 现在列出只剩 Memory 的已删除 Character（`memories`）；确认删除界面的摘要文案未改，仅有 Memory 的情形摘要会显示 0 个会话。
 - 升级前遗留的未完成恢复日志（不含 `memory` 单元）会被判为 `journal-invalid`（按 Lan 决定不做旧格式兼容）。
 
 ## 下一步

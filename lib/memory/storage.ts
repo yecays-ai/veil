@@ -117,6 +117,25 @@ export class MemoryStorage {
     return this.transaction("readonly", (tx) => request<Memory[]>(tx.store("memories").index("characterId").getAll(characterId)));
   }
 
+  /** Every Character id that owns at least one row in any store. */
+  listCharacterIds(): Promise<string[]> {
+    return this.transaction("readonly", async (tx) => {
+      const ids = new Set<string>();
+      for (const name of MEMORY_STORES) {
+        const cursor = tx.store(name).index("characterId").openKeyCursor(null, "nextunique");
+        await new Promise<void>((resolve, reject) => {
+          cursor.onerror = () => reject(new Error("Memory storage could not be read."));
+          cursor.onsuccess = () => {
+            const position = cursor.result;
+            if (!position) { resolve(); return; }
+            ids.add(String(position.key)); position.continue();
+          };
+        });
+      }
+      return [...ids].sort();
+    });
+  }
+
   getMemory(id: string): Promise<Memory | undefined> {
     return this.transaction("readonly", (tx) => request<Memory | undefined>(tx.store("memories").get(id)));
   }

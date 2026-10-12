@@ -82,7 +82,8 @@ export async function buildWorld(options: { aBackground?: "shared" | "exclusive"
     bindings: { load: () => bindingStore.load(), update: (update, scope) => bindingStore.transact(update, scope) },
     presence: { load: () => presenceStore.load(), update: (update, scope) => presenceStore.transact(update, scope) },
     chat,
-    memory: { deleteCharacter: (characterId, scope) => deleteCharacterMemory(memoryStorage, characterId, scope) },
+    memory: { deleteCharacter: (characterId, scope) => deleteCharacterMemory(memoryStorage, characterId, scope),
+      listCharacterIds: () => memoryStorage.listCharacterIds() },
   };
   const commitFoundation = (update: (document: FoundationDocument) => FoundationDocument, scope?: PersistenceWriteScope) => foundation.transact(update, scope);
   return { factory, foundation, chat, deps, commitFoundation, themeStore, contactStore, bindingStore, presenceStore, raw: values,

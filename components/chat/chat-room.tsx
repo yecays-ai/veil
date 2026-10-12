@@ -956,7 +956,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         text={`Delete all ${messages.length} messages from this conversation? The conversation itself will remain.`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
           if (!session) return;
-          try { await withMemoryClear(session, () => chatStorage.clearSession(session.id)); revealQueue.cancel(); setConfirmClear(false); showFeedback("Conversation cleared"); }
+          try {
+            const { cleanupIncomplete } = await withMemoryClear(session, () => chatStorage.clearSession(session.id));
+            revealQueue.cancel(); setConfirmClear(false);
+            showFeedback(cleanupIncomplete ? "Conversation cleared. Memory cleanup is pending." : "Conversation cleared");
+          }
           catch (reason) { setError(reason instanceof Error ? reason.message : "Conversation could not be cleared."); }
         }} />}
     </div>

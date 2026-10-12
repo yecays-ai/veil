@@ -93,7 +93,7 @@ function byId(data: BackupData) {
   return result;
 }
 
-test("five databases and seven keys round-trip through v1 validation with all owned data and image bytes", async () => {
+test("five databases and seven keys round-trip through v2 validation with all owned data and image bytes", async () => {
   const env = await environment(), before = await readStaticBackupSource(env.source);
   env.reads.length = 0;
   const localBefore = new Map(env.values), catalogBefore = await env.source.indexedDB.databases();
