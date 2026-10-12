@@ -1,7 +1,7 @@
 # S11 原备份审计 F3 — 中断期间旧标签页写入阻断
 
 更新人：Codex
-更新时间：2026-10-12T10:40:36.7436813+08:00
+更新时间：2026-10-12T10:49:29.9895450+08:00
 发现范围：fetch 最新 main；GitHub GraphQL 所有开放 PR（含草稿）0、无分页遗漏；近期远端分支无相关开放任务，未发布的其他本地工作不可见。基线 `65668b881c20d77ea55530b90a406361eee9e517`。
 
 ## 当前任务
@@ -31,9 +31,11 @@ Codex，分支 `codex/s11-f3-interrupted-write-gate`，PR [#148](https://github.
 
 - 核对头 e5bde8ecebacd2ef14bfaf9dfc4d528aa06de703：远端 verify 已 SUCCESS。CodeRabbit 提出一条任务记录仍称等待创建 PR 的有效意见，本次纯文档修正已处理。代码与测试未变，不重复跑全量；本次 diff check 通过。
 
+- a984cc9d06905b65178eebef32c92a7171cbf55e 的 verify / CodeRabbit 已 SUCCESS，文档评论已自动解决。另核实有效测试 nitpick：无效图片 ID 不会预热连接；现改为读取并断言真实夹具图片。定向 24/24、串行全量再次 1179/1179、零跳过，修改测试的 lint / diff check 通过；生产代码未变，不重复 build。
+
 ## 尚未验证
 
-- #148 本次文档修正推送后的最新提交仍需 CI / CodeRabbit 复审；不以旧头通过替代新头。
+- #148 本次测试预热修正推送后的最新提交仍需 CI / CodeRabbit 复审；不以旧头通过替代新头。
 - F3 真机中断、iPhone 原生 Web Locks 多标签页未实测；用户接受自动化故障注入为主要证据，不需要拼手速。
 
 ## 下一步

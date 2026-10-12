@@ -44,7 +44,9 @@ async function setup() {
   const presets = createPresetStorage(() => storage, gate), regex = createRegexStorage(() => storage, gate);
   const books = createWorldBookStorage(() => storage, gate), presence = createPresenceStorage(() => storage, noLocks, gate);
   const theme = createThemeStorage(() => storage, images);
-  await core.read("foundation"); await chat.listSessions(); await images.readBlob("missing");
+  await core.read("foundation"); await chat.listSessions();
+  const imageId = fixture.manifest.assets.find((asset) => asset.domain === "appearance")!.id;
+  assert.ok(await images.readBlob(imageId), "the old tab's image connection is open before interruption");
   const config = (await api.listApiConfigs())[0];
   await api.saveApiConfig({ ...config, name: "Original simulated config", apiKey: "SIMULATED_ORIGINAL_KEY" });
   await chat.send("character:peter", "original simulated device message");
