@@ -6,13 +6,13 @@
 
 ## 当前接入事实与门禁
 
-- S11 #141/#142 已合并；F1 和未知库护栏有自动化证据；夜间 #143 补图片故障/中断证据、#144 修实际图片摘要缺陷，均待手动合并。在线 T1–T8 已合并，#145 补提交边界证据；真实模型/手机验收尚欠，见夜间交接。
+- S11 #141/#142 已合并；F1 和未知库护栏有自动化证据；夜间 #143 补图片故障/中断证据、#144 修实际图片摘要缺陷，均待手动合并。在线 T1–T8 已合并，#145 补提交边界证据；Lan 2026-10-12 报告 Presence 已真机验收通过（此前“真实模型/手机验收尚欠”已过期）。
 - `lib/chat/request-diagnostics.ts` 已有 CompletionRequestContext.source、真实 usage 解析和 cache-hit/cache-miss 字段，provider 在流式/非流式路径取得 usage。当前输出只在 development 打日志，没有生产有界用量持久存储。估算输入 token 不能当实际 token 或实际费用。
 - `CharacterRelation` 当前有稳定 id、双方 Character id、label、两个方向 context 和 sharedHistory，没有 kind/canCommunicate。用户手动 Contacts 与 Universe 的 Character↔Character 关系分开。
 - ChatMessage 当前有 id/sessionId/role/status/order/turnId/attemptId/outcome/confirmed。请求 source 是调用分类，不是持久消息来源或 Memory 权威。system 备注事件不是对话 turn，现有 prompt 已过滤；测试连接、作息、Here & There、开发诊断不能成为 Memory 来源。这里不提前改消息 schema。
 - 备份已包含 Presence 的独立 localStorage 域，维持 Character/session/message/image 稳定 ID；没有 Memory 域。`static-source.ts` 会拒绝任何未登记 IndexedDB 库（即使空库），唯一本机恢复 safety 库明确排除；新 Memory 必须在开库同 PR 完整接入备份，而非只给数据库名字加白名单。
 
-正式开工共同门禁：Lan 手动合并已审查 PR；确认 S11 和在线系统整体验收（包括如何处理明确记录的真机缺口）；当次明确授权 M0/M1/M2。M0、M1 可独立；M2 依赖 M0 基础及备份验收，不依赖 M1。M0 的实际多日数据用于后续预算/提取上限，不让 M2 在没有模型调用的阶段凭空制定预算。
+正式开工共同门禁：Lan 手动合并已审查 PR；确认 S11 和在线系统整体验收（2026-10-12 状态：S11 已验收通过、PR #150 合并后关闭；Presence 已真机验收通过，前置已满足；真机中断恢复缺口作为已接受残余风险）；当次明确授权 M0/M1/M2（尚未授权，本文件仍只是准备）。M0、M1 可独立；M2 依赖 M0 基础及备份验收，不依赖 M1。M0 的实际多日数据用于后续预算/提取上限，不让 M2 在没有模型调用的阶段凭空制定预算。
 
 ## M0 成本基线工单
 
