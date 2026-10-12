@@ -10,7 +10,7 @@ M5b 记忆决策规则与来源修复：待审查（等 Lan 手动审核与合�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/m5b-enable-entry-r3vr44`；PR 见分支（创建后补链接）。涉及：`lib/memory/maintenance-operations.ts`、`lib/memory/maintenance-input.ts`、`tests/memory-maintenance.test.ts`、`tests/memory-maintenance-source.test.ts`、`docs/memory-m5b-decision-fix.md`、`docs/memory-m5a-construction.md`、`docs/memory-m5b1-construction.md`、`docs/AUDIT_LEDGER.md`。
+Claude；分支 `claude/m5b-enable-entry-r3vr44`；PR https://github.com/yecays-ai/veil/pull/164。涉及：`lib/memory/maintenance-operations.ts`、`lib/memory/maintenance-input.ts`、`tests/memory-maintenance.test.ts`、`tests/memory-maintenance-source.test.ts`、`docs/memory-m5b-decision-fix.md`、`docs/memory-m5a-construction.md`、`docs/memory-m5b1-construction.md`、`docs/AUDIT_LEDGER.md`。
 
 ## 已完成
 
