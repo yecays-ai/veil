@@ -6,6 +6,7 @@ import { recordCount } from "./static-export";
 import { readStaticBackupSource, type StaticBackupSnapshot, type StaticBackupSource } from "./static-source";
 import { parseBackupManifest, validateBackupPackage } from "./validation";
 import type { ValidatedBackup } from "./format";
+import { digestImageRows } from "./image-digest";
 
 export type RestoreBlocker =
   /** The package failed v1 validation (checksum, version, structure). `error` is the validation code. */
@@ -55,20 +56,16 @@ function currentDomainCounts(snapshot: StaticBackupSnapshot): Record<BackupDomai
       : recordCount(domain, value[domain] ?? null)])) as Record<BackupDomain, number>;
 }
 
-/** Everything but secrets and image bytes: pictures contribute id, age, size and type only. */
+/** Omits secrets and raw image bytes; includes byte hashes so same-sized changes invalidate the preview. */
 async function digestTarget(snapshot: StaticBackupSnapshot): Promise<string> {
-  const picture = (row: unknown) => {
-    const { blob, ...rest } = row as { blob?: unknown };
-    return { ...rest, blob: blob instanceof Blob ? { size: blob.size, type: blob.type } : null };
-  };
   const withoutKeys = snapshot.apiConfigs.map((row) => {
     const { apiKey: _key, ...rest } = row as { apiKey?: unknown };
     void _key;
     return rest;
   });
   return sha256(JSON.stringify({ documents: snapshot.documents,
-    chat: { ...snapshot.chat, assets: snapshot.chat.assets.map(picture) },
-    appearanceAssets: snapshot.appearanceAssets.map(picture), apiConfigs: withoutKeys }));
+    chat: { ...snapshot.chat, assets: await digestImageRows(snapshot.chat.assets) },
+    appearanceAssets: await digestImageRows(snapshot.appearanceAssets), apiConfigs: withoutKeys }));
 }
 
 /** Tells a package-level generation marker from other validation failures, without trusting the package. */

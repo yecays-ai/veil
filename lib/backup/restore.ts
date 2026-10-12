@@ -10,6 +10,7 @@ import { previewValidatedBackup, restorePreviewChanged, type RestorePreview } fr
 import { BACKUP_LOCAL_KEYS, readStaticBackupSource, type StaticBackupSnapshot } from "./static-source";
 import { validateBackupPackage } from "./validation";
 import { createSafetyCopyStore, type SafetyCopyStore } from "./safety-copy";
+import { digestImageRows } from "./image-digest";
 
 export const RESTORE_JOURNAL_KEY = "veil.restore-journal.v1";
 /** Write order. Chat rows and chat images are one atomic transaction; the foundation document goes last. */
@@ -21,6 +22,8 @@ const CHAT_STORES = ["sessions", "messages", "chatSettings", "assets", "worldBoo
 
 export type RestoreJournal = {
   version: 1; kind: "empty-restore" | "replace"; restoreId: string; backupId: string; startedAt: number;
+  /** New journals hash image bytes. Absent only on already-interrupted journals from earlier builds. */
+  imageHashes?: true;
   /** Per unit: the digest the device must hold when the unit is done, or "empty" if the backup has nothing for it. */
   expected: Record<RestoreUnit, string>;
   /** Per unit: the digest the device held before the restore. All "empty" for an empty-environment restore. */
@@ -80,10 +83,6 @@ async function sha256(text: string): Promise<string> {
   const hash = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
-const picture = (row: unknown) => {
-  const { blob, ...rest } = row as { blob?: unknown };
-  return { ...rest, blob: blob instanceof Blob ? { size: blob.size, type: blob.type } : null };
-};
 
 /** IndexedDB returns rows in key order; a backup lists them in export order. Compare by id. */
 const byId = <T,>(rows: readonly T[]): T[] => [...rows].sort((a, b) => {
@@ -91,12 +90,14 @@ const byId = <T,>(rows: readonly T[]): T[] => [...rows].sort((a, b) => {
   return x < y ? -1 : x > y ? 1 : 0;
 });
 
-/** One digest per unit, computed identically for a backup and for the device. Credentials and image bytes are excluded. */
-export async function digestUnits(snapshot: StaticBackupSnapshot): Promise<Record<RestoreUnit, string>> {
+/** One digest per unit, computed identically for backup and device, including image byte hashes but excluding credentials. */
+export async function digestUnits(snapshot: StaticBackupSnapshot, imageHashes = true): Promise<Record<RestoreUnit, string>> {
   const chat = snapshot.chat;
+  const chatAssets = await digestImageRows(chat.assets, imageHashes);
+  const appearanceAssets = await digestImageRows(snapshot.appearanceAssets, imageHashes);
   const values: Record<RestoreUnit, unknown | null> = {
-    chat: Object.values(chat).every((rows) => rows.length === 0) ? null : Object.fromEntries(CHAT_STORES.map((name) => [name, chat[name] ?? []]).map(([name, rows]) => [name, byId(name === "assets" ? (rows as unknown[]).map(picture) : (rows as unknown[]))])),
-    appearanceAssets: snapshot.appearanceAssets.length ? byId(snapshot.appearanceAssets.map(picture)) : null,
+    chat: Object.values(chat).every((rows) => rows.length === 0) ? null : Object.fromEntries(CHAT_STORES.map((name) => [name, byId(name === "assets" ? chatAssets : chat[name] ?? [])])),
+    appearanceAssets: appearanceAssets.length ? byId(appearanceAssets) : null,
     apiConfigs: snapshot.apiConfigs.length ? byId(snapshot.apiConfigs).map((row) => { const { apiKey: _key, ...rest } = row as { apiKey?: unknown }; void _key; return rest; }) : null,
     appearance: snapshot.documents.appearance ?? null, bindings: snapshot.documents.bindings ?? null,
     presets: snapshot.documents.presets ?? null, regex: snapshot.documents.regex ?? null,
@@ -148,6 +149,7 @@ function readJournal(device: RestoreDevice): RestoreJournal | null {
     const value = parseBackupJson(text) as Partial<RestoreJournal> | null;
     const expected = value?.expected as Record<string, unknown> | undefined;
     if (!value || value.version !== 1 || (value.kind !== "empty-restore" && value.kind !== "replace") || typeof value.restoreId !== "string"
+      || (value.imageHashes !== undefined && value.imageHashes !== true)
       || (value.kind === "replace" && !value.previous) || typeof value.backupId !== "string" || typeof value.startedAt !== "number" || !expected
       || RESTORE_UNITS.some((unit) => typeof expected[unit] !== "string"
         || (value.kind === "replace" && typeof (value.previous as Record<string, unknown>)[unit] !== "string"))) throw new Error("shape");
@@ -161,7 +163,7 @@ async function rollbackTarget(run: Run, journal: RestoreJournal): Promise<Static
   let copy: StaticBackupSnapshot | null;
   try { copy = await run.safety.load(journal.restoreId); } catch { throw new RestoreError("safety-copy-failed", "kept"); }
   if (!copy) throw new RestoreError("safety-copy-missing", "kept");
-  const digests = await digestUnits(copy);
+  const digests = await digestUnits(copy, journal.imageHashes === true);
   if (RESTORE_UNITS.some((unit) => digests[unit] !== journal.previous[unit])) throw new RestoreError("safety-copy-missing", "kept");
   return copy;
 }
@@ -173,7 +175,7 @@ async function rollbackTarget(run: Run, journal: RestoreJournal): Promise<Static
 async function rollback(run: Run, journal: RestoreJournal, written: ReadonlySet<RestoreUnit> = new Set()): Promise<void> {
   const target = await rollbackTarget(run, journal);
   let state: Record<RestoreUnit, string>;
-  try { state = await digestUnits(await readStaticBackupSource(run.device)); } catch { throw new RestoreError("rollback-failed", "kept"); }
+  try { state = await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
   for (const unit of [...RESTORE_UNITS].reverse())
     // A unit this very run wrote is ours to undo even if it stored something other than expected (failed verification).
     if (state[unit] !== before(journal, unit) && state[unit] !== journal.expected[unit] && !written.has(unit)) throw new RestoreError("target-changed", "kept", unit);
@@ -182,7 +184,7 @@ async function rollback(run: Run, journal: RestoreJournal, written: ReadonlySet<
     catch { throw new RestoreError("rollback-failed", "kept", unit); }
   }
   let after: Record<RestoreUnit, string>;
-  try { after = await digestUnits(await readStaticBackupSource(run.device)); } catch { throw new RestoreError("rollback-failed", "kept"); }
+  try { after = await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
   const left = RESTORE_UNITS.find((unit) => after[unit] !== before(journal, unit));
   if (left) throw new RestoreError("rollback-failed", "kept", left);
   await finish(run, journal);
@@ -203,13 +205,13 @@ async function finish(run: Run, journal: RestoreJournal): Promise<void> {
 async function applyUnits(run: Run, journal: RestoreJournal, snapshot: StaticBackupSnapshot): Promise<{ failedUnit?: RestoreUnit; verified: boolean; written: Set<RestoreUnit> }> {
   const written = new Set<RestoreUnit>();
   for (const unit of RESTORE_UNITS) {
-    const state = (await digestUnits(await readStaticBackupSource(run.device)))[unit];
+    const state = (await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true))[unit];
     if (state === journal.expected[unit]) continue;
     if (state !== before(journal, unit)) throw new RestoreError("target-changed", "kept", unit);
     written.add(unit);
     try { await run.writers[unit].write(snapshot); } catch { return { failedUnit: unit, verified: false, written }; }
   }
-  const after = await digestUnits(await readStaticBackupSource(run.device));
+  const after = await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true);
   return { verified: RESTORE_UNITS.every((unit) => after[unit] === journal.expected[unit]), written };
 }
 
@@ -229,12 +231,14 @@ async function runRestore(kind: RestoreJournal["kind"], manifestJson: string, fi
     const snapshot = snapshotFromBackup(validated, files);
     const current = kind === "replace" ? await readStaticBackupSource(device) : blankSnapshot();
     const restoreId = newId();
+    // Hash before saving the copy: a read/hash failure here must leave no orphan copy or journal.
+    const expected = await digestUnits(snapshot), previous = await digestUnits(current);
     if (kind === "replace") {
       // The copy must exist before the journal that depends on it, and before the first overwrite.
       try { await safety.save(restoreId, current, now()); } catch { throw new RestoreError("safety-copy-failed", "none"); }
     }
-    const journal: RestoreJournal = { version: 1, kind, restoreId, backupId: validated.manifest.backupId, startedAt: now(),
-      expected: await digestUnits(snapshot), previous: await digestUnits(current) };
+    const journal: RestoreJournal = { version: 1, kind, imageHashes: true, restoreId, backupId: validated.manifest.backupId, startedAt: now(),
+      expected, previous };
     const run: Run = { device, writers, safety };
     try { device.localStorage.setItem(RESTORE_JOURNAL_KEY, JSON.stringify(journal)); }
     catch {
@@ -290,7 +294,7 @@ export async function recoverRestore(action: "resume" | "rollback", device: Rest
     const validated = await validateBackupPackage(pack.manifestJson, pack.files);
     const snapshot = snapshotFromBackup(validated, pack.files);
     if (validated.manifest.backupId !== journal.backupId
-      || JSON.stringify(await digestUnits(snapshot)) !== JSON.stringify(journal.expected)) throw new RestoreError("package-mismatch", "kept");
+      || JSON.stringify(await digestUnits(snapshot, journal.imageHashes === true)) !== JSON.stringify(journal.expected)) throw new RestoreError("package-mismatch", "kept");
     const result = await applyUnits(run, journal, snapshot);
     if (result.failedUnit || !result.verified) throw new RestoreError("resume-failed", "kept", result.failedUnit);
     await finish(run, journal);
