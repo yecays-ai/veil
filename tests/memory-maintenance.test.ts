@@ -83,8 +83,15 @@ for (const op of ["CREATE", "UPDATE", "SUPERSEDE", "MERGE", "REINFORCE", "ARCHIV
       assert.deepEqual(await f.memory.listOperations("c"), operations);
       assert.deepEqual((await f.progress())?.completed, [[2, 2]], "later completed range cannot skip earlier evidence");
     });
-    if (op === "UPDATE" || op === "SUPERSEDE") {
+    if (op === "UPDATE") {
+      assert.deepEqual((await f.memory.getMemory("fresh"))?.sources, [{ sessionId: f.session.id, messageId: first.id }, { sessionId: f.session.id, messageId: second.id }]);
+      assert.deepEqual((await f.memory.getMemory("fresh"))?.lineage.mergedFrom, ["old"]);
+      await completeClear(f.memory, "c", f.session.id, new Set([second.id]));
+      assert.equal(await f.memory.getMemory("fresh"), undefined);
+      assert.equal((await f.memory.getMemory("old"))?.status, "active");
+    } else if (op === "SUPERSEDE") {
       assert.deepEqual((await f.memory.getMemory("fresh"))?.sources, [{ sessionId: f.session.id, messageId: second.id }]);
+      assert.equal((await f.memory.getMemory("fresh"))?.lineage.mergedFrom, undefined);
       await completeClear(f.memory, "c", f.session.id, new Set([second.id]));
       assert.equal(await f.memory.getMemory("fresh"), undefined);
       assert.equal((await f.memory.getMemory("old"))?.status, "active");
@@ -118,10 +125,10 @@ test("maintenance candidates use all small active auto sets beyond five, or a de
   const rows: Memory[] = Array.from({ length: 12 }, (_, i) => ({ ...seed(String(i), "s", "m", { text: i < 6 ? "orchid rescue cat" : "cooking pasta" }),
     fingerprint: String(i), createdAt: 1, updatedAt: 1 }));
   assert.equal(selectMaintenanceCandidates("c", rows, "orchid").ids.length, 12);
-  const result = selectMaintenanceCandidates("c", rows, "orchid", 800);
+  const result = selectMaintenanceCandidates("c", rows, "orchid", 300);
   assert.equal(result.mode, "limited"); assert.ok(result.ids.length > 0 && result.ids.length < 6);
-  assert.deepEqual(result, selectMaintenanceCandidates("c", [...rows].reverse(), "orchid", 800));
-  assert.deepEqual(selectMaintenanceCandidates("c", rows, "unrelated", 800).ids, []);
+  assert.deepEqual(result, selectMaintenanceCandidates("c", [...rows].reverse(), "orchid", 300));
+  assert.deepEqual(selectMaintenanceCandidates("c", rows, "unrelated", 300).ids, []);
   assert.deepEqual(selectMaintenanceCandidates("other", rows, "orchid").ids, []);
 });
 

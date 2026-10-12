@@ -62,8 +62,10 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
         status: "superseded", origin: "auto", sources: target.sources, lineage: { mergedFrom: target.lineage.mergedFrom, supersededBy: id } });
     }
     put.push({ id, characterId: snapshot.characterId, text, kind: value.kind as string, subject: value.subject as string,
-      status: "active", origin: "auto", sources: op === "MERGE" ? combined : sources,
-      lineage: op === "MERGE" ? { mergedFrom: targets.map((r) => r.id) } : {} });
+      // UPDATE and MERGE depend on their originals: inherit their sources and register them in lineage so that
+      // removing any contributing source unwinds the whole result. SUPERSEDE stands on the new evidence alone.
+      status: "active", origin: "auto", sources: op === "SUPERSEDE" ? sources : combined,
+      lineage: op === "SUPERSEDE" ? {} : { mergedFrom: targets.map((r) => r.id) } });
   }
   return { put, discarded, operationCount: parsed.operations.length };
 }

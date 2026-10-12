@@ -33,7 +33,7 @@
 
 严格 JSON 操作白名单：IGNORE/CREATE/REINFORCE/UPDATE/SUPERSEDE/MERGE/ARCHIVE/FLAG。拒绝额外字段、非法主体/类型、未知目标、重复修改目标、批次外消息 ID、模型提供的 Character/记录 ID、越权操作及超限响应。新 ID 本地生成。manual 精确冲突、敏感内容、source/text suppression 和精确重复候选丢弃。语义冲突仍需提示和实际模型质量评估，不能把指纹相等检查宣称为语义判定。
 
-UPDATE/SUPERSEDE 的新条目只引用新证据，旧版本与其来源仍保留在 lineage；MERGE 新条目保留全部 originals 来源。REINFORCE 仅追加证据；ARCHIVE/FLAG 只改授权状态。最终提交复用 M5a，Memory 与进度同事务；不写用户撤销记录。
+UPDATE 的新条目继承旧条目来源并登记单元素 `mergedFrom`（依赖关系，不是逐事实归因），任一来源被清除即整体撤销、旧版恢复；SUPERSEDE 的新条目只引用新证据，旧版本与其来源仍保留在 lineage（见 memory-m5b-decision-fix.md）；MERGE 新条目保留全部 originals 来源。REINFORCE 仅追加证据；ARCHIVE/FLAG 只改授权状态。最终提交复用 M5a，Memory 与进度同事务；不写用户撤销记录。
 
 非法结构、脚本化请求失败、来源修改和提交失败均有隔离演练。第一刀不分类真实网络失败、不自动重试、不恢复生产 uncertain；这些由第二刀接线并继续遵守 M5a。
 
