@@ -93,7 +93,8 @@ async function classifyTarget(snapshot: StaticBackupSnapshot, locks: BackupLockM
 
 /**
  * Read-only restore precheck. Validates the package, then reads this device inside the exclusive snapshot
- * lock and compares. It writes nothing, creates no database and returns blockers rather than guessing.
+ * lock and compares. It creates no database and returns blockers rather than guessing.
+ * The explicitly authorized obsolete test database is deleted before reading current authorities.
  * Coordination failures (timeout, unavailable, cancelled) are thrown with their existing codes.
  */
 export async function previewRestore(manifestJson: string, files: ReadonlyMap<string, Uint8Array>,

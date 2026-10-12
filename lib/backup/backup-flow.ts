@@ -34,7 +34,7 @@ export async function createBackupFile(env: BackupBrowser, options: BackupLockOp
   return { bytes: encodeBackupArchive(pack), fileName: backupFileName(createdAt) };
 }
 
-/** Decode, validate and compare a chosen file with this device. Writes nothing. */
+/** Decode, validate and compare; only the authorized obsolete test database may be deleted. */
 export async function inspectBackupFile(bytes: Uint8Array, env: BackupBrowser, options: BackupLockOptions = {}): Promise<InspectedBackup> {
   const pack = decodeBackupArchive(bytes);
   return { pack, preview: await previewRestore(pack.manifestJson, pack.files, env.device, env.locks, options) };
@@ -75,6 +75,16 @@ export function describeBackupError(error: unknown): string {
   if (error instanceof BackupValidationError) {
     if (error.code.startsWith("archive-")) return "This file is not a valid VEIL backup.";
     switch (error.code) {
+      case "legacy-cleanup-failed": return "Could not remove an old test database. Close other VEIL tabs and try again.";
+      case "unsupported-source-database": return "This device has an unregistered database. Backup and restore are blocked.";
+      case "source-catalog-unavailable":
+      case "source-unavailable":
+      case "source-read-failed":
+      case "unsupported-source-schema":
+      case "unsupported-source-document":
+      case "invalid-source-document":
+      case "invalid-source-data":
+      case "invalid-source-json": return "This device's data could not be checked safely. Backup and restore are blocked.";
       case "coordination-timeout": return "Another VEIL tab is busy. Close other VEIL tabs and try again.";
       case "coordination-unavailable": return "This browser cannot coordinate VEIL tabs, so backups are unavailable here.";
       case "coordination-cancelled": return "Cancelled.";

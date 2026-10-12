@@ -6,6 +6,7 @@ import { applyBackup, browserBackup, createBackupFile, describeBackupError, insp
   type InspectedBackup } from "../../lib/backup/backup-flow";
 import { RestoreError } from "../../lib/backup/restore";
 import type { RestoreBlocker } from "../../lib/backup/restore-preview";
+import { BackupValidationError } from "../../lib/backup/format";
 
 const DOMAIN_LABELS: Record<string, string> = {
   foundation: "Profiles", appearance: "Appearance", bindings: "Bindings", presets: "Presets", regex: "Regex",
@@ -103,7 +104,8 @@ function Inspection({ view, understood, setUnderstood, onApply, onCancel }: { vi
   return (
     <div className="settings-card settings-backup-preview">
       <strong>{view.fileName}</strong>
-      {preview.blockers.map((blocker, index) => <p key={index} role="alert">{BLOCKER_TEXT[blocker.code]}</p>)}
+      {preview.blockers.map((blocker, index) => <p key={index} role="alert">{blocker.code === "target-unreadable"
+        ? describeBackupError(new BackupValidationError(blocker.error, blocker.path)) : BLOCKER_TEXT[blocker.code]}</p>)}
       {Object.entries(preview.domains).length ? (
         <ul>
           {Object.entries(preview.domains).map(([domain, count]) => (

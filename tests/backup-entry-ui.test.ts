@@ -66,6 +66,35 @@ async function backupBytes() {
   return bytes;
 }
 
+test("import preview shows a device database problem rather than an invalid-file message", async () => {
+  const factory = new IDBFactory();
+  await new Promise<void>((resolve, reject) => {
+    const request = factory.open("veil-unknown-test", 1);
+    request.onsuccess = () => { request.result.close(); resolve(); };
+    request.onerror = () => reject(request.error);
+  });
+  const bytes = await backupBytes();
+  const { BackupRestoreSettings } = await import("../components/settings/backup-restore");
+  await mounted({ factory }, async ({ render, choose, wait, text }) => {
+    await render(createElement(BackupRestoreSettings));
+    await choose(bytes);
+    await wait(() => text().includes("unregistered database"));
+    assert.doesNotMatch(text(), /not a valid VEIL backup|damaged or not supported/);
+  });
+});
+
+test("wrong-shaped local documents keep the valid-file preview error classified as device data", async () => {
+  const bytes = await backupBytes();
+  const { BackupRestoreSettings } = await import("../components/settings/backup-restore");
+  await mounted({}, async ({ dom, render, choose, wait, text }) => {
+    dom.window.localStorage.setItem("veil.contacts.v1", JSON.stringify({ version: 1, contacts: {} }));
+    await render(createElement(BackupRestoreSettings));
+    await choose(bytes);
+    await wait(() => text().includes("This device's data could not be checked safely"));
+    assert.doesNotMatch(text(), /not a valid VEIL backup|damaged or not supported/);
+  });
+});
+
 test("the gate shows children normally and blocks them while a restore journal exists", async () => {
   const { RestoreGate } = await import("../components/restore-gate");
   await mounted({}, async ({ render, text }) => {
