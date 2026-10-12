@@ -91,6 +91,14 @@ const byId = <T,>(rows: readonly T[]): T[] => [...rows].sort((a, b) => {
   return x < y ? -1 : x > y ? 1 : 0;
 });
 
+/** Credentials stay outside backup/journal digests, but must be removed on success and preserved on rollback. */
+const hasApiKeys = (snapshot: StaticBackupSnapshot) => snapshot.apiConfigs.some((row) => Object.hasOwn(row as object, "apiKey"));
+function sameApiCredentials(a: StaticBackupSnapshot, b: StaticBackupSnapshot): boolean {
+  const left = byId(a.apiConfigs) as Record<string, unknown>[], right = byId(b.apiConfigs) as Record<string, unknown>[];
+  return left.length === right.length && left.every((row, index) => row.id === right[index].id
+    && Object.hasOwn(row, "apiKey") === Object.hasOwn(right[index], "apiKey") && row.apiKey === right[index].apiKey);
+}
+
 /** One digest per unit, computed identically for backup and device, including image byte hashes but excluding credentials. */
 export async function digestUnits(snapshot: StaticBackupSnapshot, imageHashes = true): Promise<Record<RestoreUnit, string>> {
   const chat = snapshot.chat;
@@ -176,18 +184,21 @@ async function rollbackTarget(run: Run, journal: RestoreJournal): Promise<Static
 async function rollback(run: Run, journal: RestoreJournal, written: ReadonlySet<RestoreUnit> = new Set()): Promise<void> {
   const target = await rollbackTarget(run, journal);
   let state: Record<RestoreUnit, string>;
-  try { state = await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
+  let current: StaticBackupSnapshot;
+  try { current = await readStaticBackupSource(run.device); state = await digestUnits(current, journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
   for (const unit of [...RESTORE_UNITS].reverse())
     // A unit this very run wrote is ours to undo even if it stored something other than expected (failed verification).
     if (state[unit] !== before(journal, unit) && state[unit] !== journal.expected[unit] && !written.has(unit)) throw new RestoreError("target-changed", "kept", unit);
-  for (const unit of [...RESTORE_UNITS].reverse()) if (state[unit] !== before(journal, unit)) {
+  for (const unit of [...RESTORE_UNITS].reverse()) if (state[unit] !== before(journal, unit)
+    || (unit === "apiConfigs" && !sameApiCredentials(current, target))) {
     try { await (journal.kind === "replace" ? run.writers[unit].write(target) : run.writers[unit].clear()); }
     catch { throw new RestoreError("rollback-failed", "kept", unit); }
   }
   let after: Record<RestoreUnit, string>;
-  try { after = await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
+  let restored: StaticBackupSnapshot;
+  try { restored = await readStaticBackupSource(run.device); after = await digestUnits(restored, journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
   const left = RESTORE_UNITS.find((unit) => after[unit] !== before(journal, unit));
-  if (left) throw new RestoreError("rollback-failed", "kept", left);
+  if (left || !sameApiCredentials(restored, target)) throw new RestoreError("rollback-failed", "kept", left ?? "apiConfigs");
   await finish(run, journal);
 }
 
@@ -206,14 +217,16 @@ async function finish(run: Run, journal: RestoreJournal): Promise<void> {
 async function applyUnits(run: Run, journal: RestoreJournal, snapshot: StaticBackupSnapshot): Promise<{ failedUnit?: RestoreUnit; verified: boolean; written: Set<RestoreUnit> }> {
   const written = new Set<RestoreUnit>();
   for (const unit of RESTORE_UNITS) {
-    const state = (await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true))[unit];
-    if (state === journal.expected[unit]) continue;
-    if (state !== before(journal, unit)) throw new RestoreError("target-changed", "kept", unit);
+    const current = await readStaticBackupSource(run.device);
+    const state = (await digestUnits(current, journal.imageHashes === true))[unit];
+    if (state === journal.expected[unit] && !(unit === "apiConfigs" && hasApiKeys(current))) continue;
+    if (state !== before(journal, unit) && state !== journal.expected[unit]) throw new RestoreError("target-changed", "kept", unit);
     written.add(unit);
     try { await run.writers[unit].write(snapshot); } catch { return { failedUnit: unit, verified: false, written }; }
   }
-  const after = await digestUnits(await readStaticBackupSource(run.device), journal.imageHashes === true);
-  return { verified: RESTORE_UNITS.every((unit) => after[unit] === journal.expected[unit]), written };
+  const restored = await readStaticBackupSource(run.device);
+  const after = await digestUnits(restored, journal.imageHashes === true);
+  return { verified: RESTORE_UNITS.every((unit) => after[unit] === journal.expected[unit]) && !hasApiKeys(restored), written };
 }
 
 async function runRestore(kind: RestoreJournal["kind"], manifestJson: string, files: ReadonlyMap<string, Uint8Array>,
