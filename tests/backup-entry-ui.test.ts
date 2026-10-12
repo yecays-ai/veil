@@ -10,6 +10,8 @@ import { createPersistenceWriteGate } from "../lib/backup/persistence-write-gate
 import { RESTORE_JOURNAL_KEY } from "../lib/backup/restore";
 import { buildWorld } from "./character-deletion-fixture";
 import { lockOrigin } from "./generation-lock-fixture";
+import { createContactStorage } from "../lib/contact-storage";
+import { BackupValidationError } from "../lib/backup/format";
 
 async function mounted(options: { journal?: boolean; factory?: IDBFactory }, run: (app: {
   dom: JSDOM; container: HTMLElement; render: (child: ReactNode) => Promise<void>; locks: BackupLockManager;
@@ -65,6 +67,26 @@ async function backupBytes() {
     getItem: (k) => world.raw.get(k) ?? null, setItem: (k, v) => { world.raw.set(k, v); }, removeItem: (k) => { world.raw.delete(k); } } } });
   return bytes;
 }
+
+test("an already-mounted RestoreGate cannot let its old view bypass the live browser write guard", async () => {
+  const { RestoreGate } = await import("../components/restore-gate");
+  await mounted({}, async ({ dom, render, click, button }) => {
+    const storage = createContactStorage(() => dom.window.localStorage, () => undefined);
+    let result: unknown, commits = 0;
+    const write = () => { void storage.transact((document) => { commits++; return document; }).then(
+      () => { result = "saved"; }, (error) => { result = error; }); };
+    await render(createElement(RestoreGate, null, createElement("button", { onClick: write }, "Write contact")));
+    // The old view remains mounted; no storage event or BroadcastChannel delivery is needed for safety.
+    dom.window.localStorage.setItem(RESTORE_JOURNAL_KEY, "simulated interrupted journal");
+    await click(button("Write contact"));
+    assert.ok(result instanceof BackupValidationError && result.code === "restore-in-progress");
+    assert.equal(commits, 0);
+    assert.equal(dom.window.localStorage.getItem("veil.contacts.v1"), null);
+    dom.window.localStorage.removeItem(RESTORE_JOURNAL_KEY);
+    await click(button("Write contact"));
+    assert.equal(result, "saved"); assert.equal(commits, 1);
+  });
+});
 
 test("import preview shows a device database problem rather than an invalid-file message", async () => {
   const factory = new IDBFactory();

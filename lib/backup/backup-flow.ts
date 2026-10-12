@@ -75,6 +75,8 @@ export function describeBackupError(error: unknown): string {
   if (error instanceof BackupValidationError) {
     if (error.code.startsWith("archive-")) return "This file is not a valid VEIL backup.";
     switch (error.code) {
+      case "restore-in-progress": return "An earlier restore is unfinished. Reopen VEIL to resume or roll back before making changes.";
+      case "restore-state-unavailable": return "Could not check restore status, so no changes were made. Try again.";
       case "legacy-cleanup-failed": return "Could not remove an old test database. Close other VEIL tabs and try again.";
       case "unsupported-source-database": return "This device has an unregistered database. Backup and restore are blocked.";
       case "source-catalog-unavailable":
