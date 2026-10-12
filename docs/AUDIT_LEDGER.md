@@ -237,3 +237,12 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 - 已修：UPDATE 新条目继承旧来源并登记单元素 `mergedFrom`（来源删除时整体撤销、旧版恢复），SUPERSEDE 不变；决策提示词重排（先状态变化再 IGNORE）；候选预算只统计发给模型的 active 候选。不迁移旧 UPDATE 记录，不清理现有 Memory。
 - 自动化证据：fake IndexedDB/Web Locks/stub，memory-* 与 backup-validation 定向 310/310；新测试在旧代码上失败 6 项；typecheck、改动文件 lint 通过。详见 [施工记录](memory-m5b-decision-fix.md) 与 [任务状态](work-status/2026-10-13-claude-m5b-decision-fix.md)。
 - 未验证：真实模型是否照新提示词决策（待另批的小规模付费评估）；iPhone 真机。Memory Maintenance 开关：Lan 2026-10-12 19:50Z 报告手机上已关闭（用户报告，Claude 无法独立核实）。
+
+## Memory M8 Journal（新增，2026-10-12）
+
+基线 `main 21369721e77a031aad4410b53d55767dd48396ae`。状态：已修待验（独立 PR 待 Lan 审查；未合并、未部署）。
+
+- 已实现：用户自写、关键词触发、按 Character 隔离的 Journal；复用 `memories`（`origin: "journal"` + 可选 `keywords`），不升级数据库版本、不改备份格式版本，仅备份校验器认识新 origin/字段。每次请求至多注入一条，扫描本轮新用户消息与紧邻其前的 Character 消息，自有配额；自动维护不能创建/改/删（守卫改为 `origin !== "auto"`）。
+- 自动化证据：fake IndexedDB / JSDOM / stub provider 的定向测试，memory-*、backup-*、chat-* 756/756；typecheck、改动文件 lint 通过。详见 [施工记录](memory-m8-journal.md) 与 [任务状态](work-status/2026-10-13-claude-m8-journal.md)。
+- 未验证：真实模型反应、iPhone 真机；`npm run build`、全量测试未跑。
+

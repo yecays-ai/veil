@@ -11,6 +11,7 @@ import { MemoryConflictError, MemoryDuplicateError, type MemoryStorage } from ".
 import type { Memory, MemoryOperation, MemoryOrigin, MemoryStatus } from "../lib/memory/types";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { useFoundation } from "./foundation-provider";
+import { MemoryJournal } from "./memory-journal";
 import { PageShell } from "./page-shell";
 import { useBackNavigation } from "./use-back-navigation";
 import { Alert } from "./settings/ui/feedback";
@@ -100,8 +101,10 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
   if (!character) return shell(<p>{C.characters.notFound}</p>);
 
   const last = loaded?.operations.at(-1);
-  const rows = loaded ? filterMemories(loaded.memories, filter) : [];
-  const kinds = [...new Set([...MANUAL_MEMORY_KINDS, ...(loaded?.memories.map((row) => row.kind) ?? [])])];
+  const regular = loaded?.memories.filter((row) => row.origin !== "journal") ?? [];
+  const journal = loaded?.memories.filter((row) => row.origin === "journal") ?? [];
+  const rows = loaded ? filterMemories(regular, filter) : [];
+  const kinds = [...new Set([...MANUAL_MEMORY_KINDS, ...regular.map((row) => row.kind)])];
   return shell(<>
     <p className="subtle">What {character.name} remembers. Only you can see and change this list.</p>
     <div className="settings-action-row memory-bank-actions">
@@ -126,12 +129,12 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
       </Select>
       <Select aria-label="Added by" value={filter.origin ?? ""} onChange={(event) => setFilter({ ...filter, origin: (event.target.value || undefined) as MemoryOrigin | undefined })}>
         <option value="">Anyone</option>
-        {Object.entries(MEMORY_ORIGIN_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        {Object.entries(MEMORY_ORIGIN_LABEL).filter(([value]) => value !== "journal").map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </Select>
     </div>
     {notice && !draft && <Alert variant="danger">{notice}</Alert>}
     {loadError && <Alert variant="danger">{loadError} <button className="text-button" onClick={load}>Try again</button></Alert>}
-    {!loaded ? (!loadError && <p>{C.common.loading}</p>) : !loaded.memories.length ? (
+    {!loaded ? (!loadError && <p>{C.common.loading}</p>) : !regular.length ? (
       <p className="empty-copy subtle">No memories yet.</p>
     ) : !rows.length ? (
       <p className="empty-copy subtle">No memories match.</p>
@@ -157,6 +160,7 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
         </li>)}
       </ul>
     )}
+    {loaded && <MemoryJournal characterId={characterId} characterName={character.name} entries={journal} storage={storage} busy={busy} write={write} />}
     {draft && <BottomSheet title={draft.memory ? "Edit memory" : "Add memory"} onClose={() => !busy && setDraft(null)}>
       <form className="foundation-form" onSubmit={(event) => {
         event.preventDefault();

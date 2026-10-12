@@ -1,6 +1,7 @@
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withExclusivePersistenceWriteScope, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import type { BackupLockOptions } from "../backup/coordination";
 import { memoryFingerprint } from "./fingerprint";
+import { journalRowProblem } from "./journal";
 import {
   MEMORY_DATABASE_NAME, MEMORY_DATABASE_VERSION, MEMORY_OPERATION_LIMIT,
   type Memory, type MemoryChange, type MemoryCursor, type MemoryDraft, type MemoryOperation, type MemorySource, type Suppression,
@@ -203,12 +204,19 @@ export class MemoryStorage {
         if (draft.characterId !== characterId) throw new Error("A memory belongs to a different Character.");
         const before = (await request<Memory | undefined>(memories.get(draft.id))) ?? null;
         if (before && before.characterId !== characterId) throw new Error("A memory belongs to a different Character.");
-        if (options.auto && (draft.origin === "manual" || before?.origin === "manual")) throw new MemoryProtectedError(draft.id);
+        if (options.auto && (draft.origin !== "auto" || (before && before.origin !== "auto"))) throw new MemoryProtectedError(draft.id);
+        if (before && (before.origin === "journal") !== (draft.origin === "journal")) throw new Error("A memory cannot move in or out of the Journal.");
+        if (draft.origin === "journal") {
+          const problem = journalRowProblem(draft);
+          if (problem) throw new Error(problem);
+        } else if (draft.keywords !== undefined) throw new Error("Only Journal entries have keywords.");
         const fingerprint = memoryFingerprint(draft.text);
         if (!fingerprint) throw new Error("A memory needs text.");
         if (draft.status === "active" || draft.status === "flagged") {
           const same = await request<Memory[]>(memories.index("characterFingerprint").getAll([characterId, fingerprint]));
-          const clash = same.find((row) => row.id !== draft.id && (row.status === "active" || row.status === "flagged"));
+          // Journal text is a separate domain: the same words may be both a memory and a Journal entry.
+          const clash = same.find((row) => row.id !== draft.id && (row.status === "active" || row.status === "flagged")
+            && (row.origin === "journal") === (draft.origin === "journal"));
           if (clash) throw new MemoryDuplicateError(clash.id);
         }
         const after: Memory = { ...draft, sources: normalizeSources(draft.sources), lineage: { ...draft.lineage },
@@ -221,7 +229,7 @@ export class MemoryStorage {
         const before = await request<Memory | undefined>(memories.get(id));
         if (!before) continue;
         if (before.characterId !== characterId) throw new Error("A memory belongs to a different Character.");
-        if (options.auto && before.origin === "manual") throw new MemoryProtectedError(id);
+        if (options.auto && before.origin !== "auto") throw new MemoryProtectedError(id);
         await request(memories.delete(id));
         changes.push({ before, after: null });
       }

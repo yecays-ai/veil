@@ -1,6 +1,7 @@
 import { memoryFingerprint } from "./fingerprint";
 import type { MemoryStorage } from "./storage";
-import type { Memory, MemoryOperation, MemoryOrigin, MemoryStatus } from "./types";
+import { JOURNAL_KIND } from "./journal";
+import type { Memory, MemoryDraft, MemoryOperation, MemoryOrigin, MemoryStatus } from "./types";
 
 /**
  * Memory Bank: the user's own view and edits of one Character's memories. Every write here is a user operation,
@@ -19,7 +20,7 @@ export const MEMORY_KIND_LABEL: Record<string, string> = {
   fact: "Fact / preference", event: "Event", ongoing: "Ongoing", relationship: "Relationship", continuity: "Conversation continuity",
 };
 export const MEMORY_STATUS_LABEL: Record<MemoryStatus, string> = { active: "Active", superseded: "Superseded", archived: "Archived", flagged: "Flagged" };
-export const MEMORY_ORIGIN_LABEL: Record<MemoryOrigin, string> = { manual: "Added by you", auto: "Automatic" };
+export const MEMORY_ORIGIN_LABEL: Record<MemoryOrigin, string> = { manual: "Added by you", auto: "Automatic", journal: "Journal" };
 
 export const MEMORY_SUBJECT_LABEL: Record<string, string> = { character: "The Character", user: "You", other: "Someone else" };
 
@@ -62,6 +63,26 @@ export async function deleteMemory(storage: MemoryStorage, memory: Memory): Prom
     remove: [memory.id],
     suppress: [{ id: newId(), fingerprint: memory.fingerprint, reason: "deleted", sources: memory.sources }],
   }, { expectUpdatedAt: { [memory.id]: memory.updatedAt } });
+}
+
+export type JournalEdit = { text: string; keywords: string[] };
+
+const journalDraft = (characterId: string, id: string, edit: JournalEdit): MemoryDraft => ({
+  id, characterId, kind: JOURNAL_KIND, text: edit.text.trim(), subject: "character", status: "active", origin: "journal",
+  sources: [], lineage: {}, keywords: edit.keywords.map((keyword) => keyword.trim()) });
+
+/** Journal entries are the user's own; the store validates limits. They write no suppressions. */
+export async function addJournalEntry(storage: MemoryStorage, characterId: string, edit: JournalEdit): Promise<MemoryOperation> {
+  return storage.applyChange(characterId, "Added a Journal entry", { put: [journalDraft(characterId, newId(), edit)] });
+}
+
+export async function editJournalEntry(storage: MemoryStorage, entry: Memory, edit: JournalEdit): Promise<MemoryOperation> {
+  return storage.applyChange(entry.characterId, "Edited a Journal entry", { put: [journalDraft(entry.characterId, entry.id, edit)] },
+    { expectUpdatedAt: { [entry.id]: entry.updatedAt } });
+}
+
+export async function deleteJournalEntry(storage: MemoryStorage, entry: Memory): Promise<MemoryOperation> {
+  return storage.applyChange(entry.characterId, "Deleted a Journal entry", { remove: [entry.id] }, { expectUpdatedAt: { [entry.id]: entry.updatedAt } });
 }
 
 export type MemoryFilter = { query?: string; kind?: string; status?: MemoryStatus; origin?: MemoryOrigin };

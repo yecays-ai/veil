@@ -98,7 +98,7 @@ export function selectMemoryContext(characterId: string, rows: readonly Memory[]
   const earlier = terms(conversation.earlier.map((message) => message.content).join("\n"));
   const all = [...conversation.earlier, ...conversation.recent.flat(), ...conversation.current];
   const present = new Set(all.map((message) => memoryFingerprint(message.content)));
-  const eligible = rows.filter((row) => row.characterId === characterId && row.status === "active"
+  const eligible = rows.filter((row) => row.characterId === characterId && row.status === "active" && row.origin !== "journal"
     && row.text.length <= MEMORY_CONTEXT_LIMITS.characters)
     .map((row) => ({ row, fingerprint: memoryFingerprint(row.text), tokens: terms(row.text) }));
   const frequency = new Map<string, number>();

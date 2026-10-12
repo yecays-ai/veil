@@ -8,9 +8,10 @@ import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
-import { assembleChatPrompt, hasSystemMemorySlot, memoryConversation } from "./prompt";
+import { assembleChatPrompt, hasSystemMemorySlot, journalTriggerTexts, memoryConversation } from "./prompt";
 import { browserMemoryStorage } from "../memory/browser";
 import { emptyMemoryContext, selectMemoryContext } from "../memory/context";
+import { journalEntry, selectJournal } from "../memory/journal";
 import type { Memory } from "../memory/types";
 import { selfState, type SelfState } from "./self-context";
 import { browserContactStorage } from "../contact-storage";
@@ -186,10 +187,15 @@ export function createChatEngine(
       // Overlap the local read with existing weather/self preparation; no retries or Memory writes.
       const memoryRead = hasSystemMemorySlot(preset)
         ? Promise.resolve().then(() => memories(character.characterId)).then(
-          (rows) => selectMemoryContext(character.characterId, rows, memoryConversation({
-            foundation: document, character, currentMessages: batch.messages, pending: batch.pending,
-            memory: { entries: [] }, regexGroups,
-          }, preset))).catch(() => emptyMemoryContext("unavailable"))
+          (rows) => {
+            const runtime = { foundation: document, character, currentMessages: batch.messages, pending: batch.pending,
+              memory: { entries: [] }, regexGroups };
+            const context = selectMemoryContext(character.characterId, rows, memoryConversation(runtime, preset));
+            // Journal has its own single-entry quota beside Memory's; no match adds nothing.
+            const journal = selectJournal(character.characterId, rows, journalTriggerTexts(runtime, preset));
+            return journal ? { ...context, slot: { ...context.slot, entries: [...context.slot.entries, journalEntry(journal)] },
+              ids: [...context.ids, journal.id], outcome: "selected" as const } : context;
+          }).catch(() => emptyMemoryContext("unavailable"))
         : Promise.resolve(emptyMemoryContext("preset-disabled"));
       const activation = evaluateWorldBooks(books, batch.messages,
         await awaited(storage.readWorldBookState(sessionId), controller.signal));

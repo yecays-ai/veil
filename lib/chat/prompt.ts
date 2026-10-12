@@ -76,6 +76,25 @@ export function memoryConversationText(context: PromptRuntimeContext, preset: Pr
     .filter((message) => message.status === "sent" || message.status === "complete")
     .map((message) => promptContent(message, context));
 }
+/**
+ * Texts the Journal checks for one Character request: the round's new user input plus the Character messages that
+ * arrived since the previous request (the contiguous assistant run right before it, e.g. the last reply and any
+ * proactive messages). Derived from the request itself, so each message is judged once and nothing is stored or
+ * re-read: the next request's run starts after this request's input.
+ */
+export function journalTriggerTexts(context: PromptRuntimeContext, preset: Preset): string[] {
+  const settled = (message: ChatMessage) => message.status === "sent" || message.status === "complete";
+  const history = historyMessages(context).filter(settled);
+  const pending = pendingMessages(context).filter(settled);
+  const current = pending.length ? pending : history.filter((message) => message.role === "user").slice(-1);
+  if (!current.length) return [];
+  const run: ChatMessage[] = [];
+  if (enabledMarkers(preset).some((entry) => entry.marker === "history")) {
+    const before = history.filter((message) => message.order < Math.min(...current.map((item) => item.order)));
+    for (let i = before.length - 1; i >= 0 && before[i].role === "assistant"; i--) run.unshift(before[i]);
+  }
+  return [...run, ...current].map((message) => promptContent(message, context));
+}
 /** Same transmitted window, partitioned for retrieval only; no extra history reads or prompt changes. */
 export function memoryConversation(context: PromptRuntimeContext, preset: Preset): MemoryConversation {
   const history = enabledMarkers(preset).some((entry) => entry.marker === "history") ? historyMessages(context)

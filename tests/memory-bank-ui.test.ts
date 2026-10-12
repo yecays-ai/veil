@@ -160,3 +160,30 @@ test("an edit that collides with another tab keeps the user's text and saves on 
     assert.equal((await storage.listMemories("p"))[0].text, "Lives in the mountains");
   });
 });
+
+test("the Journal section adds a keyword entry apart from the memory list, and delete removes it", async () => {
+  await mounted(async (app) => {
+    const { MemoryBankPage } = await import("../components/memory-bank");
+    let clock = 1000;
+    const storage = new MemoryStorage(() => app.factory, () => ++clock, passthrough);
+    await app.render(createElement(MemoryBankPage, { characterId: "p", storage }));
+    await app.wait(() => app.container.textContent!.includes("No Journal entries yet."));
+    await app.click(button(app.container, "Add Journal entry")!);
+    const [text, keywords] = [...app.dom.window.document.querySelectorAll("textarea")];
+    const set = (area: Element, value: string) => act(async () => {
+      Object.getOwnPropertyDescriptor(app.dom.window.HTMLTextAreaElement.prototype, "value")!.set!.call(area, value);
+      area.dispatchEvent(new app.dom.window.Event("input", { bubbles: true }));
+    });
+    await set(text, "Grew up near the lake");
+    await set(keywords, "lake, 湖");
+    await app.click(button(app.container, "Save")!);
+    await app.wait(() => !!app.container.querySelector('[aria-label="Journal entries"]')?.textContent?.includes("Keywords: lake, 湖"));
+    assert.equal(app.container.querySelector('[aria-label="Memories"]'), null, "journal rows stay out of the memory list");
+    assert.deepEqual((await storage.listMemories("p")).map((row) => [row.origin, row.keywords]), [["journal", ["lake", "湖"]]]);
+    await app.click(button(app.container, "Delete")!);
+    const dialog = app.dom.window.document.querySelector('[role="dialog"]')!;
+    await app.click([...dialog.querySelectorAll("button")].find((item) => item.textContent === "Delete") as HTMLButtonElement);
+    await app.wait(() => app.container.textContent!.includes("No Journal entries yet."));
+    assert.deepEqual(await storage.listSuppressions("p"), []);
+  });
+});
