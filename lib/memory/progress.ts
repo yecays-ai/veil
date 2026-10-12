@@ -26,7 +26,7 @@ const sourceDigest = (message: ChatMessage) => digest({ id: message.id, sessionI
   attemptFor: message.attemptFor, turnId: message.turnId, memorySequence: message.memorySequence });
 const fail = (): never => { throw new MemoryConflictError(); };
 
-/** Passive M5a protocol. No production instance, scheduler, provider or automatic recovery is installed. */
+/** Shared M5a authority and atomic progress protocol; all automatic writers use this route. */
 export class MemoryProgressProtocol {
   private owners = new WeakMap<MemoryOwner, OwnerState>();
   private tickets = new WeakMap<MemoryBatchTicket, TicketState>();
@@ -65,7 +65,7 @@ export class MemoryProgressProtocol {
     void operation.then(() => state.pending.delete(operation), () => state.pending.delete(operation));
     return operation;
   }
-  private async authority(owner: MemoryOwner, sessionId: string, scope: PersistenceWriteScope) {
+  private async authority(owner: MemoryOwner, sessionId: string, scope: PersistenceWriteScope, allowGenerating = false) {
     this.memory.assertExclusive(scope);
     const { characterId } = this.owner(owner), raw = await this.source.readFoundation(scope);
     if (!raw) return fail();
@@ -76,7 +76,7 @@ export class MemoryProgressProtocol {
       || !foundation.characters.some((row: unknown) => !!row && typeof row === "object" && "characterId" in row && row.characterId === characterId)) return fail();
     const chat = await this.source.readChat(sessionId, scope);
     if (!chat.session || chat.session.id !== sessionId || chat.session.characterId !== characterId || chat.session.type === "group"
-      || chat.session.generation || !chat.session.memorySequence) return fail();
+      || (!allowGenerating && chat.session.generation) || !chat.session.memorySequence) return fail();
     const { epoch, nextSeq } = chat.session.memorySequence;
     if (!epoch || !Number.isSafeInteger(nextSeq) || nextSeq < 1) return fail();
     const seqs = new Set<number>();
@@ -160,7 +160,7 @@ export class MemoryProgressProtocol {
   /** A new owner may resume only never-dispatched work; unknown results are retained, never resent. */
   async recover(owner: MemoryOwner, sessionId: string): Promise<MemoryBatchTicket[]> {
     return this.exclusive(owner, async (scope) => {
-      const { characterId } = this.owner(owner), chat = await this.authority(owner, sessionId, scope);
+      const { characterId } = this.owner(owner), chat = await this.authority(owner, sessionId, scope, true);
       const states = await this.memory.transaction("readwrite", async (tx) => {
         const store = tx.store("cursors"), row = await request<MemoryCursor | undefined>(store.get(cursorId(characterId, sessionId)));
         if (!row?.extraction || row.clearRequestedAt !== undefined || !validMemoryProgress(row.extraction) || row.extraction.epoch !== chat.epoch) return [];
@@ -177,8 +177,8 @@ export class MemoryProgressProtocol {
     });
   }
 
-  private async evidence(owner: MemoryOwner, state: TicketState, batch: MemoryBatch, scope: PersistenceWriteScope): Promise<Memory[]> {
-    const chat = await this.authority(owner, state.sessionId, scope);
+  private async evidence(owner: MemoryOwner, state: TicketState, batch: MemoryBatch, scope: PersistenceWriteScope, allowGenerating = false): Promise<Memory[]> {
+    const chat = await this.authority(owner, state.sessionId, scope, allowGenerating);
     if (chat.epoch !== state.epoch || chat.nextSeq <= batch.toSeq) return fail();
     const current = chat.messages.filter((m) => m.memorySequence?.seq !== undefined && m.memorySequence.seq >= batch.fromSeq && m.memorySequence.seq <= batch.toSeq);
     if (current.length !== batch.sources.length) return fail();
@@ -227,11 +227,13 @@ export class MemoryProgressProtocol {
   }
 
   /** Persist in-flight BEFORE provider dispatch; commit-pending BEFORE attempting the result commit. */
-  transition(ticket: MemoryBatchTicket, to: "in-flight" | "commit-pending" | "failed" | "uncertain"): Promise<void> {
+  transition(ticket: MemoryBatchTicket, to: "in-flight" | "commit-pending" | "failed" | "uncertain",
+    canDispatch?: (scope: PersistenceWriteScope) => Promise<boolean>): Promise<void> {
     const state = this.ticket(ticket), owner = this.owner(state.owner);
     return this.exclusive(state.owner, async (scope) => {
-      await this.authority(state.owner, state.sessionId, scope);
+      await this.authority(state.owner, state.sessionId, scope, to !== "in-flight");
       if (to === "in-flight") {
+        if (canDispatch && !await canDispatch(scope)) return fail();
         const current = await this.memory.transaction("readonly", (tx) => this.cursor(tx, owner.characterId, state), scope);
         const target = current.extraction!.batches.find((b) => b.id === state.batchId);
         if (!target) return fail();
@@ -248,6 +250,17 @@ export class MemoryProgressProtocol {
         if (to === "failed") batch.errorCode = "known-failed";
         await request(tx.store("cursors").put({ ...row, updatedAt: this.memory.now() }));
       }, scope);
+    });
+  }
+
+  /** Ticket metadata only, for bounded safe recovery. Never exposes persisted message text. */
+  async describe(ticket: MemoryBatchTicket): Promise<Pick<MemoryBatch, "state" | "attempts" | "fromSeq" | "toSeq">> {
+    const state = this.ticket(ticket);
+    return this.exclusive(state.owner, async (scope) => {
+      const row = await this.memory.transaction("readonly", (tx) => this.cursor(tx, this.owner(state.owner).characterId, state), scope);
+      const batch = row.extraction!.batches.find((b) => b.id === state.batchId);
+      if (!batch) return fail();
+      return { state: batch.state, attempts: batch.attempts, fromSeq: batch.fromSeq, toSeq: batch.toSeq };
     });
   }
 
@@ -302,7 +315,7 @@ export class MemoryProgressProtocol {
       if (state.completed) return "already-committed";
       const batch = row.extraction!.batches.find((b) => b.id === state.batchId);
       if (!batch || batch.state !== "commit-pending" || batch.ownerId !== id || batch.attemptId !== state.attemptId || !state.attemptId) return fail();
-      await this.evidence(state.owner, state, batch, scope);
+      await this.evidence(state.owner, state, batch, scope, true);
       signal?.throwIfAborted();
       await this.memory.transaction("readwrite", async (tx) => {
         this.owner(state.owner);

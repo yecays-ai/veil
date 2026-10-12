@@ -1,4 +1,5 @@
-import { allocateMemorySequence, memoryBirth, MEMORY_TRACKING_ENABLED } from "../memory/sequence";
+import { allocateMemorySequence, memoryBirth } from "../memory/sequence";
+import { maintenanceEnabled } from "../memory/maintenance-config";
 import { readExistingMemorySource } from "../memory/source-read";
 import {
   type ChatMessage,
@@ -173,14 +174,15 @@ export class ChatStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
-    private memoryTracking = MEMORY_TRACKING_ENABLED) {}
+    private memoryTracking: boolean | (() => boolean) = maintenanceEnabled) {}
+  private tracking(): boolean { return typeof this.memoryTracking === "function" ? this.memoryTracking() : this.memoryTracking; }
   private sequence(session: ChatSession, message: ChatMessage): ChatMessage {
-    return this.memoryTracking ? allocateMemorySequence(session, message) : message;
+    return this.tracking() && session.type !== "group" ? allocateMemorySequence(session, message) : message;
   }
 
   /** Explicit test/future M5b activation; unavailable on the production handle in M5a. */
   activateMemoryTracking(sessionId: string, scope: PersistenceWriteScope): Promise<void> {
-    if (!this.memoryTracking) return Promise.reject(new Error("Memory tracking is disabled."));
+    if (!this.tracking()) return Promise.reject(new Error("Memory tracking is disabled."));
     return this.transaction("readwrite", async (tx) => {
       const store = tx.objectStore("sessions"), session = await request<ChatSession | undefined>(store.get(sessionId));
       if (!session || session.generation || session.type === "group") throw new Error("Memory tracking unavailable.");
@@ -944,7 +946,7 @@ export class ChatStorage {
       if (session.generation) throw new Error("A reply is in progress. Stop it before deleting messages.");
       const table = tx.objectStore("messages");
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
-      if (this.memoryTracking) all.sort((a, b) => a.order - b.order);
+      if (this.tracking()) all.sort((a, b) => a.order - b.order);
       const latestUserOrder = Math.max(0, ...all.filter((m) => m.role === "user").map((m) => m.order));
       const previousNextSeq = session.memorySequence?.nextSeq;
       for (const message of all) if (message.role === "assistant" && message.order < latestUserOrder && !message.confirmed) {
@@ -1059,8 +1061,11 @@ export class ChatStorage {
       if (session.generation && session.generation.id !== attemptId)
         throw new Error("A reply is already in progress.");
       if (attemptId && session.generation?.id !== attemptId) throw new Error("Generation attempt is no longer active.");
+      // Epoch creation, new message birth and allocation are one Chat transaction. No old-message backfill.
+      if (typeof this.memoryTracking === "function" && this.tracking() && session.type !== "group" && !session.memorySequence)
+        session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
       const previous: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(sessionId));
-      if (this.memoryTracking) previous.sort((a, b) => a.order - b.order);
+      if (this.tracking()) previous.sort((a, b) => a.order - b.order);
       for (const message of previous) if (message.role === "assistant" && !message.confirmed)
         await request(tx.objectStore("messages").put(this.sequence(session, { ...message, confirmed: true })));
       let quote;
@@ -1074,7 +1079,7 @@ export class ChatStorage {
         id: crypto.randomUUID(),
         sessionId,
         role: "user",
-        ...(this.memoryTracking ? memoryBirth(session) : {}),
+        ...(this.tracking() && session.type !== "group" ? memoryBirth(session) : {}),
         content: content.trim(),
         status: "sent",
         createdAt: Date.now(),
@@ -1119,7 +1124,7 @@ export class ChatStorage {
           await request(table.put(message));
         }
         const assistant: ChatMessage = { id, turnId: id, attemptId: owned, sessionId, role: "assistant", content: "",
-          ...(this.memoryTracking ? memoryBirth(session) : {}),
+          ...(this.tracking() && session.type !== "group" ? memoryBirth(session) : {}),
           status: "streaming", createdAt: Date.now(), order: session.nextOrder,
           ...(target.length ? { attemptFor: target[0].turnId ?? target[0].id, attemptMode: mode } : {}) };
         session = { ...session, generation: { ...session.generation, id: owned, draftId: id, stage: "preparing" } };

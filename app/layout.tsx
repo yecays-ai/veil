@@ -6,6 +6,7 @@ import { FoundationProvider } from "../components/foundation-provider";
 import { StandaloneMode } from "../components/standalone-mode";
 import { RestoreGate } from "../components/restore-gate";
 import { ProductBootstrap } from "../components/product-bootstrap";
+import { MemoryMaintenanceGate } from "../components/memory-maintenance-gate";
 import { ChatDiagnosticsGate } from "../components/diagnostics/chat-diagnostics";
 import "./globals.css";
 import "./appearance.css";
@@ -75,6 +76,7 @@ export default function RootLayout({
         <StandaloneMode />
         <RestoreGate>
           <ProductBootstrap />
+          <MemoryMaintenanceGate />
           <main className="app-root">
             <PhoneShell>
               <ThemeProvider>
