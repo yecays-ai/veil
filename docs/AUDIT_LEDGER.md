@@ -232,8 +232,8 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 
 ## Memory M5b 决策规则与来源修复（新增，2026-10-12）
 
-基线 `main 68f003320b59b2fba85e2e0ca68f6dfc8485d4c4`。状态：已修待验（PR 待 Lan 审核合并，未合并、未部署）。
+基线 `main 68f003320b59b2fba85e2e0ca68f6dfc8485d4c4`。状态：已修待验（PR #164 已由 Lan 合并，合并后 main `81ef9ebcad200cbbd3c66109b1f77ee81e3cf668`；未部署由 Claude 触发）。
 
 - 已修：UPDATE 新条目继承旧来源并登记单元素 `mergedFrom`（来源删除时整体撤销、旧版恢复），SUPERSEDE 不变；决策提示词重排（先状态变化再 IGNORE）；候选预算只统计发给模型的 active 候选。不迁移旧 UPDATE 记录，不清理现有 Memory。
 - 自动化证据：fake IndexedDB/Web Locks/stub，memory-* 与 backup-validation 定向 310/310；新测试在旧代码上失败 6 项；typecheck、改动文件 lint 通过。详见 [施工记录](memory-m5b-decision-fix.md) 与 [任务状态](work-status/2026-10-13-claude-m5b-decision-fix.md)。
-- 未验证：真实模型是否照新提示词决策（待另批的小规模付费评估）；iPhone 真机；Memory Maintenance 开关关闭情况。
+- 未验证：真实模型是否照新提示词决策（待另批的小规模付费评估）；iPhone 真机。Memory Maintenance 开关：Lan 2026-10-12 19:50Z 报告手机上已关闭（用户报告，Claude 无法独立核实）。

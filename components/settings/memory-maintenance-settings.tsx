@@ -71,7 +71,9 @@ export function MemoryMaintenanceSettings() {
     let current = true;
     void (async () => {
       const bindings = await browserBindingStorage.load();
+      if (!current) return;
       const sessions = await chatStorage.listSessions();
+      if (!current) return;
       const now = Date.now();
       const next = await Promise.all(document.characters.map(async (character): Promise<CharacterRow> => ({
         id: character.characterId, name: character.name,
