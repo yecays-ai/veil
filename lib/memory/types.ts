@@ -53,6 +53,8 @@ export type MemoryOperation = {
   label: string;
   createdAt: number;
   changes: MemoryChange[];
+  /** Suppression rows written by this operation, so undo can reverse them. */
+  suppressionChanges?: { before: Suppression | null; after: Suppression }[];
 };
 
 /** One row per Character+session: extraction progress, failure state, and a pending clear intent. */

@@ -208,3 +208,30 @@ test("cursors keep failure state and clear it on success", async () => {
   assert.equal(next.failureReason, undefined);
   assert.ok(next.clearRequestedAt !== undefined, "progress writes do not drop a pending clear intent");
 });
+
+test("undo also reverses the suppressions an operation wrote", async () => {
+  const { storage } = setup();
+  await storage.applyChange("c1", "s1", { suppress: [{ id: "s", fingerprint: "f", reason: "deleted", sources: [src("B")] }] });
+  await storage.applyChange("c1", "s2", { suppress: [{ id: "s", fingerprint: "f", reason: "corrected", sources: [src("B")] }, { id: "t", fingerprint: "g", reason: "deleted", sources: [] }] });
+  await storage.undoLastOperation("c1");
+  assert.deepEqual((await storage.listSuppressions("c1")).map((row) => [row.id, row.reason]), [["s", "deleted"]]);
+  await storage.undoLastOperation("c1");
+  assert.equal((await storage.listSuppressions("c1")).length, 0);
+});
+
+test("clearing does not revive an original already covered by another live memory", async () => {
+  const { storage } = setup();
+  const c = "c1";
+  await storage.applyChange(c, "seed", { put: [
+    draft("o1", c, "same words", { status: "superseded", sources: [src("A"), src("B")], lineage: { supersededBy: "merged" } }),
+    draft("o2", c, "other words", { status: "superseded", sources: [src("B")], lineage: { supersededBy: "merged" } }),
+    draft("merged", c, "merged", { sources: [src("A"), src("B")], lineage: { mergedFrom: ["o1", "o2"] } }),
+    draft("live", c, "Same words!", { sources: [src("B")] }),
+  ] });
+  await clearSession(storage, c, "A");
+  const rows = new Map((await storage.listMemories(c)).map((row) => [row.id, row]));
+  assert.equal(rows.has("merged"), false);
+  assert.equal(rows.get("o1")!.status, "superseded");
+  assert.equal(rows.get("o1")!.lineage.supersededBy, undefined);
+  assert.equal(rows.get("o2")!.status, "active");
+});

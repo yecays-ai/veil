@@ -180,17 +180,24 @@ export class MemoryStorage {
         await request(memories.delete(id));
         changes.push({ before, after: null });
       }
-      for (const item of change.suppress ?? [])
-        await request(tx.store("suppressions").put({ ...item, characterId, sources: normalizeSources(item.sources), createdAt: now } satisfies Suppression));
-      return this.recordOperation(tx, characterId, label, changes, now);
+      const suppressionChanges: NonNullable<MemoryOperation["suppressionChanges"]> = [];
+      for (const item of change.suppress ?? []) {
+        const existing = await request<Suppression | undefined>(tx.store("suppressions").get(item.id));
+        if (existing && existing.characterId !== characterId) throw new Error("A suppression belongs to a different Character.");
+        const after = { ...item, characterId, sources: normalizeSources(item.sources), createdAt: now } satisfies Suppression;
+        await request(tx.store("suppressions").put(after));
+        suppressionChanges.push({ before: existing ?? null, after });
+      }
+      return this.recordOperation(tx, characterId, label, changes, now, suppressionChanges);
     });
   }
 
-  private async recordOperation(tx: MemoryTx, characterId: string, label: string, changes: MemoryChange[], now: number) {
+  private async recordOperation(tx: MemoryTx, characterId: string, label: string, changes: MemoryChange[], now: number,
+    suppressionChanges: NonNullable<MemoryOperation["suppressionChanges"]>) {
     const operations = tx.store("operations");
     const existing = (await request<MemoryOperation[]>(operations.index("characterId").getAll(characterId))).sort((a, b) => a.seq - b.seq);
     const seq = (existing.at(-1)?.seq ?? 0) + 1;
-    const operation: MemoryOperation = { id: `${characterId}\u0000${seq}`, characterId, seq, label, createdAt: now, changes };
+    const operation: MemoryOperation = { id: `${characterId}\u0000${seq}`, characterId, seq, label, createdAt: now, changes, suppressionChanges };
     await request(operations.put(operation));
     const kept = [...existing, operation];
     for (const old of kept.slice(0, Math.max(0, kept.length - MEMORY_OPERATION_LIMIT)))
@@ -208,6 +215,11 @@ export class MemoryStorage {
       for (const { before, after } of [...last.changes].reverse()) {
         if (before) await request(memories.put(before));
         else if (after) await request(memories.delete(after.id));
+      }
+      const suppressions = tx.store("suppressions");
+      for (const { before, after } of [...(last.suppressionChanges ?? [])].reverse()) {
+        if (before) await request(suppressions.put(before));
+        else await request(suppressions.delete(after.id));
       }
       await request(operations.delete(last.id));
       return last;

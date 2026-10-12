@@ -58,8 +58,12 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
         if (deleted.has(original.id)) continue;
         const current = live(original.id);
         const { supersededBy, ...lineage } = current.lineage;
-        if (supersededBy === merged.id)
-          changed.set(original.id, { ...current, status: "active", lineage, updatedAt: storage.now() });
+        if (supersededBy === merged.id) {
+          // Do not revive an original whose text is already covered by another live memory.
+          const covered = [...rows.keys()].map(live).some((row) => row.id !== original.id && !deleted.has(row.id)
+            && (row.status === "active" || row.status === "flagged") && row.fingerprint === current.fingerprint);
+          changed.set(original.id, { ...current, status: covered ? current.status : "active", lineage, updatedAt: storage.now() });
+        }
       }
       deleted.add(merged.id);
       changed.delete(merged.id);
@@ -81,7 +85,8 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
     // Undo records could restore A-sourced memories, so any that reference A are dropped.
     const operations = tx.store("operations");
     for (const row of await request<MemoryOperation[]>(operations.index("characterId").getAll(characterId)))
-      if (row.changes.some((c) => touches(c.before?.sources ?? [], sessionId) || touches(c.after?.sources ?? [], sessionId)))
+      if (row.changes.some((c) => touches(c.before?.sources ?? [], sessionId) || touches(c.after?.sources ?? [], sessionId))
+        || row.suppressionChanges?.some((c) => touches(c.before?.sources ?? [], sessionId) || touches(c.after.sources, sessionId)))
         await request(operations.delete(row.id));
 
     await request(tx.store("cursors").delete(cursorId(characterId, sessionId)));
