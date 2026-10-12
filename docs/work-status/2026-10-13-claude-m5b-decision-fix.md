@@ -1,12 +1,12 @@
 # STATUS — 2026-10-13-claude-m5b-decision-fix
 
 更新人：Claude
-更新时间：2026-10-12T19:50Z (UTC)
+更新时间：2026-10-12T20:00Z (UTC)
 发现范围：施工前 `git fetch origin main` = 68f003320b59b2fba85e2e0ca68f6dfc8485d4c4（#163 合并后）；仅检查了本地分支与该 main，未逐个枚举远端其他开放 PR，所有权视为未知，改动范围限于 lib/memory/maintenance-* 与测试/文档。
 
 ## 当前任务
 
-M5b 记忆决策规则与来源修复：待审查（等 Lan 手动审核与合并）。
+M5b 记忆决策规则与来源修复：已完成（PR #164 由 Lan 于 2026-10-12 19:50Z 合并，main 81ef9eb）。
 
 ## 谁在改哪里
 
@@ -19,8 +19,8 @@ Claude；分支 `claude/m5b-enable-entry-r3vr44`；PR https://github.com/yecays-
 
 ## 尚未验证
 
-- 真实模型行为、iPhone 真机、CI/CodeRabbit 以 PR 实际结果为准；现有重复记忆未清理；手机 Memory Maintenance 开关是否已关闭未确认。
+- 真实模型行为、iPhone 真机、CI/CodeRabbit 以 PR 实际结果为准；现有重复记忆未清理；手机开关：Lan 报告已关闭（用户报告，未独立核实）。
 
 ## 下一步
 
-Lan 审核并手动合并；真实模型小规模评估需另行批准。
+真实模型小规模评估需 Lan 另行批准。
