@@ -88,18 +88,32 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     }
     if (!ticket) return false;
     let snapshot = await deps.protocol.readInput(ticket);
-    if (!snapshot.messages.length) { await deps.protocol.completeEmpty(ticket); return true; }
-    const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), snapshot.messages.map((m) => m.content).join("\n"));
-    ticket = await deps.protocol.refresh(ticket, selected.ids);
-    snapshot = await deps.protocol.readInput(ticket);
+    if (!snapshot.messages.length) {
+      if ((await deps.protocol.describe(ticket)).attempts === 0) { await deps.protocol.completeEmpty(ticket); return true; }
+      // completeEmpty intentionally forbids previously claimed work. Preserve that hole without starving new ranges.
+      try { await deps.protocol.claim(ticket, MAX_SAFE_CLAIMS); await deps.protocol.transition(ticket, "failed"); }
+      catch { /* A changed authority is never recreated or declared successful. */ }
+      return false;
+    }
     const started = performance.now(); let inputCharacters = 0;
     const record = (outcome: "committed" | "rejected" | "commit-failed", operationCount = 0, discarded = 0) => deps.diagnostics?.record({
       outcome, messageCount: snapshot.messages.length, candidateCount: snapshot.candidates.length, inputCharacters,
       operationCount, discarded, durationMs: performance.now() - started });
     let input;
-    try { input = buildMaintenanceInput(snapshot, { characterId, context }); }
+    try {
+      const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), snapshot.messages.map((m) => m.content).join("\n"));
+      ticket = await deps.protocol.refresh(ticket, selected.ids);
+      snapshot = await deps.protocol.readInput(ticket);
+      input = buildMaintenanceInput(snapshot, { characterId, context });
+    }
     catch (error) {
       if (error instanceof MaintenanceInputTooLarge) await deps.protocol.refresh(ticket, undefined, true);
+      else if (deps.enabled() && !signal.aborted) {
+        // A known preflight rejection is a retained failure hole, not an endlessly preferred ready head.
+        // Existing claim/failed transitions reserve no model call and never advance the cursor.
+        try { await deps.protocol.claim(ticket, MAX_SAFE_CLAIMS); await deps.protocol.transition(ticket, "failed"); }
+        catch { /* Changed/deleted authority stays protected; never recreate the cursor. */ }
+      }
       record("rejected"); return false;
     }
     inputCharacters = input.reduce((n, turn) => n + turn.content.length, 0);

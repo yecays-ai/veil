@@ -226,7 +226,7 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 唯一施工基线 `main 9fe2a5e324b40a1f6cf45b894a7d6b8f4c6db739`，已通过 GitHub 核实 #160 合并；不改历史 F/S 定义。Lan 授权本刀最小生产接线、测试、文档和独立 PR，未授权实际启用、付费调用、合并或部署。状态：已修待验（施工完成、默认关闭，待 PR 审查和后续启用验收）。
 
 - 已实现：消息资格/epoch、持久活动五分钟最早门槛、root 页面生命周期、M5a owner 与请求前原子 `in-flight`、维护绑定复核、第一刀候选/严格操作、唯一自动提交；聊天回来旧批次继续，新消息下一批。Memory/进度同事务；manual、suppression、五条 Undo 和 lineage 保护沿用，不改 M4.1 算法。
-- 自动化证据：fake IndexedDB/Web Locks/stub 的定向 643/643、零跳过；typecheck、改动路径 lint、webpack build（24 页）通过。含新聊天竞态基线 Red/Green、费用防重、恢复门禁和挂载默认关闭测试。30 次暖演练独占 hold p95 1.643 ms，runner p95 13.363 ms；不是 iPhone/实际网络保证。详见 [施工记录](memory-m5b2-construction.md) 与 [任务状态](work-status/2026-10-13-codex-memory-m5b2.md)。
+- 自动化证据：fake IndexedDB/Web Locks/stub 的定向 645/645、零跳过；typecheck、改动路径 lint、webpack build（24 页）通过。含新聊天竞态基线 Red/Green、费用防重、恢复门禁和挂载默认关闭测试。30 次暖演练独占 hold p95 1.643 ms，runner p95 13.363 ms；不是 iPhone/实际网络保证。详见 [施工记录](memory-m5b2-construction.md) 与 [任务状态](work-status/2026-10-13-codex-memory-m5b2.md)。
 - 未验证：当前 PR head 的 CI/预览/审查以 GitHub 实际结果为准；真实模型提取质量、Token/费用、iPhone 前后台/锁屏/强制关闭/多标签页及大 History 性能待另行授权。未启用生产 tracking/维护，未产生真实维护模型调用；字符护栏不是精确 Token 预算。
 - 保留边界：uncertain 不自动重发，失败/too-large/安全 claim 耗尽保留状态，不静默跨水位；无维护状态或重试 UI。旧版/不遵守写入协议的 tab 仍不在锁保护承诺内。M3 iPhone 基础操作和 M4 Pickles 正向观察保留，不当 M5 验收。Memory Bank UI 拥挤单独后移；不进入 M6–M8。
 

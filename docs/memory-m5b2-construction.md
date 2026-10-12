@@ -38,7 +38,8 @@ Character owner 复用 M5a `veil-memory:<id>`；证据核验、模型绑定复�
 | 已取得合法结果但最终提交失败 | uncertain 或遗留 commit-pending，由现有恢复协议处理 | 不部分写入、不推进 |
 | 合法 IGNORE/受保护候选被合法丢弃 | 严格校验后提交空计划 | 同事务完成 |
 | 真正删除形成的空批次、从未 claim | `completeEmpty`，不调用模型 | 原子完成 |
-| too-large/敏感输入 | 不截断/不送出，保留待处理 | 不冒充 IGNORE |
+| too-large | 不截断/不送出，保留待处理 | 不冒充 IGNORE |
+| 敏感/非法预检、曾 claimed 后来源全删 | 既有 claim → failed，不调用 provider | 保留失败空洞，后续新范围可继续 |
 
 failed/uncertain/too-large 不换 token 重发；已有未完成范围继续占据空洞，后续新范围可以完成但连续水位不能跨越它们。两次安全 claim 均被请求前中断后保留 ready，不无限恢复。无维护重试 UI；这些保守阻塞状态的后续显式处理仍待未来授权。clear/删除/恢复使旧 token 失效时，本执行器不重建旧 cursor 或旧来源。
 
@@ -46,9 +47,9 @@ failed/uncertain/too-large 不换 token 重发；已有未完成范围继续占�
 
 自动写入仍只有 `commitAutomatic`；Memory 与进度同事务，不写 suppression、用户五条 Undo，不修改 manual。第一刀操作白名单、source/text suppression、lineage、备份 nonce/ABA 均复用。无存储版本迁移、聊天检索、正常 provider 或模型绑定逻辑重构。
 
-基线 Red：用当前 main 的已校验 `progress.ts` 编译产物替换测试沙箱中的协议，新增“旧批次在新 generation 下完成”样例因 authority 拒绝而失败（exit 1）；恢复修订产物同样例通过。未替换真实 main/旧分支源码。
+基线 Red：用当前 main 的已校验 `progress.ts` 编译产物替换测试沙箱中的协议，新增“旧批次在新 generation 下完成”样例因 authority 拒绝而失败（exit 1）；恢复修订产物同样例通过。另以已发布的初版 runner 在测试沙箱复现敏感预检被留作 ready（Red，exit 1），修订后保留失败空洞且下一有效批次通过；安全领取后来源全删也有回归。未替换真实 main/旧分支源码。
 
-截至本地验证：Node 24.19.0 / Next 16.3.8，定向 **643/643，零跳过**，包含 36 项本刀测试；测试编译、typecheck、改动路径 lint（无错误/警告）通过。webpack build 24 页通过。实际命令：
+截至本地验证：Node 24.19.0 / Next 16.3.8，定向 **645/645，零跳过**，包含 38 项本刀测试；测试编译、typecheck、改动路径 lint（无错误/警告）通过。webpack build 24 页通过。实际命令：
 
 ```text
 node node_modules/typescript/bin/tsc --project tsconfig.tests.json --outDir .m5b2-tests

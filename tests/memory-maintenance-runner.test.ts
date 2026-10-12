@@ -192,6 +192,29 @@ test("binding deletion/change before persisted dispatch refuses fee and never fa
   await assert.rejects(f.run()); assert.equal(f.calls(), 0); assert.equal((await f.progress())?.batches[0].state, "claimed");
 });
 
+test("preflight secret rejection retains a failed hole without starving later valid messages or sending the secret", async () => {
+  const f = await fixture(); await f.send("password: private-value"); assert.equal(await f.run(), false);
+  assert.equal(f.calls(), 0); assert.equal((await f.progress())?.batches[0].state, "failed");
+  assert.equal((await f.progress())?.throughSeq, 0);
+  await f.send("I adopted a rescue kitten");
+  f.deps.provider = async function* (_c, messages) {
+    assert.ok(!messages.some((m) => m.content.includes("private-value"))); yield ignore;
+  };
+  assert.equal(await f.run(), true); const p = (await f.progress())!;
+  assert.equal(p.throughSeq, 0); assert.deepEqual(p.completed, [[2, 2]]); assert.equal(p.batches[0].state, "failed");
+});
+
+test("deleted evidence after safe claim keeps a failure hole instead of misusing completeEmpty or starving newer messages", async () => {
+  const f = await fixture(), message = await f.send();
+  await f.protocol.withOwner("c", async (owner) => {
+    const ticket = await f.protocol.prepare(owner, f.session.id, 1, 1); await f.protocol.claim(ticket, 2);
+  });
+  await f.chat.deleteMessages(f.session.id, [message.id]); await f.send("newer valid evidence");
+  assert.equal(await f.run(), false); assert.equal(f.calls(), 0); assert.equal((await f.progress())?.batches[0].state, "failed");
+  assert.equal(await f.run(), true); assert.equal(f.calls(), 1);
+  assert.equal((await f.progress())?.throughSeq, 0); assert.deepEqual((await f.progress())?.completed, [[2, 2]]);
+});
+
 test("maintenance total request deadline cancels an abort-aware hanging provider and preserves uncertain", async () => {
   const f = await fixture(async function* (_c, _m, aborted) {
     await new Promise<void>((_, reject) => aborted.addEventListener("abort", () => reject(new Error("deadline")), { once: true }));
