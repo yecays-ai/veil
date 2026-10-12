@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { chatStorage } from "../lib/chat/storage";
 import {
-  MANUAL_MEMORY_KINDS, MEMORY_KIND_LABEL, MEMORY_ORIGIN_LABEL, MEMORY_STATUS_LABEL,
+  DEFAULT_MEMORY_SUBJECT, MANUAL_MEMORY_KINDS, MEMORY_KIND_LABEL, MEMORY_SUBJECTS, MEMORY_SUBJECT_LABEL, MEMORY_ORIGIN_LABEL, MEMORY_STATUS_LABEL,
   addManualMemory, deleteMemory, describeSources, editMemory, filterMemories,
   type MemoryFilter, type SourceSummary,
 } from "../lib/memory/bank";
@@ -18,7 +18,7 @@ import { Input, Select } from "./settings/ui/form";
 import { BottomSheet, ConfirmDialog } from "./settings/ui/modal";
 
 type Loaded = { memories: Memory[]; operations: MemoryOperation[]; sources: Record<string, SourceSummary[]> };
-type Draft = { memory: Memory | null; kind: string; text: string };
+type Draft = { memory: Memory | null; kind: string; text: string; subject: string };
 
 const message = (error: unknown) =>
   error instanceof MemoryDuplicateError ? "This Character already has a memory with the same text."
@@ -105,7 +105,7 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
   return shell(<>
     <p className="subtle">What {character.name} remembers. Only you can see and change this list.</p>
     <div className="settings-action-row memory-bank-actions">
-      <button className="settings-button" disabled={busy || !loaded} onClick={() => setDraft({ memory: null, kind: MANUAL_MEMORY_KINDS[0], text: "" })}>
+      <button className="settings-button" disabled={busy || !loaded} onClick={() => setDraft({ memory: null, kind: MANUAL_MEMORY_KINDS[0], text: "", subject: DEFAULT_MEMORY_SUBJECT })}>
         Add memory
       </button>
       <button className="settings-button" disabled={busy || !last} onClick={() => last && void write(() => storage.undoLastOperation(characterId, last))}>
@@ -140,7 +140,9 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
         {rows.map((row) => <li key={row.id} className="profile-card">
           <p className="memory-bank-text">{row.text}</p>
           <small className="subtle">
-            {[MEMORY_KIND_LABEL[row.kind] ?? row.kind, MEMORY_ORIGIN_LABEL[row.origin],
+            {[MEMORY_KIND_LABEL[row.kind] ?? row.kind,
+              row.subject === "character" ? `About ${character.name}` : row.subject === "user" ? "About you" : row.subject === "other" ? "About someone else" : "",
+              MEMORY_ORIGIN_LABEL[row.origin],
               row.status === "active" ? "" : MEMORY_STATUS_LABEL[row.status],
               new Date(row.updatedAt).toLocaleString()].filter(Boolean).join(" · ")}
           </small>
@@ -149,7 +151,7 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
               : `From ${source.name} · ${source.present === source.messages ? "message still there" : source.present ? `${source.present} of ${source.messages} messages still there` : "message deleted"}`}
           </small>)}
           <div className="foundation-actions">
-            <button disabled={busy} onClick={() => setDraft({ memory: row, kind: row.kind, text: row.text })}>{C.common.edit}</button>
+            <button disabled={busy} onClick={() => setDraft({ memory: row, kind: row.kind, text: row.text, subject: row.subject })}>{C.common.edit}</button>
             <button className="danger-button" disabled={busy} onClick={() => setRemoving(row)}>{C.common.delete}</button>
           </div>
         </li>)}
@@ -163,6 +165,12 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
         <label>Type
           <Select value={draft.kind} onChange={(event) => setDraft({ ...draft, kind: event.target.value })}>
             {[...new Set([...MANUAL_MEMORY_KINDS, draft.kind])].map((kind) => <option key={kind} value={kind}>{MEMORY_KIND_LABEL[kind] ?? kind}</option>)}
+          </Select>
+        </label>
+        <label>About
+          <Select value={draft.subject} onChange={(event) => setDraft({ ...draft, subject: event.target.value })}>
+            {[...new Set([...MEMORY_SUBJECTS, draft.subject])].map((subject) => <option key={subject} value={subject}>
+              {subject === "character" ? character.name : MEMORY_SUBJECT_LABEL[subject] ?? (subject || "Not set")}</option>)}
           </Select>
         </label>
         <label>Memory

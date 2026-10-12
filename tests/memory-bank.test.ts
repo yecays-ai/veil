@@ -30,12 +30,16 @@ const only = async (storage: MemoryStorage, characterId: string) => {
 const auto = (id: string, text: string): MemoryDraft => ({ id, characterId: "c1", kind: "event", text, subject: "user", status: "active",
   origin: "auto", sources: [{ sessionId: "A", messageId: "m1" }], lineage: {} });
 
-test("adding creates an active manual memory with no source and no subject, and refuses empty or duplicate text", async () => {
+test("adding creates an active manual memory about the Character by default, with no source, and refuses empty or duplicate text", async () => {
   const { storage } = setup();
   await addManualMemory(storage, "c1", { kind: "fact", text: "  Likes green tea.  " });
   const row = await only(storage, "c1");
   assert.deepEqual({ text: row.text, kind: row.kind, origin: row.origin, status: row.status, subject: row.subject, sources: row.sources },
-    { text: "Likes green tea.", kind: "fact", origin: "manual", status: "active", subject: "", sources: [] });
+    { text: "Likes green tea.", kind: "fact", origin: "manual", status: "active", subject: "character", sources: [] });
+  await addManualMemory(storage, "c1", { kind: "continuity", text: "Promised to call back tomorrow", subject: "user" });
+  const continuity = (await storage.findByFingerprint("c1", "Promised to call back tomorrow"))[0];
+  assert.deepEqual({ kind: continuity.kind, subject: continuity.subject, origin: continuity.origin }, { kind: "continuity", subject: "user", origin: "manual" });
+  await storage.undoLastOperation("c1");
   await assert.rejects(addManualMemory(storage, "c1", { kind: "fact", text: " ,. " }), /Write something/);
   await assert.rejects(addManualMemory(storage, "c1", { kind: "event", text: "likes GREEN tea" }), MemoryDuplicateError);
   assert.equal((await storage.listMemories("c1")).length, 1);
@@ -66,7 +70,8 @@ test("an edit that keeps the text writes no suppression, and an edit that change
   await addManualMemory(storage, "c1", { kind: "fact", text: "Has a cat" });
   const row = await only(storage, "c1");
   assert.equal(await editMemory(storage, row, { kind: "fact", text: " Has a cat " }), undefined);
-  await editMemory(storage, row, { kind: "ongoing", text: "has a CAT" });
+  await editMemory(storage, row, { kind: "ongoing", text: "has a CAT", subject: "other" });
+  assert.equal((await only(storage, "c1")).subject, "other");
   assert.deepEqual(await storage.listSuppressions("c1"), []);
   assert.equal((await only(storage, "c1")).kind, "ongoing");
   assert.equal((await storage.listOperations("c1")).length, 2);

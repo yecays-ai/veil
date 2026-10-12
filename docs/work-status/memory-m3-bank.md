@@ -10,7 +10,7 @@ Memory M3：Memory Bank（手动）。Lan 2026-10-12 07:30Z 授权。main 上无
 
 ## 谁在改哪里
 
-Claude；分支 `claude/memory-m3-bank-daase9`，base `5002239`。PR：见本分支 PR。
+Claude；分支 `claude/memory-m3-bank-daase9`，base `5002239`。PR：https://github.com/yecays-ai/veil/pull/156
 - 新增：`lib/memory/bank.ts`、`components/memory-bank.tsx`、`app/characters/[characterId]/memory/{page.tsx,memory.css}`、`tests/memory-bank.test.ts`、`tests/memory-bank-ui.test.ts`、`docs/memory-m4-m8-handoff.md`、本文件。
 - 修改：`lib/memory/storage.ts`（`MemoryConflictError`、`applyChange` 的 `expectUpdatedAt`、`undoLastOperation` 的 `expected`）、`components/profile-pages.tsx`（资料页 Memory 入口）。
 
@@ -22,10 +22,10 @@ Claude；分支 `claude/memory-m3-bank-daase9`，base `5002239`。PR：见本分
 - 检查（Node v22.22.0）：`npm run typecheck` 通过；`npm run lint` 0 错误（3 条既有 warning）；`npm run build` 通过；定向测试 memory-bank 14、memory-bank-ui 4、memory-storage/backup/startup、character-deletion、资料页 UI 共 80 项通过。未跑全量 `npm test`。
 - 证据等级：自动化测试（fake-indexeddb + JSDOM）。
 
-## 待决（Lan）
+## Lan 的决定（2026-10-12 07:36Z）
 
-- 手动可选类型（推荐：事实/偏好、事件、进行中、关系；对话延续仅自动）。代码已按推荐，单常量 `MANUAL_MEMORY_KINDS`。
-- 手动记忆 subject（推荐：M3 留空，M5 定义）。代码已按推荐。
+- 手动可新增全部五类，含对话延续（`MANUAL_MEMORY_KINDS`）。
+- subject：Character 自己 / 用户 / 其他，默认 Character 自己（依据 v2“记忆属于 Character”）。“其他”关联对象留给 M5。
 
 ## 尚未验证
 

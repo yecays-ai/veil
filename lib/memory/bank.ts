@@ -7,29 +7,36 @@ import type { Memory, MemoryOperation, MemoryOrigin, MemoryStatus } from "./type
  * so it is recorded for undo (last five per Character) and always leaves a `manual` memory.
  */
 
-/** Kinds a user can pick when adding or editing. "continuity" is kept up by automatic maintenance only. */
-export const MANUAL_MEMORY_KINDS = ["fact", "event", "ongoing", "relationship"] as const;
+/** Kinds a user can pick when adding or editing: all five approved kinds. */
+export const MANUAL_MEMORY_KINDS = ["fact", "event", "ongoing", "relationship", "continuity"] as const;
+/**
+ * Who a memory is about. Memory belongs to the Character and records its own experiences and views (v2), so a new
+ * manual memory defaults to the Character itself. Linking "other" to a specific person is later work.
+ */
+export const MEMORY_SUBJECTS = ["character", "user", "other"] as const;
+export const DEFAULT_MEMORY_SUBJECT = "character";
 export const MEMORY_KIND_LABEL: Record<string, string> = {
   fact: "Fact / preference", event: "Event", ongoing: "Ongoing", relationship: "Relationship", continuity: "Conversation continuity",
 };
 export const MEMORY_STATUS_LABEL: Record<MemoryStatus, string> = { active: "Active", superseded: "Superseded", archived: "Archived", flagged: "Flagged" };
 export const MEMORY_ORIGIN_LABEL: Record<MemoryOrigin, string> = { manual: "Added by you", auto: "Automatic" };
 
-export type MemoryEdit = { kind: string; text: string };
+export const MEMORY_SUBJECT_LABEL: Record<string, string> = { character: "The Character", user: "You", other: "Someone else" };
 
-const clean = (edit: MemoryEdit): MemoryEdit => {
+export type MemoryEdit = { kind: string; text: string; subject?: string };
+
+const clean = (edit: MemoryEdit) => {
   const text = edit.text.trim();
   if (!memoryFingerprint(text)) throw new Error("Write something for this memory.");
-  return { kind: edit.kind, text };
+  return { kind: edit.kind, text, subject: edit.subject };
 };
 
 const newId = () => crypto.randomUUID();
 
 export async function addManualMemory(storage: MemoryStorage, characterId: string, edit: MemoryEdit): Promise<MemoryOperation> {
-  const { kind, text } = clean(edit);
-  // Subject is left empty for manual memories until automatic maintenance defines its meaning.
+  const { kind, text, subject = DEFAULT_MEMORY_SUBJECT } = clean(edit);
   return storage.applyChange(characterId, "Added a memory", {
-    put: [{ id: newId(), characterId, kind, text, subject: "", status: "active", origin: "manual", sources: [], lineage: {} }],
+    put: [{ id: newId(), characterId, kind, text, subject, status: "active", origin: "manual", sources: [], lineage: {} }],
   });
 }
 
@@ -38,13 +45,13 @@ export async function addManualMemory(storage: MemoryStorage, characterId: strin
  * suppressed so automatic maintenance cannot bring it back. Returns undefined when nothing changed.
  */
 export async function editMemory(storage: MemoryStorage, memory: Memory, edit: MemoryEdit): Promise<MemoryOperation | undefined> {
-  const { kind, text } = clean(edit);
+  const { kind, text, subject = memory.subject } = clean(edit);
   const textChanged = memoryFingerprint(text) !== memory.fingerprint;
-  if (!textChanged && kind === memory.kind && text === memory.text && memory.origin === "manual") return undefined;
+  if (!textChanged && kind === memory.kind && text === memory.text && subject === memory.subject && memory.origin === "manual") return undefined;
   const { fingerprint: _f, createdAt: _c, updatedAt: _u, ...draft } = memory;
   void [_f, _c, _u];
   return storage.applyChange(memory.characterId, "Edited a memory", {
-    put: [{ ...draft, kind, text, origin: "manual" }],
+    put: [{ ...draft, kind, text, subject, origin: "manual" }],
     suppress: textChanged ? [{ id: newId(), fingerprint: memory.fingerprint, reason: "corrected", sources: memory.sources }] : [],
   }, { expectUpdatedAt: { [memory.id]: memory.updatedAt } });
 }
