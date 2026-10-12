@@ -29,7 +29,7 @@ export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencie
       catch {
         // At most two local read retries per failure streak; lifecycle events may still recheck.
         // This re-reads durable activity, never retries a dispatched model request.
-        dirty = false;
+        // Keep wakeups received during this read; finally consumes one pending recheck.
         if (!stopped && deps.enabled() && deps.runnable() && readRetries < 2) {
           readRetries++;
           const version = retryVersion;

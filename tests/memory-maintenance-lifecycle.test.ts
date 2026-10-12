@@ -104,6 +104,23 @@ test("stop clears an outstanding read retry and a late rejection cannot create o
   const waking = late.wake(); late.stop(); reject(new Error("late read")); await waking.catch(() => undefined);
   assert.equal(timers.size, 0);
 });
+test("a wake received during the last failed read is preserved after automatic retries are exhausted", async () => {
+  let reads = 0, next = 0, calls = 0, reject!: (error: Error) => void;
+  const timers = new Map<number, () => void>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => 1e6,
+    sessions: async () => {
+      reads++;
+      if (reads < 3) throw new Error("temporary read");
+      if (reads === 3) return new Promise((_resolve, fail) => { reject = fail; });
+      return [row()];
+    }, run: async () => { calls++; return false; },
+    setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
+  const fire = async () => { const [id, cb] = [...timers][0]; timers.delete(id); cb(); await new Promise((r) => setTimeout(r, 0)); };
+  await scheduler.wake(); await fire(); await fire(); assert.equal(reads, 3);
+  await scheduler.wake(); reject(new Error("late read")); await new Promise((r) => setTimeout(r, 0));
+  assert.equal(reads, 4); assert.equal(timers.size, 1); assert.equal(calls, 0);
+  await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
+});
 test("owner contention rechecks after bounded delay without treating it as model retry; repeated wake does not duplicate timers", async () => {
   let now = 1000 + MAINTENANCE_IDLE_MS, calls = 0, next = 0;
   const timers = new Map<number, { cb: () => void; delay: number }>();
