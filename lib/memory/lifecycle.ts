@@ -102,9 +102,20 @@ export async function clearSession(storage: MemoryStorage, characterId: string, 
 /** Finish every persisted clear intent of a Character (for example after a reload). Returns the session ids redone. */
 export async function resumePendingClears(storage: MemoryStorage, characterId: string): Promise<string[]> {
   const pending = (await storage.listCursors(characterId)).filter((row) => row.clearRequestedAt !== undefined);
-  for (const row of pending) await storage.withExclusive(async (scope) => {
-    const current = (await storage.listCursors(characterId, scope)).find((cursor) => cursor.id === row.id);
-    if (current?.clearRequestedAt !== undefined) await completeClear(storage, characterId, current.sessionId, current.clearMessageIds && new Set(current.clearMessageIds), scope);
-  });
-  return pending.map((row) => row.sessionId);
+  const completed: string[] = [];
+  for (const row of pending) {
+    let completedSessionId: string | undefined;
+    try {
+      await storage.withExclusive(async (scope) => {
+        const current = (await storage.listCursors(characterId, scope)).find((cursor) => cursor.id === row.id);
+        if (current?.clearRequestedAt === undefined) return;
+        await completeClear(storage, characterId, current.sessionId, current.clearMessageIds && new Set(current.clearMessageIds), scope);
+        completedSessionId = current.sessionId;
+      });
+      if (completedSessionId !== undefined) completed.push(completedSessionId);
+    } catch {
+      // Keep the failed intent for recovery without blocking other sessions.
+    }
+  }
+  return completed;
 }

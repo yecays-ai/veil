@@ -18,6 +18,29 @@ async function dispatched(f: Awaited<ReturnType<typeof progressFixture>>, ticket
   await f.protocol.claim(ticket, 2); await f.protocol.transition(ticket, "in-flight"); await f.protocol.transition(ticket, "commit-pending");
 }
 
+test("automatic superseding requires a permitted successor and rejection preserves Memory and progress", async () => {
+  const f = await progressFixture(), message = await f.send();
+  const old = draft("old", f.session.id, message.id);
+  await f.memory.applyChange("c", "seed", { put: [old] });
+  const original = await f.memory.getMemory("old");
+  await f.protocol.withOwner("c", async (owner) => {
+    const ticket = await f.protocol.prepare(owner, f.session.id, 1, 1, ["old"]);
+    await dispatched(f, ticket);
+    const progress = await f.progress();
+    for (const lineage of [{}, { supersededBy: "" }, { supersededBy: "old" }, { supersededBy: "missing" }]) {
+      await assert.rejects(f.protocol.commitAutomatic(ticket, { put: [{ ...old, status: "superseded", lineage }] }));
+      assert.deepEqual(await f.memory.getMemory("old"), original);
+      assert.deepEqual(await f.progress(), progress);
+    }
+    await f.protocol.commitAutomatic(ticket, { put: [
+      { ...old, status: "superseded", lineage: { supersededBy: "successor" } },
+      draft("successor", f.session.id, message.id),
+    ] });
+    assert.equal((await f.memory.getMemory("old"))?.lineage.supersededBy, "successor");
+    assert.equal((await f.progress())?.throughSeq, 1);
+  });
+});
+
 test("automatic commit changes Memory and progress together, preserves five user undo slots and suppression", async () => {
   const f = await progressFixture(), message = await f.send();
   for (let i = 0; i < 5; i++) await f.memory.applyChange("c", `manual ${i}`, { put: [draft(`manual${i}`, f.session.id, message.id, { origin: "manual" })] });

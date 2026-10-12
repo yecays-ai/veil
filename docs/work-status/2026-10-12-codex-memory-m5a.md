@@ -1,8 +1,8 @@
 # STATUS — 2026-10-12-codex-memory-m5a
 
 更新人：Codex
-更新时间：2026-10-12T21:18:00+08:00
-发现范围：通过 GitHub integration 核实 main、开放 PR（含 draft）与远端分支；main 为 fa464aa380d548d1c5997989d62df12af8b9af80，开放 PR 为空。独立本地快照的 609 个版本文件逐一核对 Git blob SHA；未覆盖其他工作目录。无法观察未发布的本地任务。
+更新时间：2026-10-12T13:44:00.258Z
+发现范围：通过 GitHub integration 核实 main、开放 PR（含 draft）与远端分支；main 为 fa464aa380d548d1c5997989d62df12af8b9af80，开放 PR 仅 #159；本轮修复基于 head 3b4cae668f1d26bd9c6f8fd24f92fcf274a98c8c。独立本地快照的 609 个版本文件逐一核对 Git blob SHA；未覆盖其他工作目录。无法观察未发布的本地任务。
 
 ## 当前任务
 
@@ -15,6 +15,8 @@ Codex；分支 codex/memory-m5a-foundation；[PR #159](https://github.com/yecays
 
 ## 已完成
 
+- CodeRabbit 两项完整性问题已复现并最小修复：superseded 必须具有合法后继；恢复清理逐会话隔离失败，只返回真正完成项，失败意图保留。新增 3 项回归：3/3 Red → Green；Memory 205/205、测试编译、typecheck、四文件 lint 通过。代码仅改 progress/lifecycle 及对应两份测试。
+
 - 基线四项缺口行为复现：4/4 Red。
 - 被动批次协议、受限自动提交、原子进度、稳定序号、来源核验、独占 scope 与 lineage 清理已实现。
 - 最终影响范围回归 558/558；此前一次全量 1,396/1,396（最终只读来源与序号边界收敛后仅重跑影响范围）。测试编译、typecheck、定向 lint 和最终 webpack build 通过。lint 两条原有 Hook warning。
@@ -24,7 +26,7 @@ Codex；分支 codex/memory-m5a-foundation；[PR #159](https://github.com/yecays
 
 ## 尚未验证
 
-- PR #159 已发布；核对 33 个提交文件 blob 全部一致，main 仍为基线。发布时 GitHub verify 运行中、CodeRabbit pending，尚无远端通过结论；未主动部署。首次缓存目录创建受执行器拒绝，经批准的本地构建已通过。
+- 修复前 CI/预览通过与 CodeRabbit Low：用户已确认。本次修复提交后的 CI/预览需重新核实；未主动部署。本轮未重复本地 build，上一版本本地构建已通过。
 - 真浏览器跨标签页、iOS、真实 IndexedDB 大聊天容量与崩溃恢复验收。
 
 ## 下一步

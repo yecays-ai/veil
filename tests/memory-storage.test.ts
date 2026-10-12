@@ -20,6 +20,34 @@ function setup() {
 }
 const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
 
+test("pending clears isolate damaged lineage, complete later sessions and retain the failed intent", async () => {
+  const { storage } = setup();
+  await storage.applyChange("c1", "seed", { put: [
+    draft("damaged", "c1", "damaged", { sources: [src("A"), src("kept")], status: "superseded", lineage: { supersededBy: "missing" } }),
+    draft("healthy", "c1", "healthy", { sources: [src("B")] }),
+  ] });
+  await recordClearIntent(storage, "c1", "A");
+  await recordClearIntent(storage, "c1", "B");
+  assert.deepEqual(await resumePendingClears(storage, "c1"), ["B"]);
+  assert.equal(await storage.getMemory("healthy"), undefined);
+  const pending = await storage.listCursors("c1");
+  assert.deepEqual(pending.map((row) => row.sessionId), ["A"]);
+  assert.ok(pending[0].clearRequestedAt !== undefined);
+  assert.deepEqual(await resumePendingClears(storage, "c1"), []);
+  assert.ok((await storage.listCursors("c1"))[0].clearRequestedAt !== undefined);
+});
+
+test("pending clears do not report an intent removed before exclusive admission as successful", async () => {
+  const { storage } = setup();
+  await recordClearIntent(storage, "c1", "A");
+  const exclusive = storage.withExclusive.bind(storage);
+  storage.withExclusive = async (operation) => {
+    await deleteCharacterMemory(storage, "c1");
+    return exclusive(operation);
+  };
+  assert.deepEqual(await resumePendingClears(storage, "c1"), []);
+});
+
 test("writes go through the persistence write gate and derive the fingerprint", async () => {
   const { storage, writes } = setup();
   await storage.applyChange("c1", "add", { put: [draft("a", "c1", "Likes Tea!")] });

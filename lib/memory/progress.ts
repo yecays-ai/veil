@@ -309,6 +309,7 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
       || before.sources.some((s) => !sources.some((n) => s.sessionId === n.sessionId && s.messageId === n.messageId))
       || JSON.stringify(draft.lineage.mergedFrom) !== JSON.stringify(before.lineage.mergedFrom)
       || (draft.status !== before.status && (before.status === "superseded" || draft.status !== "superseded"))
+      || (draft.status === "superseded" && !draft.lineage.supersededBy)
       || (draft.status === before.status && draft.lineage.supersededBy !== before.lineage.supersededBy))) return fail();
     const lineage = { ...draft.lineage };
     if (before?.status === "superseded") lineage.previousStatus = before.lineage.previousStatus;
