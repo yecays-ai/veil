@@ -2,26 +2,29 @@ import { completeClear, cancelClearIntent, deleteCharacterMemory } from "./lifec
 import { request, type MemoryStorage } from "./storage";
 import type { MemoryCursor } from "./types";
 
-/** A pending clear that keeps failing is left in place after this many startups instead of being retried forever. */
-export const MAX_CLEAR_FAILURES = 5;
-
-/** What the startup pass may read from the rest of the app. Every read is a single list/count call. */
+/** What the startup pass may read from the rest of the app. Every read is a single list/count/lookup call. */
 export type StartupClearDeps = {
-  /** Existing Characters, or null when Foundation could not be read or is empty (nothing is then proven). */
+  /** Existing Characters (possibly an empty set), or null when that is not proven: nothing is then changed. */
   aliveCharacters(): Promise<ReadonlySet<string> | null>;
   sessionIds(): Promise<ReadonlySet<string>>;
   countMessages(sessionId: string): Promise<number>;
+  /** Which of these messages still exist in the session. */
+  existingMessageIds(sessionId: string, ids: readonly string[]): Promise<ReadonlySet<string>>;
 };
 export type StartupClearReport = { completed: number; cancelled: number; deferred: number; failed: number };
 
 /**
  * Finishes clear intents that an earlier run recorded but did not complete. It only looks at existing cursors with
- * `clearRequestedAt`, and never starts a new deletion. Each intent is checked against the chat data first:
- * - Character gone: its Memory is removed with the Character.
- * - session gone, or kept with no messages: the chat operation happened, so the cleanup is completed. Rows created
- *   after the intent are left alone.
- * - session still has messages: the chat operation did not happen (or the id was reused), so the intent is withdrawn.
- * A failure keeps the record and counts toward MAX_CLEAR_FAILURES; unreadable chat data changes nothing.
+ * `clearRequestedAt`, never starts a new deletion, and runs once per page load. Each intent is checked first:
+ * - Character gone (proven by a successful Foundation read, even an empty list): its Memory is removed.
+ * - session gone or empty: the clear happened; sources of the recorded messages are removed.
+ * - session has messages and the intent recorded its target messages:
+ *     any target still exists  -> the chat clear failed: the intent is withdrawn, Memory kept;
+ *     no target exists         -> the clear happened and messages were added afterwards: only the recorded
+ *                                 targets' sources are removed, sources of newer messages stay.
+ * - session has messages and the intent has no recorded targets (an older intent): the two cases cannot be told
+ *   apart, so the data-preserving choice is made and the intent is withdrawn.
+ * A failure keeps the record, increments failureCount for diagnostics, and is retried at the next startup.
  */
 export async function resumeStartupClears(storage: MemoryStorage, deps: StartupClearDeps, signal?: AbortSignal): Promise<StartupClearReport> {
   const report: StartupClearReport = { completed: 0, cancelled: 0, deferred: 0, failed: 0 };
@@ -33,13 +36,18 @@ export async function resumeStartupClears(storage: MemoryStorage, deps: StartupC
   catch { report.deferred = pending.length; return report; }
   if (!alive) { report.deferred = pending.length; return report; }
   for (const row of pending) {
-    if (signal?.aborted || row.failureCount >= MAX_CLEAR_FAILURES) { report.deferred++; continue; }
+    if (signal?.aborted) { report.deferred++; continue; }
     try {
       if (!alive.has(row.characterId)) { await deleteCharacterMemory(storage, row.characterId); report.completed++; continue; }
+      const targetIds = row.clearMessageIds;
+      const targets = targetIds && new Set(targetIds);
       if (sessions.has(row.sessionId) && await deps.countMessages(row.sessionId) > 0) {
-        await cancelClearIntent(storage, row.characterId, row.sessionId); report.cancelled++; continue;
+        if (!targetIds) { await cancelClearIntent(storage, row.characterId, row.sessionId); report.cancelled++; continue; }
+        if (targetIds.length && (await deps.existingMessageIds(row.sessionId, targetIds)).size > 0) {
+          await cancelClearIntent(storage, row.characterId, row.sessionId); report.cancelled++; continue;
+        }
       }
-      await completeClear(storage, row.characterId, row.sessionId, row.clearRequestedAt);
+      await completeClear(storage, row.characterId, row.sessionId, targets);
       report.completed++;
     } catch {
       report.failed++;

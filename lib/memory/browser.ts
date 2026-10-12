@@ -1,6 +1,8 @@
 import type { ChatSession } from "../chat/types";
 import { chatStorage } from "../chat/storage";
-import { browserFoundationStorage } from "../foundation-storage";
+import { browserDocumentStorage } from "../core-document-storage";
+import { FOUNDATION_STORAGE_KEY } from "../foundation-storage";
+import { normalizeFoundation } from "../foundation-types";
 import { resumeStartupClears, type StartupClearDeps } from "./startup";
 import { cancelClearIntent, completeClear, recordClearIntent } from "./lifecycle";
 import { MemoryStorage } from "./storage";
@@ -43,17 +45,26 @@ export async function withMemoryClear<T>(session: Pick<ChatSession, "id" | "char
   return { value, cleanupIncomplete: done.some((item) => item.status === "rejected") };
 }
 
+/**
+ * Existing Characters, or null when that is not proven. A read error, or a Foundation document that was never
+ * saved (not bootstrapped yet), proves nothing and yields null. A saved document with an empty character list is
+ * the legitimate "last Character was deleted" state and yields an empty set.
+ */
+export async function readAliveCharacters(): Promise<ReadonlySet<string> | null> {
+  try {
+    const raw = await browserDocumentStorage.read(FOUNDATION_STORAGE_KEY);
+    if (raw === null) return null;
+    return new Set(normalizeFoundation(JSON.parse(raw)).characters.map((item) => item.characterId));
+  } catch { return null; }
+}
+
 /** The one startup entry point: finish unfinished clears. Cancel it with the signal when the page goes away. */
 export function resumeBrowserClears(signal?: AbortSignal) {
   const deps: StartupClearDeps = {
-    aliveCharacters: async () => {
-      try {
-        const { characters } = await browserFoundationStorage.load();
-        return characters.length ? new Set(characters.map((item) => item.characterId)) : null;
-      } catch { return null; }
-    },
+    aliveCharacters: readAliveCharacters,
     sessionIds: async () => new Set((await chatStorage.listSessions()).map((session) => session.id)),
     countMessages: (sessionId) => chatStorage.countMessages(sessionId),
+    existingMessageIds: (sessionId, ids) => chatStorage.existingMessageIds(sessionId, ids),
   };
   return resumeStartupClears(browserMemoryStorage, deps, signal);
 }

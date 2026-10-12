@@ -292,12 +292,14 @@ function validateMemory(value: unknown) {
   const cursorKeys = new Set<string>();
   cursors.forEach((row, index) => {
     const path = `memory.cursors[${index}]`;
-    keys(row, ["id", "characterId", "sessionId", "processedMessageId", "failureCount", "failureReason", "clearRequestedAt", "updatedAt"],
+    keys(row, ["id", "characterId", "sessionId", "processedMessageId", "failureCount", "failureReason", "clearRequestedAt", "clearMessageIds", "updatedAt"],
       ["id", "characterId", "sessionId", "failureCount", "updatedAt"], path);
     check(id(row.characterId) && id(row.sessionId) && row.id === `${row.characterId}\u0000${row.sessionId}`, path, "invalid-data", "id-invalid");
     check(row.processedMessageId === undefined || id(row.processedMessageId), path, "invalid-data", "processedMessageId-invalid");
     check(integer(row.failureCount) && integer(row.updatedAt) && (row.failureReason === undefined || typeof row.failureReason === "string")
       && (row.clearRequestedAt === undefined || integer(row.clearRequestedAt)), path, "invalid-data", "field-invalid");
+    check(row.clearMessageIds === undefined || (row.clearRequestedAt !== undefined && Array.isArray(row.clearMessageIds)
+      && row.clearMessageIds.every(id) && new Set(row.clearMessageIds).size === row.clearMessageIds.length), path, "invalid-data", "clearMessageIds-invalid");
     check(!cursorKeys.has(row.id as string), path, "duplicate-id"); cursorKeys.add(row.id as string);
   });
 }
