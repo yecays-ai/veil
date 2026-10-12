@@ -93,7 +93,7 @@ for (const mode of ["throw", "error", "hang"] as const) test(`delete ${mode} fai
 
 test("device errors and damaged archives have different safe messages", () => {
   for (const code of ["unsupported-source-database", "source-catalog-unavailable", "source-unavailable", "source-read-failed",
-    "unsupported-source-schema", "invalid-source-json", "legacy-cleanup-failed"])
+    "unsupported-source-schema", "invalid-source-json", "invalid-source-data", "legacy-cleanup-failed"])
     assert.notEqual(describeBackupError(new BackupValidationError(code, "private-path")), "This file is not a valid VEIL backup.");
   assert.equal(describeBackupError(new BackupValidationError("archive-invalid", "archive")), "This file is not a valid VEIL backup.");
 });

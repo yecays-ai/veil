@@ -83,6 +83,7 @@ export function describeBackupError(error: unknown): string {
       case "unsupported-source-schema":
       case "unsupported-source-document":
       case "invalid-source-document":
+      case "invalid-source-data":
       case "invalid-source-json": return "This device's data could not be checked safely. Backup and restore are blocked.";
       case "coordination-timeout": return "Another VEIL tab is busy. Close other VEIL tabs and try again.";
       case "coordination-unavailable": return "This browser cannot coordinate VEIL tabs, so backups are unavailable here.";
