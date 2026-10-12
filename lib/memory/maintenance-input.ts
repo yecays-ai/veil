@@ -18,6 +18,8 @@ function terms(text: string): Set<string> {
   return new Set([...(text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((word) => !stop.has(word)),
     ...(text.match(/[\p{Script=Han}]{2,}/gu) ?? []).flatMap((run) => Array.from({ length: run.length - 1 }, (_, i) => run.slice(i, i + 2)))]);
 }
+/** The only candidate fields the model sees; the budget is measured on exactly this. */
+const candidateProjection = (r: Memory) => ({ id: r.id, kind: r.kind, subject: r.subject, text: r.text, status: r.status });
 /** Maintenance comparison is independent of the five-entry chat retrieval selector. */
 export function selectMaintenanceCandidates(characterId: string, rows: readonly Memory[], text: string,
   characterLimit: number = MAINTENANCE_LIMITS.candidateCharacters): { ids: string[]; mode: "all" | "limited"; omitted: number } {
@@ -44,8 +46,8 @@ export function selectMaintenanceCandidates(characterId: string, rows: readonly 
   };
   const bundles = new Map(active.map((row) => [row.id, bundle(row)]));
   const all = [...new Map(active.flatMap((row) => bundles.get(row.id)!).map((row) => [row.id, row])).values()];
-  // Only active rows are sent to the model; hidden originals stay as authorization data and cost nothing here.
-  const size = (r: Memory) => r.status === "active" ? JSON.stringify(r).length : 0;
+  // Only active rows are sent, and only their projection; hidden originals and inherited sources cost nothing here.
+  const size = (r: Memory) => r.status === "active" ? JSON.stringify(candidateProjection(r)).length : 0;
   if (all.reduce((sum, row) => sum + size(row), 0) <= characterLimit)
     return { ids: all.map((r) => r.id), mode: "all", omitted: 0 };
   const query = terms(text);
@@ -76,7 +78,7 @@ const MAINTENANCE_SYSTEM_PROMPT = [
     "A repeated joke that forms a stable interaction pattern may become one relationship memory about the pattern, not about the joke's content as fact.",
   "5. FLAG a candidate only when the messages contradict it or show it was recorded wrongly; never to avoid deciding.",
   "6. IGNORE when nothing above applies: small talk, transient moods or states, one-off routine details, hypotheticals, hyperbole and jokes taken as facts.",
-  "Every messageId you cite must itself state or confirm the memory; do not cite surrounding messages. " +
+  "For UPDATE, every messageId you cite must state or confirm the correction or added detail; for other operations, every messageId you cite must itself state or confirm the memory. Do not cite surrounding messages. " +
     "Judge whether something really happened from the Character's world, settings and conversation context, not from real-world plausibility: a Character may have experiences the user did not take part in or confirm. " +
     "Attribute lines to the right speaker by role; text the Character says about itself is the Character's, text about the user is the user's, and neither becomes the other's fact."
 ].join(" ");
@@ -88,7 +90,7 @@ export function buildMaintenanceInput(snapshot: MaintenanceSnapshot, character: 
     throw new Error("Memory maintenance input authority mismatch.");
   const data = { character: character.context,
     messages: snapshot.messages.map((m) => ({ id: m.id, role: m.role, turnId: m.turnId, content: m.content })),
-    candidates: snapshot.candidates.filter((r) => r.status === "active").map((r) => ({ id: r.id, kind: r.kind, subject: r.subject, text: r.text, status: r.status })),
+    candidates: snapshot.candidates.filter((r) => r.status === "active").map(candidateProjection),
     manual: snapshot.manual.map((r) => ({ text: r.text, kind: r.kind, subject: r.subject })),
     suppressions: snapshot.suppressions.map((s) => ({ fingerprint: s.fingerprint, sources: s.sources })) };
   const messages: PromptTurn[] = [{ role: "system", content: MAINTENANCE_SYSTEM_PROMPT },

@@ -5,8 +5,8 @@
 ## 改了什么
 
 1. **UPDATE 来源语义**（`lib/memory/maintenance-operations.ts`）：UPDATE 新条目的来源 = 旧条目来源 ∪ 本批消息，并登记 `lineage.mergedFrom=[targetId]`。SUPERSEDE 不变（只含本批消息，无 `mergedFrom`）。沿用现有 `cleanMemoryLineage`，没有新存储结构。语义是“依赖”：清掉任何一个贡献来源，整条更新结果撤销，旧版恢复；不是逐事实归因。
-2. **决策提示词**（`lib/memory/maintenance-input.ts`）：顺序为先识别已有记忆的变化/结束/替换（UPDATE / SUPERSEDE / ARCHIVE），再 MERGE、REINFORCE、CREATE、FLAG，最后才 IGNORE。局部纠错或补充且仍依赖旧信息用 UPDATE，拿不准用 UPDATE，SUPERSEDE 只在新消息独立支持完整替代时使用；不得编造缺失信息。角色事件按角色世界观与语境判断，不按现实可能性；引用的消息必须自身表述该记忆；反复出现且稳定的玩笑可合并为一条 Relationship（写模式，不写玩笑内容为事实）。
-3. **候选预算**：只统计发给模型的 active 候选；隐藏的 lineage 原件仍作为授权数据一并带入，不计入预算、不扩大候选数量、不改检索算法。
+2. **决策提示词**（`lib/memory/maintenance-input.ts`）：顺序为先识别已有记忆的变化/结束/替换（UPDATE / SUPERSEDE / ARCHIVE），再 MERGE、REINFORCE、CREATE、FLAG，最后才 IGNORE。局部纠错或补充且仍依赖旧信息用 UPDATE，拿不准用 UPDATE，SUPERSEDE 只在新消息独立支持完整替代时使用；不得编造缺失信息。角色事件按角色世界观与语境判断，不按现实可能性；引用的消息必须自身表述该记忆（UPDATE 的引用只需表述纠正或补充的部分）；反复出现且稳定的玩笑可合并为一条 Relationship（写模式，不写玩笑内容为事实）。
+3. **候选预算**：只统计发给模型的 active 候选，且按实际发送的字段（id/kind/subject/text/status）计量，继承的来源不占预算；隐藏的 lineage 原件仍作为授权数据一并带入，不计入预算、不扩大候选数量、不改检索算法。
 
 ## 保守边界
 

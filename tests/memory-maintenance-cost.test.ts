@@ -13,7 +13,9 @@ test("synthetic candidate comparison records serialized input growth and bounded
     const selectionMs = performance.now() - start;
     const selectedRows = rows.filter((r) => selected.ids.includes(r.id));
     const fullCharacters = rows.reduce((n, row) => n + JSON.stringify(row).length, 0);
-    const selectedCharacters = selectedRows.reduce((n, row) => n + JSON.stringify(row).length, 0);
+    // The budget is measured on the fields actually sent to the model.
+    const sent = (r: Memory) => JSON.stringify({ id: r.id, kind: r.kind, subject: r.subject, text: r.text, status: r.status }).length;
+    const selectedCharacters = selectedRows.reduce((n, row) => n + sent(row), 0);
     assert.ok(selectedCharacters <= 8000);
     if (selected.mode === "limited") assert.ok(selectedRows.every((r) => r.text.startsWith("rescue cat")));
     return { count, mode: selected.mode, selected: selected.ids.length, fullCharacters, selectedCharacters,

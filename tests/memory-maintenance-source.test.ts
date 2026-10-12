@@ -126,10 +126,12 @@ test("candidate budget counts only the active rows sent to the model; hidden ori
   const row = (id: string, status: Memory["status"], text: string, lineage: Memory["lineage"]): Memory => ({ id, characterId: "c", kind: "fact", text,
     subject: "user", status, origin: "auto", sources: [{ sessionId: "s", messageId: id }], lineage, fingerprint: id, createdAt: 1, updatedAt: 1 });
   const rows = [row("o", "superseded", "x".repeat(300), { supersededBy: "n", previousStatus: "active" }), row("n", "active", "y".repeat(300), { mergedFrom: ["o"] })];
-  const activeOnly = JSON.stringify(rows[1]).length;
+  const activeOnly = JSON.stringify({ id: "n", kind: "fact", subject: "user", text: "y".repeat(300), status: "active" }).length;
   const fits = selectMaintenanceCandidates("c", rows, "anything", activeOnly);
   assert.equal(fits.mode, "all"); assert.deepEqual(new Set(fits.ids), new Set(["o", "n"]));
   assert.equal(selectMaintenanceCandidates("c", rows, "anything", activeOnly - 1).mode, "limited");
+  const inherited = [rows[0], { ...rows[1], sources: Array.from({ length: 50 }, (_, i) => ({ sessionId: "s", messageId: `m${i}` })) }];
+  assert.equal(selectMaintenanceCandidates("c", inherited, "anything", activeOnly).mode, "all", "inherited sources are not sent, so they do not use the budget");
 });
 
 test("the model prompt checks state changes before IGNORE and keeps role-speech and source rules", async () => {
@@ -138,7 +140,7 @@ test("the model prompt checks state changes before IGNORE and keeps role-speech 
     const snapshot = await f.protocol.readInput(await f.protocol.prepare(owner, f.session.id, 1, 1, []));
     const prompt = buildMaintenanceInput(snapshot, { characterId: "c", context: "" })[0].content;
     assert.ok(prompt.indexOf("changed, ended or was replaced") < prompt.indexOf("IGNORE when nothing above applies"));
-    for (const phrase of ["if unsure use UPDATE", "Never CREATE what a candidate already covers", "must itself state or confirm",
+    for (const phrase of ["if unsure use UPDATE", "Never CREATE what a candidate already covers", "for other operations, every messageId you cite must itself state or confirm the memory",
       "Character's world, settings and conversation context", "never to avoid deciding", "stable interaction pattern"])
       assert.ok(prompt.includes(phrase), phrase);
     assert.doesNotMatch(prompt, /\bPeter\b|\bMiles\b/, "no hard-coded Character names");
