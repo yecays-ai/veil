@@ -10,7 +10,7 @@ M2 PR A：独立 `veil-memory-v1` 存储合同与生命周期函数（待审查�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/memory-m2-store`，base `4e089e912f96c3adc02b3761293771d02f6716d6`；PR：见 PR 描述/分支（创建后补链接）。
+Claude；分支 `claude/memory-m2-store`，base `4e089e912f96c3adc02b3761293771d02f6716d6`；PR：https://github.com/yecays-ai/veil/pull/153 。
 新增：`lib/memory/{types,fingerprint,storage,lifecycle}.ts`、`tests/memory-storage.test.ts`、本文件。未改动任何既有文件。
 
 ## 已完成
