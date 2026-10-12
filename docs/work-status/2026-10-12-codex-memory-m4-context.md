@@ -1,7 +1,7 @@
 # STATUS — 2026-10-12-codex-memory-m4-context
 
 更新人：Codex
-更新时间：2026-10-12T16:31:38+08:00
+更新时间：2026-10-12T16:40:04+08:00
 发现范围：2026-10-12 施工前通过 GitHub API 复核 canonical main `e5239fdca2d434d7f81a8f67a19c88be1a48d33e`；开放 PR（含 draft）为空，远端分支列表没有新的 Memory 施工分支。已读最新 `docs/AUDIT_LEDGER.md`、正式交接和批准 v2 原文（Q1–Q7）；Q8 从 Lan 指定原始 DOCX 第 5.3 节核实。未发布的本地工作不可见，未据历史工单接管其他任务。
 
 ## 当前任务
@@ -10,7 +10,7 @@ M4 Memory 上下文注入：施工完成，待独立 PR 审查和 Lan 手动合�
 
 ## 谁在改哪里
 
-Codex；分支 `codex/memory-m4-context-20261012`；PR 待创建。base `e5239fdca2d434d7f81a8f67a19c88be1a48d33e`。
+Codex；分支 `codex/memory-m4-context-20261012`；[PR #157](https://github.com/yecays-ai/veil/pull/157) 已提交，未合并。base `e5239fdca2d434d7f81a8f67a19c88be1a48d33e`；已验证代码提交 `edbc6a7b118eaa76ce5df8c6dd4dfe864fb1db52`，后续仅补本工单 PR 链接，不改代码。
 
 - `lib/memory/context.ts`：只读本地选择、指纹去重、确定性序列化与临时护栏。
 - `lib/chat/engine.ts`：读取依赖、并行准备、取消与所有权检查、现有 MemorySlot 注入。
@@ -76,4 +76,4 @@ Git DNS 不可达：不重试或改用户网络配置。独立本地快照由现
 
 ## 下一步
 
-发布独立 M4 PR，Lan 手动审查、合并并做真实模型/手机验收；预算和检索改进由 Lan 另行决定。M5–M8 未授权。
+等待 Lan 手动审查、合并 [PR #157](https://github.com/yecays-ai/veil/pull/157)，并做真实模型/手机验收；预算和检索改进由 Lan 另行决定。M5–M8 未授权。
