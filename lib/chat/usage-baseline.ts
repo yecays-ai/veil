@@ -10,6 +10,13 @@ export const USAGE_BASELINE_KEY = "veil.usage-baseline.v1";
 /** Newest records kept; the oldest are dropped on write. */
 export const USAGE_BASELINE_MAX_RECORDS = 300;
 const MAX_MODEL_LENGTH = 80;
+const VALID_SOURCES: ReadonlySet<string> = new Set<CompletionSource>([
+  "manual-reply", "keyboard-auto-reply", "regenerate", "continue",
+  "test-connection", "here-there-comment", "presence-routine", "unclassified",
+]);
+const VALID_OUTCOMES: ReadonlySet<string> = new Set<CompletionOutcome>([
+  "completed", "truncated", "error", "timeout", "cancelled", "abandoned",
+]);
 
 export type UsageBaselineRecord = {
   at: number; // epoch ms when the call ended
@@ -55,7 +62,9 @@ export function readUsageBaseline(store: Pick<Storage, "getItem"> | undefined = 
     return parsed.flatMap((item): UsageBaselineRecord[] => {
       if (!item || typeof item !== "object") return [];
       const row = item as Record<string, unknown>;
-      if (typeof row.at !== "number" || typeof row.source !== "string" || typeof row.outcome !== "string"
+      if (typeof row.at !== "number" || !Number.isFinite(row.at)
+        || typeof row.source !== "string" || !VALID_SOURCES.has(row.source)
+        || typeof row.outcome !== "string" || !VALID_OUTCOMES.has(row.outcome)
         || typeof row.model !== "string") return [];
       return [{
         at: row.at, source: row.source as CompletionSource, outcome: row.outcome as CompletionOutcome,

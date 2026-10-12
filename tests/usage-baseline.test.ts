@@ -117,6 +117,9 @@ test("a full or broken store never changes the reply, and damaged data reads as 
   assert.deepEqual(readUsageBaseline(broken), []);
   broken.values.set(USAGE_BASELINE_KEY, JSON.stringify([{ nope: 1 }, null, "x"]));
   assert.deepEqual(readUsageBaseline(broken), []);
+  const good = buildUsageBaselineRecord({ model: "m", messages: [] }, "continue", "error", 1.5, null, 1.5);
+  broken.values.set(USAGE_BASELINE_KEY, JSON.stringify([good, { ...good, source: "bogus" }, { ...good, outcome: "bogus" }, { ...good, at: null }]));
+  assert.deepEqual(readUsageBaseline(broken), [{ ...good, durationMs: 2 }]);
   assert.doesNotThrow(() => appendUsageBaseline(buildUsageBaselineRecord({ model: "m", messages: [] }, "continue", "error", 1, null), undefined));
 });
 
