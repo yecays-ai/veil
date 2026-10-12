@@ -1,7 +1,7 @@
 # S11 — 相同 API 配置元数据恢复后的密钥沿用
 
 更新人：Codex
-更新时间：2026-10-12T11:08:48.2656321+08:00
+更新时间：2026-10-12T11:09:55.8830601+08:00
 发现范围：已 fetch 最新 main `016312efff220cb23d6cb5d734eebd6bb462dcf0`；GitHub 核对 #148 已合并，所有开放 PR 0（含草稿、无分页遗漏）。未发布本地任务不可见。本单复用 #148 登记的复现，不重新全站审计。
 
 ## 当前任务
@@ -18,7 +18,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `codex/s11-api-key-restore`，基线同上述 main，PR 待创建。仅 lib/backup/restore.ts、tests/backup-api-key-restore.test.ts、docs/AUDIT_LEDGER.md 和本记录。
+Codex；分支 `codex/s11-api-key-restore`，基线同上述 main，PR [#149](https://github.com/yecays-ai/veil/pull/149)。仅 lib/backup/restore.ts、tests/backup-api-key-restore.test.ts、docs/AUDIT_LEDGER.md 和本记录。
 
 ## 已完成
 
@@ -33,11 +33,11 @@ Codex；分支 `codex/s11-api-key-restore`，基线同上述 main，PR 待创建
 
 ## 尚未验证
 
-- 远端最新提交 CI / CodeRabbit 尚待 PR 发布后核对。
+- #149 最新提交 CI / CodeRabbit 尚待核对；不借用其他提交的通过状态。
 - 相同元数据且设备有密钥的 iPhone 专项未实测；既有 N1 用户真机证据不冒充本单。真机中断仍未实测，沿用已批准的自动化故障注入作为主要证据。
 
 ## 下一步
 
-本地检查完成后创建独立 PR；创建后仅跟进该 PR 最新 CI / CodeRabbit，有效意见自行修复。后续核对结果维护于 PR 描述，避免为观察状态重复触发检查。等待 Lan 手动合并和最终验收。
+仅跟进现有 #149 最新 CI / CodeRabbit，有效意见自行修复，通过后停止。后续核对结果维护于 PR 描述，避免为观察状态重复触发检查。等待 Lan 手动合并和最终验收。
 
 建议真机最短验收：导出当前备份，再导入并明确覆盖，Reload 后 API 配置/绑定仍在、密钥需重填；不要反复拼手速触发中断。不为验收自动部署。
