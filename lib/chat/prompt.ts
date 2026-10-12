@@ -46,6 +46,33 @@ function eligibleMessages(context: PromptRuntimeContext) {
   return context.currentMessages.filter((message) =>
     message.content && message.role !== "system" && (message.role !== "assistant" || message.status === "complete"));
 }
+function historyMessages(context: PromptRuntimeContext) {
+  const pendingIds = new Set(context.pending.map((message) => message.id));
+  return eligibleMessages(context).filter((message) => !pendingIds.has(message.id))
+    .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES);
+}
+function pendingMessages(context: PromptRuntimeContext) {
+  const current = new Map(eligibleMessages(context).map((message) => [message.id, message]));
+  return [...new Set(context.pending.map((message) => message.id))]
+    .flatMap((id) => current.has(id) ? [current.get(id)!] : []).sort((a, b) => a.order - b.order);
+}
+function enabledMarkers(preset: Preset) {
+  const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
+  return preset.promptOrder.flatMap((ordered) => {
+    const entry = prompts.get(ordered.identifier);
+    return ordered.enabled && entry?.enabled && entry.source === "marker" ? [entry] : [];
+  });
+}
+export const hasSystemMemorySlot = (preset: Preset) =>
+  enabledMarkers(preset).some((entry) => entry.marker === "memory" && entry.role === "system");
+
+/** Retrieval sees the same configured History window and authoritative pending input as the request. */
+export function memoryConversationText(context: PromptRuntimeContext, preset: Preset): string[] {
+  const history = enabledMarkers(preset).some((entry) => entry.marker === "history") ? historyMessages(context) : [];
+  return [...history, ...pendingMessages(context)]
+    .filter((message) => message.status === "sent" || message.status === "complete")
+    .map((message) => promptContent(message, context));
+}
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
   const body = message.role === "user" || message.role === "assistant"
     ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt",
@@ -76,9 +103,7 @@ export function resolvePresetMarker(
     case "memory":
       return context.memory.entries.length ? context.memory.entries.join("\n") : null;
     case "history": {
-      const pendingIds = new Set(context.pending.map((message) => message.id));
-      return eligibleMessages(context).filter((message) => !pendingIds.has(message.id))
-        .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES)
+      return historyMessages(context)
         .map((message) => ({ role: message.role, content: context.time
           ? `${historyTimestamp(message.createdAt, context.time.user.timezone)}\n${promptContent(message, context)}` : promptContent(message, context) }));
     }
@@ -112,6 +137,7 @@ export function assembleChatPrompt(
   let historyTurns: PromptTurn[] = [];
   let historyDiagnostics: PromptDiagnosticSection[] = [];
   let timeInjected = false;
+  let memoryInjected = false;
   const injectTime = () => {
     if (!time || timeInjected) return;
     timeInjected = true;
@@ -127,6 +153,10 @@ export function assembleChatPrompt(
   for (const ordered of preset.promptOrder) {
     const entry = prompts.get(ordered.identifier);
     if (!ordered.enabled || !entry?.enabled) continue;
+    if (entry.source === "marker" && entry.marker === "memory") {
+      if (entry.role !== "system" || memoryInjected) continue;
+      memoryInjected = true;
+    }
     const resolved = entry.source === "prompt" ? entry.content
       : resolvePresetMarker(entry.marker, context);
     if (Array.isArray(resolved)) {
@@ -153,10 +183,7 @@ export function assembleChatPrompt(
   injectTime();
   injectSelf();
   // Pending input is request ownership, not configurable Preset content.
-  const current = new Map(eligibleMessages(context).map((message) => [message.id, message]));
-  const pendingTurns = [...new Set(pending.map((message) => message.id))]
-    .flatMap((id) => current.has(id) ? [current.get(id)!] : [])
-    .sort((a, b) => a.order - b.order)
+  const pendingTurns = pendingMessages(context)
     .map((message) => ({ role: message.role, content: promptContent(message, context) }));
   messages.push(...pendingTurns);
   for (const turn of pendingTurns)

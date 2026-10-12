@@ -8,7 +8,10 @@ import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
-import { assembleChatPrompt } from "./prompt";
+import { assembleChatPrompt, hasSystemMemorySlot, memoryConversationText } from "./prompt";
+import { browserMemoryStorage } from "../memory/browser";
+import { emptyMemoryContext, selectMemoryContext } from "../memory/context";
+import type { Memory } from "../memory/types";
 import { selfState, type SelfState } from "./self-context";
 import { browserContactStorage } from "../contact-storage";
 import {
@@ -63,6 +66,9 @@ const applyActionsToStores: ActionApplier = (characterId, actions, now, messageI
       } })(characterId, actions, now, messageId);
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
+type MemoryLoader = (characterId: string) => Promise<readonly Memory[]>;
+const loadMemory: MemoryLoader = (characterId) => typeof window === "undefined"
+  ? Promise.resolve([]) : browserMemoryStorage.listMemories(characterId);
 
 async function safeWeather(loader: WeatherLoader, location: FoundationDocument["user"]["location"]) {
   if (!location) return { status: "not-configured" } as const;
@@ -90,6 +96,7 @@ export function createChatEngine(
   recordSent: SentRecorder = recordSentToPresence,
   self: SelfLoader = loadSelfState,
   applyActions: ActionApplier = applyActionsToStores,
+  memories: MemoryLoader = loadMemory,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   let stopSequence = 0;
@@ -176,6 +183,14 @@ export function createChatEngine(
       const regexGroups = resolveRegexGroups(await awaited(regex(), controller.signal), binding.regexIds);
       // An explicit Binding selection decides book order; only Default All uses library order.
       const books = selectBoundWorldBooks((await awaited(worldBooks(), controller.signal)).books, binding.worldBookIds);
+      // Overlap the local read with existing weather/self preparation; no retries or Memory writes.
+      const memoryRead = hasSystemMemorySlot(preset)
+        ? Promise.resolve().then(() => memories(character.characterId)).then(
+          (rows) => selectMemoryContext(character.characterId, rows, memoryConversationText({
+            foundation: document, character, currentMessages: batch.messages, pending: batch.pending,
+            memory: { entries: [] }, regexGroups,
+          }, preset))).catch(() => emptyMemoryContext("unavailable"))
+        : Promise.resolve(emptyMemoryContext("preset-disabled"));
       const activation = evaluateWorldBooks(books, batch.messages,
         await awaited(storage.readWorldBookState(sessionId), controller.signal));
       const weather = document.runtime?.timeAware === false ? undefined : await awaited(Promise.all([
@@ -188,18 +203,22 @@ export function createChatEngine(
           character: { location: character.location.label, temperatureC: characterWeather.temperatureC, summary: characterWeather.summary },
         } : {}),
       })), controller.signal);
-      const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, undefined, preset,
-        now(), activation, regexGroups, weather,
-        await awaited(self(character, now().getTime(), { announceChange: source !== "continue",
+      const ownState = await awaited(self(character, now().getTime(), { announceChange: source !== "continue",
           allowActions: source !== "continue",
           lastReplyAt: batch.messages.reduce<number | null>((latest, message) =>
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
-              ? message.createdAt : latest, null) }), controller.signal));
+              ? message.createdAt : latest, null) }), controller.signal);
+      const memory = await awaited(memoryRead, controller.signal);
+      const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, memory.slot, preset,
+        now(), activation, regexGroups, weather, ownState);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
       const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };
-      logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages);
+      logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages, {
+        ids: memory.ids, characterLength: memory.characterLength, outcome: memory.outcome,
+      });
       await storage.generationStage(sessionId, attempt.id, "provider");
+      if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
       controller.signal.throwIfAborted();
       iterator = provider(config, prompt.messages, controller.signal, preset.generation, request,
         (reason) => { finishReason = reason; })[Symbol.asyncIterator]();
