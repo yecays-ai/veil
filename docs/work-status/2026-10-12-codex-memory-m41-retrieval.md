@@ -1,7 +1,7 @@
 # STATUS — 2026-10-12-codex-memory-m41-retrieval
 
 更新人：Codex
-更新时间：2026-10-12T17:38:30+08:00
+更新时间：2026-10-12T17:46:52+08:00
 发现范围：施工前 GitHub API 核实 #157 已合并；main `9c93cf9d5302268659613444b64ccf67d50f28e7`；开放 PR（含 draft）为空，远端分支没有新的 Memory 施工分支。已读 AGENTS、M4 工单、正式交接及直接相关检索/Prompt 路径；只读最新总账作为规则入口，没有重新审计其他模块。未发布的本地任务不可见。
 
 ## 当前任务
@@ -10,7 +10,7 @@ M4.1 本地检索质量补强：施工完成，待独立 PR 审查、Lan 手动�
 
 ## 谁在改哪里
 
-Codex；分支 `codex/memory-m41-retrieval-20261012`；PR 待创建。base `9c93cf9d5302268659613444b64ccf67d50f28e7`。
+Codex；分支 `codex/memory-m41-retrieval-20261012`；[PR #158](https://github.com/yecays-ai/veil/pull/158) 已提交、未合并。base `9c93cf9d5302268659613444b64ccf67d50f28e7`；已验证代码提交 `da5e7d5dbaeca4f2d8d41de03826f4d089426a5f`，后续只补本工单 PR 链接，不改代码。
 
 Git 网络在本环境已知 DNS 不通，不反复重试或改网络配置。建立独立 `veil-memory-m41` 快照，施工前全部 601 个版本文件的 Git blob SHA 与最新 main 一致；不覆盖 M4 或 S11 工作目录。通过 GitHub Git-data API 创建基于上述提交的独立分支/提交。
 
@@ -64,4 +64,4 @@ Git 网络在本环境已知 DNS 不通，不反复重试或改网络配置。�
 
 ## 下一步
 
-提交独立 M4.1 PR，等待 Lan 手动审查、合并与验收；M5–M8 未授权。
+等待 Lan 手动审查、合并 [PR #158](https://github.com/yecays-ai/veil/pull/158) 与验收；M5–M8 未授权。
