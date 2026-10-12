@@ -1,6 +1,6 @@
 import type { ChatMessage, ChatSession } from "../chat/types";
 
-/** M5a installs the protocol only. No production caller activates tracking. */
+/** Default-off contract. M5b runtime activation additionally requires release approval and device consent. */
 export const MEMORY_TRACKING_ENABLED = false;
 export type SessionMemorySequence = { epoch: string; nextSeq: number };
 export type MessageMemorySequence = { epoch: string; seq?: number };

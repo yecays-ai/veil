@@ -94,3 +94,11 @@ M4 施工与证据见 [独立工单](work-status/2026-10-12-codex-memory-m4-cont
 该案例支持 M4 英文记忆召回及自然融入角色对话的正向判断。没有独立请求注入日志，因此不将表现推断升级为已技术确认的检索命中，也不将单个样例当作总体召回率或全面质量验收。
 
 Memory Bank UI 较拥挤：用户决定后续单独优化；本次只登记，不纳入当前 M5b 施工，不修改 UI 或代码。M5b 第二刀仍未授权。
+
+## 2026-10-13：M5b 第二刀施工（默认关闭）
+
+后续 Lan 已提供完整第二刀工单及四项修订，授权最小生产接线，不授权实际启用。#160 合并核验基线：`9fe2a5e324b40a1f6cf45b894a7d6b8f4c6db739`。本刀已实现 root 延迟挂载、显式 release/device gate、资格/epoch 接线、五分钟最早空闲门槛、请求前持久派发、provider 单次维护、严格解析和原子提交；默认关闭，施工/CI/预览无真实付费维护调用。
+
+新聊天不取消旧快照；post-dispatch 允许新的 generation，仍按真实来源、候选、manual、suppression、epoch/incarnation 和删除意图复核。页面恢复重查资格/空闲/派发；uncertain 不重发，失败/too-large 不当 IGNORE，保留水位空洞。群聊、旧聊天回填、M4.1 检索、Memory Bank UI、Presence、M6–M8 不在范围。
+
+自动化、性能、成本护栏、保守阻塞状态及后续人工验收见 [M5b 第二刀施工记录](memory-m5b2-construction.md)；独立 [任务状态](work-status/2026-10-13-codex-memory-m5b2.md)。真实模型/M0 费用与 iPhone 专项尚未验证；已有 M3 基础操作验收和 M4 Pickles 正向观察不改变。本刀完成后停在 PR 审查，等待 Lan 手动合并及单独启用授权。

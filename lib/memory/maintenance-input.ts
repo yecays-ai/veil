@@ -3,7 +3,7 @@ import type { MemoryProgressProtocol } from "./progress";
 import type { Memory } from "./types";
 
 export type MaintenanceSnapshot = Awaited<ReturnType<MemoryProgressProtocol["readInput"]>>;
-/** Temporary engineering guards, not measured token limits. No production runner uses them. */
+/** Temporary engineering guards shared by the runner, not measured input token limits. */
 export const MAINTENANCE_LIMITS = { inputCharacters: 24_000, candidateCharacters: 8_000,
   outputCharacters: 12_000, operations: 20, entryCharacters: 2_000, maxOutputTokens: 2_000 } as const;
 export class MaintenanceInputTooLarge extends Error {
