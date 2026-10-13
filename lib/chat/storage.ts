@@ -1236,7 +1236,13 @@ export class ChatStorage {
       const draft = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
       if (!draft) throw new Error("Generation attempt is no longer active.");
       let finalized = false;
-      try { return await this.sourceMemory.withExclusive(async (owned) => {
+      try {
+        // New replies and continuations append content; they do not replace cited evidence.
+        if (draft.attemptMode !== "regenerate") return await this.sourceMemory.withShared(async (owned) => {
+          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned);
+          finalized = true; return result;
+        });
+        return await this.sourceMemory.withExclusive(async (owned) => {
         const view = await this.readMemorySources(draft.sessionId, owned);
         if (!view.session) throw new Error("Conversation not found.");
         const targets = draft.attemptMode === "regenerate" && draft.attemptFor ? assistantTurn(view.messages, draft.attemptFor) : [];
@@ -1257,6 +1263,10 @@ export class ChatStorage {
       const table = tx.objectStore("messages"), sessions = tx.objectStore("sessions");
       const draft: ChatMessage | undefined = await request(table.get(id));
       if (!draft || draft.status !== "streaming") throw new Error("Generation attempt is no longer active.");
+      if (this.sourceMemory && draft.attemptMode === "regenerate") {
+        if (!scope) throw new Error("Source replacement requires storage coordination.");
+        this.sourceMemory.assertExclusive(scope);
+      }
       const session: ChatSession = await request(sessions.get(draft.sessionId));
       if (session.generation?.draftId !== id || (attemptId ? session.generation.id !== attemptId :
         !this.generationLocks.has(session.generation.id))) throw new Error("Generation attempt is no longer active.");

@@ -3,7 +3,7 @@ import type { ChatMessage } from "../chat/types";
 /** Content/identity digest only; order and annotations can change without replacing the evidence. */
 export async function memorySourceHash(message: ChatMessage): Promise<string> {
   const value = { id: message.id, sessionId: message.sessionId, role: message.role, content: message.content,
-    status: message.status, confirmed: message.confirmed, outcome: message.outcome, attemptId: message.attemptId,
+    status: message.status, attemptId: message.attemptId,
     attemptFor: message.attemptFor, turnId: message.turnId, memorySequence: message.memorySequence };
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");

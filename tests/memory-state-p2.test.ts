@@ -17,6 +17,7 @@ import { cursorId, request } from "../lib/memory/storage";
 import { runMaintenance, MAINTENANCE_IDLE_MS } from "../lib/memory/maintenance-runner";
 import { packageFixture, backupData } from "./backup-fixture";
 import { validateBackupPackage } from "../lib/backup/validation";
+import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
 import { addManualMemory, addJournalEntry } from "../lib/memory/bank";
 import { memoryFingerprint } from "../lib/memory/fingerprint";
 import { createPersistenceWriteGate } from "../lib/backup/persistence-write-gate";
@@ -354,4 +355,24 @@ test("persistent source hashes survive export, preview, empty/cover restore, rol
   await assert.rejects(replaceWithBackup(manifest, first.files, d, locks, { confirmed: await previewRestore(manifest, first.files, d, locks), writers: interrupted }));
   assert.ok(raw.has(RESTORE_JOURNAL_KEY)); await recoverRestore("resume", d, locks, { manifestJson: manifest, files: first.files });
   assert.deepEqual((await memory.readStateFoundation("peter")).states, data.memory.states); assert.equal(raw.has(RESTORE_JOURNAL_KEY), false);
+});
+
+test("without Web Locks ordinary reply and signature saves work, while Background/source changes fail closed", async () => {
+  const factory = new IDBFactory(), gate = createPersistenceWriteGate(() => undefined), memory = new MemoryStorage(() => factory, () => 100, gate);
+  const core = new IndexedDBDocumentStorage(() => factory, gate), character = { characterId: "c", ...normalizeCharacterInput({ name: "Peter", backstory: "Base" }) };
+  await core.putIfAbsent(FOUNDATION_STORAGE_KEY, JSON.stringify({ ...defaultFoundation(), characters: [character] }));
+  const foundation = createIndexedDBFoundationStorage(core, memory), chat = new ChatStorage(() => factory, () => undefined, gate, false, memory);
+  assert.equal((await foundation.load()).characters[0].backstory, "Base");
+  const session = await chat.openSession("c"); await chat.send(session.id, "Hello"); const reply = await chat.beginReply(session.id); assert.ok(reply);
+  assert.equal((await chat.finalizeReply(reply.assistant.id, "Hello there"))[0].content, "Hello there");
+  await foundation.transact((doc) => ({ ...doc, characters: doc.characters.map((c) => ({ ...c, statusMessage: "New signature" })) }));
+  assert.equal((await foundation.load()).characters[0].statusMessage, "New signature");
+  await assert.rejects(foundation.transact((doc) => ({ ...doc, characters: doc.characters.map((c) => ({ ...c, backstory: "Unsafe change" })) })));
+  await assert.rejects(chat.editMessage(reply.assistant.id, "Replacement")); assert.equal((await foundation.load()).characters[0].backstory, "Base");
+});
+
+test("source content digest survives annotations and delivery metadata, but changes with replaced text", async () => {
+  const f = await fixture(); const m = await f.send(); const digest = await memorySourceHash(m);
+  assert.equal(await memorySourceHash({ ...m, confirmed: !m.confirmed, outcome: "success", order: 999 }), digest);
+  assert.notEqual(await memorySourceHash({ ...m, content: "Replaced content" }), digest);
 });

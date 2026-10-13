@@ -59,7 +59,14 @@ export function createIndexedDBFoundationStorage(
       }
     },
     async transact(update, scope) {
-      if (memory && !scope) return memory.withExclusive((owned) => this.transact(update, owned));
+      if (memory && !scope) {
+        try { return await memory.withExclusive((owned) => this.transact(update, owned)); }
+        catch (error) {
+          if (error instanceof BackupValidationError && error.code === "coordination-unavailable")
+            return memory.withShared((owned) => this.transact(update, owned));
+          throw error;
+        }
+      }
       for (let attempt = 0; attempt < 4; attempt++) {
         const before = await readRaw(scope);
         const current = before === null

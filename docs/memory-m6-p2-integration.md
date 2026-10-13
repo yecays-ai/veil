@@ -24,7 +24,7 @@ Lan 批准：重大持续角色生活变化、角色自主控制/用户只读、
 
 顺序：先保留已保存 Background 原快照，Foundation CAS 保存新文档，再追加新快照。这是两个数据库的顺序写入，**不是跨库原子事务**。第二步失败时 Foundation 可能已保存，错误明确返回；新文档与快照文本不一致时 State 一律 pending，不成为事实。load/retry 在同一独占 scope 读取实际 Foundation 并追加缺失版本，旧快照不覆盖。并发读取/写入受同一租约协调，CAS 拒绝覆盖他人文档。
 
-无 Web Locks 时普通 Foundation 只读仍可用；State 不可用，Background 变更安全拒绝。未建立可恢复记录的写入不能通过降级绕过；这是协调能力限制，真机兼容仍待验证。共享恢复 scope 不自动做快照写入。
+无 Web Locks 时普通 Foundation 读取和 signature/status 保存仍可用；State 不可用，Background 变更安全拒绝。普通新回复/continuation 沿用共享租约，替换来源的编辑/删除/重生成需要独占协调并安全拒绝。未建立可恢复记录的来源替换不能通过降级绕过；这是协调能力限制，真机兼容仍待验证。共享恢复 scope 不自动做快照写入。
 
 ## B/C：唯一正常维护请求及 State 提交
 
@@ -40,7 +40,7 @@ readInput 返回独立副本，不能修改 ticket 权限。来源摘要、State
 
 ## D：来源失效、隐私与恢复
 
-State 版本新增可选 `sourceHashes: [{sessionId,messageId,hash}]`；SHA-256 引用对应来源内容与身份，不复制原文。P1 无 hash 记录可严格读取/恢复，但不会作为有效事实注入；需正常维护明确复核并绑定实际证据。备份拒绝额外 source 字段、错误 digest、缺失/跨角色来源及已变化的内容。
+State 版本新增可选 `sourceHashes: [{sessionId,messageId,hash}]`；SHA-256 引用对应来源内容与身份，不复制原文，排除 annotation/order/confirmed/outcome 等不替换正文的元数据。P1 无 hash 记录可严格读取/恢复，但不会作为有效事实注入；需正常维护明确复核并绑定实际证据。备份拒绝额外 source 字段、错误 digest、缺失/跨角色来源及已变化的内容。
 
 编辑/删除/重生成在独占租约下：先记录 cursor 定向清理意图，`sourceInvalidation: {messages:[{messageId,hash}]}`（旧证据摘要），执行原 Chat 事务，再运行既有 completeClear/lineage 清理。包括重生成复用首条 messageId、整轮旧气泡和多来源。Chat 事务失败撤回本次 marker；Chat 成功但清理失败保留持久意图并返回错误。此时聊天可能已变更，不宣称回滚了聊天；State 读取/Prompt 不暴露旧值，启动恢复继续完成。
 
@@ -78,6 +78,6 @@ State 版本新增可选 `sourceHashes: [{sessionId,messageId,hash}]`；SHA-256 
 | Presence/Last Seen/签名、旧 schema/升级失败 | 原受影响回归 | 通过 |
 | 真实模型分类与冲突复核质量、iPhone/Safari、多真实标签页 | 未执行 | 未验证 |
 
-Node 24.19.0：受影响回归 **816/816，零跳过**，其中本阶段新 tests **43**；typecheck、改动文件 lint、webpack build 通过。新 State 原子提交测试使用真实 main 对应的编译后 Progress 模块作隔离负对照，因原协议不提供 State authority 而失败；恢复 P2 模块后通过。仅测试产物替换，未修改 main/原工作树/真实数据。
+Node 24.19.0：受影响回归 **983/983，零跳过**，其中本阶段新 tests **45**；typecheck、改动文件 lint、webpack build 通过。新 State 原子提交测试使用真实 main 对应的编译后 Progress 模块作隔离负对照，因原协议不提供 State authority 而失败；恢复 P2 模块后通过。仅测试产物替换，未修改 main/原工作树/真实数据。首发 CI 的 Chat 删除确认挂载测试缺 Web Locks 导致失败；补齐模拟锁并保留所有原断言后通过，同时新增无锁普通回复/签名及稳定 hash 的 Red/Green 回归。没有增加等待时长或跳过测试。
 
 发布门禁：重读当前唯一 GitHub CI（仅验证）、scripts/package、仓库部署配置，未发现自动合并、非 main Production 或提升动作；无 vercel.json 或部署脚本。Vercel 实时 main `fe6a209...` 为 Production、其他分支为 Preview，正确绑定 `yecays-ai/veil`；Lan 已确认 Production Branch=main。没有修改 Vercel 项目配置。外部不可见自动化不作未经检查的安全保证；本 PR 仅发布独立分支并允许 Preview。最新 head CI/CodeRabbit/Preview 以 GitHub 与唯一 work-status 核对，不把旧 head 成功充当新 head。
