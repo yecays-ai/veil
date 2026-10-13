@@ -270,6 +270,13 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 - 发布门禁：Vercel Git 关联正确；Lan 只读确认 Production Branch 为 main、新分支仅 Preview；已读当前唯一 CI 工作流、仓库 scripts/部署配置，未发现非 main 的 Production/提升动作。发布仅更新独立分支，禁止 automerge、Production 和生产配置变更。当前 PR 与检查见[唯一任务记录](work-status/2026-10-13-codex-memory-m6-p1.md)，数据合同见[模块合同](memory-m6-p1-foundation.md)。
 - 当前合并事实补记：#165 已合并为 `21369721e77a031aad4410b53d55767dd48396ae`，#166 已合并为上述 main；本页 M8 原“未合并”属于历史施工快照，不能作为重复施工依据。M8 产品行为未改动，本单仅更新测试夹具满足六表合同。
 
+## Memory M6 P3 Ongoing 复查（新增，2026-10-13）
+
+基线 `main 8a0f79044c6b291906a518bc07a5d717924a348a`。状态：已修待验（独立 PR 待 Lan 审查；未合并、未部署）。
+
+- 已实现：自动 ongoing 记忆的可选 `ongoing {reviewAt, ended}`（严格校验、含备份校验器）；模型给相对天数 `reviewInDays`，本地换算；到期候选在既有维护请求内带 `due:true` 并优先保留；新操作 EXTEND；ARCHIVE 对 ongoing 须标 `explicit`/`presumed`（推定只限到期）；无定时器、无额外请求；手动记忆不带复查数据。
+- 自动化证据：fake IndexedDB / stub，memory-*、backup-*、chat-* 定向测试通过；typecheck、改动文件 lint 通过。详见 [模块记录](memory-m6-p3-ongoing.md) 与 [任务状态](work-status/2026-10-13-claude-memory-m6-p3.md)。
+- 未验证：真实模型行为（天数是否合理、是否保守对待沉默）、iPhone；`npm run build`、全量测试未跑。
 
 ## Memory M6 P5：开发环境只读 Context Inspector（新增，2026-10-13）
 

@@ -49,8 +49,9 @@ export async function editMemory(storage: MemoryStorage, memory: Memory, edit: M
   const { kind, text, subject = memory.subject } = clean(edit);
   const textChanged = memoryFingerprint(text) !== memory.fingerprint;
   if (!textChanged && kind === memory.kind && text === memory.text && subject === memory.subject && memory.origin === "manual") return undefined;
-  const { fingerprint: _f, createdAt: _c, updatedAt: _u, ...draft } = memory;
-  void [_f, _c, _u];
+  // The user takes the memory over: automatic ongoing review data does not follow it.
+  const { fingerprint: _f, createdAt: _c, updatedAt: _u, ongoing: _o, ...draft } = memory;
+  void [_f, _c, _u, _o];
   return storage.applyChange(memory.characterId, "Edited a memory", {
     put: [{ ...draft, kind, text, subject, origin: "manual" }],
     suppress: textChanged ? [{ id: newId(), fingerprint: memory.fingerprint, reason: "corrected", sources: memory.sources }] : [],
