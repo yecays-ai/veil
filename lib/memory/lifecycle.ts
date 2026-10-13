@@ -1,13 +1,14 @@
+import { cleanCharacterStates } from "./state-foundation";
 import { cleanMemoryLineage } from "./lineage";
 import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
-import { cursorId, request, type MemoryStorage } from "./storage";
+import { cursorId, request, MEMORY_STORES, type MemoryStorage } from "./storage";
 import type { Memory, MemoryCursor, MemoryOperation, MemorySource, Suppression } from "./types";
 
 
 /** Delete every row a Character owns, in one transaction. */
 export function deleteCharacterMemory(storage: MemoryStorage, characterId: string, scope?: PersistenceWriteScope): Promise<void> {
   return storage.transaction("readwrite", async (tx) => {
-    for (const name of ["memories", "suppressions", "operations", "cursors"] as const) {
+    for (const name of MEMORY_STORES) {
       const store = tx.store(name);
       for (const key of await request<IDBValidKey[]>(store.index("characterId").getAllKeys(characterId)))
         await request(store.delete(key));
@@ -25,7 +26,7 @@ export function recordClearIntent(storage: MemoryStorage, characterId: string, s
     const targets = new Set(previous?.clearMessageIds ?? []);
     for (const batch of previous?.extraction?.batches ?? []) for (const source of batch.sources) targets.add(source.messageId);
     const collect = (sources: readonly MemorySource[] = []) => { for (const item of sources) if (item.sessionId === sessionId) targets.add(item.messageId); };
-    for (const name of ["memories", "suppressions"] as const)
+    for (const name of ["memories", "suppressions", "states"] as const)
       for (const row of await request<{ sources: MemorySource[] }[]>(tx.store(name).index("characterId").getAll(characterId))) collect(row.sources);
     for (const row of await request<MemoryOperation[]>(tx.store("operations").index("characterId").getAll(characterId))) {
       for (const change of row.changes) { collect(change.before?.sources); collect(change.after?.sources); }
@@ -62,6 +63,15 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
   const touches = (sources: readonly MemorySource[]) => sources.some(hit);
   const withoutTargets = (sources: readonly MemorySource[]) => sources.filter((item) => !hit(item));
   return storage.transaction("readwrite", async (tx) => {
+    const stateStore = tx.store("states");
+    const foundation = {
+      backgrounds: await request<import("./state-foundation").BackgroundSnapshot[]>(tx.store("backgrounds").index("characterId").getAll(characterId)),
+      states: await request<import("./state-foundation").CharacterStateVersion[]>(stateStore.index("characterId").getAll(characterId)),
+    };
+    const kept = cleanCharacterStates(foundation, hit);
+    const stateIds = new Set(kept.states.map((r) => r.id));
+    for (const row of foundation.states) if (!stateIds.has(row.id)) await request(stateStore.delete(row.id));
+    for (const row of kept.states) if (JSON.stringify(row) !== JSON.stringify(foundation.states.find((r) => r.id === row.id))) await request(stateStore.put(row));
     const memoriesStore = tx.store("memories");
     const rows = await request<Memory[]>(memoriesStore.index("characterId").getAll(characterId));
     const suppressionRows = await request<Suppression[]>(tx.store("suppressions").index("characterId").getAll(characterId));

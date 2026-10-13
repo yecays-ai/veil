@@ -75,7 +75,7 @@ async function environment() {
   await seed(indexedDB, "veil-chat-v2", { ...data.chat, assets: [
     { id: "chat-image-test", blob: blob(), createdAt: TEST_NOW }, { id: "chat-orphan", blob: blob(), createdAt: TEST_NOW - 1000 },
   ] });
-  await seed(indexedDB, "veil-memory-v1", data.memory);
+  await seed(indexedDB, "veil-memory-v1", data.memory, 2);
   await seed(indexedDB, "veil-appearance-images-v1", { assets: [{ id: imageId, blob: blob(), type: "image/png", createdAt: TEST_NOW,
     holders: [{ id: "temporary-holder", at: TEST_NOW }] }] });
   await seed(indexedDB, "veil-api-config-v1", { configs: data.apiConfigs.map((row) => ({ ...row, apiKey: secret })) });
@@ -129,7 +129,7 @@ test("exporting an empty environment neither creates databases nor writes defaul
   assert.deepEqual(await indexedDB.databases(), []); assert.equal(requested.length, 7);
   assert.equal(checked.data.foundation, null); assert.equal(checked.data.appearance, null); assert.equal(checked.data.presets, null);
   assert.deepEqual(checked.data.chat, { sessions: [], messages: [], chatSettings: [], worldBookStates: [] });
-  assert.deepEqual(checked.data.memory, { memories: [], suppressions: [], operations: [], cursors: [] });
+  assert.deepEqual(checked.data.memory, { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] });
 });
 
 test("the same fixed authorities and metadata produce the same bytes, IDs and counts", async () => {

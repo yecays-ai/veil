@@ -19,6 +19,7 @@ export function memoryData(): BackupData["memory"] {
     sources: [{ sessionId: "character:peter", messageId: "reply-test" }], createdAt: TEST_NOW };
   const first = memory("memory-1", "Likes tea");
   return {
+    backgrounds: [], states: [],
     memories: [first, memory("memory-2", "Moved house", { origin: "manual", sources: [{ sessionId: "character:peter", messageId: "deleted-message" }] })],
     suppressions: [suppression],
     operations: [{ id: "peter\u00001", characterId: "peter", seq: 1, label: "add", createdAt: TEST_NOW, changes: [{ before: null, after: first }],

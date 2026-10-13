@@ -1,3 +1,4 @@
+import type { BackgroundSnapshot, CharacterStateVersion } from "../memory/state-foundation";
 import type { FoundationDocument } from "../foundation-types";
 import type { ThemeDocument } from "../theme-types";
 import type { BindingDocument } from "../bindings";
@@ -17,7 +18,7 @@ export const BACKUP_VERSION = 2;
 /** Backup-domain versions describe this format, not IndexedDB versions or name suffixes. */
 export const BACKUP_DOMAIN_VERSIONS = {
   foundation: 1, appearance: 1, bindings: 1, presets: 3, regex: 1,
-  worldbooks: 1, contacts: 1, presence: 1, chat: 1, memory: 1, apiConfigs: 1,
+  worldbooks: 1, contacts: 1, presence: 1, chat: 1, memory: 2, apiConfigs: 1,
 } as const;
 export type BackupDomain = keyof typeof BACKUP_DOMAIN_VERSIONS;
 export type BackupAssetDomain = "appearance" | "chat";
@@ -46,7 +47,7 @@ export type BackupData = {
     chatSettings: (ChatBackgroundSettings | GlobalProfileSettings)[];
     worldBookStates: { id: string; state: WorldBookActivationState }[];
   };
-  memory: { memories: Memory[]; suppressions: Suppression[]; operations: MemoryOperation[]; cursors: MemoryCursor[] };
+  memory: { memories: Memory[]; suppressions: Suppression[]; operations: MemoryOperation[]; cursors: MemoryCursor[]; backgrounds: BackgroundSnapshot[]; states: CharacterStateVersion[] };
   apiConfigs: Omit<NamedApiConfig, "apiKey">[];
 };
 export type BackupWarning = { code: "credentials-required" | "external-image" | "missing-quote"; path: string };

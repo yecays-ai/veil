@@ -23,7 +23,7 @@ test("full simulated package preserves identities, ordering, remarks, Presence a
 
 test("empty environment retains absent documents instead of materializing defaults", async () => {
   const data: BackupData = { foundation: null, appearance: null, bindings: null, presets: null, regex: null,
-    worldbooks: null, contacts: null, presence: null, apiConfigs: [], memory: { memories: [], suppressions: [], operations: [], cursors: [] }, chat: { sessions: [], messages: [], chatSettings: [], worldBookStates: [] } };
+    worldbooks: null, contacts: null, presence: null, apiConfigs: [], memory: { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] }, chat: { sessions: [], messages: [], chatSettings: [], worldBookStates: [] } };
   const result = await validate(await packageFixture(data));
   assert.deepEqual(result.data, data); assert.deepEqual(result.warnings, []);
 });

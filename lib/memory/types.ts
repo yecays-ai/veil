@@ -1,5 +1,5 @@
 export const MEMORY_DATABASE_NAME = "veil-memory-v1";
-export const MEMORY_DATABASE_VERSION = 1;
+export const MEMORY_DATABASE_VERSION = 2;
 export const MEMORY_OPERATION_LIMIT = 5;
 
 export type MemoryStatus = "active" | "superseded" | "archived" | "flagged";

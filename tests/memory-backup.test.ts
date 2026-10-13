@@ -30,14 +30,14 @@ const validate = (f: Fixture) => validateBackupPackage(JSON.stringify(f.manifest
 const memoryRows = async (device: RestoreDevice) => (await readStaticBackupSource(device)).memory;
 const passthrough: PersistenceWriteGate = { withWrite: (operation) => operation() };
 
-test("export includes all four Memory stores with stable ids and no chat text", async () => {
+test("export includes all six Memory stores with stable ids and no chat text", async () => {
   const device = newDevice(), source = new MemoryStorage(() => device.indexedDB, () => TEST_NOW, passthrough);
   const data = memoryData();
   await source.applyChange("peter", "add", { put: data.memories.map((row) => { const { fingerprint, createdAt, updatedAt, ...draft } = row; void [fingerprint, createdAt, updatedAt]; return draft; }),
     suppress: [{ id: "suppress-1", fingerprint: data.suppressions[0].fingerprint, reason: "deleted", sources: data.suppressions[0].sources }] });
   await source.saveCursor("peter", "character:peter", { processedMessageId: "reply-test" });
   const snapshot = await readStaticBackupSource(device);
-  assert.deepEqual(Object.keys(snapshot.memory).sort(), ["cursors", "memories", "operations", "suppressions"]);
+  assert.deepEqual(Object.keys(snapshot.memory).sort(), ["backgrounds", "cursors", "memories", "operations", "states", "suppressions"]);
   assert.deepEqual(snapshot.memory.memories.map((row) => (row as { id: string }).id).sort(), ["memory-1", "memory-2"]);
   assert.equal(snapshot.memory.suppressions.length, 1); assert.equal(snapshot.memory.operations.length, 1); assert.equal(snapshot.memory.cursors.length, 1);
   // The rest of the fixture is absent, so only the Memory database is read; with no chat the export is refused by reference rules.
@@ -90,7 +90,7 @@ test("validation rejects malformed Memory, unknown stores, wrong version and bro
     await assert.rejects(validate(fixture), (e) => e instanceof BackupValidationError && e.code === code, name);
   }
   const wrongVersion = await packageFixture();
-  wrongVersion.manifest.domains.find((row) => row.domain === "memory")!.version = 2;
+  wrongVersion.manifest.domains.find((row) => row.domain === "memory")!.version = 3;
   await assert.rejects(validate(wrongVersion), (e) => e instanceof BackupValidationError && e.code === "unsupported-domain-version");
   const tampered = await packageFixture();
   await replacePayload(tampered, "memory", { memories: [], suppressions: [], operations: [] });
@@ -170,7 +170,7 @@ test("a replace that fails after Memory landed restores the old Memory rows exac
   const device = newDevice(), locks = locksClient(), a = await pack();
   await restoreIntoEmpty(a.manifestJson, a.files, device, locks);
   const before = await memoryRows(device);
-  const data = backupData(); data.memory = { memories: [], suppressions: [], operations: [], cursors: [] };
+  const data = backupData(); data.memory = { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] };
   data.contacts = null;
   const b = await pack(data), confirmed = await previewRestore(b.manifestJson, b.files, device, locks);
   const real = createUnitWriters(device);

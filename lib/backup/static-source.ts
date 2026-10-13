@@ -4,7 +4,7 @@ import { CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION } from "../chat/storage";
 import { APPEARANCE_IMAGE_DATABASE_NAME, APPEARANCE_IMAGE_DATABASE_VERSION } from "../appearance-image-storage";
 import { API_CONFIG_DATABASE_NAME, API_CONFIG_DATABASE_VERSION } from "../api-config-storage";
 import { MEMORY_DATABASE_NAME, MEMORY_DATABASE_VERSION } from "../memory/types";
-import { MEMORY_STORES } from "../memory/storage";
+import { MEMORY_STORES, LEGACY_MEMORY_STORES } from "../memory/storage";
 import { parseBackupJson } from "./json";
 import { BackupValidationError, type BackupDomain } from "./format";
 import { SAFETY_DATABASE_NAME } from "./safety-copy";
@@ -32,7 +32,7 @@ export type StaticBackupSnapshot = {
 const fail = (code: string, path: string): never => { throw new BackupValidationError(code, path); };
 
 /** Read one existing database in one readonly transaction; never bootstrap or upgrade a database. */
-async function readDatabase(factory: IDBFactory, definition: typeof DATABASES[number]): Promise<Record<string, unknown[]>> {
+async function readDatabase(factory: IDBFactory, definition: { name: string; version: number; stores: readonly string[]; key: string }): Promise<Record<string, unknown[]>> {
   let database: IDBDatabase | undefined;
   try {
     database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -106,8 +106,11 @@ export async function readStaticBackupSource(source: StaticBackupSource): Promis
   for (const definition of DATABASES) {
     const existing = catalog.find((entry) => entry.name === definition.name);
     if (!existing) { snapshots[definition.name] = {}; continue; }
-    if (existing.version !== definition.version) fail("unsupported-source-schema", definition.name);
-    snapshots[definition.name] = await readDatabase(source.indexedDB, definition);
+    // Exactly the legacy four-store Memory schema is read without upgrading; missing State means empty.
+    const readable = definition.name === MEMORY_DATABASE_NAME && existing.version === 1
+      ? { ...definition, version: 1, stores: LEGACY_MEMORY_STORES } : definition;
+    if (existing.version !== readable.version) fail("unsupported-source-schema", definition.name);
+    snapshots[definition.name] = await readDatabase(source.indexedDB, readable);
   }
   const core = snapshots[CORE_DATABASE_NAME].documents ?? [];
   if (core.length > 1) fail("unsupported-source-document", "foundation");

@@ -131,14 +131,14 @@ test("backup validation accepts journal rows and rejects malformed ones; restore
   const make = (extra: Partial<Memory> = {}): Memory => ({ id: "j", characterId: "peter", kind: "journal", text: "Remember the lake", subject: "character",
     status: "active", origin: "journal", sources: [], lineage: {}, keywords: ["lake", "湖"], fingerprint: memoryFingerprint("Remember the lake"),
     createdAt: TEST_NOW, updatedAt: TEST_NOW, ...extra });
-  const data = backupData(); data.memory = { memories: [make()], suppressions: [], operations: [], cursors: [] };
+  const data = backupData(); data.memory = { memories: [make()], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] };
   const fixture = await packageFixture(data);
   await restoreIntoEmpty(JSON.stringify(fixture.manifest), fixture.files, device, lockOrigin().client() as unknown as BackupLockManager);
   assert.equal(raw.has(RESTORE_JOURNAL_KEY), false);
   assert.deepEqual((await readStaticBackupSource(device)).memory.memories, [make()]);
   for (const bad of [make({ keywords: [] }), make({ keywords: undefined }), make({ status: "archived" }), make({ sources: [{ sessionId: "s", messageId: "m" }] }),
     make({ origin: "manual" }), make({ text: "x".repeat(501), fingerprint: memoryFingerprint("x".repeat(501)) })]) {
-    const broken = backupData(); broken.memory = { memories: [bad], suppressions: [], operations: [], cursors: [] };
+    const broken = backupData(); broken.memory = { memories: [bad], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] };
     const badFixture = await packageFixture(broken);
     await assert.rejects(validateBackupPackage(JSON.stringify(badFixture.manifest), badFixture.files),
       (error: unknown) => error instanceof BackupValidationError);
