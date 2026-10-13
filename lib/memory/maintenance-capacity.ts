@@ -17,7 +17,7 @@ export function maintenanceSettled(sessions: readonly ChatSession[], characterId
 }
 
 export type MaintenanceBacklog = {
-  /** Numbered messages no batch has been made for yet. */
+  /** Numbered messages no batch has been made for yet, in the Character's largest session (a run reads one session). */
   fresh: number;
   /** Batches interrupted before dispatch that recovery may still re-offer. Failed/uncertain/too-large ranges stay holes. */
   waiting: number;
@@ -38,7 +38,7 @@ export function maintenanceBacklog(sessions: readonly ChatSession[], cursors: re
       covered += batch.toSeq - batch.fromSeq + 1;
       if (batch.state === "ready" && batch.attempts < MAINTENANCE_MAX_SAFE_CLAIMS) backlog.waiting++;
     }
-    backlog.fresh += Math.max(0, session.memorySequence.nextSeq - 1 - covered);
+    backlog.fresh = Math.max(backlog.fresh, session.memorySequence.nextSeq - 1 - covered);
   }
   return backlog;
 }

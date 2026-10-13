@@ -142,3 +142,23 @@ test("stop cancels page ownership and late session reads cannot create a timer o
   const waking = scheduler.wake(); scheduler.stop(); release([row()]); await waking;
   assert.equal(scheduled, 0); assert.equal(calls, 0);
 });
+
+test("a cursor read failure gets a bounded local retry and then dispatches once; persistent failures stop after two retries", async () => {
+  let reads = 0, calls = 0, next = 0;
+  const timers = new Map<number, { cb: () => void; delay: number }>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, triggerSequences: 1, sessions: async () => [row()],
+    cursors: async () => { if (++reads === 1) throw new Error("temporary cursor read"); return []; },
+    run: async () => { calls++; return false; }, setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; },
+    clearTimer: (id) => { timers.delete(id as number); } });
+  const fire = async () => { const [id, timer] = [...timers][0]; timers.delete(id); timer.cb(); await new Promise((r) => setTimeout(r, 0)); };
+  await scheduler.wake(); assert.equal(timers.size, 1); assert.equal([...timers.values()][0].delay, 5000); assert.equal(calls, 0);
+  await fire(); assert.equal([...timers.values()][0].delay, 0); await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
+
+  let failing = 0, retried = 0, n2 = 0; const t2 = new Map<number, () => void>();
+  const stubborn = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, triggerSequences: 1, sessions: async () => [row()],
+    cursors: async () => { failing++; throw new Error("cursor read"); }, run: async () => false,
+    setTimer: (cb) => { retried++; t2.set(++n2, cb); return n2; }, clearTimer: (id) => { t2.delete(id as number); } });
+  await stubborn.wake();
+  for (let i = 0; i < 4 && t2.size; i++) { const [id, cb] = [...t2][0]; t2.delete(id); cb(); await new Promise((r) => setTimeout(r, 0)); }
+  assert.equal(retried, 2, "two retries per failure streak"); assert.equal(failing, 3); assert.equal(t2.size, 0); stubborn.stop();
+});

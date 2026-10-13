@@ -18,7 +18,7 @@ Claude；分支 `claude/memory-t2-capacity-summary`；PR 尚未创建。涉及 `
 - 保留：失败恢复、游标、失败/未知/过大空洞不重试、每个 Character 同时只跑一个、请求前派发。
 - “请记住”只做本地明确请求识别（疑问句、回忆句不触发），仅在维护输入里给该消息加 `explicitRequest` 标记，不增加模型调用、不提前触发。
 - Settings 维护页改为显示“已累积 N / 触发 20”，不再显示“下次检查时间”。
-- 验证（自动化测试，非真机）：typecheck 通过；eslint 干净；`memory-maintenance-runner` 37、`-lifecycle` 8、`-settings` 5、`memory-state-p2` 49、新增 `memory-t2-capacity` 5 全部通过；`npm run test:memory` 167 通过 0 失败。
+- 验证（自动化测试，非真机）：typecheck 通过；eslint 干净；`memory-maintenance-runner` 37、`-lifecycle` 9、`-settings` 5、`memory-state-p2` 49、新增 `memory-t2-capacity` 5 全部通过；`npm run test:memory` 167 通过 0 失败。
 
 ## 尚未验证
 

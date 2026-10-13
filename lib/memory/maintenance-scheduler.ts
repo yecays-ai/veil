@@ -16,13 +16,25 @@ export type MaintenanceSchedulerDependencies = {
  * A wakeup starts a run only when a full batch of messages (or a recoverable batch) is waiting: there is no idle timer.
  */
 export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencies) {
-  let stopped = false, reading = false, dirty = false, readRetries = 0, retryVersion = 0;
+  let stopped = false, reading = false, dirty = false, readRetries = 0, cursorRetries = 0, retryVersion = 0;
   let readRetry: unknown;
   const timers = new Map<string, unknown>(), running = new Map<string, AbortController>();
   const clear = () => {
     retryVersion++;
     if (readRetry !== undefined) { deps.clearTimer(readRetry); readRetry = undefined; }
     for (const timer of timers.values()) deps.clearTimer(timer); timers.clear();
+  };
+  /** At most two local read retries per failure streak; this re-reads durable state, never retries a dispatched model request. */
+  const retryRead = (kind: "sessions" | "cursors") => {
+    if (stopped || !deps.enabled() || !deps.runnable() || readRetry !== undefined) return;
+    if ((kind === "sessions" ? readRetries : cursorRetries) >= 2) return;
+    if (kind === "sessions") readRetries++; else cursorRetries++;
+    const version = retryVersion;
+    readRetry = deps.setTimer(() => {
+      if (stopped || version !== retryVersion) return;
+      readRetry = undefined;
+      void wake().catch(() => undefined);
+    }, 5_000);
   };
   const wake = async (): Promise<void> => {
     if (stopped) return;
@@ -34,28 +46,19 @@ export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencie
       let sessions: ChatSession[];
       try { sessions = await deps.sessions(); }
       catch {
-        // At most two local read retries per failure streak; lifecycle events may still recheck.
-        // This re-reads durable activity, never retries a dispatched model request.
         // Keep wakeups received during this read; finally consumes one pending recheck.
-        if (!stopped && deps.enabled() && deps.runnable() && readRetries < 2) {
-          readRetries++;
-          const version = retryVersion;
-          readRetry = deps.setTimer(() => {
-            if (stopped || version !== retryVersion) return;
-            readRetry = undefined;
-            void wake().catch(() => undefined);
-          }, 5_000);
-        }
+        retryRead("sessions");
         return;
       }
       readRetries = 0;
       if (stopped || !deps.enabled() || !deps.runnable()) return;
       const characters = new Set(sessions.filter((s) => s.type !== "group" && s.memorySequence && s.memorySequence.nextSeq > 1).map((s) => s.characterId));
+      let cursorReadFailed = false;
       for (const characterId of characters) {
         if (running.has(characterId)) { dirty = true; continue; }
         let due: boolean;
         try { due = maintenanceDue(sessions, await deps.cursors(characterId), characterId, deps.triggerSequences ?? MAINTENANCE_TRIGGER_SEQUENCES); }
-        catch { continue; } // Unreadable progress: the next lifecycle wakeup re-reads it; nothing is dispatched.
+        catch { cursorReadFailed = true; retryRead("cursors"); continue; } // Unreadable progress dispatches nothing.
         if (!due || stopped) continue;
         timers.set(characterId, deps.setTimer(() => {
           timers.delete(characterId);
@@ -72,6 +75,7 @@ export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencie
           });
         }, 0));
       }
+      if (!cursorReadFailed) cursorRetries = 0;
     } finally {
       reading = false;
       if (dirty && !stopped && !running.size) { dirty = false; void wake().catch(() => undefined); }

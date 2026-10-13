@@ -322,13 +322,14 @@ test("measure warm runner lease holds with retained history and bounded candidat
     exclusiveSamples: holds.length, holdMs: { p50: p(holds, .5), p95: p(holds, .95), max: p(holds, 1) },
     runnerMs: { p50: p(times, .5), p95: p(times, .95), max: p(times, 1) }, maxWaitMs: Math.max(...f.waits) }));
 });
-test("capacity adds up every direct session of the Character and is blocked while a reply generates", async () => {
+test("capacity looks at one session at a time, as a run reads one, and is blocked while a reply generates", async () => {
   const f = await fixture(); await f.send();
   const rows = await f.chat.listSessions(), cursors = await f.memory.listCursors("c");
   assert.equal(maintenanceDue(rows, cursors, "c", 1), true);
   assert.equal(maintenanceDue(rows, cursors, "c", 2), false);
   const other = { ...rows[0], id: "other", memorySequence: { epoch: "e2", nextSeq: 2 } };
-  assert.equal(maintenanceDue([...rows, other], cursors, "c", 2), true, "two sessions add up");
+  assert.equal(maintenanceDue([...rows, other], cursors, "c", 2), false, "1 + 1 is not a full batch of 2");
+  assert.equal(maintenanceDue([...rows, { ...other, memorySequence: { epoch: "e2", nextSeq: 3 } }], cursors, "c", 2), true);
   assert.equal(maintenanceDue([...rows, { ...other, memorySequence: undefined }], cursors, "c", 2), false, "untracked chats add nothing");
   assert.equal(maintenanceDue([{ ...rows[0], generation: { id: "g", stage: "preparing" } }], cursors, "c", 1), false);
   assert.equal(maintenanceDue(rows, cursors, "someone-else", 1), false);

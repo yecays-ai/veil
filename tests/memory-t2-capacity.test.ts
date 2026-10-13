@@ -39,7 +39,9 @@ test("a pending clear, a stale epoch, groups, untracked chats and other Characte
   assert.equal(maintenanceDue([session(40, { memorySequence: undefined })], [], "c"), false);
   assert.equal(maintenanceDue([session(40)], [], "other"), false);
   assert.equal(maintenanceDue([session(40, { generation: { id: "g", stage: "preparing" } })], [], "c"), false, "never while a reply generates");
-  assert.equal(maintenanceDue([session(11), { ...session(11), id: "t", memorySequence: { epoch: "e2", nextSeq: 11 } }], [], "c"), true, "sessions of a Character add up");
+  const twin = (nextSeq: number) => ({ ...session(nextSeq), id: "t", memorySequence: { epoch: "e2", nextSeq } });
+  assert.equal(maintenanceDue([session(2), twin(20)], [], "c"), false, "a run reads one session, so 1 + 19 is not a full batch");
+  assert.equal(maintenanceDue([session(2), twin(21)], [], "c"), true, "one session holds a full batch");
 });
 
 test("explicit memory requests are recognized locally and conservatively", () => {
