@@ -266,7 +266,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
           </ProfileView>
           <section className="profile-card">
             <h2>Memory</h2>
-            <Link href={`/characters/${encodeURIComponent(characterId!)}/memory`}>What {character!.name} remembers ›</Link>
+            <Link href={`/memory/${encodeURIComponent(characterId!)}`}>What {character!.name} remembers ›</Link>
           </section>
           <footer className="danger-area">
             {confirmDelete ? (

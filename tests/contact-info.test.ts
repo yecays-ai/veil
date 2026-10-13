@@ -140,3 +140,10 @@ test("Contact Info route structure has real actions and honest placeholders with
   assert.match(css, /\.contact-delete-dialog:focus\s*\{\s*outline:\s*none/);
   assert.match(readFileSync("lib/ui-copy.ts", "utf8"), /genderSuggestions: \["Male", "Female", "Non-binary", "Prefer not to say"\]/);
 });
+
+test("the social profile no longer shows Character State; it lives in Contact Info and the Memory app", () => {
+  const social = readFileSync("components/character-social-profile.tsx", "utf8");
+  assert.doesNotMatch(social, /CharacterStatePanel|character-state-panel/);
+  const pages = readFileSync("components/profile-pages.tsx", "utf8");
+  assert.match(pages, /\/memory\/\$\{encodeURIComponent\(characterId!\)\}/);
+});

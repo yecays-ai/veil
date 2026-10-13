@@ -4,7 +4,6 @@ import { useFoundation } from "./foundation-provider";
 import { PageShell } from "./page-shell";
 import { Avatar } from "./profile-view";
 import { CharacterPresenceLine } from "./presence";
-import { CharacterStatePanel } from "./character-state-panel";
 
 export function CharacterSocialProfile({ characterId }: { characterId: string }) {
   const { document, ready } = useFoundation();
@@ -16,7 +15,6 @@ export function CharacterSocialProfile({ characterId }: { characterId: string })
       <h1>{character.name}</h1>
       <CharacterPresenceLine character={character} />
       {character.statusMessage && <p>{character.statusMessage}</p>}
-      <CharacterStatePanel character={character} />
     </div>}
   </PageShell>;
 }
