@@ -8,7 +8,7 @@ import {
 } from "../lib/memory/bank";
 import { browserMemoryStorage } from "../lib/memory/browser";
 import { MemoryConflictError, MemoryDuplicateError, type MemoryStorage } from "../lib/memory/storage";
-import type { Memory, MemoryOperation, MemoryOrigin, MemoryStatus } from "../lib/memory/types";
+import { MEMORY_TEXT_CHARACTERS, type Memory, type MemoryOperation, type MemoryOrigin, type MemoryStatus } from "../lib/memory/types";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { useFoundation } from "./foundation-provider";
 import { MemoryJournal } from "./memory-journal";
@@ -179,7 +179,7 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
           </Select>
         </label>
         <label>Memory
-          <textarea value={draft.text} rows={4} onChange={(event) => setDraft({ ...draft, text: event.target.value })} />
+          <textarea value={draft.text} rows={4} maxLength={MEMORY_TEXT_CHARACTERS} onChange={(event) => setDraft({ ...draft, text: event.target.value })} />
         </label>
         {notice && <Alert variant="danger">{notice}</Alert>}
         <div className="settings-action-row">

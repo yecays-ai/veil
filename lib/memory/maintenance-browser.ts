@@ -30,11 +30,13 @@ export function startBrowserMaintenance(): () => void {
     model: async (characterId: string, scope?: Parameters<typeof chatStorage.listExistingSessions>[0]) => {
       const raw = await browserDocumentStorage.readExisting(FOUNDATION_STORAGE_KEY, scope);
       if (!raw) throw new Error("Memory Character authority unavailable.");
-      const character = normalizeFoundation(JSON.parse(raw)).characters.find((c) => c.characterId === characterId);
+      const foundation = normalizeFoundation(JSON.parse(raw));
+      const character = foundation.characters.find((c) => c.characterId === characterId);
       if (!character) throw new Error("Memory Character authority unavailable.");
       const config = await resolveMaintenanceModel(await browserBindingStorage.load(), characterId,
         (id) => browserApiConfigStorage.getApiConfig(id, scope));
-      return { config, context: JSON.stringify({ name: character.name, characterId, personality: character.personality, worldSetting: normalizeFoundation(JSON.parse(raw)).universe.worldSetting }) };
+      return { config, timezone: foundation.user.timezone ?? undefined, context: JSON.stringify({ name: character.name, characterId, personality: character.personality,
+        speakingStyle: character.speakingStyle, user: foundation.user.name, worldSetting: foundation.universe.worldSetting }) };
     } };
   const scheduler = createMaintenanceScheduler({ ...deps, sessions,
     runnable: () => document.visibilityState === "visible",

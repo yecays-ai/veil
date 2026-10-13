@@ -141,7 +141,7 @@ test("the model prompt checks state changes before IGNORE and keeps role-speech 
     const prompt = buildMaintenanceInput(snapshot, { characterId: "c", context: "" })[0].content;
     assert.ok(prompt.indexOf("changed, ended or was replaced") < prompt.indexOf("IGNORE when nothing above applies"));
     for (const phrase of ["if unsure use UPDATE", "Never CREATE what a candidate already covers", "for other operations, every messageId you cite must itself state or confirm the memory",
-      "Character's world, settings and conversation context", "never to avoid deciding", "stable interaction pattern"])
+      "Character's world, settings and conversation context", "never to avoid deciding", "running jokes"])
       assert.ok(prompt.includes(phrase), phrase);
     assert.doesNotMatch(prompt, /\bPeter\b|\bMiles\b/, "no hard-coded Character names");
   });

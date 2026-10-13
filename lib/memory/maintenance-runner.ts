@@ -40,7 +40,7 @@ export type MaintenanceRunnerDependencies = {
   protocol: MemoryProgressProtocol; memory: MemoryStorage;
   sessions(scope?: PersistenceWriteScope): Promise<ChatSession[]>;
   readChat(sessionId: string, scope: PersistenceWriteScope): Promise<{ session?: ChatSession; messages: ChatMessage[] }>;
-  model(characterId: string, scope?: PersistenceWriteScope): Promise<{ config: ApiConfig; context: string }>;
+  model(characterId: string, scope?: PersistenceWriteScope): Promise<{ config: ApiConfig; context: string; timezone?: string }>;
   provider: TextProvider; enabled(): boolean; now(): number;
   diagnostics?: ReturnType<typeof createMaintenanceDiagnostics>;
   requestTimeoutMs?: number;
@@ -56,7 +56,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
       for (const ticket of await deps.protocol.recover(owner, session.id)) recovered.push({ ticket, sessionId: session.id });
     if (maintenanceDue(await deps.sessions(), characterId, deps.now()) !== 0 || !deps.enabled() || signal.aborted) return false;
     // Invalid binding is rejected before making a new batch, with no fallback and no paid call.
-    const { config, context } = await deps.model(characterId);
+    const { config, context, timezone } = await deps.model(characterId);
     let ticket: MemoryBatchTicket | undefined;
     for (const saved of recovered) {
       const batch = await deps.protocol.describe(saved.ticket);
@@ -108,7 +108,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     snapshot = await deps.protocol.readInput(ticket);
     try {
       // Only this synchronous input validator defines unacceptable input; no storage awaits here.
-      input = buildMaintenanceInput(snapshot, { characterId, context }, undefined, clock);
+      input = buildMaintenanceInput(snapshot, { characterId, context, timezone }, undefined, clock);
     }
     catch (error) {
       if (error instanceof MaintenanceInputTooLarge) await deps.protocol.refresh(ticket, undefined, true);

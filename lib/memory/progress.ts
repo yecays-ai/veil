@@ -11,7 +11,7 @@ import { memoryFingerprint } from "./fingerprint";
 import { memoryMessageEligible } from "./sequence";
 import { finishMemoryRange, validMemoryProgress, type MemoryBatch, type MemoryProgress } from "./progress-types";
 import { cursorId, MemoryConflictError, MemoryProtectedError, normalizeSources, request, type MemoryStorage, type MemoryTx } from "./storage";
-import type { Memory, MemoryCursor, MemoryDraft, Suppression } from "./types";
+import { MEMORY_TEXT_CHARACTERS, type Memory, type MemoryCursor, type MemoryDraft, type Suppression } from "./types";
 
 export type MemorySourceAuthority = {
   /** Raw saved Foundation authority; null/malformed/deleted Character must fail closed. */
@@ -442,7 +442,7 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
     if (!fingerprint || !sessionId || sources.some((s) => !(s.sessionId === sessionId && sourceKeys.has(s.messageId)) && !allowedSource.has(`${s.sessionId}\0${s.messageId}`))) return fail();
     if (suppressions.some((s) => s.fingerprint === fingerprint || s.sources.some((old) => sources.some((n) => n.sessionId === old.sessionId && n.messageId === old.messageId)))
       || existing.some((r) => r.origin === "manual" && r.fingerprint === fingerprint)) throw new MemoryProtectedError(draft.id);
-    if (!before && (!sources.some((s) => s.sessionId === sessionId && sourceKeys.has(s.messageId)) || draft.status === "superseded")) return fail();
+    if (!before && (draft.text.length > MEMORY_TEXT_CHARACTERS || !sources.some((s) => s.sessionId === sessionId && sourceKeys.has(s.messageId)) || draft.status === "superseded")) return fail();
     // An ended marker is written once, together with the archive; it is never rewritten or removed.
     if (before && before.ongoing?.ended !== undefined && JSON.stringify(draft.ongoing) !== JSON.stringify(before.ongoing)) return fail();
     if (before && (draft.text !== before.text || draft.kind !== before.kind || draft.subject !== before.subject
