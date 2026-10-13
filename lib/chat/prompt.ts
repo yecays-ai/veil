@@ -1,3 +1,4 @@
+import { statePromptEntries, STATE_AUTHORITY, type StateView } from "../memory/state-runtime";
 import type { Character, FoundationDocument, ProfileBasics } from "../foundation-types";
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
 import type { ChatMessage, PromptTurn } from "./types";
@@ -20,6 +21,7 @@ export type PromptRuntimeContext = {
   currentMessages: readonly ChatMessage[];
   pending: readonly ChatMessage[];
   memory: MemorySlot;
+  state?: StateView;
   worldInfo?: WorldBookActivation;
   time?: ReturnType<typeof buildTimeContext>;
   regexGroups?: readonly RegexGroup[];
@@ -66,6 +68,8 @@ function enabledMarkers(preset: Preset) {
     return ordered.enabled && entry?.enabled && entry.source === "marker" ? [entry] : [];
   });
 }
+export const hasSystemCharacterSlot = (preset: Preset) =>
+  enabledMarkers(preset).some((entry) => entry.marker === "character" && entry.role === "system");
 export const hasSystemMemorySlot = (preset: Preset) =>
   enabledMarkers(preset).some((entry) => entry.marker === "memory" && entry.role === "system");
 
@@ -138,9 +142,13 @@ export function resolvePresetMarker(
       return context.worldInfo?.before.map((item) => item.entry.content).join("\n\n") || null;
     case "world-info-after":
       return context.worldInfo?.after.map((item) => item.entry.content).join("\n\n") || null;
-    case "character":
-      return JSON.stringify({ ...profile(context.character), backstory: context.character.backstory,
-        personality: context.character.personality, speakingStyle: context.character.speakingStyle });
+    case "character": {
+      const currentState = statePromptEntries(context.state, context.character);
+      const setting = { ...profile(context.character), backstory: context.character.backstory,
+        personality: context.character.personality, speakingStyle: context.character.speakingStyle };
+      // Explicit temporal authority: the baseline is historical for overridden life fields, not a competing current fact.
+      return JSON.stringify(currentState.length ? { backgroundBaseline: setting, stateAuthority: STATE_AUTHORITY, currentState } : setting);
+    }
     case "relations":
       return JSON.stringify(directRelations(context));
     case "memory":
@@ -171,16 +179,17 @@ export function assembleChatPrompt(
   regexGroups: readonly RegexGroup[] = [],
   weather?: RuntimeWeatherContext,
   self?: SelfState,
+  state?: StateView,
 ): { sections: PromptSection[]; messages: PromptTurn[]; diagnostics: PromptDiagnosticSection[] } {
   const time = foundation.runtime?.timeAware !== false
     ? buildTimeContext(now, foundation.user.timezone, character.timezone, undefined, weather) : undefined;
-  const context = { foundation, character, currentMessages, pending, memory, time, worldInfo, regexGroups };
+  const context = { foundation, character, currentMessages, pending, memory, time, worldInfo, regexGroups, state };
   const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
   const sections: PromptSection[] = [], diagnostics: PromptDiagnosticSection[] = [], messages: PromptTurn[] = [];
   let historyTurns: PromptTurn[] = [];
   let historyDiagnostics: PromptDiagnosticSection[] = [];
   let timeInjected = false;
-  let memoryInjected = false;
+  let memoryInjected = false, characterInjected = false;
   const injectTime = () => {
     if (!time || timeInjected) return;
     timeInjected = true;
@@ -200,8 +209,10 @@ export function assembleChatPrompt(
       if (entry.role !== "system" || memoryInjected) continue;
       memoryInjected = true;
     }
+    const includeState = entry.source === "marker" && entry.marker === "character" && entry.role === "system" && !characterInjected;
+    if (includeState) characterInjected = true;
     const resolved = entry.source === "prompt" ? entry.content
-      : resolvePresetMarker(entry.marker, context);
+      : resolvePresetMarker(entry.marker, includeState ? context : { ...context, state: undefined });
     if (Array.isArray(resolved)) {
       const entries = resolved.map((turn) =>
         ({ identifier: entry.identifier, role: turn.role, characterLength: turn.content.length }));

@@ -80,6 +80,8 @@ export type MemoryCursor = {
    * Absent on intents recorded before this field existed.
    */
   clearMessageIds?: string[];
+  /** Targeted edit/delete/replacement; recovery revokes these sources even when IDs still exist. */
+  sourceInvalidation?: import("./source-hash").SourceInvalidation;
   /** Damaged lineage isolated during this clear; retain the intent even after source pointers were pruned. */
   clearLineageIds?: string[];
   updatedAt: number;

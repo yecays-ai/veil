@@ -1,4 +1,4 @@
-import { browserPersistenceWriteGate, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./persistence-write-gate";
+import { browserPersistenceWriteGate, withPersistenceWriteScope, withExclusivePersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./persistence-write-gate";
 
 /**
  * Serializes a Provider's writes with the lock order backup lease → Provider queue → storage.
@@ -12,11 +12,12 @@ export function runQueuedWrite<T>(
   job: (scope: PersistenceWriteScope) => Promise<T>,
   scope?: PersistenceWriteScope,
   writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
+  exclusive = false,
 ): Promise<T> {
   const enqueue = (owned: PersistenceWriteScope) => {
     const operation = queue.current.then(() => job(owned));
     queue.current = operation.then(() => {}, () => {});
     return operation;
   };
-  return scope ? enqueue(scope) : withPersistenceWriteScope(writeGate, enqueue);
+  return scope ? enqueue(scope) : (exclusive ? withExclusivePersistenceWriteScope : withPersistenceWriteScope)(writeGate, enqueue);
 }

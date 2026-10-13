@@ -8,7 +8,7 @@ import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
-import { assembleChatPrompt, hasSystemMemorySlot, journalTriggerTexts, memoryConversation } from "./prompt";
+import { assembleChatPrompt, hasSystemCharacterSlot, hasSystemMemorySlot, journalTriggerTexts, memoryConversation } from "./prompt";
 import { browserMemoryStorage } from "../memory/browser";
 import { emptyMemoryContext, selectMemoryContext } from "../memory/context";
 import { journalEntry, selectJournal } from "../memory/journal";
@@ -67,6 +67,9 @@ const applyActionsToStores: ActionApplier = (characterId, actions, now, messageI
       } })(characterId, actions, now, messageId);
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
+type StateLoader = (character: Character) => Promise<import("../memory/state-runtime").StateView | undefined>;
+const loadCharacterState: StateLoader = (character) => typeof window === "undefined" ? Promise.resolve(undefined)
+  : import("../memory/state-browser").then((module) => module.readBrowserCharacterState(character));
 type MemoryLoader = (characterId: string) => Promise<readonly Memory[]>;
 const loadMemory: MemoryLoader = (characterId) => typeof window === "undefined"
   ? Promise.resolve([]) : browserMemoryStorage.listMemories(characterId);
@@ -98,6 +101,7 @@ export function createChatEngine(
   self: SelfLoader = loadSelfState,
   applyActions: ActionApplier = applyActionsToStores,
   memories: MemoryLoader = loadMemory,
+  states: StateLoader = loadCharacterState,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   let stopSequence = 0;
@@ -215,16 +219,21 @@ export function createChatEngine(
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
               ? message.createdAt : latest, null) }), controller.signal);
       const memory = await awaited(memoryRead, controller.signal);
+      await storage.generationStage(sessionId, attempt.id, "provider");
+      if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
+      controller.signal.throwIfAborted();
+      // Last local authority read before provider dispatch; no second model call, retry or stored context.
+      const characterState = hasSystemCharacterSlot(preset)
+        ? await awaited(Promise.resolve().then(() => states(character)).catch(() => undefined), controller.signal) : undefined;
+      controller.signal.throwIfAborted();
       const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, memory.slot, preset,
-        now(), activation, regexGroups, weather, ownState);
+        now(), activation, regexGroups, weather, ownState, characterState);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
       const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };
       logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages, {
         ids: memory.ids, characterLength: memory.characterLength, outcome: memory.outcome,
       });
-      await storage.generationStage(sessionId, attempt.id, "provider");
-      if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
       controller.signal.throwIfAborted();
       iterator = provider(config, prompt.messages, controller.signal, preset.generation, request,
         (reason) => { finishReason = reason; })[Symbol.asyncIterator]();

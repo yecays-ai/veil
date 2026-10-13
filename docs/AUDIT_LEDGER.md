@@ -1,5 +1,17 @@
 # VEIL 审计总账（完整合并版）
 
+## Memory M6 P2：自动维护、Background 复核与 Prompt（2026-10-13）
+
+最新复审：aca441e4f4f24b7c6df886b9d0d54ee21a0f9222 的 CI #1185 成功（1586/1586）、Preview READY，原四个线程均由 CodeRabbit 关闭；新增并发 clear token 复用（Major）及工作记录过期（Minor），本轮已最小修复：每次 intent 独立 token，失败取消/恢复仅影响自己仍拥有的 marker，两个真实共享租约测试先 Red 后 Green。受影响回归 995/995、57 项 P2 新测试、零跳过，typecheck/lint/webpack build 通过；本轮发布 head 的外部检查/复审另核，下面旧审查状态保留为历史证据，PR 仍未合并。
+
+状态：**已修待验（施工发布完成，[PR #168](https://github.com/yecays-ai/veil/pull/168) 等待外部审查与 Lan 手动验收，未合并）**。重核 main `fe6a209f9938d230dc10b60d822508bf1cb436c5`，包含用户手动合并的 P1 #167；下文 P1“未合并”属于历史施工快照。Lan 恢复额度后授权继续 P2，不继续 P3–P5。
+
+已实现 Background 独占保存/版本追加/分库恢复、同一正常维护请求的严格 State CREATE/UPDATE/REVIEW 与同库进度提交、D1 pending/compatible/conflict、D2 单条删改/整轮重生成/同 ID hash 与可恢复清理、真实 Prompt 覆盖和 Character 只读 UI。release/device consent、owner/cursor/restore/uncertain、完整备份与 manual/Journal/Presence 行为保留，没有新增模型调用或启用真实维护。Background 跨库工作不是原子事务；混合来源隐私优先整体撤销。
+
+复审修复已推送于 `8f9430701b5cc45e4ca2d49a04940f3e4619d5b9`，[CI #1184](https://github.com/yecays-ai/veil/actions/runs/38361506517) 全部成功（全仓 1586/1586、零跳过），同 SHA Preview READY/target=null；CodeRabbit 已确认三条 addressed，Foundation 原线程已回复修复和回归证据但仍 open，最新增量复审 pending，文档收口的新 head 外部检查仍须单独核对，不把 pending 当已通过。
+
+P2 独立证据：Node 24.19.0，受影响回归 **993/993，零跳过，含 55 新测试**；新 State 提交测试在 main 原协议负对照失败、P2 通过；测试编译、typecheck、改动文件 lint、webpack build 通过。原 head `714072abf180a945322fb0c547c25e1f585fd910` 的 [CI #1183](https://github.com/yecays-ai/veil/actions/runs/38358757663)（全仓 1576/1576、lint/typecheck/build/diff）和 Preview 已通过；CodeRabbit 已完成该 head 的 32 文件审查，4 条有效意见（1 Major、3 Minor）本轮本地修复：资料读取不被 Memory 修复错误阻断、State 刷新合并、整段清空删除旧 cursor/替换定向 marker、状态记录格式，并补 clear 失败恢复原定向证据和 token/owner 防护；对应 Red/Green 及安全回归通过，修复后最新 head 的 CI/Preview/复审另核，不沿用旧成功。docstring coverage 警告不作为功能缺陷扩大范围。fake IndexedDB/模拟锁/挂载 JSDOM/stub/构建不替代真实模型、iPhone/Safari、多真实 tab。详见[模块合同](memory-m6-p2-integration.md)和[唯一 P2 work-status](work-status/2026-10-13-codex-memory-m6-p2.md)。只授权 Preview，禁止 Production/提升、合并/automerge、付费调用和真实数据操作。
+
 更新：2026-10-10（Lan 所在时区）｜核对时 main 头 `a58a9b4fda2562ada1849ad1de750744bf86f183`（2026-10-10 第七刀阶段性收口时读取；合并记录覆盖 #38–#107；#38–#83 未逐项复验各 PR 的内容与范围，#86–#107 为本轮逐项核对（第六刀 #92–#100 与第七刀 #101–#107 的收口对账见板块六）；并入 Lan 2026-10-10 的人工验收自述，见“真机验收记录”，录屏/截图未入库）｜来源：六轮审计总账 v2、第一板块交接报告、第二板块核销报告、第三刀对账报告、#61/#56 报告、《前端》审计、仓库原根目录总账（F1/F2/F3/F5）
 主状态只用五种：**已验证修复 / 已修待验 / 部分修复 / 未修 / 新回归**；另有处置说明：接受风险、后移、搁置、不纳入、明确延期。正文里的“已完成”“已验证”“有条件通过”“通过”不是主状态：“已完成”指施工完成，“已验证/通过/未通过/未验”是验收结果，“有条件通过”是附条件的验收结果；每条以其所在行的主状态为准，两者冲突时按“已修待验”处理并回头核对。板块标题括号内的“阶段性关闭/结案”是板块阶段说明，不是主状态。
 本文件是全仓库**唯一**总账（`docs/AUDIT_LEDGER.md`）。原根目录 `AUDIT_LEDGER.md`（#61 起只含 Theme 的那份，后加入 F5/F3）已并入板块五并删除，不留两份。

@@ -20,7 +20,8 @@ export function startBrowserMaintenance(): () => void {
   const protocol = new MemoryProgressProtocol(memory, {
     readFoundation: (scope) => browserDocumentStorage.readExisting(FOUNDATION_STORAGE_KEY, scope),
     readChat: (sessionId, scope) => chatStorage.readMemorySources(sessionId, scope),
-  }, navigator.locks);
+    readStateSources: (sessionId, ids, scope) => chatStorage.readStateSources(sessionId, ids, scope),
+  }, navigator.locks, true);
   const sessions = () => memory.withExclusive((scope) => chatStorage.listExistingSessions(scope));
   const deps = { protocol, memory, enabled: () => maintenanceEnabled() && document.visibilityState === "visible", now: Date.now, provider: openAITextProvider,
     readChat: (id: string, scope: Parameters<typeof chatStorage.listExistingSessions>[0]) => chatStorage.readMemorySources(id, scope),
@@ -33,7 +34,7 @@ export function startBrowserMaintenance(): () => void {
       if (!character) throw new Error("Memory Character authority unavailable.");
       const config = await resolveMaintenanceModel(await browserBindingStorage.load(), characterId,
         (id) => browserApiConfigStorage.getApiConfig(id, scope));
-      return { config, context: JSON.stringify({ name: character.name, characterId }) };
+      return { config, context: JSON.stringify({ name: character.name, characterId, personality: character.personality, worldSetting: normalizeFoundation(JSON.parse(raw)).universe.worldSetting }) };
     } };
   const scheduler = createMaintenanceScheduler({ ...deps, sessions,
     runnable: () => document.visibilityState === "visible",

@@ -1,3 +1,5 @@
+import { browserMemoryStorage } from "../memory/instance";
+import { invalidateChatSources } from "../memory/source-invalidation";
 import { allocateMemorySequence, memoryBirth } from "../memory/sequence";
 import { maintenanceEnabled } from "../memory/maintenance-config";
 import { readExistingMemorySource } from "../memory/source-read";
@@ -174,7 +176,8 @@ export class ChatStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
-    private memoryTracking: boolean | (() => boolean) = maintenanceEnabled) {}
+    private memoryTracking: boolean | (() => boolean) = maintenanceEnabled,
+    private sourceMemory?: import("../memory/storage").MemoryStorage) {}
   private tracking(): boolean { return typeof this.memoryTracking === "function" ? this.memoryTracking() : this.memoryTracking; }
   private sequence(session: ChatSession, message: ChatMessage): ChatMessage {
     return this.tracking() && session.type !== "group" ? allocateMemorySequence(session, message) : message;
@@ -527,6 +530,18 @@ export class ChatStorage {
       session: await request<ChatSession | undefined>(tx.objectStore("sessions").get(sessionId)),
       messages: await request<ChatMessage[]>(tx.objectStore("messages").index("sessionId").getAll(sessionId)),
     })) ?? { messages: [] };
+  }
+  /** State evidence reads only its cited IDs, never the full History window. */
+  async readStateSources(sessionId: string, ids: readonly string[], scope: PersistenceWriteScope): Promise<{ session?: ChatSession; messages: ChatMessage[] }> {
+    assertExclusivePersistenceScope(this.writeGate, scope);
+    return await readExistingMemorySource(this.factory(), CHAT_DATABASE_NAME, CHAT_DATABASE_VERSION, STORES, async (tx) => {
+      const session = await request<ChatSession | undefined>(tx.objectStore("sessions").get(sessionId)), messages: ChatMessage[] = [];
+      for (const id of new Set(ids)) {
+        const message = await request<ChatMessage | undefined>(tx.objectStore("messages").get(id));
+        if (message?.sessionId === sessionId) messages.push(message);
+      }
+      return { session, messages };
+    }) ?? { messages: [] };
   }
   async listExistingSessions(scope: PersistenceWriteScope): Promise<ChatSession[]> {
     assertExclusivePersistenceScope(this.writeGate, scope);
@@ -892,13 +907,23 @@ export class ChatStorage {
     }, STORES, { domain: "chat-background" });
   }
 
-  async editMessage(id: string, content: string): Promise<ChatMessage> {
+  async editMessage(id: string, content: string, scope?: PersistenceWriteScope): Promise<ChatMessage> {
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
+      if (!target) throw new Error("Message not found.");
+      await this.recoverGeneration(target.sessionId);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(target.sessionId, owned);
+        if (!view.session) throw new Error("Conversation not found.");
+        return invalidateChatSources(this.sourceMemory!, view.session, view.messages.filter((m) => m.id === id && m.content !== content.trim()), () => this.editMessage(id, content, owned), owned);
+      });
+    }
     const trimmed = content.trim();
     if (!trimmed) return Promise.reject(new Error("Message cannot be empty."));
     if (trimmed.length > 12000)
       return Promise.reject(new Error("Message is too long (maximum 12,000 characters)."));
     const owner = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
-    if (owner) await this.recoverGeneration(owner.sessionId);
+    if (owner && !scope) await this.recoverGeneration(owner.sessionId);
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("messages");
       const existing: ChatMessage | undefined = await request(table.get(id));
@@ -915,7 +940,7 @@ export class ChatStorage {
         await request(sessions.put({ ...session, updatedAt: Date.now(),
           lastMessagePreview: trimmed.slice(0, 120) }));
       return next;
-    }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }));
+    }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }), undefined, scope);
   }
 
   async regenerationSessionId(id: string): Promise<string> {
@@ -935,10 +960,19 @@ export class ChatStorage {
     });
   }
 
-  async deleteMessages(sessionId: string, ids: readonly string[]): Promise<number> {
+  async deleteMessages(sessionId: string, ids: readonly string[], scope?: PersistenceWriteScope): Promise<number> {
+    if (this.sourceMemory && !scope) {
+      await this.recoverGeneration(sessionId);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(sessionId, owned);
+        if (!view.session) throw new Error("Conversation not found.");
+        const targets = view.messages.filter((m) => ids.includes(m.id));
+        return invalidateChatSources(this.sourceMemory!, view.session, targets, () => this.deleteMessages(sessionId, ids, owned), owned);
+      });
+    }
     const targets = new Set(ids);
     if (!targets.size) return Promise.resolve(0);
-    await this.recoverGeneration(sessionId);
+    if (!scope) await this.recoverGeneration(sessionId);
     return this.transaction("readwrite", async (tx) => {
       const sessions = tx.objectStore("sessions");
       const session: ChatSession | undefined = await request(sessions.get(sessionId));
@@ -980,7 +1014,7 @@ export class ChatStorage {
         nextOrder: remaining.length + 1, lastMessageId: last?.id,
         lastMessagePreview: last?.content.slice(0, 120) || "" }));
       return deleting.length;
-    }, STORES, (count) => count ? { domain: "messages", sessionId } : null);
+    }, STORES, (count) => count ? { domain: "messages", sessionId } : null, undefined, scope);
   }
 
   async clearSession(sessionId: string, scope?: PersistenceWriteScope): Promise<number> {
@@ -1197,7 +1231,31 @@ export class ChatStorage {
     return next;
   }
   async finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
-    transformPart: (part: string) => string = (part) => part, attemptId?: string, finishReason?: string, signal?: AbortSignal): Promise<ChatMessage[]> {
+    transformPart: (part: string) => string = (part) => part, attemptId?: string, finishReason?: string, signal?: AbortSignal, scope?: PersistenceWriteScope): Promise<ChatMessage[]> {
+    if (this.sourceMemory && !scope) {
+      const draft = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
+      if (!draft) throw new Error("Generation attempt is no longer active.");
+      let finalized = false;
+      try {
+        // New replies and continuations append content; they do not replace cited evidence.
+        if (draft.attemptMode !== "regenerate") return await this.sourceMemory.withShared(async (owned) => {
+          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned);
+          finalized = true; return result;
+        });
+        return await this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(draft.sessionId, owned);
+        if (!view.session) throw new Error("Conversation not found.");
+        const targets = draft.attemptMode === "regenerate" && draft.attemptFor ? assistantTurn(view.messages, draft.attemptFor) : [];
+        return invalidateChatSources(this.sourceMemory!, view.session, targets,
+          async () => {
+            const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned);
+            finalized = true; return result;
+          }, owned);
+      }, { signal }); } finally {
+        // Release the generation lease only after the outer persistence lease has closed.
+        if (finalized && !attemptId && draft.attemptId) await this.releaseGeneration(draft.sessionId, draft.attemptId);
+      }
+    }
     const parts = splitAssistantReply(content).map(transformPart).map((part) => part.trim()).filter(Boolean);
     if (!parts.length) throw new Error("The API returned no reply text.");
     let owned: string | undefined;
@@ -1205,6 +1263,10 @@ export class ChatStorage {
       const table = tx.objectStore("messages"), sessions = tx.objectStore("sessions");
       const draft: ChatMessage | undefined = await request(table.get(id));
       if (!draft || draft.status !== "streaming") throw new Error("Generation attempt is no longer active.");
+      if (this.sourceMemory && draft.attemptMode === "regenerate") {
+        if (!scope) throw new Error("Source replacement requires storage coordination.");
+        this.sourceMemory.assertExclusive(scope);
+      }
       const session: ChatSession = await request(sessions.get(draft.sessionId));
       if (session.generation?.draftId !== id || (attemptId ? session.generation.id !== attemptId :
         !this.generationLocks.has(session.generation.id))) throw new Error("Generation attempt is no longer active.");
@@ -1246,9 +1308,9 @@ export class ChatStorage {
       if (worldBookState) await commitWorldBookState(tx, draft.sessionId, worldBookState);
       return generated;
     }, STORES, (messages) => [{ domain: "messages", sessionId: messages[0].sessionId, generationChanged: true },
-      ...(worldBookState ? [{ domain: "worldbook-state" as const, sessionId: messages[0].sessionId }] : [])], signal);
-    if (!attemptId && owned) await this.releaseGeneration(completed[0].sessionId, owned);
+      ...(worldBookState ? [{ domain: "worldbook-state" as const, sessionId: messages[0].sessionId }] : [])], signal, scope);
+    if (!scope && !attemptId && owned) await this.releaseGeneration(completed[0].sessionId, owned);
     return completed;
   }
 }
-export const chatStorage = new ChatStorage();
+export const chatStorage = new ChatStorage(undefined, undefined, undefined, undefined, browserMemoryStorage);

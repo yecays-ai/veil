@@ -1,3 +1,4 @@
+import { sourceInvalidationValid } from "./source-hash";
 import { completeClear, cancelClearIntent, deleteCharacterMemory } from "./lifecycle";
 import { request, type MemoryStorage } from "./storage";
 import type { MemoryCursor } from "./types";
@@ -11,6 +12,7 @@ export type StartupClearDeps = {
   sessionIds(scope?: PersistenceWriteScope): Promise<ReadonlySet<string>>;
   countMessages(sessionId: string, scope?: PersistenceWriteScope): Promise<number>;
   /** Which of these messages still exist in the session. */
+  sourceHashes?(sessionId: string, ids: readonly string[], scope: PersistenceWriteScope): Promise<ReadonlyMap<string, string>>;
   existingMessageIds(sessionId: string, ids: readonly string[], scope?: PersistenceWriteScope): Promise<ReadonlySet<string>>;
 };
 export type StartupClearReport = { completed: number; cancelled: number; deferred: number; failed: number };
@@ -45,8 +47,14 @@ export async function resumeStartupClears(storage: MemoryStorage, deps: StartupC
         if (!alive || signal?.aborted) { report.deferred++; return; }
         if (!alive.has(current.characterId)) { await deleteCharacterMemory(storage, current.characterId, scope); report.completed++; return; }
         const targetIds = current.clearMessageIds;
-        const targets = targetIds && new Set(targetIds);
-        if (sessions.has(current.sessionId) && await deps.countMessages(current.sessionId, scope) > 0) {
+        let targets = targetIds && new Set(targetIds);
+        if (current.sourceInvalidation) {
+          if (!deps.sourceHashes || !sourceInvalidationValid(current.sourceInvalidation, targetIds ?? [])) { report.deferred++; return; }
+          const hashes = await deps.sourceHashes(current.sessionId, targetIds!, scope);
+          targets = new Set(current.sourceInvalidation.messages.filter((m) => hashes.get(m.messageId) !== m.hash).map((m) => m.messageId));
+          if (!targets.size) { await cancelClearIntent(storage, current.characterId, current.sessionId, scope); report.cancelled++; return; }
+        }
+        if (!current.sourceInvalidation && sessions.has(current.sessionId) && await deps.countMessages(current.sessionId, scope) > 0) {
           if (!targetIds) { await cancelClearIntent(storage, current.characterId, current.sessionId, scope); report.cancelled++; return; }
           if (targetIds.length && (await deps.existingMessageIds(current.sessionId, targetIds, scope)).size > 0) {
             await cancelClearIntent(storage, current.characterId, current.sessionId, scope); report.cancelled++; return;

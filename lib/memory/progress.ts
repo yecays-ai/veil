@@ -1,3 +1,8 @@
+import { memorySourceHash } from "./source-hash";
+import { notifyCharacterStateChanged } from "./state-events";
+import { cleanCharacterStates } from "./state-foundation";
+import { synchronizeBackground } from "./state-runtime";
+import { applyStateOperations, type StateMaintenanceInput, type StateOperation } from "./state-maintenance";
 import type { BackupLockManager, BackupLockOptions } from "../backup/coordination";
 import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
 import type { ChatMessage, ChatSession } from "../chat/types";
@@ -10,13 +15,14 @@ import type { Memory, MemoryCursor, MemoryDraft, Suppression } from "./types";
 export type MemorySourceAuthority = {
   /** Raw saved Foundation authority; null/malformed/deleted Character must fail closed. */
   readFoundation(scope: PersistenceWriteScope): Promise<string | null>;
+  readStateSources?(sessionId: string, ids: readonly string[], scope: PersistenceWriteScope): Promise<{ session?: ChatSession; messages: ChatMessage[] }>;
   readChat(sessionId: string, scope: PersistenceWriteScope): Promise<{ session?: ChatSession; messages: ChatMessage[] }>;
 };
 declare const ownerBrand: unique symbol, ticketBrand: unique symbol;
 export type MemoryOwner = { readonly [ownerBrand]: true };
 export type MemoryBatchTicket = { readonly [ticketBrand]: true };
 type OwnerState = { characterId: string; id: string; active: boolean; closing: boolean; pending: Set<Promise<unknown>> };
-type TicketState = { owner: MemoryOwner; sessionId: string; epoch: string; incarnation: string; batchId: string; attemptId?: string; completed?: boolean };
+type TicketState = { owner: MemoryOwner; sessionId: string; epoch: string; incarnation: string; batchId: string; attemptId?: string; completed?: boolean; stateHash?: string; stateInput?: StateMaintenanceInput };
 const digest = async (value: unknown): Promise<string> => {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
   return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -30,7 +36,7 @@ const fail = (): never => { throw new MemoryConflictError(); };
 export class MemoryProgressProtocol {
   private owners = new WeakMap<MemoryOwner, OwnerState>();
   private tickets = new WeakMap<MemoryBatchTicket, TicketState>();
-  constructor(private memory: MemoryStorage, private source: MemorySourceAuthority, private locks: BackupLockManager | undefined) {}
+  constructor(private memory: MemoryStorage, private source: MemorySourceAuthority, private locks: BackupLockManager | undefined, private stateEnabled = false) {}
 
   /** Approved Character maintenance ownership is outside the short backup lease; never upgraded from shared. */
   async withOwner<T>(characterId: string, work: (owner: MemoryOwner) => Promise<T>): Promise<T | undefined> {
@@ -87,7 +93,9 @@ export class MemoryProgressProtocol {
       seqs.add(seq);
     }
     this.owner(owner);
-    return { ...chat, epoch, nextSeq };
+    const character = foundation.characters.find((row: { characterId: string }) => row.characterId === characterId);
+    const backgroundText = typeof character.backstory === "string" ? character.backstory : null;
+    return { ...chat, epoch, nextSeq, backgroundText };
   }
   private async cursor(tx: MemoryTx, characterId: string, state: TicketState): Promise<MemoryCursor> {
     const row = await request<MemoryCursor | undefined>(tx.store("cursors").get(cursorId(characterId, state.sessionId)));
@@ -177,6 +185,45 @@ export class MemoryProgressProtocol {
     });
   }
 
+  private async stateSnapshot(owner: MemoryOwner, sessionId: string, scope: PersistenceWriteScope, synchronize = false) {
+    const characterId = this.owner(owner).characterId;
+    const authority = await this.authority(owner, sessionId, scope, true);
+    if (synchronize) await synchronizeBackground(this.memory, { characterId, backstory: authority.backgroundText }, scope);
+    let foundation = await this.memory.readStateFoundation(characterId, scope);
+    const background = foundation.backgrounds.toSorted((a, b) => b.version - a.version)[0];
+    if (!background || background.text !== authority.backgroundText) return fail();
+    const pending = (await this.memory.listCursors(characterId, scope)).filter((c) => c.clearRequestedAt !== undefined);
+    const sourceHashes: StateMaintenanceInput["sourceHashes"] = [], invalidSources = new Set<string>();
+    const chats = new Map<string, Awaited<ReturnType<MemorySourceAuthority["readChat"]>>>();
+    for (const row of foundation.states) for (const source of row.sources) {
+      if (pending.some((c) => c.sessionId === source.sessionId && (!c.clearMessageIds || c.clearMessageIds.includes(source.messageId)))) return fail();
+      let chat = chats.get(source.sessionId);
+      if (!chat) {
+        const ids = foundation.states.flatMap((r) => r.sources).filter((s) => s.sessionId === source.sessionId).map((s) => s.messageId);
+        chat = this.source.readStateSources ? await this.source.readStateSources(source.sessionId, ids, scope) : await this.source.readChat(source.sessionId, scope);
+        chats.set(source.sessionId, chat);
+      }
+      const message = chat.messages.find((m) => m.id === source.messageId && m.sessionId === source.sessionId);
+      if (!chat.session || chat.session.type === "group" || chat.session.characterId !== characterId) return fail();
+      const hash = message ? await memorySourceHash(message) : undefined;
+      const previous = row.sourceHashes?.find((s) => s.sessionId === source.sessionId && s.messageId === source.messageId);
+      if (!hash || (previous && previous.hash !== hash)) invalidSources.add(source.sessionId + "\0" + source.messageId);
+      else if (!sourceHashes.some((s) => s.sessionId === source.sessionId && s.messageId === source.messageId)) sourceHashes.push({ ...source, hash });
+    }
+    if (invalidSources.size) {
+      if (!synchronize) return fail();
+      const cleaned = cleanCharacterStates(foundation, (source) => invalidSources.has(source.sessionId + "\0" + source.messageId));
+      await this.memory.transaction("readwrite", async (tx) => {
+        for (const row of foundation.states) if (!cleaned.states.some((r) => r.id === row.id)) await request(tx.store("states").delete(row.id));
+        for (const row of cleaned.states) if (JSON.stringify(row) !== JSON.stringify(foundation.states.find((r) => r.id === row.id))) await request(tx.store("states").put(row));
+      }, scope);
+      foundation = cleaned;
+    }
+    const retainedHashes = sourceHashes.filter((s) => foundation.states.some((r) => r.sources.some((source) => source.sessionId === s.sessionId && source.messageId === s.messageId)))
+      .toSorted((a, b) => (a.sessionId + "\0" + a.messageId).localeCompare(b.sessionId + "\0" + b.messageId));
+    return { input: { foundation, background, sourceHashes: retainedHashes }, hash: await digest({ foundation, sourceHashes: retainedHashes }) };
+  }
+
   private async evidence(owner: MemoryOwner, state: TicketState, batch: MemoryBatch, scope: PersistenceWriteScope, allowGenerating = false): Promise<Memory[]> {
     const chat = await this.authority(owner, state.sessionId, scope, allowGenerating);
     if (chat.epoch !== state.epoch || chat.nextSeq <= batch.toSeq) return fail();
@@ -187,7 +234,7 @@ export class MemoryProgressProtocol {
       if (!message || await sourceDigest(message) !== saved.hash) return fail();
     }
     const memories = await this.memory.listMemories(this.owner(owner).characterId, scope);
-    const chats = new Map([[state.sessionId, chat]]);
+    const chats = new Map<string, Awaited<ReturnType<MemorySourceAuthority["readChat"]>>>([[state.sessionId, chat]]);
     for (const candidate of batch.candidates) {
       const row = memories.find((m) => m.id === candidate.id);
       if (!row || row.origin !== "auto" || row.updatedAt !== candidate.updatedAt || await digest(row) !== candidate.hash) return fail();
@@ -195,13 +242,14 @@ export class MemoryProgressProtocol {
         let origin = chats.get(source.sessionId);
         if (!origin) {
           const view = await this.source.readChat(source.sessionId, scope);
-          origin = { ...view, epoch: "", nextSeq: 0 }; chats.set(source.sessionId, origin);
+          origin = view; chats.set(source.sessionId, origin);
         }
         const session = origin.session, characterId = this.owner(owner).characterId;
         if (!session || (session.type === "group" ? !session.participantIds?.includes(characterId) : session.characterId !== characterId)
           || !origin.messages.some((message) => message.id === source.messageId && message.sessionId === source.sessionId)) return fail();
       }
     }
+    if (state.stateHash !== undefined && (await this.stateSnapshot(owner, state.sessionId, scope)).hash !== state.stateHash) return fail();
     return memories;
   }
 
@@ -274,7 +322,17 @@ export class MemoryProgressProtocol {
       if (!batch || !["ready", "failed", "claimed"].includes(batch.state)) return fail();
       const memories = await this.evidence(state.owner, state, batch, scope);
       const chat = await this.authority(state.owner, state.sessionId, scope);
-      return { characterId, sessionId: state.sessionId,
+      let stateInput: StateMaintenanceInput | undefined;
+      if (this.stateEnabled) {
+        const captured = await this.stateSnapshot(state.owner, state.sessionId, scope, true);
+        state.stateHash = captured.hash;
+        const hashes = [...captured.input.sourceHashes];
+        for (const message of chat.messages.filter((m) => batch.sources.some((s) => s.messageId === m.id)))
+          if (!hashes.some((s) => s.sessionId === message.sessionId && s.messageId === message.id))
+            hashes.push({ sessionId: message.sessionId, messageId: message.id, hash: await memorySourceHash(message) });
+        state.stateInput = structuredClone({ ...captured.input, sourceHashes: hashes }); stateInput = structuredClone(state.stateInput);
+      }
+      return { characterId, sessionId: state.sessionId, ...(stateInput ? { state: stateInput } : {}),
         messages: chat.messages.filter((m) => batch.sources.some((s) => s.messageId === m.id))
           .sort((a, b) => a.memorySequence!.seq! - b.memorySequence!.seq!),
         candidates: memories.filter((m) => batch.candidates.some((c) => c.id === m.id)),
@@ -305,9 +363,10 @@ export class MemoryProgressProtocol {
   }
 
   /** Unique automatic write route: no removals, suppression writes or user undo records. */
-  async commitAutomatic(ticket: MemoryBatchTicket, change: { put: readonly MemoryDraft[] }, signal?: AbortSignal): Promise<"committed" | "already-committed"> {
+  async commitAutomatic(ticket: MemoryBatchTicket, change: { put: readonly MemoryDraft[]; stateOperations?: readonly StateOperation[] }, signal?: AbortSignal): Promise<"committed" | "already-committed"> {
     const state = this.ticket(ticket);
-    if (Object.keys(change).some((key) => key !== "put") || !Array.isArray(change.put)) return fail();
+    if (Object.keys(change).some((key) => key !== "put" && key !== "stateOperations") || !Array.isArray(change.put)
+      || (change.stateOperations !== undefined && !Array.isArray(change.stateOperations))) return fail();
     return this.exclusive(state.owner, async (scope) => {
       signal?.throwIfAborted();
       const { characterId, id } = this.owner(state.owner);
@@ -316,6 +375,22 @@ export class MemoryProgressProtocol {
       const batch = row.extraction!.batches.find((b) => b.id === state.batchId);
       if (!batch || batch.state !== "commit-pending" || batch.ownerId !== id || batch.attemptId !== state.attemptId || !state.attemptId) return fail();
       await this.evidence(state.owner, state, batch, scope, true);
+      let nextState: StateMaintenanceInput["foundation"] | undefined;
+      if (change.stateOperations?.length) {
+        if (!this.stateEnabled || !state.stateInput || !state.stateHash) return fail();
+        const chat = await this.authority(state.owner, state.sessionId, scope, true);
+        nextState = applyStateOperations(state.stateInput, characterId, state.sessionId,
+          chat.messages.filter((m) => batch.sources.some((s) => s.messageId === m.id)), change.stateOperations, this.memory.now());
+        const memories = await this.memory.listMemories(characterId, scope), suppressions = await this.memory.listSuppressions(characterId, scope);
+        for (const row of nextState.states) {
+          if (JSON.stringify(row) === JSON.stringify(state.stateInput.foundation.states.find((r) => r.id === row.id))) continue;
+          if (row.review?.verdict !== "compatible") continue;
+          const fingerprint = memoryFingerprint(row.value);
+          if (memories.some((r) => r.origin === "manual" && r.fingerprint === fingerprint)
+            || suppressions.some((s) => s.fingerprint === fingerprint || s.sources.some((source) => row.sources.some((r) => r.sessionId === source.sessionId && r.messageId === source.messageId))))
+            throw new MemoryProtectedError(row.id);
+        }
+      }
       signal?.throwIfAborted();
       await this.memory.transaction("readwrite", async (tx) => {
         this.owner(state.owner);
@@ -323,11 +398,17 @@ export class MemoryProgressProtocol {
         const current = await this.cursor(tx, characterId, state), target = current.extraction!.batches.find((b) => b.id === batch.id);
         if (!target || target.state !== "commit-pending" || target.ownerId !== id || target.attemptId !== state.attemptId) return fail();
         await applyAutomaticPlan(tx, characterId, state.sessionId, target, change.put, this.memory.now());
+        if (nextState) for (const row of nextState.states) {
+          const before = state.stateInput!.foundation.states.find((old) => old.id === row.id);
+          if (!before) await request(tx.store("states").add(row));
+          else if (JSON.stringify(before) !== JSON.stringify(row)) await request(tx.store("states").put(row));
+        }
         signal?.throwIfAborted();
         finishMemoryRange(current.extraction!, target);
         await request(tx.store("cursors").put({ ...current, updatedAt: this.memory.now() }));
       }, scope, signal);
       state.completed = true;
+      if (nextState) notifyCharacterStateChanged(characterId);
       return "committed";
     }, { signal });
   }

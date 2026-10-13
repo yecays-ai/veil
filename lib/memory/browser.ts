@@ -1,3 +1,4 @@
+import { memorySourceHash } from "./source-hash";
 import type { ChatSession } from "../chat/types";
 import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { chatStorage } from "../chat/storage";
@@ -6,10 +7,12 @@ import { FOUNDATION_STORAGE_KEY } from "../foundation-storage";
 import { normalizeFoundation } from "../foundation-types";
 import { resumeStartupClears, type StartupClearDeps } from "./startup";
 import { cancelClearIntent, completeClear, recordClearIntent } from "./lifecycle";
-import { MemoryStorage } from "./storage";
+import { MemoryStorage, request } from "./storage";
+import type { MemoryCursor } from "./types";
 
 /** The app's one Memory handle. The database opens lazily on first use and is covered by full backup. */
-export const browserMemoryStorage = new MemoryStorage();
+export { browserMemoryStorage } from "./instance";
+import { browserMemoryStorage } from "./instance";
 
 /** Characters whose Memory may be sourced from this conversation: the direct Character, or each group member. */
 const owners = (session: Pick<ChatSession, "characterId" | "type" | "participantIds">) =>
@@ -28,18 +31,28 @@ export async function withMemoryClear<T>(session: Pick<ChatSession, "id" | "char
   chatOperation: (scope: PersistenceWriteScope) => Promise<T>, storage: MemoryStorage = browserMemoryStorage): Promise<MemoryClearOutcome<T>> {
   let completed: MemoryClearOutcome<T> | undefined;
   try { return await storage.withShared(async (scope) => {
-      const characterIds = owners(session), created: string[] = [];
+      const characterIds = owners(session), created: { characterId: string; token: string }[] = [];
+      const replaced: { before: MemoryCursor; token: string }[] = [];
       let value: T;
       try {
         for (const characterId of characterIds) {
           const existing = (await storage.listCursors(characterId, scope)).find((row) => row.sessionId === session.id);
-          await recordClearIntent(storage, characterId, session.id, scope);
-          if (existing?.clearRequestedAt === undefined) created.push(characterId);
+          if (existing?.sourceInvalidation && !existing.clearToken) throw new Error("Source cleanup authority is unavailable.");
+          const token = await recordClearIntent(storage, characterId, session.id, scope, existing?.sourceInvalidation ? existing.clearToken : undefined);
+          if (existing?.sourceInvalidation) replaced.push({ before: existing, token });
+          if (existing?.clearRequestedAt === undefined) created.push({ characterId, token });
         }
         value = await chatOperation(scope);
       }
       catch (error) {
-        const cancelled = await Promise.allSettled(created.map((characterId) => cancelClearIntent(storage, characterId, session.id, scope)));
+        const cancelled = await Promise.allSettled([
+          ...created.map(({ characterId, token }) => cancelClearIntent(storage, characterId, session.id, scope, token)),
+          ...replaced.map(({ before, token }) => storage.transaction("readwrite", async (tx) => {
+            const store = tx.store("cursors"), current = await request<MemoryCursor | undefined>(store.get(before.id));
+            // Restore earlier cleanup evidence only while this replacement still owns the intent.
+            if (current?.clearToken === token && current.sourceInvalidation === undefined) await request(store.put(before));
+          }, scope)),
+        ]);
         if (cancelled.some((item) => item.status === "rejected"))
           throw new Error("The conversation was not changed, but a Memory clear marker could not be withdrawn.", { cause: error });
         throw error;
@@ -80,6 +93,10 @@ export function resumeBrowserClears(signal?: AbortSignal) {
     },
     countMessages: (sessionId, scope) => chatStorage.countMessages(sessionId, scope),
     existingMessageIds: (sessionId, ids, scope) => chatStorage.existingMessageIds(sessionId, ids, scope),
+    sourceHashes: async (sessionId, ids, scope) => {
+      const view = await chatStorage.readMemorySources(sessionId, scope);
+      return new Map(await Promise.all(view.messages.filter((m) => ids.includes(m.id)).map(async (m) => [m.id, await memorySourceHash(m)] as const)));
+    },
   };
   return resumeStartupClears(browserMemoryStorage, deps, signal);
 }
