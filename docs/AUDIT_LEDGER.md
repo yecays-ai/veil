@@ -6,6 +6,8 @@
 
 已实现 Background 独占保存/版本追加/分库恢复、同一正常维护请求的严格 State CREATE/UPDATE/REVIEW 与同库进度提交、D1 pending/compatible/conflict、D2 单条删改/整轮重生成/同 ID hash 与可恢复清理、真实 Prompt 覆盖和 Character 只读 UI。release/device consent、owner/cursor/restore/uncertain、完整备份与 manual/Journal/Presence 行为保留，没有新增模型调用或启用真实维护。Background 跨库工作不是原子事务；混合来源隐私优先整体撤销。
 
+复审修复已推送于 `8f9430701b5cc45e4ca2d49a04940f3e4619d5b9`，[CI #1184](https://github.com/yecays-ai/veil/actions/runs/38361506517) 全部成功（全仓 1586/1586、零跳过），同 SHA Preview READY/target=null；CodeRabbit 已确认三条 addressed，Foundation 原线程已回复修复和回归证据但仍 open，最新增量复审 pending，文档收口的新 head 外部检查仍须单独核对，不把 pending 当已通过。
+
 P2 独立证据：Node 24.19.0，受影响回归 **993/993，零跳过，含 55 新测试**；新 State 提交测试在 main 原协议负对照失败、P2 通过；测试编译、typecheck、改动文件 lint、webpack build 通过。原 head `714072abf180a945322fb0c547c25e1f585fd910` 的 [CI #1183](https://github.com/yecays-ai/veil/actions/runs/38358757663)（全仓 1576/1576、lint/typecheck/build/diff）和 Preview 已通过；CodeRabbit 已完成该 head 的 32 文件审查，4 条有效意见（1 Major、3 Minor）本轮本地修复：资料读取不被 Memory 修复错误阻断、State 刷新合并、整段清空删除旧 cursor/替换定向 marker、状态记录格式，并补 clear 失败恢复原定向证据和 token/owner 防护；对应 Red/Green 及安全回归通过，修复后最新 head 的 CI/Preview/复审另核，不沿用旧成功。docstring coverage 警告不作为功能缺陷扩大范围。fake IndexedDB/模拟锁/挂载 JSDOM/stub/构建不替代真实模型、iPhone/Safari、多真实 tab。详见[模块合同](memory-m6-p2-integration.md)和[唯一 P2 work-status](work-status/2026-10-13-codex-memory-m6-p2.md)。只授权 Preview，禁止 Production/提升、合并/automerge、付费调用和真实数据操作。
 
 更新：2026-10-10（Lan 所在时区）｜核对时 main 头 `a58a9b4fda2562ada1849ad1de750744bf86f183`（2026-10-10 第七刀阶段性收口时读取；合并记录覆盖 #38–#107；#38–#83 未逐项复验各 PR 的内容与范围，#86–#107 为本轮逐项核对（第六刀 #92–#100 与第七刀 #101–#107 的收口对账见板块六）；并入 Lan 2026-10-10 的人工验收自述，见“真机验收记录”，录屏/截图未入库）｜来源：六轮审计总账 v2、第一板块交接报告、第二板块核销报告、第三刀对账报告、#61/#56 报告、《前端》审计、仓库原根目录总账（F1/F2/F3/F5）

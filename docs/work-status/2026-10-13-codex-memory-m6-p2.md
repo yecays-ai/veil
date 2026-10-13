@@ -1,12 +1,12 @@
 # STATUS — 2026-10-13-codex-memory-m6-p2
 
 更新人：Codex
-更新时间：2026-10-13T15:10:50+08:00
+更新时间：2026-10-13T15:21:02+08:00
 发现范围：本轮 GitHub API 重核 main fe6a209f9938d230dc10b60d822508bf1cb436c5，PR #168 open/未合并，head 714072abf180a945322fb0c547c25e1f585fd910，开放 PR 仅本单；已读取实际 CodeRabbit review/四个线程和相关代码、AGENTS、唯一台账及模块合同，未发布本地工作/不可见外部自动化无法发现。
 
 ## 当前任务
 
-待审查：P2 [PR #168](https://github.com/yecays-ai/veil/pull/168) 的四条有效 CodeRabbit 意见已在本地修复并验证，等待修复提交的最新 head CI/Preview/复审及 Lan 手动验收，PR 未合并。
+待审查：P2 [PR #168](https://github.com/yecays-ai/veil/pull/168) 的四条有效 CodeRabbit 意见已修复推送且代码 head CI/Preview 通过，机器人已解决三条、Foundation 线程仍待复审确认，文档收口后最新 head 另核并等待 Lan 手动验收，PR 未合并。
 
 ## 谁在改哪里
 
@@ -27,12 +27,13 @@ Codex；分支 codex/memory-m6-p2；独立工作区 veil-memory-m6-p2，真实 m
 - Node 24.19.0：受影响 Memory/Backup/Presence/Foundation/Character 删除/Generation/全部 Chat 回归 **993/993，零跳过**，共 **55 项 P2 新测试**（State/Persistence 47、Prompt/UI 8）；测试编译、tsc --noEmit --incremental false、改动文件 ESLint、next build --webpack 全通过。
 - fake IndexedDB、模拟 Web Locks、挂载 JSDOM、stub provider；独立编译 ../veil-memory-m6-p2-tests，不使用共享旧产物；没有删/弱化/跳过有效测试。
 - 修复前 head 714072abf180a945322fb0c547c25e1f585fd910 的 [CI #1183](https://github.com/yecays-ai/veil/actions/runs/38358757663) typecheck/full lint/full tests 1576/1576/build/diff 全成功，Vercel dpl_HTJ1GVE73zNg6XpsVBBhbJXByAHn READY、target=null；不套用到本轮修复 head。
+- 修复代码 head **8f9430701b5cc45e4ca2d49a04940f3e4619d5b9** 的 [CI #1184](https://github.com/yecays-ai/veil/actions/runs/38361506517) 全部成功（typecheck/full lint/**1586/1586、零跳过**/build/artifact/diff），[Preview](https://veil-od259e06k-yecays-ai.vercel.app) READY、dpl_4DD8x6iKsi6ewKjQ7JEi2zV8kP41、target=null、同 SHA；CodeRabbit 已标三条原线程为 addressed，Foundation 原线程已回复准确代码与三项读/写/恢复回归证据，仍 open，增量复审 pending，本记录不冒充机器人确认全部意见。
 - 发布门禁本轮重查：唯一 CI 仅验证，scripts/package 无非 main Production/提升/自动合并动作，无 vercel.json/部署脚本；Vercel 正确绑定 veil，当前 P2 为 Preview，Production 仍 main fe6a209 / dpl_2nXrmSuW3sJ4gnGg1CNgi548pov3，用户已确认 Production Branch=main，无配置改动。
 - 模块数据合同与测试矩阵见 [memory-m6-p2-integration](../memory-m6-p2-integration.md)。
 
 ## 尚未验证
 
-- 本轮修复提交的最新 head CI/Preview/CodeRabbit 复审：等待发布后外部执行，须精确核对 SHA，不沿用旧成功；四个原线程待远端提交后关联处理。
+- 文档收口后的最新 head CI/Preview/CodeRabbit 以 PR 实时核对；上述代码 head CI/Preview 已通过，CodeRabbit 正在复审本轮 9 文件、1 个原 Foundation 线程仍 open，不将 pending 当作通过或无未解决意见。
 - CodeRabbit docstring coverage 51.16%/80% 是非阻断警告，无具体功能缺陷，未为指标扩大无关改动。
 - 真实模型语义/冲突判断、iPhone/Safari 中断、多真实 tab 和页面视觉仍未验证；无锁 Background 变更/来源替换仍安全拒绝，混合来源整体撤销可能损失有效片段，关闭维护/无新消息/预算超限时保持 pending。
 - P1 无 hash 版本需正常维护明确复核后才可注入；新元数据不保证旧软件降级可写；第二库失败可能已保存 Foundation，只读仍可用而 State 保持 pending，不能宣称跨库回滚。
