@@ -49,7 +49,7 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
       || !["fact", "event", "ongoing", "relationship", "continuity"].includes(String(value.kind))
       || !["character", "user", "other"].includes(String(value.subject)))) return invalid();
     // An over-long entry is dropped on its own: rejecting the batch would only repeat the paid request.
-    if (creates && (value.text as string).length > MAINTENANCE_LIMITS.entryCharacters) { discarded++; continue; }
+    if (creates && (value.text as string).trim().length > MAINTENANCE_LIMITS.entryCharacters) { discarded++; continue; }
     if (creates && Object.hasOwn(value, "reviewInDays") && value.kind !== "ongoing") return invalid();
     if (op === "EXTEND" && targets.some((r) => r.kind !== "ongoing")) return invalid();
     if (op === "ARCHIVE") {

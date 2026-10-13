@@ -50,6 +50,8 @@ test("an over-long entry is dropped alone; its siblings and the request survive,
     assert.equal(plan.put.length, 1);
     assert.equal(plan.put[0].text.length, 600);
     assert.deepEqual(parse([create(ids[1], "z".repeat(601))]).put, []);
+    // Surrounding whitespace is trimmed before storage, so it does not count against the cap.
+    assert.equal(parse([create(ids[1], `  ${"w".repeat(600)} `)]).put[0].text.length, 600);
     await commit(plan.put);
     assert.equal((await f.memory.listMemories("c")).length, 1);
   });
