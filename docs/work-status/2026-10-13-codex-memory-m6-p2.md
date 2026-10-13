@@ -1,12 +1,12 @@
 # STATUS — 2026-10-13-codex-memory-m6-p2
 
 更新人：Codex
-更新时间：2026-10-13T14:40:11+08:00
+更新时间：2026-10-13T14:45:52+08:00
 发现范围：本轮 GitHub API 重核 main fe6a209f9938d230dc10b60d822508bf1cb436c5、P1 #167 merged=true，open/draft PR 为空。已读最新 AGENTS、唯一总账、P1 合同与任务记录；未发布本地工作、不可见外部自动化无法发现，不作安全保证。
 
 ## 当前任务
 
-P2 本地施工与验证完成，[PR #168](https://github.com/yecays-ai/veil/pull/168) 已发布、未合并，CI/CodeRabbit 审查中。Lan 恢复额度后授权继续；原检查点保留，本文件仍是唯一 P2 work-status。不沿用 P1 或旧 head 成功。
+P2 施工与发布完成，[PR #168](https://github.com/yecays-ai/veil/pull/168) 未合并，等待 CodeRabbit 完成及 Lan 手动审查。代码 head 的 CI/Preview 已通过，最后文档提交后的最新 head 必须单独重核；原检查点保留，本文件仍是唯一 P2 work-status。
 
 ## 谁在改哪里
 
@@ -36,6 +36,8 @@ Codex；独立工作区 veil-memory-m6-p2；分支 codex/memory-m6-p2。真实 m
 - 发布门禁：实时 Vercel main fe6a209 / dpl_2nXrmSuW3sJ4gnGg1CNgi548pov3 是 Production，P1/其他分支 target=null 是 Preview；Git 关联 yecays-ai/veil 正确。Lan 已只读确认 Production Branch=main。重读唯一 CI、scripts/package 和仓库配置，没有 Production/提升/automerge 动作，没有 vercel.json 或部署脚本；没有修改生产配置。
 - 首发 head 33d4c98c87a0a7626225a22a4772d0ebeb0bfa99 / CI #1181（38357379581）：typecheck/lint 成功，test 一项失败（Chat 删除确认测试的 JSDOM 缺 Web Locks，新增来源安全门禁拒绝删除），build/diff 因测试失败未跑。补齐模拟锁后原测试通过；同时修复不替换来源的普通回复/continuation 使用原共享租约、无锁 signature 保存兼容及稳定内容 hash，不让 delivery/outcome 元数据撤销证据。扩大到全部受影响 chat* 回归 983/983；修复后本地 typecheck/lint/build 通过。最新远端 head 仍须重新验证。
 - 首发 Vercel dpl_FaktaNbpc6Kyy6NW4j6fK1AsZJtA READY、target=null（Preview），SHA 为上述首发 head，[Preview](https://veil-ni9s5cz65-yecays-ai.vercel.app)；不是修复后 head 的成功承诺。CodeRabbit 首发仍 pending，无 review/线程。
+- 修复后的代码 head **898a3c253600eb6eed664146bef9a1bd5f4411bc**：[CI #1182](https://github.com/yecays-ai/veil/actions/runs/38358308263) typecheck、全仓 lint、全仓 tests **1576/1576、零跳过**、build、diff 全部成功。Vercel dpl_FcosX6BxQearcaWkcCbdpGHLqman READY、target=null、同 SHA，[Preview](https://veil-d8hzs7l4u-yecays-ai.vercel.app)。本地受影响 983/983 与远端全仓 1576/1576 分开记录。
+- 2026-10-13T14:45:52+08:00 CodeRabbit 仍显示首发完整 31 文件审查处理中，零 review/未解决线程；这不是已完成审查或通过证明，最新 head 审查仍 pending。最终文档提交与结果请以 PR 最新 head 实时检查为准，不把上述代码 head 成功套到新提交。
 - 数据合同与测试矩阵见 [模块记录](../memory-m6-p2-integration.md)。
 
 ## 尚未验证
@@ -49,4 +51,4 @@ Codex；独立工作区 veil-memory-m6-p2；分支 codex/memory-m6-p2。真实 m
 
 ## 下一步
 
-按真实远端 parent 发布独立 P2 PR，检查最新 head CI/Preview/CodeRabbit并修复范围内有效问题；最终停在 PR 等待 Lan 手动审查合并。
+有限检查最终文档 head 的 CI/Preview/CodeRabbit，修复范围内有效问题；外部审查长期 pending 如实报告，不无限轮询。停在 PR #168，等待 CodeRabbit 与 Lan 手动审查，不合并、不 Production、不继续 P3–P5。
