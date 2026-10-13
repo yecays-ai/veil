@@ -2,7 +2,7 @@ import type { ApiConfig, NamedApiConfig } from "../api-config";
 import type { BindingDocument } from "../bindings";
 import type { ChatSession } from "../chat/types";
 import { MaintenanceModelError, resolveMaintenanceModel } from "./maintenance-binding";
-import { maintenanceDue } from "./maintenance-runner";
+import { maintenanceBacklog, maintenanceSettled, MAINTENANCE_TRIGGER_SEQUENCES } from "./maintenance-capacity";
 import type { MemoryCursor } from "./types";
 
 /** Read-only facts for Settings → Memory Maintenance. Never includes keys, URLs or message text. */
@@ -26,23 +26,25 @@ export type MaintenanceProgressSummary = {
   /** Numbered messages whose batch completed (including a legal IGNORE). */
   processed: number;
   waiting: number; running: number; failed: number; uncertain: number; tooLarge: number;
-  /** Earliest moment the next check may run; null when nothing is pending or a reply is generating. */
-  dueAt: number | null;
+  /** Numbered messages not yet batched (direct chats only). */
+  pending: number;
+  /** Messages that must be waiting before a check starts on its own. */
+  trigger: number;
+  /** True when a check may start now: enough messages (or a recoverable batch) are waiting and no reply is generating. */
+  due: boolean;
 };
 
 export function summarizeMaintenanceProgress(characterId: string, sessions: readonly ChatSession[],
-  cursors: readonly MemoryCursor[], now: number): MaintenanceProgressSummary {
+  cursors: readonly MemoryCursor[]): MaintenanceProgressSummary {
   const direct = sessions.filter((s) => s.characterId === characterId && s.type !== "group");
   const tracked = direct.reduce((total, s) => total + Math.max(0, (s.memorySequence?.nextSeq ?? 1) - 1), 0);
-  const summary: MaintenanceProgressSummary = { tracked, processed: 0, waiting: 0, running: 0, failed: 0, uncertain: 0, tooLarge: 0, dueAt: null };
-  let covered = 0;
+  const summary: MaintenanceProgressSummary = { tracked, processed: 0, waiting: 0, running: 0, failed: 0, uncertain: 0, tooLarge: 0, pending: 0, trigger: MAINTENANCE_TRIGGER_SEQUENCES, due: false };
   for (const cursor of cursors) {
     const progress = cursor.extraction;
     if (cursor.characterId !== characterId || !progress) continue;
     const done = progress.throughSeq + progress.completed.reduce((total, [from, to]) => total + to - from + 1, 0);
-    summary.processed += done; covered += done;
+    summary.processed += done;
     for (const batch of progress.batches) {
-      covered += batch.toSeq - batch.fromSeq + 1;
       if (batch.state === "ready") summary.waiting++;
       else if (batch.state === "failed") summary.failed++;
       else if (batch.state === "uncertain") summary.uncertain++;
@@ -50,9 +52,8 @@ export function summarizeMaintenanceProgress(characterId: string, sessions: read
       else summary.running++;
     }
   }
-  if (tracked > covered || summary.waiting) {
-    const delay = maintenanceDue(direct, characterId, now);
-    summary.dueAt = delay === null ? null : now + delay;
-  }
+  const backlog = maintenanceBacklog(direct, cursors, characterId);
+  summary.pending = backlog.fresh;
+  summary.due = maintenanceSettled(direct, characterId) && (backlog.waiting > 0 || backlog.fresh >= summary.trigger);
   return summary;
 }

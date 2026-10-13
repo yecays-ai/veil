@@ -4,6 +4,7 @@ import type { ChatMessage, ChatSession } from "../chat/types";
 import { isTruncatedReason } from "../chat/types";
 import type { TextProvider } from "../chat/provider";
 import { createCompletionRequestContext } from "../chat/request-diagnostics";
+import { maintenanceDue, maintenanceSettled, MAINTENANCE_MAX_SAFE_CLAIMS, MAINTENANCE_TRIGGER_SEQUENCES } from "./maintenance-capacity";
 import { buildMaintenanceInput, MAINTENANCE_LIMITS, MaintenanceInputTooLarge, selectMaintenanceCandidates } from "./maintenance-input";
 import { parseMaintenanceOperations } from "./maintenance-operations";
 import { createMaintenanceDiagnostics } from "./maintenance-diagnostics";
@@ -11,18 +12,10 @@ import type { MemoryBatchTicket, MemoryProgressProtocol } from "./progress";
 import { validMemoryProgress, type MemoryProgress } from "./progress-types";
 import type { MemoryStorage } from "./storage";
 
-export const MAINTENANCE_IDLE_MS = 5 * 60 * 1000;
 export const MAINTENANCE_BATCH_SEQUENCES = 20;
 export const MAINTENANCE_MESSAGE_CHARACTERS = 12_000;
-// Two pre-dispatch claims allow one safe interrupted claim to recover. Failed/unknown requests never retry.
-const MAX_SAFE_CLAIMS = 2;
+const MAX_SAFE_CLAIMS = MAINTENANCE_MAX_SAFE_CLAIMS;
 export const MAINTENANCE_REQUEST_MS = 90_000;
-export function maintenanceDue(sessions: readonly ChatSession[], characterId: string, now: number): number | null {
-  const own = sessions.filter((s) => s.characterId === characterId && s.type !== "group");
-  if (!own.length || own.some((s) => s.generation || !Number.isFinite(s.updatedAt))) return null;
-  const activity = Math.max(...own.map((s) => s.updatedAt));
-  return Math.max(0, activity + MAINTENANCE_IDLE_MS - now);
-}
 /** Failed/uncertain/too-large ranges remain holes. Later successes never advance across them. */
 export function nextMaintenanceRange(nextSeq: number, progress?: MemoryProgress): [number, number] | null {
   if (!Number.isSafeInteger(nextSeq) || nextSeq < 1 || (progress && !validMemoryProgress(progress))) return null;
@@ -44,6 +37,8 @@ export type MaintenanceRunnerDependencies = {
   provider: TextProvider; enabled(): boolean; now(): number;
   diagnostics?: ReturnType<typeof createMaintenanceDiagnostics>;
   requestTimeoutMs?: number;
+  /** Test seam only: production always uses MAINTENANCE_TRIGGER_SEQUENCES. */
+  triggerSequences?: number;
 };
 /** One bounded batch per invocation. Character owner spans network; backup lease never does. */
 export async function runMaintenance(characterId: string, deps: MaintenanceRunnerDependencies, signal: AbortSignal): Promise<boolean | "busy"> {
@@ -54,7 +49,8 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     const recovered: { ticket: MemoryBatchTicket; sessionId: string }[] = [];
     for (const session of sessions.filter((s) => s.characterId === characterId && s.type !== "group" && s.memorySequence))
       for (const ticket of await deps.protocol.recover(owner, session.id)) recovered.push({ ticket, sessionId: session.id });
-    if (maintenanceDue(await deps.sessions(), characterId, deps.now()) !== 0 || !deps.enabled() || signal.aborted) return false;
+    if (!maintenanceDue(await deps.sessions(), await deps.memory.listCursors(characterId), characterId, deps.triggerSequences ?? MAINTENANCE_TRIGGER_SEQUENCES)
+      || !deps.enabled() || signal.aborted) return false;
     // Invalid binding is rejected before making a new batch, with no fallback and no paid call.
     const { config, context, timezone } = await deps.model(characterId);
     let ticket: MemoryBatchTicket | undefined;
@@ -125,7 +121,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     await deps.protocol.claim(ticket, MAX_SAFE_CLAIMS);
     // This check and persisted in-flight transition share the exclusive backup lease.
     await deps.protocol.transition(ticket, "in-flight", async (scope) => {
-      if (!deps.enabled() || signal.aborted || maintenanceDue(await deps.sessions(scope), characterId, deps.now()) !== 0) return false;
+      if (!deps.enabled() || signal.aborted || !maintenanceSettled(await deps.sessions(scope), characterId)) return false;
       const current = (await deps.model(characterId, scope)).config;
       return current.id === config.id && current.model === config.model && current.baseUrl === config.baseUrl && current.apiKey === config.apiKey;
     });

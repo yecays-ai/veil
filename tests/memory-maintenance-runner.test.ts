@@ -3,10 +3,11 @@ import test from "node:test";
 import { IDBObjectStore } from "fake-indexeddb";
 import { progressFixture, deferred } from "./memory-progress-fixture";
 import { MemoryProgressProtocol } from "../lib/memory/progress";
-import { runMaintenance, maintenanceDue, MAINTENANCE_IDLE_MS, nextMaintenanceRange, type MaintenanceRunnerDependencies } from "../lib/memory/maintenance-runner";
+import { runMaintenance, nextMaintenanceRange, type MaintenanceRunnerDependencies } from "../lib/memory/maintenance-runner";
 import { completeClear, recordClearIntent } from "../lib/memory/lifecycle";
 import { ChatStorage } from "../lib/chat/storage";
 import { maintenanceEnabled, maintenanceReleaseApproved, setMaintenanceConsent } from "../lib/memory/maintenance-config";
+import { maintenanceDue, MAINTENANCE_TRIGGER_SEQUENCES } from "../lib/memory/maintenance-capacity";
 import { createMaintenanceScheduler } from "../lib/memory/maintenance-scheduler";
 import { startBrowserMaintenance } from "../lib/memory/maintenance-browser";
 import { createOpenAITextProvider, type TextProvider } from "../lib/chat/provider";
@@ -45,12 +46,12 @@ for (const stage of ["listMemories", "refresh", "readInput"] as const) test(`tra
   assert.equal(f.calls(), 1); assert.equal(await f.run(), false); assert.equal(f.calls(), 1);
 });
 async function fixture(provider?: TextProvider) {
-  const f = await progressFixture(); let calls = 0, clock = Date.now() + MAINTENANCE_IDLE_MS + 10_000, enabled = true;
+  const f = await progressFixture(); let calls = 0, clock = Date.now() + 310_000, enabled = true;
   const deps: MaintenanceRunnerDependencies = { protocol: f.protocol, memory: f.memory,
     readChat: f.chat.readMemorySources.bind(f.chat),
     sessions: (scope) => scope ? f.chat.listExistingSessions(scope) : f.chat.listSessions(),
     model: async () => ({ config: { id: "selected", baseUrl: "https://example.invalid/v1", apiKey: "stub-only", model: "stub" }, context: "Character C" }),
-    enabled: () => enabled, now: () => clock,
+    enabled: () => enabled, now: () => clock, triggerSequences: 1,
     provider: async function* (...args) {
       calls++; assert.equal((await f.progress())!.batches.find((b) => b.state === "in-flight")!.state, "in-flight");
       assert.equal(args[4]?.source, "memory-maintenance"); assert.equal(args[3]?.maxTokens, 2000);
@@ -64,11 +65,11 @@ test("default-off browser wiring and configuration cause no storage or provider 
   assert.equal(maintenanceReleaseApproved(), false); assert.equal(maintenanceEnabled(), false);
   assert.throws(() => setMaintenanceConsent(true)); startBrowserMaintenance()();
 });
-test("five minutes is an earliest durable gate; no messages, disabled or invalid binding makes zero calls", async () => {
+test("capacity is the gate: no messages or too few make zero calls; disabled or invalid binding too", async () => {
   const f = await fixture(); assert.equal(await f.run(), false); assert.equal(f.calls(), 0);
-  const m = await f.send(); f.clock(m.createdAt + MAINTENANCE_IDLE_MS - 1);
-  assert.equal(await f.run(), false); assert.equal(f.calls(), 0);
-  f.clock(m.createdAt + MAINTENANCE_IDLE_MS); f.enable(false); assert.equal(await f.run(), false);
+  f.deps.triggerSequences = MAINTENANCE_TRIGGER_SEQUENCES; await f.send();
+  assert.equal(await f.run(), false); assert.equal(f.calls(), 0, "one message is far below the trigger");
+  f.deps.triggerSequences = 1; f.enable(false); assert.equal(await f.run(), false);
   f.enable(true); f.deps.model = async () => { throw new Error("Invalid explicit model"); };
   await assert.rejects(f.run()); assert.equal(f.calls(), 0); assert.equal(await f.progress(), undefined);
 });
@@ -203,11 +204,13 @@ test("long messages form smaller complete batches; overlarge single complete inp
   assert.equal((await large.progress())?.batches[0].fromSeq, 2);
 });
 
-test("recent activity arriving during input preparation prevents request before persisted dispatch", async () => {
-  const f = await fixture(); await f.send();
+test("a reply that starts generating during input preparation prevents the request before persisted dispatch", async () => {
+  const f = await fixture(); await f.send(); let generating = false;
+  const sessions = f.deps.sessions;
+  f.deps.sessions = async (scope) => (await sessions(scope)).map((s) => generating ? { ...s, generation: { id: "g", stage: "preparing" as const } } : s);
   const original = f.protocol.transition.bind(f.protocol);
   f.protocol.transition = async (ticket, state, guard) => {
-    if (state === "in-flight") { const m = await f.send("just returned"); f.clock(m.createdAt); }
+    if (state === "in-flight") generating = true;
     return original(ticket, state, guard);
   };
   await assert.rejects(f.run()); assert.equal(f.calls(), 0); assert.equal((await f.progress())?.batches[0].state, "claimed");
@@ -310,7 +313,7 @@ test("measure warm runner lease holds with retained history and bounded candidat
   await f.memory.applyChange("c", "seed", { put: rows }); f.holds.length = 0; f.waits.length = 0;
   const elapsed: number[] = [];
   for (let i = 0; i < 30; i++) {
-    await f.send(`seed preference development ${i}`); f.clock(Date.now() + MAINTENANCE_IDLE_MS);
+    await f.send(`seed preference development ${i}`);
     const start = performance.now(); assert.equal(await f.run(), true); elapsed.push(performance.now() - start);
   }
   const holds = [...f.holds].sort((a, b) => a - b), times = elapsed.sort((a, b) => a - b);
@@ -319,11 +322,17 @@ test("measure warm runner lease holds with retained history and bounded candidat
     exclusiveSamples: holds.length, holdMs: { p50: p(holds, .5), p95: p(holds, .95), max: p(holds, 1) },
     runnerMs: { p50: p(times, .5), p95: p(times, .95), max: p(times, 1) }, maxWaitMs: Math.max(...f.waits) }));
 });
-test("durable idle uses every direct session of Character and defers clock rollback or active generation", async () => {
-  const f = await fixture(), m = await f.send(), rows = await f.chat.listSessions();
-  assert.equal(maintenanceDue(rows, "c", m.createdAt - 1000), MAINTENANCE_IDLE_MS + 1000);
-  assert.equal(maintenanceDue([...rows, { ...rows[0], id: "other", updatedAt: m.createdAt + 1000 }], "c", m.createdAt + MAINTENANCE_IDLE_MS), 1000);
-  assert.equal(maintenanceDue([{ ...rows[0], generation: { id: "g", stage: "preparing" } }], "c", m.createdAt + MAINTENANCE_IDLE_MS), null);
+test("capacity looks at one session at a time, as a run reads one, and is blocked while a reply generates", async () => {
+  const f = await fixture(); await f.send();
+  const rows = await f.chat.listSessions(), cursors = await f.memory.listCursors("c");
+  assert.equal(maintenanceDue(rows, cursors, "c", 1), true);
+  assert.equal(maintenanceDue(rows, cursors, "c", 2), false);
+  const other = { ...rows[0], id: "other", memorySequence: { epoch: "e2", nextSeq: 2 } };
+  assert.equal(maintenanceDue([...rows, other], cursors, "c", 2), false, "1 + 1 is not a full batch of 2");
+  assert.equal(maintenanceDue([...rows, { ...other, memorySequence: { epoch: "e2", nextSeq: 3 } }], cursors, "c", 2), true);
+  assert.equal(maintenanceDue([...rows, { ...other, memorySequence: undefined }], cursors, "c", 2), false, "untracked chats add nothing");
+  assert.equal(maintenanceDue([{ ...rows[0], generation: { id: "g", stage: "preparing" } }], cursors, "c", 1), false);
+  assert.equal(maintenanceDue(rows, cursors, "someone-else", 1), false);
 });
 test("failed holes remain explicit while later ranges can complete without advancing across them", async () => {
   const f = await fixture(async function* () { throw new Error("unknown"); });
@@ -333,18 +342,17 @@ test("failed holes remain explicit while later ranges can complete without advan
   assert.equal(nextMaintenanceRange(3, p), null);
 });
 
-test("scheduler uses earliest gate, resumes missed timers and preserves the running old batch on new chat", async () => {
-  const f = await fixture(), first = await f.send(), entered = deferred(), released = deferred();
-  let clock = first.createdAt, runnable = true, calls = 0;
-  const timers = new Map<number, { cb: () => void; at: number }>(); let next = 0;
-  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => runnable, now: () => clock,
+test("scheduler starts a due batch without an idle wait, ignores a hidden page and preserves the running batch on new chat", async () => {
+  const f = await fixture(); await f.send();
+  const entered = deferred(), released = deferred();
+  let runnable = true, calls = 0, next = 0;
+  const timers = new Map<number, { cb: () => void; delay: number }>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => runnable, cursors: (id) => f.memory.listCursors(id), triggerSequences: 1,
     sessions: () => f.chat.listSessions(),
     run: async (_id, s) => { calls++; entered.resolve(); await released.promise; assert.equal(s.aborted, false); return false; },
-    setTimer: (cb, delay) => { timers.set(++next, { cb, at: clock + delay }); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
-  await scheduler.wake(); assert.equal([...timers.values()][0].at, clock + MAINTENANCE_IDLE_MS);
-  clock += MAINTENANCE_IDLE_MS - 1; assert.equal(calls, 0);
+    setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
   runnable = false; await scheduler.wake(); assert.equal(timers.size, 0);
-  clock += 90_000; runnable = true; await scheduler.wake(); const timer = [...timers.values()][0]; timer.cb(); await entered.promise;
+  runnable = true; await scheduler.wake(); const timer = [...timers.values()][0]; assert.equal(timer.delay, 0); timer.cb(); await entered.promise;
   await f.send("back while maintenance runs"); await scheduler.wake(); assert.equal(calls, 1);
   released.resolve(); await new Promise((r) => setTimeout(r, 20)); scheduler.stop(); assert.equal(calls, 1);
 });
