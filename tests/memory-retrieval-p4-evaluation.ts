@@ -16,7 +16,8 @@ const query = (current = "How are the orchids?"): MemoryConversation => ({
 const SOURCE_CASES = [
   { id: "cleared-auto-source", rows: [p4Memory("auto")], expectedIds: [] },
   { id: "remaining-source-keeps-auto", rows: [p4Memory("auto", { sources: [
-    { sessionId: "s", messageId: "auto" }, { sessionId: "kept", messageId: "other" } ] })], expectedIds: ["auto"] },
+    { sessionId: "s", messageId: "auto" }, { sessionId: "kept", messageId: "other" } ] })], expectedIds: ["auto"],
+    retainedSources: [{ sessionId: "kept", messageId: "other" }] },
   { id: "manual-survives-source-clear", rows: [p4Memory("manual", { origin: "manual" })], expectedIds: ["manual"] },
 ];
 
@@ -66,6 +67,10 @@ export async function evaluateMemoryP4() {
     const result = checkP4Selection(sample.id, remaining, query(), sample.expectedIds);
     result.failures.push(...admittedBefore.failures.map((reason) => `before cleanup: ${reason}`));
     if (remaining.some((row) => row.sources.some((source) => source.sessionId === "s"))) result.failures.push("cleared source pointer remains");
+    // Cleanup must keep the independent source, not merely drop the cleared one.
+    for (const kept of sample.retainedSources ?? [])
+      if (!remaining.some((row) => row.sources.some((source) => source.sessionId === kept.sessionId && source.messageId === kept.messageId)))
+        result.failures.push(`retained source lost: ${kept.sessionId}/${kept.messageId}`);
     sources.push(result);
   }
   const rows = [...quality, ...boundaries, ...sources];
