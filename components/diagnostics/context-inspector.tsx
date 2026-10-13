@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useState, useSyncExternalStore } from "react";
+import { useSearchParams } from "next/navigation";
 import { contextInspector, type InspectorRecord } from "../../lib/chat/context-inspector";
 
 const QUERY_KEY = "veilInspector";
@@ -9,18 +10,20 @@ const EMPTY: readonly InspectorRecord[] = [];
 /** M6 P5: development-only, read-only view of redacted request summaries. Production renders nothing. */
 export function ContextInspectorGate() {
   if (process.env.NODE_ENV !== "development") return null;
-  return <ContextInspectorEntry />;
+  return <Suspense fallback={null}><ContextInspectorEntry /></Suspense>;
 }
 
 function ContextInspectorEntry() {
   const [enabled, setEnabled] = useState(false);
+  // Re-check after client navigation changes the query; the layout itself stays mounted.
+  const search = useSearchParams()?.toString();
   useEffect(() => {
     // Deferred for hydration parity: the server never renders the panel.
     const timer = window.setTimeout(() => {
       setEnabled(new URLSearchParams(window.location.search).get(QUERY_KEY) === "1");
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [search]);
   if (!enabled) return null;
   return <ContextInspectorPanel onClose={() => {
     const url = new URL(window.location.href);
@@ -82,7 +85,7 @@ function InspectorEntry({ record }: { record: InspectorRecord }) {
       {terminal.timeoutPhase ? ` (${terminal.timeoutPhase})` : ""}
     </div>}
     {prompt?.memory && <div>memory {prompt.memory.outcome} · {prompt.memory.ids.length} entries · {prompt.memory.characterLength} chars
-      {prompt.memory.ids.length > 0 && <small> [{prompt.memory.ids.map((id) => id.slice(0, 8)).join(", ")}]</small>}</div>}
+      {prompt.memory.ids.length > 0 && <small style={{ overflowWrap: "anywhere" }}> [{prompt.memory.ids.join(", ")}]</small>}</div>}
     {prompt && <table style={{ width: "100%", marginTop: 4, borderCollapse: "collapse" }}>
       <tbody>{prompt.sections.map((section, index) => <tr key={index}>
         <td>{section.identifier}</td><td>{section.role}</td><td style={{ textAlign: "right" }}>{section.characterLength}</td>

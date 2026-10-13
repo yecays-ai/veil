@@ -1,16 +1,16 @@
 # STATUS — 2026-10-13-claude-memory-m6-p5
 
 更新人：Claude
-更新时间：2026-10-13T08:35Z
+更新时间：2026-10-13T08:30Z
 发现范围：2026-10-13T08:13Z 经 GitHub API 查询 yecays-ai/veil 开放 PR：无。P3 在分支 `claude/m6-p3-ongoing`（同期施工），P4 由 Codex 另行施工；本单未读取其分支内容。
 
 ## 当前任务
 
-M6 P5 开发环境只读 Context Inspector。状态：待审查（PR 创建后补链接）。
+M6 P5 开发环境只读 Context Inspector。状态：待审查。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/memory-m6-p5-context-inspector-ohpt9b`；base `main 8a0f79044c6b291906a518bc07a5d717924a348a`。
+Claude；分支 `claude/memory-m6-p5-context-inspector-ohpt9b`；PR [#169](https://github.com/yecays-ai/veil/pull/169)；base `main 8a0f79044c6b291906a518bc07a5d717924a348a`。
 
 - 新增 `lib/chat/context-inspector.ts`（仅内存、白名单字段、最近 20 次请求）。
 - `lib/chat/request-diagnostics.ts`：四个开发环境日志分支在 `console.info` 之后把同一份脱敏摘要写入 Inspector；生产分支不变。
