@@ -10,11 +10,11 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/m6-p3-ongoing`；PR 见 GitHub。涉及 `lib/memory/{ongoing,types,storage,bank,maintenance-input,maintenance-operations,maintenance-runner,progress}.ts`、`lib/backup/validation.ts`、`components/memory-bank.tsx`、测试与文档。
+Claude；分支 `claude/m6-p3-ongoing`；PR [#170](https://github.com/yecays-ai/veil/pull/170)。涉及 `lib/memory/{ongoing,types,storage,bank,maintenance-input,maintenance-operations,maintenance-runner,progress}.ts`、`lib/backup/validation.ts`、`components/memory-bank.tsx`、测试与文档。
 
 ## 已完成
 
-- 实现与测试见 [模块记录](../memory-m6-p3-ongoing.md)。memory-*、backup-*、chat-* 定向测试全部通过；`tsc --noEmit`、改动文件 eslint 通过。
+- 实现与测试见 [模块记录](../memory-m6-p3-ongoing.md)。memory-*、backup-*、chat-* 定向测试全部通过；`tsc --noEmit`、改动文件 eslint 通过；验证版本：提交 `3d8b99047dc630c60b65dc7e70cd1e7c4dd3eb10`（本地与 CI 均在此提交的代码上运行，之后只改本文件）。
 
 ## 尚未验证
 
