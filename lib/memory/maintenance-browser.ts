@@ -38,7 +38,7 @@ export function startBrowserMaintenance(): () => void {
       return { config, timezone: foundation.user.timezone ?? undefined, context: JSON.stringify({ name: character.name, characterId, personality: character.personality,
         speakingStyle: character.speakingStyle, user: foundation.user.name, worldSetting: foundation.universe.worldSetting }) };
     } };
-  const scheduler = createMaintenanceScheduler({ ...deps, sessions,
+  const scheduler = createMaintenanceScheduler({ ...deps, sessions, cursors: (id) => memory.listCursors(id),
     runnable: () => document.visibilityState === "visible",
     run: (id, signal) => runMaintenance(id, deps, signal),
     setTimer: (cb, delay) => window.setTimeout(cb, delay), clearTimer: (id) => window.clearTimeout(id as number) });

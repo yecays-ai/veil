@@ -74,13 +74,12 @@ export function MemoryMaintenanceSettings() {
       if (!current) return;
       const sessions = await chatStorage.listSessions();
       if (!current) return;
-      const now = Date.now();
       const next = await Promise.all(document.characters.map(async (character): Promise<CharacterRow> => ({
         id: character.characterId, name: character.name,
         model: await maintenanceModelStatus(bindings, character.characterId, (id) => browserApiConfigStorage.getApiConfig(id)),
         // Memory progress is only read once the release is approved, like the root gate.
         progress: release.approved
-          ? summarizeMaintenanceProgress(character.characterId, sessions, await browserMemoryStorage.listCursors(character.characterId), now)
+          ? summarizeMaintenanceProgress(character.characterId, sessions, await browserMemoryStorage.listCursors(character.characterId))
           : null,
       })));
       if (!current) return;
@@ -101,7 +100,7 @@ export function MemoryMaintenanceSettings() {
     <label className="settings-runtime-toggle">
       <span><strong>Memory Maintenance</strong>
         <small>{release ? headline(release) : "Checking…"}. When on, a Character&apos;s new messages are organized into
-          Memory after the chat has been idle for at least 5 minutes while VEIL is open. Each batch is one paid request
+          Memory once enough of them have piled up (no timer) while VEIL is open. Each batch is one paid request
           to the Memory model.</small></span>
       <Switch checked={!!release?.consent && release.approved} disabled={!release?.approved || !release.locks}
         aria-label="Memory Maintenance on this device" onChange={toggle} />
@@ -120,7 +119,7 @@ export function MemoryMaintenanceSettings() {
           <b>{row.name}</b>
           <span>{row.model.state === "ready" ? `Model: ${row.model.label}` : `Model unavailable: ${row.model.reason}`}</span>
           {row.progress && <span>{progressLine(row.progress)}</span>}
-          {row.progress?.dueAt != null && <span>Next check after {time(row.progress.dueAt)}</span>}
+          {row.progress && <span>{!release?.consent || !release.approved || !release.locks ? "Waiting for Memory Maintenance to be available on this device." : row.progress.due ? "A check is due and starts on its own." : `A check starts once ${row.progress.trigger} new messages are waiting (${row.progress.pending} now).`}</span>}
         </li>)}
       </ul>}
     </div>

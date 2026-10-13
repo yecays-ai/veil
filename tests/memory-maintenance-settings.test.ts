@@ -9,7 +9,6 @@ import type { BindingDocument } from "../lib/bindings";
 import type { ChatSession } from "../lib/chat/types";
 import { USAGE_BASELINE_KEY } from "../lib/chat/usage-baseline";
 import { MAINTENANCE_CONSENT_KEY, maintenanceReleaseChecks } from "../lib/memory/maintenance-config";
-import { MAINTENANCE_IDLE_MS } from "../lib/memory/maintenance-runner";
 import { maintenanceModelStatus, summarizeMaintenanceProgress } from "../lib/memory/maintenance-status";
 import type { MemoryCursor } from "../lib/memory/types";
 import { lockOrigin } from "./generation-lock-fixture";
@@ -65,12 +64,13 @@ test("progress summary counts tracked, processed and blocked batches per Charact
     { id: "b1", fromSeq: 4, toSeq: 4, state: "failed", attempts: 1, sources: [{ messageId: "m", seq: 4, hash }], candidates: [] },
     { id: "b2", fromSeq: 6, toSeq: 7, state: "uncertain", attempts: 1, sources: [], candidates: [] },
   ] }), cursor("other", "o", { epoch: "o", incarnation: "i", throughSeq: 29, completed: [], batches: [] })];
-  const summary = summarizeMaintenanceProgress("c", sessions, cursors, now);
-  assert.deepEqual({ ...summary, dueAt: undefined }, { tracked: 8, processed: 4, waiting: 0, running: 0, failed: 1, uncertain: 1, tooLarge: 0, dueAt: undefined });
-  assert.equal(summary.dueAt, now - 1000 + MAINTENANCE_IDLE_MS, "seq 8 is not yet batched");
-  const idle = summarizeMaintenanceProgress("other", sessions, cursors, now);
-  assert.equal(idle.tracked, 29); assert.equal(idle.processed, 29); assert.equal(idle.dueAt, null);
-  assert.equal(summarizeMaintenanceProgress("c", [session("s1", "c", 9, now, { generation: { id: "g" } as ChatSession["generation"] })], [], now).dueAt, null,
+  const summary = summarizeMaintenanceProgress("c", sessions, cursors);
+  assert.deepEqual(summary, { tracked: 8, processed: 4, waiting: 0, running: 0, failed: 1, uncertain: 1, tooLarge: 0, pending: 1, trigger: 20, due: false });
+  const idle = summarizeMaintenanceProgress("other", sessions, cursors);
+  assert.equal(idle.tracked, 29); assert.equal(idle.processed, 29); assert.equal(idle.pending, 0); assert.equal(idle.due, false);
+  const full = summarizeMaintenanceProgress("c", [session("s1", "c", 21, now)], []);
+  assert.equal(full.pending, 20); assert.equal(full.due, true, "a full batch is waiting");
+  assert.equal(summarizeMaintenanceProgress("c", [session("s1", "c", 21, now, { generation: { id: "g" } as ChatSession["generation"] })], []).due, false,
     "no check while a reply is generating");
 });
 
