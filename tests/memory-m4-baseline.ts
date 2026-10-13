@@ -53,7 +53,7 @@ export function selectMemoryContext(characterId: string, rows: readonly Memory[]
   for (const candidate of candidates) {
     if (seen.has(candidate.fingerprint)) continue;
     const entry = JSON.stringify({ kind: candidate.row.kind, subject: candidate.row.subject,
-      origin: candidate.row.origin, text: candidate.row.text });
+      origin: candidate.row.origin, recordedAt: new Date(candidate.row.createdAt).toISOString().slice(0, 10), text: candidate.row.text });
     const added = entry.length + (selected.length ? 1 : 0);
     if (characters + added > MEMORY_CONTEXT_LIMITS.characters) continue;
     selected.push({ row: candidate.row, entry });

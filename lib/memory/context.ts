@@ -80,6 +80,18 @@ function evidence(memory: Terms, current: Terms, recent: readonly RecentTerms[],
   return { band: 0, features: new Set() };
 }
 
+/** One injected entry. `recordedAt` is the day the memory was first written (UTC), so the model can place it in time. */
+export function memoryEntry(row: Pick<Memory, "kind" | "subject" | "origin" | "text" | "createdAt">): string {
+  return JSON.stringify({ kind: row.kind, subject: row.subject, origin: row.origin,
+    recordedAt: new Date(row.createdAt).toISOString().slice(0, 10), text: row.text });
+}
+
+/** Identifies the exact content that was injected (not its time or status), without storing a second copy of the text. */
+export async function memoryEntryHash(row: Pick<Memory, "kind" | "subject" | "origin" | "text">): Promise<string> {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify([row.kind, row.subject, row.origin, row.text])));
+  return [...new Uint8Array(bytes).slice(0, 8)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export type MemoryContext = {
   slot: MemorySlot;
   ids: string[];
@@ -137,8 +149,7 @@ export function selectMemoryContext(characterId: string, rows: readonly Memory[]
   let characters = 0;
   for (const candidate of candidates) {
     if (seen.has(candidate.fingerprint)) continue;
-    const entry = JSON.stringify({ kind: candidate.row.kind, subject: candidate.row.subject,
-      origin: candidate.row.origin, text: candidate.row.text });
+    const entry = memoryEntry(candidate.row);
     const added = entry.length + (selected.length ? 1 : 0);
     if (characters + added > MEMORY_CONTEXT_LIMITS.characters) continue;
     selected.push({ row: candidate.row, entry });

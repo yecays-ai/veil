@@ -27,7 +27,7 @@ test("message text selection remains native and the anchored positioning observe
 test("the fixed 4 by 2 action set uses one Lucide icon family", () => {
   for (const mapping of [
     ["Copy", "Copy"], ["Edit", "Pencil"], ["Quote", "Quote"],
-    ["React", "Heart"], ["Select", "CircleCheck"], ["Favorite", "Bookmark"],
+    ["Memory", "Brain"], ["Select", "CircleCheck"], ["Favorite", "Bookmark"],
     ["Delete", "Trash2"], ["Regenerate", "RotateCcw"],
   ]) assert.match(room, new RegExp(`label="${mapping[0]}" icon=\\{${mapping[1]}\\}`));
   assert.equal((room.match(/<Action label=/g) || []).length, 8);

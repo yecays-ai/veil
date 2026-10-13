@@ -288,7 +288,14 @@ export class MemoryStorage {
     const seq = (existing.at(-1)?.seq ?? 0) + 1;
     const operation: MemoryOperation = { id: `${characterId}\u0000${seq}`, characterId, seq, label, createdAt: now, changes, suppressionChanges };
     await request(operations.put(operation));
-    const kept = [...existing, operation];
+    // A deleted memory leaves no earlier version behind: older undo records that hold a different text of it are dropped,
+    // so neither Undo nor a reply's Memory panel can bring that text back. Records holding the deleted text itself stay;
+    // this operation's own record is what undoes the delete.
+    const removed = new Map(changes.filter((change) => change.after === null && change.before).map((change) => [change.before!.id, change.before!.text]));
+    const stale = removed.size ? existing.filter((old) => old.changes.some((change) => [change.before, change.after]
+      .some((row) => row && removed.has(row.id) && row.text !== removed.get(row.id)))) : [];
+    for (const old of stale) await request(operations.delete(old.id));
+    const kept = [...existing.filter((old) => !stale.includes(old)), operation];
     for (const old of kept.slice(0, Math.max(0, kept.length - MEMORY_OPERATION_LIMIT)))
       await request(operations.delete(old.id));
     return operation;

@@ -71,7 +71,7 @@ test("count and serialized character guards skip whole oversized entries and acc
   assert.equal(result.characterLength, result.slot.entries.join("\n").length);
   assert(result.characterLength <= MEMORY_CONTEXT_LIMITS.characters);
   const boundary = row("boundary", "orchids ");
-  const overhead = JSON.stringify({ kind: boundary.kind, subject: boundary.subject, origin: boundary.origin, text: boundary.text }).length;
+  const overhead = JSON.stringify({ kind: boundary.kind, subject: boundary.subject, origin: boundary.origin, recordedAt: new Date(boundary.createdAt).toISOString().slice(0, 10), text: boundary.text }).length;
   boundary.text += "x".repeat(MEMORY_CONTEXT_LIMITS.characters - overhead);
   assert.equal(selectMemoryContext("a", [boundary], query(["orchids"])).characterLength, 2_000);
   boundary.text += "x";

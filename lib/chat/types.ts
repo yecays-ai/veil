@@ -89,7 +89,13 @@ export type ChatMessage = {
   failureStage?: "preparing" | "provider" | "finalizing";
   confirmed?: boolean;
   memorySequence?: import("../memory/sequence").MessageMemorySequence;
+  /** Memory injected into the request that produced this reply. Absent on replies from before this was recorded. */
+  memoryRefs?: MemoryRef[];
 };
+
+/** What a reply was given from Memory: the row and a hash of the injected content. Never the memory text itself. */
+export type MemoryRef = { id: string; hash: string; journal?: true };
+export const MEMORY_REF_LIMIT = 6;
 
 export type PromptTurn = { role: ChatMessage["role"]; content: string };
 export function isTruncatedReason(reason?: string) {

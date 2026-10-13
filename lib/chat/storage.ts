@@ -6,6 +6,8 @@ import { readExistingMemorySource } from "../memory/source-read";
 import {
   type ChatMessage,
   type ChatSummary,
+  type MemoryRef,
+  MEMORY_REF_LIMIT,
   type ChatBackgroundSettings,
   type ChatImageAsset,
   type ChatSession,
@@ -1261,7 +1263,8 @@ export class ChatStorage {
     return next;
   }
   async finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
-    transformPart: (part: string) => string = (part) => part, attemptId?: string, finishReason?: string, signal?: AbortSignal, scope?: PersistenceWriteScope): Promise<ChatMessage[]> {
+    transformPart: (part: string) => string = (part) => part, attemptId?: string, finishReason?: string, signal?: AbortSignal, scope?: PersistenceWriteScope,
+    memoryRefs?: MemoryRef[]): Promise<ChatMessage[]> {
     if (this.sourceMemory && !scope) {
       const draft = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
       if (!draft) throw new Error("Generation attempt is no longer active.");
@@ -1269,7 +1272,7 @@ export class ChatStorage {
       try {
         // New replies and continuations append content; they do not replace cited evidence.
         if (draft.attemptMode !== "regenerate") return await this.sourceMemory.withShared(async (owned) => {
-          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned);
+          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs);
           finalized = true; return result;
         });
         return await this.sourceMemory.withExclusive(async (owned) => {
@@ -1278,7 +1281,7 @@ export class ChatStorage {
         const targets = draft.attemptMode === "regenerate" && draft.attemptFor ? assistantTurn(view.messages, draft.attemptFor) : [];
         return invalidateChatSources(this.sourceMemory!, view.session, targets,
           async () => {
-            const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned);
+            const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs);
             finalized = true; return result;
           }, owned);
       }, { signal }); } finally {
@@ -1317,6 +1320,8 @@ export class ChatStorage {
         ...first, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
         content: part, status: "complete", outcome, finishReason, error: undefined,
         attemptFor: undefined, attemptMode: undefined, failureStage: undefined,
+        // Each reply records only its own request; a regenerated or continued part never inherits an older one.
+        memoryRefs: memoryRefs?.slice(0, MEMORY_REF_LIMIT),
         order: first.order + index,
       }));
       const remaining = all.filter((m) => !remove.has(m.id));

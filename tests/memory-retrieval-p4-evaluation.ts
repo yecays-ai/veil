@@ -34,7 +34,7 @@ export function checkP4Selection(id: string, rows: Memory[], conversation: Memor
   if (actual.slot.entries.length !== actual.ids.length) failures.push("ids and serialized entries differ in count");
   const expectedEntries = expectedIds.map((key) => {
     const row = before.rows.find((item) => item.id === key)!;
-    return JSON.stringify({ kind: row.kind, subject: row.subject, origin: row.origin, text: row.text });
+    return JSON.stringify({ kind: row.kind, subject: row.subject, origin: row.origin, recordedAt: new Date(row.createdAt).toISOString().slice(0, 10), text: row.text });
   });
   if (!isDeepStrictEqual(actual.slot.entries, expectedEntries)) failures.push("serialized entries differ from expected rows");
   if (actual.outcome !== (expectedIds.length ? "selected" : "empty")) failures.push(`unexpected outcome: ${actual.outcome}`);

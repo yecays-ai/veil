@@ -10,7 +10,7 @@ import { createPresetDocument, presetForBinding, type PresetDocument } from "../
 import { browserPresetStorage } from "../preset-storage";
 import { assembleChatPrompt, hasSystemCharacterSlot, hasSystemMemorySlot, journalTriggerTexts, memoryConversation } from "./prompt";
 import { browserMemoryStorage } from "../memory/browser";
-import { emptyMemoryContext, selectMemoryContext } from "../memory/context";
+import { emptyMemoryContext, memoryEntryHash, selectMemoryContext } from "../memory/context";
 import { journalEntry, selectJournal } from "../memory/journal";
 import type { Memory } from "../memory/types";
 import { selfState, type SelfState } from "./self-context";
@@ -21,7 +21,7 @@ import {
   type TextProvider,
 } from "./provider";
 import { ChatStorage, chatStorage } from "./storage";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, MemoryRef } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
 import { characterActionApplier, splitActions, type ActionApplier } from "../presence/actions";
@@ -197,10 +197,15 @@ export function createChatEngine(
             const context = selectMemoryContext(character.characterId, rows, memoryConversation(runtime, preset));
             // Journal has its own single-entry quota beside Memory's; no match adds nothing.
             const journal = selectJournal(character.characterId, rows, journalTriggerTexts(runtime, preset));
-            return journal ? { ...context, slot: { ...context.slot, entries: [...context.slot.entries, journalEntry(journal)] },
+            const used = journal ? { ...context, slot: { ...context.slot, entries: [...context.slot.entries, journalEntry(journal)] },
               ids: [...context.ids, journal.id], outcome: "selected" as const } : context;
-          }).catch(() => emptyMemoryContext("unavailable"))
-        : Promise.resolve(emptyMemoryContext("preset-disabled"));
+            // Remember which exact entries went into this request, for the reply's Memory panel.
+            return Promise.all(used.ids.map(async (id): Promise<MemoryRef> => {
+              const row = rows.find((candidate) => candidate.id === id)!;
+              return { id, hash: await memoryEntryHash(row), ...(row.origin === "journal" ? { journal: true as const } : {}) };
+            })).then((refs) => ({ ...used, refs }));
+          }).catch(() => ({ ...emptyMemoryContext("unavailable"), refs: undefined as MemoryRef[] | undefined }))
+        : Promise.resolve({ ...emptyMemoryContext("preset-disabled"), refs: [] as MemoryRef[] });
       const activation = evaluateWorldBooks(books, batch.messages,
         await awaited(storage.readWorldBookState(sessionId), controller.signal));
       const weather = document.runtime?.timeAware === false ? undefined : await awaited(Promise.all([
@@ -251,7 +256,7 @@ export function createChatEngine(
       const { text: replyText, actions } = splitActions(rawContent);
       const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(replyText), activation.nextState,
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
-        attempt.id, finishReason, controller.signal);
+        attempt.id, finishReason, controller.signal, undefined, memory.refs);
       persisted = "committed";
       // Last Seen only: a failure here can neither undo the committed reply nor delay it.
       void Promise.resolve().then(() => recordSent(target.characterId, now().getTime()))
