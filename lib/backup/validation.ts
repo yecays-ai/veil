@@ -9,6 +9,7 @@ import { normalizePresenceDocument } from "../presence/storage";
 import { isValidBubbleTimingDelay } from "../chat/types";
 import { APP_IDS } from "../app-registry";
 import { memoryFingerprint } from "../memory/fingerprint";
+import { journalRowProblem } from "../memory/journal";
 import { MEMORY_OPERATION_LIMIT } from "../memory/types";
 import { memoryMessageEligible } from "../memory/sequence";
 import { memoryBatchActive, validMemoryProgress } from "../memory/progress-types";
@@ -249,11 +250,12 @@ function memorySources(value: unknown, path: string): asserts value is Row[] {
 }
 function memoryRow(row: unknown, path: string): asserts row is Row {
   const fields = ["id", "characterId", "kind", "text", "subject", "status", "origin", "sources", "lineage", "fingerprint", "createdAt", "updatedAt"];
-  keys(row, fields, fields, path);
+  // `keywords` exists on Journal rows only (absent otherwise); no DB or manifest version change is needed for it.
+  keys(row, (row as Row | null)?.origin === "journal" ? [...fields, "keywords"] : fields, fields, path);
   check(id(row.id) && id(row.characterId), path, "invalid-data", "id-invalid");
   check(typeof row.kind === "string" && typeof row.text === "string" && typeof row.subject === "string", path, "invalid-data", "text-field-not-string");
   check(["active", "superseded", "archived", "flagged"].includes(String(row.status)), path, "invalid-data", "status-invalid");
-  check(["manual", "auto"].includes(String(row.origin)), path, "invalid-data", "origin-invalid");
+  check(["manual", "auto", "journal"].includes(String(row.origin)), path, "invalid-data", "origin-invalid");
   memorySources(row.sources, `${path}.sources`);
   keys(row.lineage, ["mergedFrom", "supersededBy", "previousStatus"], [], `${path}.lineage`);
   check(row.lineage.previousStatus === undefined || (["active", "archived", "flagged"].includes(String(row.lineage.previousStatus)) && row.lineage.supersededBy !== undefined), path);
@@ -264,6 +266,7 @@ function memoryRow(row: unknown, path: string): asserts row is Row {
   // The fingerprint is always derived from the text; a stored value that disagrees is a damaged or edited file.
   check(typeof row.fingerprint === "string" && !!row.fingerprint && row.fingerprint === memoryFingerprint(row.text as string), path, "invalid-data", "fingerprint-mismatch");
   check(integer(row.createdAt) && integer(row.updatedAt), path, "invalid-data", "timestamp-invalid");
+  if (row.origin === "journal") check(journalRowProblem(row as never) === null, path, "invalid-data", "journal-invalid");
 }
 function suppressionRow(row: unknown, path: string): asserts row is Row {
   const fields = ["id", "characterId", "fingerprint", "reason", "sources", "createdAt"];

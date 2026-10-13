@@ -3,7 +3,8 @@ export const MEMORY_DATABASE_VERSION = 1;
 export const MEMORY_OPERATION_LIMIT = 5;
 
 export type MemoryStatus = "active" | "superseded" | "archived" | "flagged";
-export type MemoryOrigin = "manual" | "auto";
+/** `journal` rows are user-written, keyword-triggered entries (see lib/memory/journal.ts); never touched by maintenance. */
+export type MemoryOrigin = "manual" | "auto" | "journal";
 
 /** A pointer to a persisted chat message. Chat text is never copied into Memory. */
 export type MemorySource = { sessionId: string; messageId: string };
@@ -29,6 +30,8 @@ export type Memory = {
   lineage: MemoryLineage;
   /** Normalized-text fingerprint; always derived by the store, never trusted from callers. */
   fingerprint: string;
+  /** Journal rows only: trigger keywords. */
+  keywords?: string[];
   createdAt: number;
   updatedAt: number;
 };

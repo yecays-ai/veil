@@ -104,7 +104,7 @@ export class MemoryProgressProtocol {
     if (new Set(candidateIds).size !== candidateIds.length) return fail();
     const candidates = await Promise.all(candidateIds.map(async (id) => {
       const row = rows.find((row) => row.id === id);
-      if (!row || row.origin === "manual") throw new MemoryProtectedError(id);
+      if (!row || row.origin !== "auto") throw new MemoryProtectedError(id);
       return { id, updatedAt: row.updatedAt, hash: await digest(row) };
     }));
     return { sources, candidates };
@@ -190,7 +190,7 @@ export class MemoryProgressProtocol {
     const chats = new Map([[state.sessionId, chat]]);
     for (const candidate of batch.candidates) {
       const row = memories.find((m) => m.id === candidate.id);
-      if (!row || row.origin === "manual" || row.updatedAt !== candidate.updatedAt || await digest(row) !== candidate.hash) return fail();
+      if (!row || row.origin !== "auto" || row.updatedAt !== candidate.updatedAt || await digest(row) !== candidate.hash) return fail();
       for (const source of row.sources) {
         let origin = chats.get(source.sessionId);
         if (!origin) {
@@ -351,7 +351,7 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
     if (draft.lineage.supersededBy !== undefined && (typeof draft.lineage.supersededBy !== "string" || !draft.lineage.supersededBy
       || draft.lineage.supersededBy === draft.id)) return fail();
     const before = await request<Memory | undefined>(store.get(draft.id));
-    if (before?.origin === "manual") throw new MemoryProtectedError(draft.id);
+    if (before && before.origin !== "auto") throw new MemoryProtectedError(draft.id);
     if (before && (before.characterId !== characterId || !candidates.has(before.id) || before.updatedAt !== candidates.get(before.id)!.updatedAt)) return fail();
     const sources = normalizeSources(draft.sources), fingerprint = memoryFingerprint(draft.text);
     // Session comes from the validated ticket/cursor, not a caller's invented pointer.
