@@ -1,12 +1,12 @@
 # STATUS — 2026-10-13-codex-memory-m6-p1
 
 更新人：Codex
-更新时间：2026-10-13T11:16:00+08:00
+更新时间：2026-10-13T11:23:30+08:00
 发现范围：GitHub API 重核最新 main `ae5c8999e6feff21b68551e9cf42322b25d6838e`；本轮 open/draft PR 搜索为空，m6 远端分支搜索为空。已读最新 AGENTS、唯一台账、P1 记录和全部 GitHub workflow。未发布的其他本地工作及未暴露的外部自动化不可见，不对其作安全保证。
 
 ## 当前任务
 
-P1 已发布为 [PR #167](https://github.com/yecays-ai/veil/pull/167)，等待最新 head 的 CI/CodeRabbit/Preview 及 Lan 手动审查合并。Lan 后续授权 P1 分支发布及 Preview；Production、合并、automerge、真实模型、consent 和 P2–P5 均未授权。
+P1 施工与发布完成：[PR #167](https://github.com/yecays-ai/veil/pull/167) 未合并，等待 Lan 手动审查合并。CodeRabbit 首轮仅一条台账发布状态过期意见，本次修正；修正提交的最新 CI/CodeRabbit/Preview 尚待外部检查。Lan 后续授权 P1 分支发布及 Preview；Production、合并、automerge、真实模型、consent 和 P2–P5 均未授权。
 
 ## 谁在改哪里
 
@@ -23,10 +23,13 @@ Codex；发布分支 `codex/memory-m6-p1-release`；[PR #167](https://github.com
 - 本轮独立发布工作区重跑：704/704、零跳过；测试编译、typecheck、改动文件 lint、webpack build 和 diff 检查通过。Node 24.19.0。复用已安装依赖；build 在授权范围内沙箱外本地执行，Maintenance approval=false、CI=true，不调用模型。
 - 命令：`node node_modules/typescript/bin/tsc --project tsconfig.tests.json`；`node --test --test-concurrency=4 <受影响模块编译后测试文件绝对路径>`；`node node_modules/typescript/bin/tsc --noEmit`；`node node_modules/eslint/bin/eslint.js <改动TS文件>`；`node node_modules/next/dist/bin/next build --webpack`。
 - 详细数据合同、兼容规则、隐私代价及 P2 前置见 [模块记录](../memory-m6-p1-foundation.md)。
+- 已核实远端 `e19d3d2b96dee9dd73d18cf99dfeaee7f98c54de`：GitHub [CI #1178](https://github.com/yecays-ai/veil/actions/runs/38340920300) 的 typecheck、全仓 lint、test、build、diff 检查全部成功；Vercel `dpl_9cN8met15wx3nC71uPYVAV5B3pG3` READY、target=null（Preview），[Preview](https://veil-58qro8ht4-yecays-ai.vercel.app)。不是新 head 的成功承诺。
+- CodeRabbit 2026-10-13T03:23:02Z 对 main 至上述 head 完整审查 19 文件，1 条有效意见：唯一台账仍写“未创建 PR”。本次最小文档修正处理，不改产品代码或测试。最终最新 head CI/Preview/审查在 PR 实时页面核对。
+- 已查部署列表：原 Production 仍为 main `ae5c8999e6feff21b68551e9cf42322b25d6838e` / `dpl_GhERu9JJrjUgG2TGxkTGubh4m3L1`；仅新增 P1 分支 Preview，未修改 Production 配置、未提升或合并。
 
 ## 尚未验证
 
-- PR head CI、CodeRabbit、Preview：PR 已创建，外部检查尚待完成；以最新 head 检查为准，不能沿用旧 commit 成功。
+- 文档修正后最新 head 的 CI、CodeRabbit、Preview：等待外部检查，以 PR 实时结果为准，不能沿用旧 commit 成功；截至本记录未新增代码变动。
 - 真机、真实模型、后台与真实多标签页：未验证。没有启用维护、接入 Prompt、执行真实数据升级或付费调用。
 - P2 的冲突判断/单条来源失效接线尚未施工；P1 没有生产 State writer，不能声称这些业务已完成。
 
