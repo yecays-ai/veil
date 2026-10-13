@@ -245,6 +245,7 @@ export class MemoryStorage {
           const problem = journalRowProblem(draft);
           if (problem) throw new Error(problem);
         } else if (draft.keywords !== undefined) throw new Error("Only Journal entries have keywords.");
+        if (draft.ongoing !== undefined && draft.origin !== "auto") throw new Error("Only automatic memories carry ongoing review data.");
         const fingerprint = memoryFingerprint(draft.text);
         if (!fingerprint) throw new Error("A memory needs text.");
         if (draft.status === "active" || draft.status === "flagged") {
