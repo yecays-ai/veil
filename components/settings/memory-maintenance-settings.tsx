@@ -10,13 +10,14 @@ import {
   maintenanceReleaseChecks, setMaintenanceConsent,
 } from "../../lib/memory/maintenance-config";
 import {
-  maintenanceModelStatus, summarizeMaintenanceProgress, type MaintenanceModelStatus, type MaintenanceProgressSummary,
+  maintenanceModelStatus, summarizeMaintenanceProgress, summarizeRollingSummary, type MaintenanceModelStatus, type MaintenanceProgressSummary,
+  type RollingSummaryStatus,
 } from "../../lib/memory/maintenance-status";
 import { useFoundation } from "../foundation-provider";
 import { Switch } from "./ui/switch";
 
 type Release = { approved: boolean; missing: string[]; locks: boolean; consent: boolean };
-type CharacterRow = { id: string; name: string; model: MaintenanceModelStatus; progress: MaintenanceProgressSummary | null };
+type CharacterRow = { id: string; name: string; model: MaintenanceModelStatus; progress: MaintenanceProgressSummary | null; summary: RollingSummaryStatus };
 
 /** Build-time conditions are read after mount: the static page is prerendered in a different environment. */
 function readRelease(): Release {
@@ -37,6 +38,11 @@ function headline(release: Release): string {
   if (!release.approved) return "Unavailable in this build";
   if (!release.locks) return "Unavailable in this browser";
   return release.consent ? "On for this device" : "Off for this device";
+}
+
+function summaryLine(summary: RollingSummaryStatus): string {
+  const base = summary.chats ? `Chat summary: ${summary.chats} ${summary.chats === 1 ? "chat" : "chats"} · updated ${time(summary.updatedAt!)}` : "Chat summary: none yet";
+  return summary.due ? `${base} · a new summary is due` : base;
 }
 
 function progressLine(progress: MaintenanceProgressSummary): string {
@@ -77,6 +83,7 @@ export function MemoryMaintenanceSettings() {
       const next = await Promise.all(document.characters.map(async (character): Promise<CharacterRow> => ({
         id: character.characterId, name: character.name,
         model: await maintenanceModelStatus(bindings, character.characterId, (id) => browserApiConfigStorage.getApiConfig(id)),
+        summary: summarizeRollingSummary(character.characterId, sessions),
         // Memory progress is only read once the release is approved, like the root gate.
         progress: release.approved
           ? summarizeMaintenanceProgress(character.characterId, sessions, await browserMemoryStorage.listCursors(character.characterId))
@@ -119,6 +126,7 @@ export function MemoryMaintenanceSettings() {
           <b>{row.name}</b>
           <span>{row.model.state === "ready" ? `Model: ${row.model.label}` : `Model unavailable: ${row.model.reason}`}</span>
           {row.progress && <span>{progressLine(row.progress)}</span>}
+          {row.progress && <span>{summaryLine(row.summary)}</span>}
           {row.progress && <span>{!release?.consent || !release.approved || !release.locks ? "Waiting for Memory Maintenance to be available on this device." : row.progress.due ? "A check is due and starts on its own." : `A check starts once ${row.progress.trigger} new messages are waiting (${row.progress.pending} now).`}</span>}
         </li>)}
       </ul>}
