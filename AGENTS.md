@@ -43,7 +43,7 @@ Browser data belongs to the user. Treat Character, User, Universe, chat, appeara
 - Use the available GitHub integration/API for remote repository operations instead and continue the original task without asking the user to manually intervene.
 - If the execution environment is already known to restrict direct GitHub network access, prefer the GitHub integration/API immediately rather than attempting the known-failing transport first.
 - A direct Git transport failure alone is not a reason to stop the task when an authorized GitHub integration/API path is available.
-- Every PR is merged manually by the repository owner. Do not add the `automerge` label, enable auto-merge, or call the merge API, however ready the PR looks, unless the owner explicitly asks for that specific PR.
+- The repository owner has delegated merging to the working agent (2026-10-13). Merge your own PR only when its CI is green, every review thread is answered, and the PR is mergeable; merge with the merge API, never by pushing to `main`. Merging is not deployment: do not publish a release, run paid model calls, or change production data unless the owner explicitly asks.
 - When CI or a preview cannot run because of account or billing limits, report those checks as not run (never as passed), name each one, and give the local substitute check with its command and version.
 
 ## Changes and verification
@@ -53,7 +53,7 @@ Browser data belongs to the user. Treat Character, User, Universe, chat, appeara
 - Add or update focused behavior tests for changed logic, especially storage, migrations, request counts, cancellation, and data safety.
 - Run the relevant checks. The repository provides `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`.
 - Report what was checked and any environment or device behavior that remains unverified.
-- Keep commits focused. Do not call the merge API, enable auto-merge, add the `automerge` label, or publish a release unless explicitly requested for that specific PR; the owner merges PRs manually.
+- Keep commits focused. Do not publish a release unless explicitly requested for that specific PR.
 
 ## Scoped checks by default
 
