@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "tsc --project tsconfig.tests.json && node scripts/run-tests.mjs",
+    "test:memory": "node scripts/test-memory-retrieval.mjs",
     "test:mutations": "tsc --project tsconfig.tests.json && node scripts/check-lifecycle-test-mutations.mjs",
     "test:browser": "playwright test"
   },
