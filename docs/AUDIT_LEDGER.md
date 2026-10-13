@@ -270,3 +270,11 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 - 发布门禁：Vercel Git 关联正确；Lan 只读确认 Production Branch 为 main、新分支仅 Preview；已读当前唯一 CI 工作流、仓库 scripts/部署配置，未发现非 main 的 Production/提升动作。发布仅更新独立分支，禁止 automerge、Production 和生产配置变更。当前 PR 与检查见[唯一任务记录](work-status/2026-10-13-codex-memory-m6-p1.md)，数据合同见[模块合同](memory-m6-p1-foundation.md)。
 - 当前合并事实补记：#165 已合并为 `21369721e77a031aad4410b53d55767dd48396ae`，#166 已合并为上述 main；本页 M8 原“未合并”属于历史施工快照，不能作为重复施工依据。M8 产品行为未改动，本单仅更新测试夹具满足六表合同。
 
+
+## Memory M6 P5：开发环境只读 Context Inspector（新增，2026-10-13）
+
+基线 `main 8a0f79044c6b291906a518bc07a5d717924a348a`。Lan 2026-10-13T08:11Z 授权 P5。状态：**已修待验（独立 PR 待 Lan 审查；未合并、未部署）**。
+
+- 已实现：开发环境复用 `request-diagnostics` 已有的真实请求脱敏摘要，按 requestId 合并进仅内存、白名单字段、最多 20 条的 Inspector；`?veilInspector=1` 打开只读浮动面板。不存正文/关键词/密钥，不持久化，不改 Prompt 或模型调用次数；生产不采集、不渲染入口。
+- 自动化证据：JSDOM/stub fetch 定向测试，见[任务状态](work-status/2026-10-13-claude-memory-m6-p5.md)。
+- 未验证：真实开发服务器面板交互、iPhone/Safari。
