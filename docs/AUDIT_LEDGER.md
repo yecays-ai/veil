@@ -278,3 +278,10 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 - 自动化证据：fake IndexedDB / stub，memory-*、backup-*、chat-* 定向测试通过；typecheck、改动文件 lint 通过。详见 [模块记录](memory-m6-p3-ongoing.md) 与 [任务状态](work-status/2026-10-13-claude-memory-m6-p3.md)。
 - 未验证：真实模型行为（天数是否合理、是否保守对待沉默）、iPhone；`npm run build`、全量测试未跑。
 
+## Memory M6 P5：开发环境只读 Context Inspector（新增，2026-10-13）
+
+基线 `main 8a0f79044c6b291906a518bc07a5d717924a348a`。Lan 2026-10-13T08:11Z 授权 P5。状态：**已修待验（独立 PR 待 Lan 审查；未合并、未部署）**。
+
+- 已实现：开发环境复用 `request-diagnostics` 已有的真实请求脱敏摘要，按 requestId 合并进仅内存、白名单字段、最多 20 条的 Inspector；`?veilInspector=1` 打开只读浮动面板。不存正文/关键词/密钥，不持久化，不改 Prompt 或模型调用次数；生产不采集、不渲染入口。
+- 自动化证据：JSDOM/stub fetch 定向测试，见[任务状态](work-status/2026-10-13-claude-memory-m6-p5.md)。
+- 未验证：真实开发服务器面板交互、iPhone/Safari。

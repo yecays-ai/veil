@@ -2,6 +2,7 @@ import { isTruncatedReason, type PromptTurn } from "./types";
 import type { PromptDiagnosticSection } from "./prompt";
 import { appendUsageBaseline, buildUsageBaselineRecord, type UsageBaselineMeta } from "./usage-baseline";
 import type { MemoryContext } from "../memory/context";
+import { recordContextInspector } from "./context-inspector";
 
 type MemorySummary = Pick<MemoryContext, "ids" | "characterLength" | "outcome">;
 
@@ -89,21 +90,27 @@ export function parseCompletionUsage(value: unknown): CompletionUsage | null {
 export function logCompletionStart(context: CompletionRequestContext, model: string,
   messages: readonly PromptTurn[], stream: boolean) {
   if (process.env.NODE_ENV !== "development") return;
-  try { console.info("[VEIL completion:start]", completionStartSummary(context, model, messages, stream)); }
-  catch { /* Diagnostics must never affect generation. */ }
+  try {
+    const summary = completionStartSummary(context, model, messages, stream);
+    console.info("[VEIL completion:start]", summary);
+    recordContextInspector("start", summary);
+  } catch { /* Diagnostics must never affect generation. */ }
 }
 
 export function logPromptSummary(context: CompletionRequestContext, model: string,
   sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[], memory?: MemorySummary) {
   if (process.env.NODE_ENV !== "development") return;
-  try { console.info("[VEIL prompt:summary]", promptSummary(context, model, sections, messages, memory)); }
-  catch { /* Diagnostics must never affect generation. */ }
+  try {
+    const summary = promptSummary(context, model, sections, messages, memory);
+    console.info("[VEIL prompt:summary]", summary);
+    recordContextInspector("prompt", summary);
+  } catch { /* Diagnostics must never affect generation. */ }
 }
 
 export function logCompletionUsage(context: CompletionRequestContext, usage: CompletionUsage | null) {
   if (process.env.NODE_ENV !== "development") return;
   try {
-    console.info("[VEIL completion:usage]", {
+    const summary = {
       requestId: context.requestId,
       source: context.source,
       prompt_tokens: usage?.prompt_tokens ?? null,
@@ -111,7 +118,9 @@ export function logCompletionUsage(context: CompletionRequestContext, usage: Com
       total_tokens: usage?.total_tokens ?? null,
       prompt_cache_hit_tokens: usage?.prompt_cache_hit_tokens ?? null,
       prompt_cache_miss_tokens: usage?.prompt_cache_miss_tokens ?? null,
-    });
+    };
+    console.info("[VEIL completion:usage]", summary);
+    recordContextInspector("usage", summary);
   } catch { /* Diagnostics must never affect generation. */ }
 }
 
@@ -173,7 +182,9 @@ export function startCompletionTerminal(context: CompletionRequestContext, meta?
     }
     if (process.env.NODE_ENV !== "development") return;
     try {
-      console.info("[VEIL completion:terminal]", completionTerminalSummary(context, terminal, Date.now() - started));
+      const summary = completionTerminalSummary(context, terminal, Date.now() - started);
+      console.info("[VEIL completion:terminal]", summary);
+      recordContextInspector("terminal", summary);
     } catch { /* Diagnostics must never affect generation. */ }
   };
 }

@@ -8,6 +8,7 @@ import { RestoreGate } from "../components/restore-gate";
 import { ProductBootstrap } from "../components/product-bootstrap";
 import { MemoryMaintenanceGate } from "../components/memory-maintenance-gate";
 import { ChatDiagnosticsGate } from "../components/diagnostics/chat-diagnostics";
+import { ContextInspectorGate } from "../components/diagnostics/context-inspector";
 import "./globals.css";
 import "./appearance.css";
 import "./desktop.css";
@@ -81,6 +82,7 @@ export default function RootLayout({
             <PhoneShell>
               <ThemeProvider>
                 <FoundationProvider><ChatDiagnosticsGate>{children}</ChatDiagnosticsGate></FoundationProvider>
+                <ContextInspectorGate />
               </ThemeProvider>
             </PhoneShell>
           </main>
