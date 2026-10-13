@@ -5,6 +5,7 @@ import { maintenanceEnabled } from "../memory/maintenance-config";
 import { readExistingMemorySource } from "../memory/source-read";
 import {
   type ChatMessage,
+  type ChatSummary,
   type ChatBackgroundSettings,
   type ChatImageAsset,
   type ChatSession,
@@ -17,6 +18,7 @@ import {
 } from "./types";
 import { splitAssistantReply } from "./reply-splitter";
 import { quoteMessage } from "./quote";
+import { historyEligible, summaryDigest, SUMMARY_CHARACTERS } from "./summary";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
 import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
@@ -150,7 +152,8 @@ async function resetConversationHistory(tx: IDBTransaction, session: ChatSession
     throw new Error("A reply is in progress. Stop it before clearing this conversation.");
   for (const message of messages) await request(table.delete(message.id));
   await request(tx.objectStore("worldBookStates").delete(session.id));
-  const resetSession: ChatSession = { ...session, generation: undefined, updatedAt: Date.now(), nextOrder: 1,
+  // The rolling summary is made of this history's text, so it goes with it.
+  const resetSession: ChatSession = { ...session, generation: undefined, summary: undefined, updatedAt: Date.now(), nextOrder: 1,
     ...(session.memorySequence ? { memorySequence: { epoch: crypto.randomUUID(), nextSeq: 1 } } : {}),
     lastMessageId: undefined, lastMessagePreview: "" };
   await request(tx.objectStore("sessions").put(resetSession));
@@ -936,9 +939,11 @@ export class ChatStorage {
       await request(table.put(next));
       const sessions = tx.objectStore("sessions");
       const session: ChatSession = await request(sessions.get(existing.sessionId));
-      if (session.lastMessageId === id)
-        await request(sessions.put({ ...session, updatedAt: Date.now(),
-          lastMessagePreview: trimmed.slice(0, 120) }));
+      // A summary that covers the edited message would keep the old text, so it is discarded and rebuilt later.
+      const staleSummary = !!session.summary && existing.content !== trimmed && existing.order <= session.summary.throughOrder;
+      if (session.lastMessageId === id || staleSummary)
+        await request(sessions.put({ ...session, ...(session.lastMessageId === id ? { updatedAt: Date.now(), lastMessagePreview: trimmed.slice(0, 120) } : {}),
+          ...(staleSummary ? { summary: undefined } : {}) }));
       return next;
     }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }), undefined, scope);
   }
@@ -1010,11 +1015,36 @@ export class ChatStorage {
         remaining[index] = next;
       }
       const last = remaining.findLast((message) => message.role !== "system");
+      // Deleting anything the summary covers would leave its text behind, so the summary goes too.
+      const staleSummary = !!session.summary && deleting.some((message) => message.order <= session.summary!.throughOrder);
       await request(sessions.put({ ...session, updatedAt: Date.now(),
         nextOrder: remaining.length + 1, lastMessageId: last?.id,
-        lastMessagePreview: last?.content.slice(0, 120) || "" }));
+        lastMessagePreview: last?.content.slice(0, 120) || "", ...(staleSummary ? { summary: undefined } : {}) }));
       return deleting.length;
     }, STORES, (count) => count ? { domain: "messages", sessionId } : null, undefined, scope);
+  }
+
+  /**
+   * Writes or (with `next === null`) discards the rolling summary, only if the stored one is still the one the caller
+   * planned from and the covered messages still hash to `next.digest`. Does not touch `updatedAt`, so a background
+   * summary never reorders the chat list. Returns false, without writing, when anything changed meanwhile.
+   */
+  async commitSummary(sessionId: string, expectedDigest: string | undefined, next: ChatSummary | null, scope: PersistenceWriteScope): Promise<boolean> {
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session || session.type === "group" || session.generation || session.summary?.digest !== expectedDigest) return false;
+      if (next) {
+        const messages: ChatMessage[] = await request(tx.objectStore("messages").index("sessionId").getAll(sessionId));
+        const covered = historyEligible(messages).filter((message) => message.order <= next.throughOrder);
+        if (!next.text.trim() || next.text.length > SUMMARY_CHARACTERS || !Number.isSafeInteger(next.throughOrder)
+          || next.throughOrder <= (session.summary?.throughOrder ?? 0) || summaryDigest(covered) !== next.digest) return false;
+      } else if (!session.summary) return false;
+      const row: ChatSession = { ...session };
+      if (next) row.summary = next; else delete row.summary;
+      await request(sessions.put(row));
+      return true;
+    }, STORES, (written) => written ? { domain: "session", sessionId } : null, undefined, scope);
   }
 
   async clearSession(sessionId: string, scope?: PersistenceWriteScope): Promise<number> {

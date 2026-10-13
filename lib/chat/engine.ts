@@ -227,7 +227,7 @@ export function createChatEngine(
         ? await awaited(Promise.resolve().then(() => states(character)).catch(() => undefined), controller.signal) : undefined;
       controller.signal.throwIfAborted();
       const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, memory.slot, preset,
-        now(), activation, regexGroups, weather, ownState, characterState);
+        now(), activation, regexGroups, weather, ownState, characterState, batch.session.summary);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
       const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };

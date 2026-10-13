@@ -4,13 +4,16 @@ import { browserDocumentStorage } from "../core-document-storage";
 import { FOUNDATION_STORAGE_KEY, browserFoundationStorage } from "../foundation-storage";
 import { normalizeFoundation } from "../foundation-types";
 import { chatStorage } from "../chat/storage";
+import type { ChatSession } from "../chat/types";
 import { openAITextProvider } from "../chat/provider";
 import { browserMemoryStorage } from "./browser";
 import { maintenanceEnabled } from "./maintenance-config";
 import { createMaintenanceDiagnostics } from "./maintenance-diagnostics";
 import { resolveMaintenanceModel } from "./maintenance-binding";
 import { MemoryProgressProtocol } from "./progress";
+import { summaryPossiblyDue } from "../chat/summary";
 import { runMaintenance } from "./maintenance-runner";
+import { runSummary, type SummaryOutcome } from "./summary-runner";
 import { createMaintenanceScheduler } from "./maintenance-scheduler";
 
 /** Mounted under RestoreGate, once per page. No initialization or requests while the release is off. */
@@ -38,9 +41,20 @@ export function startBrowserMaintenance(): () => void {
       return { config, timezone: foundation.user.timezone ?? undefined, context: JSON.stringify({ name: character.name, characterId, personality: character.personality,
         speakingStyle: character.speakingStyle, user: foundation.user.name, worldSetting: foundation.universe.worldSetting }) };
     } };
+  // What this page already looked at (or failed to summarize) is not read or sent again until the chat or summary changes.
+  const looked = new Map<string, string>();
+  const key = (s: ChatSession) => `${s.nextOrder}:${s.summary?.digest ?? ""}`;
+  const summaryDeps = { ...deps, commit: chatStorage.commitSummary.bind(chatStorage),
+    settle: (s: ChatSession, outcome: SummaryOutcome) => { if (outcome !== "discarded") looked.set(s.id, key(s)); } };
   const scheduler = createMaintenanceScheduler({ ...deps, sessions, cursors: (id) => memory.listCursors(id),
     runnable: () => document.visibilityState === "visible",
-    run: (id, signal) => runMaintenance(id, deps, signal),
+    summaryDue: (all, id) => all.some((s) => s.characterId === id && summaryPossiblyDue(s) && looked.get(s.id) !== key(s)),
+    run: async (id, signal, due) => {
+      const first = due.memory ? await runMaintenance(id, deps, signal) : false;
+      if (first === "busy") return "busy";
+      const second = due.summary && !signal.aborted ? await runSummary(id, summaryDeps, signal) : false;
+      return second === "busy" ? "busy" : first || second;
+    },
     setTimer: (cb, delay) => window.setTimeout(cb, delay), clearTimer: (id) => window.clearTimeout(id as number) });
   const wake = () => { void scheduler.wake().catch(() => undefined); };
   const unsubscribe = chatStorage.subscribe((change) => { if (change.domain === "messages" || change.domain === "session") wake(); });
