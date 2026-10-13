@@ -95,18 +95,20 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
       catch { /* A changed authority is never recreated or declared successful. */ }
       return false;
     }
+    // One reading of the clock for this maintenance request: what is due, and the review times it may set.
+    const clock = deps.now();
     const started = performance.now(); let inputCharacters = 0;
     const record = (outcome: "committed" | "rejected" | "commit-failed", operationCount = 0, discarded = 0) => deps.diagnostics?.record({
       outcome, messageCount: snapshot.messages.length, candidateCount: snapshot.candidates.length, inputCharacters,
       operationCount, discarded, durationMs: performance.now() - started });
     let input;
     // Infrastructure/authority reads must leave ready work retryable, without spending a claim.
-    const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), snapshot.messages.map((m) => m.content).join("\n"));
+    const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), snapshot.messages.map((m) => m.content).join("\n"), undefined, clock);
     ticket = await deps.protocol.refresh(ticket, selected.ids);
     snapshot = await deps.protocol.readInput(ticket);
     try {
       // Only this synchronous input validator defines unacceptable input; no storage awaits here.
-      input = buildMaintenanceInput(snapshot, { characterId, context });
+      input = buildMaintenanceInput(snapshot, { characterId, context }, undefined, clock);
     }
     catch (error) {
       if (error instanceof MaintenanceInputTooLarge) await deps.protocol.refresh(ticket, undefined, true);
@@ -150,7 +152,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     let plan;
     try {
       if (finishReason && isTruncatedReason(finishReason)) throw new Error("Incomplete maintenance output.");
-      plan = parseMaintenanceOperations(text, snapshot);
+      plan = parseMaintenanceOperations(text, snapshot, undefined, clock);
     } catch {
       await deps.protocol.transition(ticket, "failed").catch(() => undefined);
       record("rejected"); return false;

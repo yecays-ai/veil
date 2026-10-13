@@ -18,6 +18,12 @@ export type MemoryLineage = {
   previousStatus?: Exclude<MemoryStatus, "superseded">;
 };
 
+/**
+ * Automatic `ongoing` memories only. `reviewAt` is when the next normal maintenance should re-check the matter; it is
+ * a review hint, never a claim that the matter finished. `ended` records how an archived matter ended.
+ */
+export type MemoryOngoing = { reviewAt?: number; ended?: "explicit" | "presumed" };
+
 export type Memory = {
   id: string;
   characterId: string;
@@ -32,6 +38,7 @@ export type Memory = {
   fingerprint: string;
   /** Journal rows only: trigger keywords. */
   keywords?: string[];
+  ongoing?: MemoryOngoing;
   createdAt: number;
   updatedAt: number;
 };

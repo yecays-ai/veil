@@ -1,3 +1,4 @@
+import { ONGOING_REVIEW, ongoingProblem } from "./ongoing";
 import { memorySourceHash } from "./source-hash";
 import { notifyCharacterStateChanged } from "./state-events";
 import { cleanCharacterStates } from "./state-foundation";
@@ -422,7 +423,9 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
   const sourceKeys = new Set(batch.sources.map((s) => `${s.messageId}`));
   const allowedSource = new Set(existing.filter((row) => candidates.has(row.id)).flatMap((row) => row.sources.map((s) => `${s.sessionId}\0${s.messageId}`)));
   for (const draft of drafts) {
-    if (Object.keys(draft).some((key) => !["id", "characterId", "kind", "text", "subject", "status", "origin", "sources", "lineage"].includes(key))
+    if (Object.keys(draft).some((key) => !["id", "characterId", "kind", "text", "subject", "status", "origin", "sources", "lineage", "ongoing"].includes(key))
+      || ongoingProblem(draft) !== null
+      || (draft.ongoing?.reviewAt !== undefined && draft.ongoing.reviewAt > now + (ONGOING_REVIEW.maxDays + 1) * ONGOING_REVIEW.dayMs)
       || !draft.id || draft.characterId !== characterId || draft.origin !== "auto" || plan.has(draft.id)
       || !["fact", "event", "ongoing", "relationship", "continuity"].includes(draft.kind) || !["character", "user", "other"].includes(draft.subject)
       || !["active", "flagged", "archived", "superseded"].includes(draft.status) || !draft.lineage
@@ -440,6 +443,8 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
     if (suppressions.some((s) => s.fingerprint === fingerprint || s.sources.some((old) => sources.some((n) => n.sessionId === old.sessionId && n.messageId === old.messageId)))
       || existing.some((r) => r.origin === "manual" && r.fingerprint === fingerprint)) throw new MemoryProtectedError(draft.id);
     if (!before && (!sources.some((s) => s.sessionId === sessionId && sourceKeys.has(s.messageId)) || draft.status === "superseded")) return fail();
+    // An ended marker is written once, together with the archive; it is never rewritten or removed.
+    if (before && before.ongoing?.ended !== undefined && JSON.stringify(draft.ongoing) !== JSON.stringify(before.ongoing)) return fail();
     if (before && (draft.text !== before.text || draft.kind !== before.kind || draft.subject !== before.subject
       || before.sources.some((s) => !sources.some((n) => s.sessionId === n.sessionId && s.messageId === n.messageId))
       || JSON.stringify(draft.lineage.mergedFrom) !== JSON.stringify(before.lineage.mergedFrom)

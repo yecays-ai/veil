@@ -146,6 +146,7 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
             {[MEMORY_KIND_LABEL[row.kind] ?? row.kind,
               row.subject === "character" ? `About ${character.name}` : row.subject === "user" ? "About you" : row.subject === "other" ? "About someone else" : "",
               MEMORY_ORIGIN_LABEL[row.origin],
+              row.ongoing?.ended === "presumed" ? "Presumed ended" : row.ongoing?.ended === "explicit" ? "Ended" : "",
               row.status === "active" ? "" : MEMORY_STATUS_LABEL[row.status],
               new Date(row.updatedAt).toLocaleString()].filter(Boolean).join(" · ")}
           </small>
