@@ -1,16 +1,16 @@
 # STATUS — 2026-10-13-codex-memory-m6-p1
 
 更新人：Codex
-更新时间：2026-10-13T11:08:01+08:00
+更新时间：2026-10-13T11:16:00+08:00
 发现范围：GitHub API 重核最新 main `ae5c8999e6feff21b68551e9cf42322b25d6838e`；本轮 open/draft PR 搜索为空，m6 远端分支搜索为空。已读最新 AGENTS、唯一台账、P1 记录和全部 GitHub workflow。未发布的其他本地工作及未暴露的外部自动化不可见，不对其作安全保证。
 
 ## 当前任务
 
-P1 发布准备完成，等待独立 PR 的 CI/CodeRabbit/Preview。Lan 后续授权 P1 分支发布及 Preview；Production、合并、automerge、真实模型、consent 和 P2–P5 均未授权。
+P1 已发布为 [PR #167](https://github.com/yecays-ai/veil/pull/167)，等待最新 head 的 CI/CodeRabbit/Preview 及 Lan 手动审查合并。Lan 后续授权 P1 分支发布及 Preview；Production、合并、automerge、真实模型、consent 和 P2–P5 均未授权。
 
 ## 谁在改哪里
 
-Codex；发布分支 `codex/memory-m6-p1-release`；PR 尚未创建。独立工作区 `veil-memory-m6-p1-release`。19 个改动文件：Memory types/storage/lifecycle/state-foundation、Backup format/static-source/validation/restore、8 个测试及3份文档；不改 workflow、部署配置或 Journal 产品行为。
+Codex；发布分支 `codex/memory-m6-p1-release`；[PR #167](https://github.com/yecays-ai/veil/pull/167)，初始发布 head `445d2a05e003a1f81c1a5de9eeaf642620bdef61`（后续以 GitHub 实时 head 为准）。独立工作区 `veil-memory-m6-p1-release`。19 个改动文件：Memory types/storage/lifecycle/state-foundation、Backup format/static-source/validation/restore、8 个测试及3份文档；不改 workflow、部署配置或 Journal 产品行为。
 
 远端基线 SHA 如上。原本地提交 `7df6157d77546f6eaec268d13ea341181f19e8f3`、补丁 SHA256 `5a6d8aaf8b7bf65d23602115e7da0b0721b7d488edc624dee2eacd924125a2da` 已核实；补丁反向校验及独立工作区应用通过，19 文件完整复用，无内容冲突。原基线为 API 校验源码快照，不直接推送原本地历史；通过 GitHub Git Data API 以真实远端 main 为父提交构建发布 commit/tree，再更新新分支，不 force push。
 
@@ -26,10 +26,10 @@ Codex；发布分支 `codex/memory-m6-p1-release`；PR 尚未创建。独立工�
 
 ## 尚未验证
 
-- PR head CI、CodeRabbit、Preview：创建 PR 后按实际最新 head 核对，当前尚未运行。
+- PR head CI、CodeRabbit、Preview：PR 已创建，外部检查尚待完成；以最新 head 检查为准，不能沿用旧 commit 成功。
 - 真机、真实模型、后台与真实多标签页：未验证。没有启用维护、接入 Prompt、执行真实数据升级或付费调用。
 - P2 的冲突判断/单条来源失效接线尚未施工；P1 没有生产 State writer，不能声称这些业务已完成。
 
 ## 下一步
 
-创建独立 P1 PR，检查最新 head CI、Preview 和 CodeRabbit，最小修复有效 P1 问题。最终等待 Lan 手动审查合并；不 Production、不 automerge、不继续 P2。
+检查 PR #167 最新 head CI、Preview 和 CodeRabbit，最小修复有效 P1 问题。最终等待 Lan 手动审查合并；不 Production、不 automerge、不继续 P2。
