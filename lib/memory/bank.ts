@@ -115,6 +115,10 @@ export function filterMemories(rows: readonly Memory[], filter: MemoryFilter): M
     .sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
 }
 
+/** The one definition of "Active" shown in the Memory App list and Contact Info: Journal entries are not long-term memories. */
+export const isActiveMemory = (row: Pick<Memory, "status" | "origin">) => row.status === "active" && row.origin !== "journal";
+export const countActiveMemories = (rows: readonly Memory[]) => rows.filter(isActiveMemory).length;
+
 export type SourceSummary = { sessionId: string; name: string | null; messages: number; present: number };
 
 /**
