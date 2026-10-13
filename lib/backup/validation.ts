@@ -1,3 +1,4 @@
+import { SUMMARY_CHARACTERS } from "../chat/summary";
 import { memorySourceHash } from "../memory/source-hash";
 import { sourceInvalidationValid } from "../memory/source-hash";
 import { backgroundSnapshotValid, characterStateVersionValid, stateFoundationValid } from "../memory/state-foundation";
@@ -130,7 +131,7 @@ function validateChat(value: unknown) {
   const sessions = new Map(value.sessions.map((row) => [row.id, row])), direct = new Set<string>();
   value.sessions.forEach((row, index) => {
     const path = `chat.sessions[${index}]`;
-    keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder", "memorySequence"],
+    keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder", "memorySequence", "summary"],
       ["id", "characterId", "updatedAt", "autoReplyOnKeyboardDismiss", "nextOrder"], path);
     check(typeof row.characterId === "string", path, "invalid-data", "characterId-not-string");
     check(integer(row.updatedAt), path, "invalid-data", "updatedAt-not-integer");
@@ -140,6 +141,13 @@ function validateChat(value: unknown) {
     if (row.memorySequence !== undefined) {
       keys(row.memorySequence, ["epoch", "nextSeq"], ["epoch", "nextSeq"], path);
       check(row.type !== "group" && id(row.memorySequence.epoch) && integer(row.memorySequence.nextSeq) && (row.memorySequence.nextSeq as number) >= 1, path);
+    }
+    if (row.summary !== undefined) {
+      keys(row.summary, ["text", "throughOrder", "digest", "updatedAt"], ["text", "throughOrder", "digest", "updatedAt"], path);
+      check(row.type !== "group" && typeof row.summary.text === "string" && row.summary.text.trim().length > 0 && row.summary.text.length <= SUMMARY_CHARACTERS
+        && integer(row.summary.throughOrder) && (row.summary.throughOrder as number) >= 1 && (row.summary.throughOrder as number) < (row.nextOrder as number)
+        && typeof row.summary.digest === "string" && /^\d+:[0-9a-f]{1,14}$/.test(row.summary.digest) && integer(row.summary.updatedAt),
+        path, "invalid-data", "summary-invalid");
     }
     for (const key of ["pinned", "streamOnline"]) check(row[key] === undefined || typeof row[key] === "boolean", path, "invalid-data", `${key}-not-boolean`);
     for (const key of ["title", "lastMessagePreview", "customCSS"]) check(row[key] === undefined || typeof row[key] === "string", path, "invalid-data", `${key}-not-string`);

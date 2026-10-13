@@ -1,14 +1,14 @@
 import { statePromptEntries, STATE_AUTHORITY, type StateView } from "../memory/state-runtime";
 import type { Character, FoundationDocument, ProfileBasics } from "../foundation-types";
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
-import type { ChatMessage, PromptTurn } from "./types";
-import { isAssistantBlankLinePlaceholder } from "./reply-splitter";
+import type { ChatMessage, ChatSummary, PromptTurn } from "./types";
 import { buildTimeContext, historyTimestamp, type RuntimeWeatherContext } from "./time-context";
 import { messageHistoryContentWithBody } from "./quote";
 import type { WorldBookActivation } from "../worldbook-activation";
 import { applyRegex } from "../regex-engine";
 import type { RegexGroup } from "../regex";
 import { selfStateContent, type SelfState } from "./self-context";
+import { historyEligible, RECENT_MESSAGES, summaryTurn, validSummary } from "./summary";
 import type { MemoryConversation, MemoryContextMessage } from "../memory/context";
 
 export type MemorySlot = { entries: readonly string[] };
@@ -22,12 +22,12 @@ export type PromptRuntimeContext = {
   pending: readonly ChatMessage[];
   memory: MemorySlot;
   state?: StateView;
+  summary?: ChatSummary;
   worldInfo?: WorldBookActivation;
   time?: ReturnType<typeof buildTimeContext>;
   regexGroups?: readonly RegexGroup[];
 };
 
-const RECENT_MESSAGES = 40;
 function profile(value: ProfileBasics) {
   return Object.fromEntries(Object.entries({ name: value.name, gender: value.gender,
     birthday: value.birthday, age: value.age, occupation: value.occupation,
@@ -52,9 +52,7 @@ function eligibleMessages(context: PromptRuntimeContext) {
 }
 function historyMessages(context: PromptRuntimeContext) {
   const pendingIds = new Set(context.pending.map((message) => message.id));
-  return eligibleMessages(context).filter((message) => !pendingIds.has(message.id))
-    .filter((message) => message.role !== "assistant" || !isAssistantBlankLinePlaceholder(message.content))
-    .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES);
+  return historyEligible(context.currentMessages).filter((message) => !pendingIds.has(message.id)).slice(-RECENT_MESSAGES);
 }
 function pendingMessages(context: PromptRuntimeContext) {
   const current = new Map(eligibleMessages(context).map((message) => [message.id, message]));
@@ -154,9 +152,11 @@ export function resolvePresetMarker(
     case "memory":
       return context.memory.entries.length ? context.memory.entries.join("\n") : null;
     case "history": {
-      return historyMessages(context)
+      const turns = historyMessages(context)
         .map((message) => ({ role: message.role, content: context.time
           ? `${historyTimestamp(message.createdAt, context.time.user.timezone)}\n${promptContent(message, context)}` : promptContent(message, context) }));
+      // Only a summary whose covered messages are still unchanged is ever shown.
+      return validSummary(context.summary, context.currentMessages) ? [summaryTurn(context.summary), ...turns] : turns;
     }
   }
 }
@@ -180,10 +180,11 @@ export function assembleChatPrompt(
   weather?: RuntimeWeatherContext,
   self?: SelfState,
   state?: StateView,
+  summary?: ChatSummary,
 ): { sections: PromptSection[]; messages: PromptTurn[]; diagnostics: PromptDiagnosticSection[] } {
   const time = foundation.runtime?.timeAware !== false
     ? buildTimeContext(now, foundation.user.timezone, character.timezone, undefined, weather) : undefined;
-  const context = { foundation, character, currentMessages, pending, memory, time, worldInfo, regexGroups, state };
+  const context = { foundation, character, currentMessages, pending, memory, time, worldInfo, regexGroups, state, summary };
   const prompts = new Map(preset.prompts.map((entry) => [entry.identifier, entry]));
   const sections: PromptSection[] = [], diagnostics: PromptDiagnosticSection[] = [], messages: PromptTurn[] = [];
   let historyTurns: PromptTurn[] = [];

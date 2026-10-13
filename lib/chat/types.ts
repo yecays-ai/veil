@@ -20,9 +20,14 @@ export type ChatSession = {
   nextOrder: number;
   /** Absent in production until M5b explicitly activates tracking; old messages are never backfilled. */
   memorySequence?: import("../memory/sequence").SessionMemorySequence;
+  /** Rolling summary of messages that left the History window; absent until one is written. Deleted with the history. */
+  summary?: ChatSummary;
   generation?: { id: string; draftId?: string; targetId?: string; mode?: "regenerate" | "continue";
     stage: "preparing" | "provider" | "finalizing" };
 };
+
+/** Covers the History-eligible messages with `order <= throughOrder`; `digest` proves they are unchanged. */
+export type ChatSummary = { text: string; throughOrder: number; digest: string; updatedAt: number };
 
 export type ChatBackgroundSettings = {
   id: "chat-background";
