@@ -60,7 +60,9 @@ export function TextApiSettings() {
       ? DEFAULT_API_CONFIG_ID
       : bindings.global.apiConfigId;
   const memoryState = memoryApiState(bindings, configs);
-  const memoryChoice = bindings.global.memoryApiConfigId === undefined ? "" : bindings.global.memoryApiConfigId === null ? "off" : bindings.global.memoryApiConfigId;
+  // Saved ids are prefixed so an API whose id is "off" can never collide with the Off choice.
+  const memoryBound = bindings.global.memoryApiConfigId;
+  const memoryChoice = memoryBound === undefined ? "" : memoryBound === null ? "off" : `api:${memoryBound}`;
   const memoryStatus = memoryState.kind === "ready"
     ? `${memoryState.source === "default" ? "Using the Default API" : "Using"}: ${memoryState.name} · ${memoryState.model}`
     : memoryState.kind === "off" ? "Memory is off for Characters that do not choose their own API."
@@ -426,11 +428,12 @@ export function TextApiSettings() {
               <strong>Memory API</strong>
               <Select aria-label="Memory API" value={memoryChoice} disabled={!bindingsReady || !!busy}
                 onChange={(event) => {
-                  const value = event.target.value === "" ? undefined : event.target.value === "off" ? null : event.target.value;
+                  const value = event.target.value === "" ? undefined : event.target.value === "off" ? null : event.target.value.slice("api:".length);
                   void run("Saving…", async () => { await commit((d) => setBindingField(d, {}, "memoryApiConfigId", value)); });
                 }}>
                 <option value="">Use Default API</option>
-                {configs.map((config) => <option key={config.id} value={config.id}>{config.name}</option>)}
+                {typeof memoryBound === "string" && !configs.some((config) => config.id === memoryBound) && <option value={memoryChoice} disabled>Unavailable API</option>}
+                {configs.map((config) => <option key={config.id} value={`api:${config.id}`}>{config.name}</option>)}
                 <option value="off">Off · do not run Memory</option>
               </Select>
               <span role="status">{memoryStatus}</span>
