@@ -80,7 +80,7 @@ export async function deleteMemory(storage: MemoryStorage, memory: Memory): Prom
   return storage.applyChange(memory.characterId, "Deleted a memory", {
     remove: [memory.id, ...history.map((row) => row.id)],
     suppress: [memory, ...history].map((row) => ({ id: newId(), fingerprint: row.fingerprint, reason: "deleted" as const, sources: row.sources })),
-  }, { expectUpdatedAt: { [memory.id]: memory.updatedAt } });
+  }, { expectUpdatedAt: Object.fromEntries([memory, ...history].map((row) => [row.id, row.updatedAt])) });
 }
 
 export type JournalEdit = { text: string; keywords: string[] };

@@ -8,6 +8,8 @@ import { validateBackupPackage } from "../lib/backup/validation";
 import { restoreIntoEmpty, type RestoreDevice } from "../lib/backup/restore";
 import { readStaticBackupSource } from "../lib/backup/static-source";
 import { ChatStorage } from "../lib/chat/storage";
+import { journalEntry } from "../lib/memory/journal";
+import { MemoryConflictError } from "../lib/memory/storage";
 import { addJournalEntry, addManualMemory, deleteMemory, editMemory, memoryHistoryOf } from "../lib/memory/bank";
 import { memoryEntry, memoryEntryHash } from "../lib/memory/context";
 import { resolveInjected } from "../lib/memory/injected";
@@ -133,4 +135,35 @@ test("backup keeps reply memory references, restores them, and refuses damaged o
     const p = await packageFixture(bad); await assert.rejects(validateBackupPackage(JSON.stringify(p.manifest), p.files)); }
   const onUser = backupData(); (onUser.chat.messages[0] as Record<string, unknown>).memoryRefs = good;
   const p = await packageFixture(onUser); await assert.rejects(validateBackupPackage(JSON.stringify(p.manifest), p.files));
+});
+
+test("Journal entries carry the day they were written, like other injected entries", () => {
+  assert.equal(JSON.parse(journalEntry(fact("j", "Her birthday is in May.", { origin: "journal", kind: "journal" }))).recordedAt, "1970-01-02");
+});
+
+test("deleting a merged memory is refused if one of its originals changed since it was read", async () => {
+  const memory = store();
+  const old = fact("o", "I had a cat named Pip.", { status: "superseded", lineage: { supersededBy: "n" }, updatedAt: 5 });
+  const latest = fact("n", "Pip died last spring.", { lineage: { mergedFrom: ["o"] }, updatedAt: 5 });
+  await memory.replaceAllRows({ memories: [old, latest], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] });
+  const seen = (await memory.getMemory("n"))!;
+  // Another tab edits the original right after this tab listed the rows.
+  const list = memory.listMemories.bind(memory);
+  memory.listMemories = async (...args) => {
+    const rows = await list(...args);
+    memory.listMemories = list;
+    await memory.applyChange("c", "other tab", { put: [{ ...old, text: "Pip is a grey cat." } as never] });
+    return rows;
+  };
+  await assert.rejects(deleteMemory(memory, seen), MemoryConflictError);
+  assert.equal((await memory.listMemories("c")).length, 2);
+});
+
+test("delete drops older undo records whose version differs in kind, not only in text", async () => {
+  const memory = store();
+  await addManualMemory(memory, "c", { kind: "fact", text: "I like green tea." });
+  const [original] = await memory.listMemories("c");
+  await editMemory(memory, original, { kind: "event", text: "I like green tea." });
+  await deleteMemory(memory, (await memory.listMemories("c"))[0]);
+  assert.equal((await memory.listOperations("c")).length, 1);
 });

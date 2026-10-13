@@ -59,5 +59,5 @@ export function selectJournal(characterId: string, rows: readonly Memory[], text
 
 /** Journal text is data for the prompt, never instructions: it is serialized, not interpolated as prose. */
 export function journalEntry(row: Memory): string {
-  return JSON.stringify({ kind: "journal", origin: "journal", text: row.text });
+  return JSON.stringify({ kind: "journal", origin: "journal", recordedAt: new Date(row.createdAt).toISOString().slice(0, 10), text: row.text });
 }

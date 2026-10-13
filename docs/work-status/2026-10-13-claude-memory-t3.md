@@ -18,7 +18,7 @@ Claude；分支 `claude/memory-t3-chat-memory-button`；PR 尚未创建。涉及
 - 每条回复保存本次注入条目的 id + 内容哈希（`memoryRefs`，≤6，不含记忆文本）。面板只在能证明文本就是当时注入的内容时显示：当前行匹配，或最近 5 次撤销记录里仍有该版本且记忆还在；否则显示「This version is no longer available.」，绝不用当前文本顶替。已删除的记忆只显示「已删除」。
 - 不新增任何长期版本存储：手动编辑的旧文本只存在于原有的“最近 5 次撤销”记录里，超出即被修剪。自动维护的历史沿用 Superseded + lineage。
 - 删除记忆：同一事务里连带删除它的 lineage 历史（被它取代的原件），并为这些文本写删除抑制；更早的、含该记忆其他文本版本的撤销记录被清除；撤销这次删除仍可整体恢复。
-- 注入条目新增 `recordedAt`（记忆首次写入的 UTC 日期），Journal 条目同样带；P4 评测 167 项不变。
+- 注入条目新增 `recordedAt`（记忆首次写入的 UTC 日期），Journal 条目同样带 `recordedAt`；P4 评测 167 项不变。
 - 备份校验：`memoryRefs` 只允许 assistant 消息、≤6 条、`{id, hash(16 hex), journal?:true}`；往返恢复测试通过。旧数据没有该字段，面板显示“记录之前的回复”。
 
 ## 验证（自动化测试，非真机）

@@ -32,7 +32,7 @@ export function MessageMemory({ message, characterId, onClose }: { message: Chat
       <button role="tab" aria-selected={tab === "memories"} onClick={() => setTab("memories")}>Long Term Memories</button>
       <button role="tab" aria-selected={tab === "journal"} onClick={() => setTab("journal")}>Journal</button>
     </div>
-    {refs === undefined ? <p className="subtle">This reply was written before Memory used for a reply was recorded.</p>
+    {refs === undefined ? <p className="subtle">Nothing was recorded for this reply. It was written before this feature existed, or Memory could not be read at the time.</p>
       : view.state === "loading" ? <p className="subtle">Loading…</p>
       : view.state === "failed" ? <p role="alert">Memory could not be read. Close this and try again.</p>
       : !items.length ? <p className="subtle">{tab === "journal" ? "No Journal entry was used for this reply." : "No long term memory was used for this reply."}</p>
