@@ -2,6 +2,8 @@
 
 ## Memory M6 P2：自动维护、Background 复核与 Prompt（2026-10-13）
 
+最新复审：aca441e4f4f24b7c6df886b9d0d54ee21a0f9222 的 CI #1185 成功（1586/1586）、Preview READY，原四个线程均由 CodeRabbit 关闭；新增并发 clear token 复用（Major）及工作记录过期（Minor），本轮已最小修复：每次 intent 独立 token，失败取消/恢复仅影响自己仍拥有的 marker，两个真实共享租约测试先 Red 后 Green。受影响回归 995/995、57 项 P2 新测试、零跳过，typecheck/lint/webpack build 通过；本轮发布 head 的外部检查/复审另核，下面旧审查状态保留为历史证据，PR 仍未合并。
+
 状态：**已修待验（施工发布完成，[PR #168](https://github.com/yecays-ai/veil/pull/168) 等待外部审查与 Lan 手动验收，未合并）**。重核 main `fe6a209f9938d230dc10b60d822508bf1cb436c5`，包含用户手动合并的 P1 #167；下文 P1“未合并”属于历史施工快照。Lan 恢复额度后授权继续 P2，不继续 P3–P5。
 
 已实现 Background 独占保存/版本追加/分库恢复、同一正常维护请求的严格 State CREATE/UPDATE/REVIEW 与同库进度提交、D1 pending/compatible/conflict、D2 单条删改/整轮重生成/同 ID hash 与可恢复清理、真实 Prompt 覆盖和 Character 只读 UI。release/device consent、owner/cursor/restore/uncertain、完整备份与 manual/Journal/Presence 行为保留，没有新增模型调用或启用真实维护。Background 跨库工作不是原子事务；混合来源隐私优先整体撤销。

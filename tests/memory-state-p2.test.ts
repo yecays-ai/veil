@@ -461,3 +461,43 @@ test("failed whole clear cannot restore targeted intent over a newer cleanup own
   }, f.memory));
   const current = (await f.memory.listCursors("c"))[0]; assert.equal(current.clearToken, "newer-owner"); assert.equal(current.sourceInvalidation, undefined);
 });
+
+test("overlapping whole clears retain the later cleanup intent when the earlier targeted replacement fails", async () => {
+  const f = await fixture(); const m = await f.send(); await maintain(f, (s) => [create(s)]); await marker(f, [m.id]);
+  const entered = deferred(), release = deferred();
+  const earlier = assert.rejects(withMemoryClear(f.session, async () => {
+    entered.resolve(); await release.promise; throw Error("earlier chat clear aborted");
+  }, f.memory), /earlier chat clear aborted/);
+  await entered.promise;
+  const firstToken = (await f.memory.listCursors("c"))[0].clearToken;
+  await f.memory.withShared(async (scope) => {
+    await recordClearIntent(f.memory, "c", f.session.id, scope);
+    await f.chat.clearSession(f.session.id, scope);
+    // Stop before Memory cleanup, as after a cleanup failure or interruption.
+  });
+  const pending = (await f.memory.listCursors("c"))[0];
+  release.resolve(); await earlier;
+  assert.deepEqual((await f.memory.listCursors("c"))[0], pending);
+  assert.notEqual(pending.clearToken, firstToken);
+  assert.equal((await recovery(f)).completed, 1);
+  assert.deepEqual((await f.memory.readStateFoundation("c")).states, []);
+  assert.deepEqual(await f.memory.listCursors("c"), []);
+});
+
+test("a failed newly created whole clear cannot cancel a later whole-session cleanup owner", async () => {
+  const f = await fixture(); await f.send(); await maintain(f, (s) => [create(s)]);
+  const entered = deferred(), release = deferred();
+  const earlier = assert.rejects(withMemoryClear(f.session, async () => {
+    entered.resolve(); await release.promise; throw Error("earlier chat clear aborted");
+  }, f.memory), /earlier chat clear aborted/);
+  await entered.promise;
+  await f.memory.withShared(async (scope) => {
+    await recordClearIntent(f.memory, "c", f.session.id, scope);
+    await f.chat.clearSession(f.session.id, scope);
+  });
+  const pending = (await f.memory.listCursors("c"))[0];
+  release.resolve(); await earlier;
+  assert.deepEqual((await f.memory.listCursors("c"))[0], pending);
+  assert.equal((await recovery(f)).completed, 1);
+  assert.deepEqual((await f.memory.readStateFoundation("c")).states, []);
+});

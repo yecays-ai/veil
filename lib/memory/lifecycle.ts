@@ -36,7 +36,7 @@ export function recordClearIntent(storage: MemoryStorage, characterId: string, s
     }
     const prior: Partial<MemoryCursor> = { ...previous };
     delete prior.sourceInvalidation; // A whole-session intent supersedes targeted hash evidence.
-    const token = previous?.sourceInvalidation ? crypto.randomUUID() : previous?.clearToken ?? crypto.randomUUID();
+    const token = crypto.randomUUID(); // Each overlapping clear owns only its replacement intent.
     await request(store.put({ failureCount: 0, ...prior, id, characterId, sessionId,
       clearRequestedAt: previous?.clearRequestedAt ?? now, clearToken: token,
       clearMessageIds: [...targets].sort(), updatedAt: now } satisfies MemoryCursor));
@@ -45,11 +45,12 @@ export function recordClearIntent(storage: MemoryStorage, characterId: string, s
 }
 
 /** Withdraw an intent whose chat operation failed, so a later resume cannot erase memory for chat that still exists. */
-export function cancelClearIntent(storage: MemoryStorage, characterId: string, sessionId: string, scope?: PersistenceWriteScope): Promise<void> {
+export function cancelClearIntent(storage: MemoryStorage, characterId: string, sessionId: string, scope?: PersistenceWriteScope, expectedToken?: string): Promise<void> {
   return storage.transaction("readwrite", async (tx) => {
     const store = tx.store("cursors");
     const previous = await request<MemoryCursor | undefined>(store.get(cursorId(characterId, sessionId)));
     if (!previous || previous.clearRequestedAt === undefined) return;
+    if (expectedToken !== undefined && previous.clearToken !== expectedToken) return;
     const { clearRequestedAt: _requested, clearToken: _token, clearMessageIds: _targets, clearLineageIds: _isolated, sourceInvalidation: _sourceInvalidation, ...rest } = previous;
     void [_requested, _targets, _isolated, _token, _sourceInvalidation];
     // An intent-only row carries nothing else worth keeping.

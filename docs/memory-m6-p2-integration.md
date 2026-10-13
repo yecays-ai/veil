@@ -66,6 +66,8 @@ State 版本新增可选 `sourceHashes: [{sessionId,messageId,hash}]`；SHA-256 
 
 ## 持久化/备份兼容
 
+并发整段清理：每次 recordClearIntent 均生成独立 token，旧操作失败时恢复定向记录或撤回新建 intent 都必须匹配该操作 token；较晚操作已成功清空而清理中断时，旧操作不得覆盖其持久 marker，startup 继续撤销 State。两个受控共享租约测试先 Red 后 Green；本轮受影响回归 995/995、57 项 P2 新测试、零跳过，typecheck/lint/webpack build 通过。
+
 没有新增数据库/store/schema 升级，也未更改主备份 v2 / Memory-domain v2；增加严格识别的上述可选元数据。P1 无 hash 的六表包仍接受，v1 四表旧兼容不变；旧软件严格拒绝新元数据，不能保证向旧版降级可写。恢复按原单位顺序、日志、独占租约、摘要、预览和安全副本执行；成功恢复移除设备 API Key、rollback 保留原安全副本凭据的既有规则不改。
 
 ## 自动化验收矩阵
