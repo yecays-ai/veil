@@ -275,7 +275,7 @@ test("restore nonce rotation rejects a pre-restore ticket even when all logical 
   await f.protocol.withOwner("c", async (owner) => {
     const ticket = await f.protocol.prepare(owner, f.session.id, 1, 1);
     const rows = await f.memory.transaction("readonly", async (tx) => ({ memories: await request(tx.store("memories").getAll()),
-      cursors: await request(tx.store("cursors").getAll()), suppressions: [], operations: [] }));
+      cursors: await request(tx.store("cursors").getAll()), suppressions: [], operations: [], backgrounds: [], states: [] }));
     await f.memory.replaceAllRows(rows);
     await assert.rejects(f.protocol.claim(ticket, 1));
     const [fresh] = await f.protocol.recover(owner, f.session.id); await f.protocol.claim(fresh, 1);

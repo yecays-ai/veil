@@ -246,3 +246,15 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 - 自动化证据：fake IndexedDB / JSDOM / stub provider 的定向测试，memory-*、backup-*、chat-* 756/756；typecheck、改动文件 lint 通过。详见 [施工记录](memory-m8-journal.md) 与 [任务状态](work-status/2026-10-13-claude-m8-journal.md)。
 - 未验证：真实模型反应、iPhone 真机；`npm run build`、全量测试未跑。
 
+## Memory M6 P1：State / Background 数据基础（2026-10-13）
+
+核对远端 main `ae5c8999e6feff21b68551e9cf42322b25d6838e`。Lan 授权 P1 数据基础及后续独立 PR 发布、CI/CodeRabbit 闭环与该 PR 的 Preview；未授权 P2–P5、Production、合并、真实调用或数据操作。状态：**已修待验（P1 施工完成，发布审查中，未合并）**。不更改其他 F/S/M 命名空间。
+
+- 已实现：Memory schema 追加 backgrounds/states 两表，版本 2；原四表行不重写。D1 以显式 compatible/conflict review 及 pending 构成暂停数据合同；D2 删除贡献来源时物理撤销相关 State 正文，恢复有独立依据的前驱，混合正文按隐私优先整体撤销。没有生产 State writer、Foundation 保存/Prompt/展示接线或 Presence 重算。
+- 完整覆盖：角色隔离、角色删除、清理意图、同库事务、六表备份/预览/覆盖恢复/继续/回滚、严格来源与图校验。主备份格式仍 v2，Memory 域升为 2；仅显式支持旧 Memory-domain v1 四表导入为空 State、旧本地 schema v1 四表的无重写追加升级。其他未知形状拒绝。
+- 自动化证据：Node 24.19.0，受影响 Memory/Backup/Presence/Character 删除回归 **704/704、零跳过**，含 **25 项 P1 新测试**；测试编译、typecheck、改动文件 lint、最终 webpack build 通过。证据为 fake IndexedDB、模拟 Web Locks、stub、构建，不是真机/真实模型。
+- 发布证据：[PR #167](https://github.com/yecays-ai/veil/pull/167) 已创建，未合并；`e19d3d2b96dee9dd73d18cf99dfeaee7f98c54de` 的 GitHub CI（typecheck/lint/test/build）与 Vercel Preview 已通过。CodeRabbit 首轮完整审查仅指出本条发布状态过期，已在本次文档修正中处理；修正后的最新 head 检查以 GitHub 实时结果为准，不沿用旧 head 成功。
+- 未验证/未施工：iPhone、真实模型。P2 开放 State 写入前还须完成 Background 保存、可靠冲突复核、单条消息删除/编辑/重生成来源失效包装和现有 owner/ticket/hash/restore incarnation 的唯一提交接线；P1 不宣称这些业务已实现。
+- 发布门禁：Vercel Git 关联正确；Lan 只读确认 Production Branch 为 main、新分支仅 Preview；已读当前唯一 CI 工作流、仓库 scripts/部署配置，未发现非 main 的 Production/提升动作。发布仅更新独立分支，禁止 automerge、Production 和生产配置变更。当前 PR 与检查见[唯一任务记录](work-status/2026-10-13-codex-memory-m6-p1.md)，数据合同见[模块合同](memory-m6-p1-foundation.md)。
+- 当前合并事实补记：#165 已合并为 `21369721e77a031aad4410b53d55767dd48396ae`，#166 已合并为上述 main；本页 M8 原“未合并”属于历史施工快照，不能作为重复施工依据。M8 产品行为未改动，本单仅更新测试夹具满足六表合同。
+

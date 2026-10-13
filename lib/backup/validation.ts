@@ -1,3 +1,4 @@
+import { backgroundSnapshotValid, characterStateVersionValid, stateFoundationValid } from "../memory/state-foundation";
 import { normalizeFoundation } from "../foundation-types";
 import { normalizeDocument, themeImageAssetIds } from "../theme-types";
 import { normalizeBindings } from "../bindings";
@@ -98,7 +99,8 @@ export function parseBackupManifest(text: string): BackupManifest {
     keys(section, ["domain", "version", "path", "bytes", "sha256", "records"], ["domain", "version", "path", "bytes", "sha256", "records"], path);
     check(typeof section.domain === "string" && Object.hasOwn(BACKUP_DOMAIN_VERSIONS, section.domain), path, "unsupported-domain");
     check(!domains.has(section.domain), path, "duplicate-domain"); domains.add(section.domain);
-    check(section.version === BACKUP_DOMAIN_VERSIONS[section.domain as BackupDomain], path, "unsupported-domain-version");
+    check((section.version === BACKUP_DOMAIN_VERSIONS[section.domain as BackupDomain]
+      || (section.domain === "memory" && section.version === 1)), path, "unsupported-domain-version");
     check(integer(section.records), path);
     file(section, path);
     check((section.bytes as number) <= MAX_JSON_BYTES, path, "size-limit");
@@ -277,10 +279,16 @@ function suppressionRow(row: unknown, path: string): asserts row is Row {
 }
 
 /** Structure only; references to Characters and chat are checked in `references` once every domain is parsed. */
-function validateMemory(value: unknown) {
-  const stores = ["memories", "suppressions", "operations", "cursors"];
+function validateMemory(value: unknown, version: number) {
+  const stores = ["memories", "suppressions", "operations", "cursors", ...(version === 1 ? [] : ["backgrounds", "states"])];
   keys(value, stores, stores, "memory");
   for (const name of stores) unique(value[name], "id", `memory.${name}`);
+  if (version !== 1) {
+    const state = value as unknown as BackupData["memory"];
+    state.backgrounds.forEach((row, index) => check(backgroundSnapshotValid(row), `memory.backgrounds[${index}]`, "invalid-data", "background-invalid"));
+    state.states.forEach((row, index) => check(characterStateVersionValid(row), `memory.states[${index}]`, "invalid-data", "state-invalid"));
+    check(stateFoundationValid(state), "memory.states", "invalid-data", "state-graph-invalid");
+  }
   const { memories, suppressions, operations, cursors } = value as Record<string, Row[]>;
   memories.forEach((row, index) => memoryRow(row, `memory.memories[${index}]`));
   suppressions.forEach((row, index) => suppressionRow(row, `memory.suppressions[${index}]`));
@@ -333,14 +341,14 @@ function validateMemory(value: unknown) {
   });
 }
 
-function validateDomain(domain: BackupDomain, value: unknown): number {
+function validateDomain(domain: BackupDomain, value: unknown, version: number): number {
   if (domain === "chat") {
     validateChat(value);
     const chat = value as BackupData["chat"];
     return chat.sessions.length + chat.messages.length + chat.chatSettings.length + chat.worldBookStates.length;
   }
   if (domain === "memory") {
-    validateMemory(value);
+    validateMemory(value, version);
     return Object.values(value as BackupData["memory"]).reduce((count, rows) => count + rows.length, 0);
   }
   if (domain === "apiConfigs") {
@@ -422,6 +430,18 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
     character(row.characterId, path);
     row.sources.forEach((source, at) => memoryPointer(row.characterId, source.sessionId, source.messageId, `${path}.sources[${at}]`));
   };
+  data.memory.backgrounds.forEach((row, index) => character(row.characterId, `memory.backgrounds[${index}]`));
+  data.memory.states.forEach((row, index) => {
+    const path = `memory.states[${index}]`; memoryRows(row, path);
+    row.sources.forEach((source) => {
+      // Unlike old Memory pointers, State prose requires extant private-chat evidence.
+      // Refuse an export pending deletion rather than carry deleted content into a backup.
+      const message = messagesById.get(source.messageId);
+      check(!!message, path, "missing-message");
+      const session = sessionsById.get(source.sessionId);
+      check(session?.type !== "group" && session?.characterId === row.characterId, path, "cross-character-reference");
+    });
+  });
   const memoriesById = new Map(data.memory.memories.map((row) => [row.id, row]));
   data.memory.memories.forEach((row, index) => {
     const path = `memory.memories[${index}]`;
@@ -499,7 +519,9 @@ export async function validateBackupPackage(manifestJson: string, files: Readonl
       try { text = new TextDecoder("utf-8", { fatal: true }).decode(snapshot); }
       catch { throw new BackupValidationError("invalid-utf8", path); }
       const value = json(text, entry.domain);
-      check(validateDomain(entry.domain, value) === entry.records, entry.domain, "record-count");
+      check(validateDomain(entry.domain, value, entry.version) === entry.records, entry.domain, "record-count");
+      // Legacy Memory-domain v1 has no State; normalize only the imported copy, never local rows.
+      if (entry.domain === "memory" && entry.version === 1) Object.assign(value as object, { backgrounds: [], states: [] });
       Object.assign(data, { [entry.domain]: value });
     }
   }

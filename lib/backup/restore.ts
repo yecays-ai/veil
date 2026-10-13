@@ -21,7 +21,7 @@ export const RESTORE_UNITS = ["chat", "memory", "appearanceAssets", "apiConfigs"
   "worldbooks", "contacts", "presence", "foundation"] as const;
 export type RestoreUnit = typeof RESTORE_UNITS[number];
 const EMPTY = "empty";
-const emptyMemory = (): StaticBackupSnapshot["memory"] => ({ memories: [], suppressions: [], operations: [], cursors: [] });
+const emptyMemory = (): StaticBackupSnapshot["memory"] => ({ memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] });
 const CHAT_STORES = ["sessions", "messages", "chatSettings", "assets", "worldBookStates"] as const;
 
 export type RestoreJournal = {
@@ -111,7 +111,11 @@ export async function digestUnits(snapshot: StaticBackupSnapshot, imageHashes = 
   const appearanceAssets = await digestImageRows(snapshot.appearanceAssets, imageHashes);
   const values: Record<RestoreUnit, unknown | null> = {
     chat: Object.values(chat).every((rows) => rows.length === 0) ? null : Object.fromEntries(CHAT_STORES.map((name) => [name, byId(name === "assets" ? chatAssets : chat[name] ?? [])])),
-    memory: Object.values(snapshot.memory).every((rows) => rows.length === 0) ? null : Object.fromEntries(MEMORY_STORES.map((name) => [name, byId(snapshot.memory[name]).map((row) => {
+    // Empty added stores do not change the digest of an already-interrupted legacy restore.
+    // Nonempty State/Background stores always participate in verification.
+    memory: Object.values(snapshot.memory).every((rows) => rows.length === 0) ? null : Object.fromEntries(MEMORY_STORES
+      .filter((name) => !["backgrounds", "states"].includes(name) || (snapshot.memory[name]?.length ?? 0) > 0)
+      .map((name) => [name, byId(snapshot.memory[name] ?? []).map((row) => {
       // A restore rotates this local capability nonce. Logical progress/content still require exact verification.
       const cursor = row as MemoryCursor;
       if (name !== "cursors") return row;

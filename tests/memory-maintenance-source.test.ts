@@ -156,7 +156,7 @@ test("backup round trip keeps the UPDATE lineage and sources, and cleanup still 
     fingerprint: memoryFingerprint(text), createdAt: TEST_NOW, updatedAt: TEST_NOW });
   const rows = [mk("old", "Three rats", "superseded", ["gone-a"], { supersededBy: "new", previousStatus: "active" }),
     mk("new", "Three rats, one named Silver", "active", ["gone-a", "gone-b"], { mergedFrom: ["old"] })];
-  const data = backupData(); data.memory = { memories: rows, suppressions: [], operations: [], cursors: [] };
+  const data = backupData(); data.memory = { memories: rows, suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] };
   const fixture = await packageFixture(data);
   await restoreIntoEmpty(JSON.stringify(fixture.manifest), fixture.files, device, lockOrigin().client() as unknown as BackupLockManager);
   assert.equal(raw.has(RESTORE_JOURNAL_KEY), false);

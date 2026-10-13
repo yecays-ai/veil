@@ -1,13 +1,15 @@
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withExclusivePersistenceWriteScope, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import type { BackupLockOptions } from "../backup/coordination";
 import { memoryFingerprint } from "./fingerprint";
+import { stateFoundationValid, type StateFoundation } from "./state-foundation";
 import { journalRowProblem } from "./journal";
 import {
   MEMORY_DATABASE_NAME, MEMORY_DATABASE_VERSION, MEMORY_OPERATION_LIMIT,
   type Memory, type MemoryChange, type MemoryCursor, type MemoryDraft, type MemoryOperation, type MemorySource, type Suppression,
 } from "./types";
 
-export const MEMORY_STORES = ["memories", "suppressions", "operations", "cursors"] as const;
+export const LEGACY_MEMORY_STORES = ["memories", "suppressions", "operations", "cursors"] as const;
+export const MEMORY_STORES = [...LEGACY_MEMORY_STORES, "backgrounds", "states"] as const;
 export type MemoryStoreName = typeof MEMORY_STORES[number];
 
 export class MemoryProtectedError extends Error {
@@ -64,18 +66,39 @@ export class MemoryStorage {
         let rejected = false;
         try { operation = this.factory().open(MEMORY_DATABASE_NAME, MEMORY_DATABASE_VERSION); }
         catch { reject(new Error("Memory storage is unavailable.")); return; }
-        operation.onupgradeneeded = () => {
+        operation.onupgradeneeded = (event) => {
           if (rejected) { operation.transaction?.abort(); return; }
           const db = operation.result;
-          const memories = db.createObjectStore("memories", { keyPath: "id" });
-          memories.createIndex("characterId", "characterId");
-          memories.createIndex("characterFingerprint", ["characterId", "fingerprint"]);
-          for (const name of ["suppressions", "operations", "cursors"] as const)
+          if (event.oldVersion === 1 && (db.objectStoreNames.length !== LEGACY_MEMORY_STORES.length
+            || LEGACY_MEMORY_STORES.some((name) => !db.objectStoreNames.contains(name)))) { operation.transaction?.abort(); return; }
+          if (event.oldVersion === 1) {
+            for (const name of LEGACY_MEMORY_STORES) {
+              const store = operation.transaction!.objectStore(name);
+              if (store.keyPath !== "id" || store.autoIncrement || !store.indexNames.contains("characterId")
+                || store.index("characterId").keyPath !== "characterId") { operation.transaction!.abort(); return; }
+            }
+            const memories = operation.transaction!.objectStore("memories");
+            if (!memories.indexNames.contains("characterFingerprint")
+              || JSON.stringify(memories.index("characterFingerprint").keyPath) !== JSON.stringify(["characterId", "fingerprint"])) {
+              operation.transaction!.abort(); return;
+            }
+          }
+          if (event.oldVersion === 0) {
+            const memories = db.createObjectStore("memories", { keyPath: "id" });
+            memories.createIndex("characterId", "characterId");
+            memories.createIndex("characterFingerprint", ["characterId", "fingerprint"]);
+            for (const name of ["suppressions", "operations", "cursors"] as const)
+              db.createObjectStore(name, { keyPath: "id" }).createIndex("characterId", "characterId");
+          }
+          for (const name of ["backgrounds", "states"] as const)
             db.createObjectStore(name, { keyPath: "id" }).createIndex("characterId", "characterId");
         };
         operation.onsuccess = () => {
           const db = operation.result;
           if (rejected) { db.close(); return; }
+          if (db.objectStoreNames.length !== MEMORY_STORES.length || MEMORY_STORES.some((name) => !db.objectStoreNames.contains(name))) {
+            db.close(); reject(new Error("Memory schema is unavailable.")); return;
+          }
           db.onversionchange = () => { db.close(); if (this.database === opening) this.database = undefined; };
           resolve(db);
         };
@@ -132,6 +155,18 @@ export class MemoryStorage {
     return withPersistenceWriteScope(this.writeGate, operation);
   }
   assertExclusive(scope: PersistenceWriteScope): void { assertExclusivePersistenceScope(this.writeGate, scope); }
+
+  /** P1 read-only interface. State writes are deliberately not exposed to UI or maintenance. */
+  readStateFoundation(characterId: string, scope?: PersistenceWriteScope): Promise<StateFoundation> {
+    return this.transaction("readonly", async (tx) => {
+      const data: StateFoundation = {
+        backgrounds: await request(tx.store("backgrounds").index("characterId").getAll(characterId)),
+        states: await request(tx.store("states").index("characterId").getAll(characterId)),
+      };
+      if (!stateFoundationValid(data)) throw new Error("State foundation is unavailable.");
+      return data;
+    }, scope);
+  }
 
   listMemories(characterId: string, scope?: PersistenceWriteScope): Promise<Memory[]> {
     return this.transaction("readonly", (tx) => request<Memory[]>(tx.store("memories").index("characterId").getAll(characterId)), scope);
@@ -292,7 +327,7 @@ export class MemoryStorage {
       for (const name of MEMORY_STORES) {
         const store = tx.store(name);
         await request(store.clear());
-        for (const row of rows[name]) {
+        for (const row of rows[name] ?? []) {
           // Restored progress keeps its logical ranges, but invalidates every pre-restore capability (ABA).
           const cursor = row as MemoryCursor;
           await request(store.put(name === "cursors" ? { ...cursor,
