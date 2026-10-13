@@ -11,6 +11,8 @@ import {
   type NamedApiConfig,
 } from "../../lib/api-config";
 import { validateApiConfig } from "../../lib/chat/provider";
+import { setBindingField } from "../../lib/bindings";
+import { memoryApiState } from "../../lib/settings/api-layers";
 import {
   apiConfigReferences,
   deleteApiConfigAndBindings,
@@ -57,6 +59,15 @@ export function TextApiSettings() {
     bindings.global.apiConfigId === undefined
       ? DEFAULT_API_CONFIG_ID
       : bindings.global.apiConfigId;
+  const memoryState = memoryApiState(bindings, configs);
+  // Saved ids are prefixed so an API whose id is "off" can never collide with the Off choice.
+  const memoryBound = bindings.global.memoryApiConfigId;
+  const memoryChoice = memoryBound === undefined ? "" : memoryBound === null ? "off" : `api:${memoryBound}`;
+  const memoryStatus = memoryState.kind === "ready"
+    ? `${memoryState.source === "default" ? "Using the Default API" : "Using"}: ${memoryState.name} · ${memoryState.model}`
+    : memoryState.kind === "off" ? "Memory is off for Characters that do not choose their own API."
+    : memoryState.kind === "missing" ? "The selected API no longer exists. Memory will not run until you choose another; nothing else is used instead."
+    : `This API is not ready (${memoryState.reason}). Memory will not run; nothing else is used instead.`;
   function edit(config: NamedApiConfig | null) {
     setBaseline(config && configs.some((item) => item.id === config.id) ? structuredClone(config) : null);
     setDraft(config ? structuredClone(config) : null);
@@ -407,6 +418,28 @@ export function TextApiSettings() {
       )}
       {ready && !!configs.length && (
         <>
+          <section className="settings-api-layers" aria-label="API layers">
+            <h2 className="settings-section-label">Models</h2>
+            <div className="settings-card">
+              <strong>Default API</strong>
+              <span>{configs.find((config) => config.id === globalId)?.name ?? "None selected"}. Text and Memory follow it unless a Character or the Memory choice below says otherwise.</span>
+            </div>
+            <label className="settings-card">
+              <strong>Memory API</strong>
+              <Select aria-label="Memory API" value={memoryChoice} disabled={!bindingsReady || !!busy}
+                onChange={(event) => {
+                  const value = event.target.value === "" ? undefined : event.target.value === "off" ? null : event.target.value.slice("api:".length);
+                  void run("Saving…", async () => { await commit((d) => setBindingField(d, {}, "memoryApiConfigId", value)); });
+                }}>
+                <option value="">Use Default API</option>
+                {typeof memoryBound === "string" && !configs.some((config) => config.id === memoryBound) && <option value={memoryChoice} disabled>Unavailable API</option>}
+                {configs.map((config) => <option key={config.id} value={`api:${config.id}`}>{config.name}</option>)}
+                <option value="off">Off · do not run Memory</option>
+              </Select>
+              <span role="status">{memoryStatus}</span>
+              <small>A Character that has its own API in Settings → Bindings keeps it.</small>
+            </label>
+          </section>
           <button
             className="settings-button settings-page-add"
             type="button"

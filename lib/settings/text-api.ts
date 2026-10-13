@@ -41,14 +41,14 @@ export function apiConfigReferences(
   id: string,
 ): string[] {
   const result: string[] = [];
-  if (bindings.global.apiConfigId === id) result.push("Global");
+  const names = (slot: { apiConfigId?: string | null; memoryApiConfigId?: string | null } | undefined, where: string) => {
+    if (slot?.apiConfigId === id) result.push(where);
+    if (slot?.memoryApiConfigId === id) result.push(`${where} (Memory)`);
+  };
+  names(bindings.global, "Global");
   for (const [characterId, value] of Object.entries(bindings.characters)) {
-    if (value.defaults.apiConfigId === id)
-      result.push(`Character ${characterId}`);
-    for (const [app, slot] of Object.entries(value.apps)) {
-      if (slot?.apiConfigId === id)
-        result.push(`Character ${characterId} / ${app}`);
-    }
+    names(value.defaults, `Character ${characterId}`);
+    for (const [app, slot] of Object.entries(value.apps)) names(slot, `Character ${characterId} / ${app}`);
   }
   return result;
 }
