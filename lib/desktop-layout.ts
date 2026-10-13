@@ -103,11 +103,12 @@ function firstSpace(
 export function defaultDesktop(): DesktopLayout {
   return {
     pageCount: 2,
-    iconLayout: APP_IDS.map((id, index) => ({
+    // Memory takes the slot Profile leaves free (its Home shortcut is removed below), so the rows under the widget stay empty.
+    iconLayout: APP_IDS.map((id, index) => ({ id, slot: id === "memory" ? APP_IDS.indexOf("profile") : index })).map(({ id, slot }) => ({
       id,
       page: 1,
-      row: 3 + Math.floor(index / 4),
-      col: 1 + (index % 4),
+      row: 3 + Math.floor(slot / 4),
+      col: 1 + (slot % 4),
     })).filter((app) => !["messages", "contacts", "moments", "profile"].includes(app.id)),
     widgets: [
       {

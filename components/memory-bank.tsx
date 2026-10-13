@@ -41,7 +41,9 @@ async function readBank(storage: MemoryStorage, characterId: string): Promise<Lo
   return { memories, operations, sources };
 }
 
-export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: { characterId: string; storage?: MemoryStorage }) {
+export function MemoryBankPage({ characterId, storage = browserMemoryStorage, backHref, backLabel = "Back to Character" }: {
+  characterId: string; storage?: MemoryStorage; backHref?: string; backLabel?: string;
+}) {
   const { document, ready } = useFoundation();
   const back = useBackNavigation();
   const character = document.characters.find((item) => item.characterId === characterId);
@@ -92,8 +94,8 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage }: 
   }
 
   const shell = (children: React.ReactNode) => (
-    <PageShell title="Memory" backHref={`/characters/${encodeURIComponent(characterId)}`} {...back}
-      backLabel="Back to Character" bodyClassName="foundation-page memory-bank" guardLeave={!!draft}>
+    <PageShell title="Memory" backHref={backHref ?? `/characters/${encodeURIComponent(characterId)}`} {...back}
+      backLabel={backLabel} bodyClassName="foundation-page memory-bank" guardLeave={!!draft}>
       {children}
     </PageShell>
   );

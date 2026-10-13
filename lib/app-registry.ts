@@ -14,6 +14,7 @@ export const APP_REGISTRY = [
   },
   { id: "universe", label: C.universe.title, href: "/universe", glyph: "◎" },
   { id: "settings", label: "Settings", href: "/settings", glyph: "S" },
+  { id: "memory", label: "Memory", href: "/memory", glyph: "◈" },
 ] as const;
 
 export type AppId = (typeof APP_REGISTRY)[number]["id"];
