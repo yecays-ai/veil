@@ -100,7 +100,11 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
     return runQueuedWrite(queue, async (owned) => {
       // After a failed read, re-read once before writing; if it still fails nothing is written.
       if (failure.current || !loaded.current) {
-        await refreshNow.current?.();
+        try {
+          const latest = await browserFoundationStorage.load(owned);
+          loaded.current = true; failure.current = null;
+          if (owner === lifecycle.current) { setDocument(latest); setReady(true); setError(""); }
+        } catch (reason) { failure.current = reason instanceof Error ? reason.message : "Could not load profile data."; }
         if (failure.current || !loaded.current)
           throw new Error(failure.current ?? "Profile data could not be loaded. Nothing was changed.");
       }
@@ -111,13 +115,13 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
       } catch (reason) {
         if (reason instanceof CharacterConflictError) {
           try {
-            const latest = await browserFoundationStorage.load();
+            const latest = await browserFoundationStorage.load(owned);
             if (owner === lifecycle.current) setDocument(latest);
           } catch { /* Retain the last good snapshot and the original conflict. */ }
         }
         throw reason;
       }
-    }, scope);
+    }, scope, undefined, typeof window !== "undefined" && !!window.navigator?.locks);
   }
   return (
     <FoundationContext.Provider value={{ document, ready, commit }}>

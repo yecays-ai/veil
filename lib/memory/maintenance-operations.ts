@@ -1,3 +1,4 @@
+import { parseStateOperations } from "./state-maintenance";
 import { memoryFingerprint } from "./fingerprint";
 import { MAINTENANCE_LIMITS, sensitiveMemoryText, type MaintenanceSnapshot } from "./maintenance-input";
 import type { MemoryDraft, MemorySource } from "./types";
@@ -11,6 +12,8 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
   let parsed: unknown; try { parsed = JSON.parse(raw); } catch { return invalid(); }
   if (!obj(parsed) || Object.keys(parsed).some((key) => key !== "operations") || !Array.isArray(parsed.operations)
     || parsed.operations.length > MAINTENANCE_LIMITS.operations) return invalid();
+  const stateOperations = parseStateOperations(parsed.operations.filter((value) => obj(value) && String(value.op).startsWith("STATE_")),
+    snapshot.state, snapshot.characterId, snapshot.messages);
   const candidates = new Map(snapshot.candidates.map((r) => [r.id, r]));
   const manual = new Set(snapshot.manual.map((r) => r.id)), changed = new Set<string>(), newFingerprints = new Set<string>();
   const put: MemoryDraft[] = []; let discarded = 0;
@@ -19,6 +22,7 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
     || snapshot.suppressions.some((s) => s.fingerprint === memoryFingerprint(text)
       || s.sources.some((old) => sources.some((n) => n.sessionId === old.sessionId && n.messageId === old.messageId)));
   for (const value of parsed.operations) {
+    if (obj(value) && String(value.op).startsWith("STATE_")) continue;
     if (!obj(value) || !str(value.op)) return invalid();
     const op = value.op;
     if (op === "IGNORE") { if (Object.keys(value).length !== 1) return invalid(); continue; }
@@ -67,5 +71,5 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
       status: "active", origin: "auto", sources: op === "SUPERSEDE" ? sources : combined,
       lineage: op === "SUPERSEDE" ? {} : { mergedFrom: targets.map((r) => r.id) } });
   }
-  return { put, discarded, operationCount: parsed.operations.length };
+  return { put, stateOperations, discarded, operationCount: parsed.operations.length };
 }

@@ -9,6 +9,8 @@ export type CharacterStateVersion = {
   previousId: string | null; backgroundId: string; sources: MemorySource[];
   /** An explicit verdict, never a similarity score. Missing/current-basis mismatch means pending. */
   review: { backgroundId: string; verdict: "compatible" | "conflict" } | null;
+  /** P2 evidence digests detect same-ID edits from older tabs; no chat text is copied. */
+  sourceHashes?: { sessionId: string; messageId: string; hash: string }[];
   createdAt: number;
 };
 export type StateFoundation = { backgrounds: BackgroundSnapshot[]; states: CharacterStateVersion[] };
@@ -22,12 +24,16 @@ export function backgroundSnapshotValid(v: unknown): v is BackgroundSnapshot {
     && (v.text === null || typeof v.text === "string") && integer(v.createdAt);
 }
 export function characterStateVersionValid(v: unknown): v is CharacterStateVersion {
-  return object(v) && exact(v, ["id", "characterId", "key", "version", "value", "previousId", "backgroundId", "sources", "review", "createdAt"])
+  return object(v) && exact(v, ["id", "characterId", "key", "version", "value", "previousId", "backgroundId", "sources", "review", "createdAt", ...(Object.hasOwn(v, "sourceHashes") ? ["sourceHashes"] : [])])
     && identifier(v.id) && identifier(v.characterId) && identifier(v.key) && integer(v.version) && v.version > 0
     && identifier(v.value) && (v.previousId === null || identifier(v.previousId)) && identifier(v.backgroundId) && integer(v.createdAt)
     && Array.isArray(v.sources) && v.sources.length > 0 && v.sources.every((s) => object(s) && exact(s, ["sessionId", "messageId"])
       && identifier(s.sessionId) && identifier(s.messageId))
     && new Set(v.sources.map((s) => `${s.sessionId}\0${s.messageId}`)).size === v.sources.length
+    && (v.sourceHashes === undefined || (Array.isArray(v.sourceHashes) && v.sourceHashes.length === v.sources.length
+      && v.sourceHashes.every((s) => object(s) && exact(s, ["sessionId", "messageId", "hash"]) && identifier(s.sessionId) && identifier(s.messageId)
+        && typeof s.hash === "string" && /^[a-f0-9]{64}$/.test(s.hash) && Array.isArray(v.sources) && v.sources.some((source: MemorySource) => source.sessionId === s.sessionId && source.messageId === s.messageId))
+      && new Set(v.sourceHashes.map((s) => `${s.sessionId}\0${s.messageId}`)).size === v.sources.length))
     && (v.review === null || (object(v.review) && exact(v.review, ["backgroundId", "verdict"])
       && identifier(v.review.backgroundId) && ["compatible", "conflict"].includes(String(v.review.verdict))));
 }

@@ -1,3 +1,5 @@
+import { memorySourceHash } from "../memory/source-hash";
+import { sourceInvalidationValid } from "../memory/source-hash";
 import { backgroundSnapshotValid, characterStateVersionValid, stateFoundationValid } from "../memory/state-foundation";
 import { normalizeFoundation } from "../foundation-types";
 import { normalizeDocument, themeImageAssetIds } from "../theme-types";
@@ -322,7 +324,7 @@ function validateMemory(value: unknown, version: number) {
   const cursorKeys = new Set<string>();
   cursors.forEach((row, index) => {
     const path = `memory.cursors[${index}]`;
-    keys(row, ["id", "characterId", "sessionId", "processedMessageId", "extraction", "failureCount", "failureReason", "clearRequestedAt", "clearToken", "clearMessageIds", "clearLineageIds", "updatedAt"],
+    keys(row, ["id", "characterId", "sessionId", "processedMessageId", "extraction", "failureCount", "failureReason", "clearRequestedAt", "clearToken", "clearMessageIds", "clearLineageIds", "sourceInvalidation", "updatedAt"],
       ["id", "characterId", "sessionId", "failureCount", "updatedAt"], path);
     check(id(row.characterId) && id(row.sessionId) && row.id === `${row.characterId}\u0000${row.sessionId}`, path, "invalid-data", "id-invalid");
     check(row.processedMessageId === undefined || id(row.processedMessageId), path, "invalid-data", "processedMessageId-invalid");
@@ -336,6 +338,7 @@ function validateMemory(value: unknown, version: number) {
       && row.clearMessageIds.every(id) && new Set(row.clearMessageIds).size === row.clearMessageIds.length), path, "invalid-data", "clearMessageIds-invalid");
     check(row.clearLineageIds === undefined || (row.clearRequestedAt !== undefined && Array.isArray(row.clearLineageIds)
       && row.clearLineageIds.every(id) && new Set(row.clearLineageIds).size === row.clearLineageIds.length), path, "invalid-data", "clearLineageIds-invalid");
+    check(row.sourceInvalidation === undefined || (row.clearRequestedAt !== undefined && Array.isArray(row.clearMessageIds) && sourceInvalidationValid(row.sourceInvalidation, row.clearMessageIds as string[])), path, "invalid-data", "sourceInvalidation-invalid");
     check(row.clearToken === undefined || (row.clearRequestedAt !== undefined && id(row.clearToken)), path, "invalid-data", "clearToken-invalid");
     check(!cursorKeys.has(row.id as string), path, "duplicate-id"); cursorKeys.add(row.id as string);
   });
@@ -440,6 +443,8 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
       check(!!message, path, "missing-message");
       const session = sessionsById.get(source.sessionId);
       check(session?.type !== "group" && session?.characterId === row.characterId, path, "cross-character-reference");
+      check(!data.memory.cursors.some((cursor) => cursor.characterId === row.characterId && cursor.sessionId === source.sessionId
+        && cursor.clearRequestedAt !== undefined && (!cursor.clearMessageIds || cursor.clearMessageIds.includes(source.messageId))), path, "invalid-data", "state-source-cleanup-pending");
     });
   });
   const memoriesById = new Map(data.memory.memories.map((row) => [row.id, row]));
@@ -526,5 +531,12 @@ export async function validateBackupPackage(manifestJson: string, files: Readonl
     }
   }
   const validated = data as BackupData;
-  return { manifest, data: validated, warnings: references(validated, manifest) };
+  const warnings = references(validated, manifest);
+  const messages = new Map(validated.chat.messages.map((m) => [m.id, m]));
+  for (const row of validated.memory.states) for (const source of row.sourceHashes ?? []) {
+    const message = messages.get(source.messageId);
+    check(!!message && message.sessionId === source.sessionId && await memorySourceHash(message) === source.hash,
+      "memory.states", "invalid-data", "state-source-replaced");
+  }
+  return { manifest, data: validated, warnings };
 }

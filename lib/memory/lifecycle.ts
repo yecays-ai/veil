@@ -1,4 +1,5 @@
 import { cleanCharacterStates } from "./state-foundation";
+import { notifyCharacterStateChanged } from "./state-events";
 import { cleanMemoryLineage } from "./lineage";
 import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { cursorId, request, MEMORY_STORES, type MemoryStorage } from "./storage";
@@ -44,8 +45,8 @@ export function cancelClearIntent(storage: MemoryStorage, characterId: string, s
     const store = tx.store("cursors");
     const previous = await request<MemoryCursor | undefined>(store.get(cursorId(characterId, sessionId)));
     if (!previous || previous.clearRequestedAt === undefined) return;
-    const { clearRequestedAt: _requested, clearToken: _token, clearMessageIds: _targets, clearLineageIds: _isolated, ...rest } = previous;
-    void [_requested, _targets, _isolated, _token];
+    const { clearRequestedAt: _requested, clearToken: _token, clearMessageIds: _targets, clearLineageIds: _isolated, sourceInvalidation: _sourceInvalidation, ...rest } = previous;
+    void [_requested, _targets, _isolated, _token, _sourceInvalidation];
     // An intent-only row carries nothing else worth keeping.
     if (rest.extraction === undefined && rest.processedMessageId === undefined && rest.failureCount === 0 && rest.failureReason === undefined) await request(store.delete(previous.id));
     else await request(store.put({ ...rest, updatedAt: storage.now() } satisfies MemoryCursor));
@@ -95,11 +96,22 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
         || row.suppressionChanges?.some((c) => touches(c.before?.sources ?? []) || touches(c.after.sources)))
         await request(operations.delete(row.id));
 
-    if (!cleaned.incomplete) await request(tx.store("cursors").delete(cursorId(characterId, sessionId)));
+    if (!cleaned.incomplete && cursor?.sourceInvalidation && cursor.extraction) {
+      const { clearRequestedAt: _requested, clearToken: _token, clearMessageIds: _ids,
+        clearLineageIds: _lineage, sourceInvalidation: _source, ...keptCursor } = cursor;
+      void [_requested, _token, _ids, _lineage, _source];
+      keptCursor.extraction = structuredClone(cursor.extraction);
+      keptCursor.extraction.incarnation = crypto.randomUUID();
+      for (const batch of keptCursor.extraction.batches) {
+        if (["in-flight", "commit-pending"].includes(batch.state)) { batch.state = "uncertain"; batch.errorCode = "source-changed"; }
+        else if (batch.state === "claimed") { batch.state = "ready"; delete batch.ownerId; delete batch.attemptId; }
+      }
+      await request(tx.store("cursors").put({ ...keptCursor, updatedAt: storage.now() }));
+    } else if (!cleaned.incomplete) await request(tx.store("cursors").delete(cursorId(characterId, sessionId)));
     else await request(tx.store("cursors").put({ failureCount: 0, ...cursor, id: cursorId(characterId, sessionId), characterId, sessionId,
       clearRequestedAt: cursor?.clearRequestedAt ?? storage.now(), clearToken: cursor?.clearToken ?? crypto.randomUUID(), clearLineageIds: cleaned.isolated, updatedAt: storage.now() } satisfies MemoryCursor));
     return cleaned.incomplete;
-  }, scope).then((incomplete) => { if (incomplete) throw new Error("Memory lineage cleanup deferred: damaged chain."); });
+  }, scope).then((incomplete) => { notifyCharacterStateChanged(characterId); if (incomplete) throw new Error("Memory lineage cleanup deferred: damaged chain."); });
 }
 
 export async function clearSession(storage: MemoryStorage, characterId: string, sessionId: string): Promise<void> {

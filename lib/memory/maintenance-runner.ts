@@ -157,7 +157,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     }
     await deps.protocol.transition(ticket, "commit-pending");
     try {
-      await deps.protocol.commitAutomatic(ticket, { put: plan.put }, signal);
+      await deps.protocol.commitAutomatic(ticket, { put: plan.put, stateOperations: plan.stateOperations }, signal);
       record("committed", plan.operationCount, plan.discarded); return true;
     } catch {
       // Keep result-unknown state for recovery, never invoke a repair model or resend.

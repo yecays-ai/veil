@@ -1,3 +1,4 @@
+import { memorySourceHash } from "./source-hash";
 import type { ChatSession } from "../chat/types";
 import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { chatStorage } from "../chat/storage";
@@ -9,7 +10,8 @@ import { cancelClearIntent, completeClear, recordClearIntent } from "./lifecycle
 import { MemoryStorage } from "./storage";
 
 /** The app's one Memory handle. The database opens lazily on first use and is covered by full backup. */
-export const browserMemoryStorage = new MemoryStorage();
+export { browserMemoryStorage } from "./instance";
+import { browserMemoryStorage } from "./instance";
 
 /** Characters whose Memory may be sourced from this conversation: the direct Character, or each group member. */
 const owners = (session: Pick<ChatSession, "characterId" | "type" | "participantIds">) =>
@@ -80,6 +82,10 @@ export function resumeBrowserClears(signal?: AbortSignal) {
     },
     countMessages: (sessionId, scope) => chatStorage.countMessages(sessionId, scope),
     existingMessageIds: (sessionId, ids, scope) => chatStorage.existingMessageIds(sessionId, ids, scope),
+    sourceHashes: async (sessionId, ids, scope) => {
+      const view = await chatStorage.readMemorySources(sessionId, scope);
+      return new Map(await Promise.all(view.messages.filter((m) => ids.includes(m.id)).map(async (m) => [m.id, await memorySourceHash(m)] as const)));
+    },
   };
   return resumeStartupClears(browserMemoryStorage, deps, signal);
 }
