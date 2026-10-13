@@ -81,7 +81,7 @@ test("the Character page links to its Memory Bank", async () => {
   await mounted(async (app) => {
     const pages = await import("../components/profile-pages");
     await app.render(createElement(pages.CharacterPage, { characterId: "p" }));
-    await app.wait(() => !!app.container.querySelector('a[href="/characters/p/memory"]'));
+    await app.wait(() => !!app.container.querySelector('a[href="/memory/p"]'));
   });
 });
 
