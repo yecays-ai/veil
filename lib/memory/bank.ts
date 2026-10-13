@@ -1,7 +1,7 @@
 import { memoryFingerprint } from "./fingerprint";
 import type { MemoryStorage } from "./storage";
 import { JOURNAL_KIND } from "./journal";
-import type { Memory, MemoryDraft, MemoryOperation, MemoryOrigin, MemoryStatus } from "./types";
+import { MEMORY_TEXT_CHARACTERS, type Memory, type MemoryDraft, type MemoryOperation, type MemoryOrigin, type MemoryStatus } from "./types";
 
 /**
  * Memory Bank: the user's own view and edits of one Character's memories. Every write here is a user operation,
@@ -29,6 +29,7 @@ export type MemoryEdit = { kind: string; text: string; subject?: string };
 const clean = (edit: MemoryEdit) => {
   const text = edit.text.trim();
   if (!memoryFingerprint(text)) throw new Error("Write something for this memory.");
+  if (text.length > MEMORY_TEXT_CHARACTERS) throw new Error(`A memory can have at most ${MEMORY_TEXT_CHARACTERS} characters.`);
   return { kind: edit.kind, text, subject: edit.subject };
 };
 

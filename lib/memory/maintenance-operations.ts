@@ -45,9 +45,11 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
     const targets = ids.map((id) => candidates.get(id as string) ?? invalid());
     if (targets.some((r) => r.characterId !== snapshot.characterId || r.origin !== "auto" || r.status !== "active")
       || targets.some((r) => changed.has(r.id))) return invalid();
-    if (creates && (!str(value.text) || value.text.length > MAINTENANCE_LIMITS.entryCharacters
+    if (creates && (!str(value.text)
       || !["fact", "event", "ongoing", "relationship", "continuity"].includes(String(value.kind))
       || !["character", "user", "other"].includes(String(value.subject)))) return invalid();
+    // An over-long entry is dropped on its own: rejecting the batch would only repeat the paid request.
+    if (creates && (value.text as string).length > MAINTENANCE_LIMITS.entryCharacters) { discarded++; continue; }
     if (creates && Object.hasOwn(value, "reviewInDays") && value.kind !== "ongoing") return invalid();
     if (op === "EXTEND" && targets.some((r) => r.kind !== "ongoing")) return invalid();
     if (op === "ARCHIVE") {
