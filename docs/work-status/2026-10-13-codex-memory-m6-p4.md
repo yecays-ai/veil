@@ -1,7 +1,7 @@
 # STATUS — 2026-10-13-codex-memory-m6-p4
 
 更新人：Codex
-更新时间：2026-10-13T16:23:04+08:00
+更新时间：2026-10-13T16:26:05+08:00
 发现范围：2026-10-13 经 GitHub API 查询开放 PR（含 draft）、Memory/P3 远端分支及相关 head 的任务记录。开放 #169 P5 不碰检索；`claude/m6-p3-ongoing` 改 Ongoing/维护/存储。两者可能与总账有文档合并冲突，本单只在总账开头加独立 P4 段落，不动他单记录。未发布工作不可见。
 
 ## 当前任务
@@ -10,7 +10,7 @@ P4 固定样本评估施工完成，待独立 PR 外部审查及 Lan 手动合�
 
 ## 谁在改哪里
 
-Codex；分支 `codex/memory-p4-fixed-evaluation`；PR 创建后补链接。唯一仓库 `yecays-ai/veil`；最新 main 与 base 均为 `8a0f79044c6b291906a518bc07a5d717924a348a`，独立工作目录 `veil-memory-p4`，开工无本地改动。
+Codex；分支 `codex/memory-p4-fixed-evaluation`；[PR #171](https://github.com/yecays-ai/veil/pull/171)，已推送、未合并。唯一仓库 `yecays-ai/veil`；最新 main 与 base 均为 `8a0f79044c6b291906a518bc07a5d717924a348a`，独立工作目录 `veil-memory-p4`，开工无本地改动。已验证代码提交 `1c82c2b72a75e0079329791afb39074f745799ac`；本次后续提交只补文档 PR 链接，发布 head 的外部检查另核。
 
 范围：`tests/memory-retrieval-p4-{fixture,evaluation}.ts`、`tests/memory-retrieval-p4.test.ts`、`scripts/test-memory-retrieval.mjs`、`tsconfig.memory-evaluation.json`、`package.json` 一条入口、[开发文档](../memory-m6-p4-evaluation.md)、本记录及 `docs/AUDIT_LEDGER.md` 独立 P4 段落。生产代码、原固定集、历史评估报告和其他任务文件未改。
 
@@ -28,4 +28,4 @@ Codex；分支 `codex/memory-p4-fixed-evaluation`；PR 创建后补链接。唯�
 
 ## 下一步
 
-推送并创建独立 PR；有限检查 CI/CodeRabbit，处理 P4 有效意见后等待 Lan 手动合并，不部署 Production、不自动合并。
+有限检查 PR #171 最新 head 的 CI/CodeRabbit，处理 P4 有效意见后等待 Lan 手动合并，不部署 Production、不自动合并。
