@@ -36,6 +36,8 @@ async function app(hasContacts = true) {
     if (request.endsWith(".css")) return {};
     if (request.endsWith("/foundation-provider")) return foundationHook;
     if (request.endsWith("/use-contacts")) return contactsHook;
+    // The Memory shortcuts open their own stores; this suite covers Contact Info's own async lifecycle.
+    if (request.endsWith("/contact-memory-cards")) return { ContactMemoryCards: () => null };
     if (request.endsWith("/theme-storage")) return { readImage: () => imageReader() };
     return originalLoad.call(this, request, ...rest);
   };

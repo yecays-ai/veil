@@ -56,6 +56,7 @@ async function fixture() {
   const originalLoad = loader._load;
   loader._load = function (request, ...rest) {
     if (request.endsWith(".css")) return {};
+    if (request.endsWith("/contact-memory-cards")) return { ContactMemoryCards: () => null }; // Memory shortcuts open their own stores; not under test here.
     if (request.endsWith("/foundation-provider")) return foundationBridge;
     if (request.endsWith("/use-contacts")) return contactsBridge;
     if (request.endsWith("/theme-provider")) return themeBridge;
