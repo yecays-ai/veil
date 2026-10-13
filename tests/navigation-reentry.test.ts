@@ -55,6 +55,7 @@ async function mountedApp() {
   const loader = Module as unknown as { _load: (request: string, ...rest: unknown[]) => unknown };
   const originalLoad = loader._load;
   loader._load = function (request: string, ...rest: unknown[]) {
+    if (request.endsWith("/contact-memory-cards")) return { ContactMemoryCards: () => null }; // Memory shortcuts open their own stores; not under test here.
     return request.endsWith(".css") ? {} : originalLoad.call(this, request, ...rest);
   };
   const { createRoot } = await import("react-dom/client");

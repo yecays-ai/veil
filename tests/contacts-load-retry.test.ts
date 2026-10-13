@@ -39,6 +39,7 @@ test("Contacts pages expose shared load Retry, deduplicate clicks, and ignore la
   const originalLoad = loader._load;
   loader._load = function (request, ...rest) {
     if (request.endsWith(".css")) return {};
+    if (request.endsWith("/contact-memory-cards")) return { ContactMemoryCards: () => null }; // Memory shortcuts open their own stores; not under test here.
     if (request.endsWith("/foundation-provider")) return foundationHook;
     return originalLoad.call(this, request, ...rest);
   };

@@ -8,6 +8,7 @@ import { useFoundation } from "./foundation-provider";
 import { useContacts } from "./use-contacts";
 import { Avatar } from "./profile-view";
 import { CharacterPresenceLine } from "./presence";
+import { ContactMemoryCards } from "./contact-memory-cards";
 import { ImageCropDialog } from "./image-crop-dialog";
 import { readImage } from "../lib/theme-storage";
 import { chatStorage } from "../lib/chat/storage";
@@ -184,6 +185,7 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
           {[0, 1, 2, 3].map((slot) => <div className="contact-media-slot" key={slot} aria-hidden="true">{slot === 0 && <Plus />}</div>)}
         </div>
       </section>
+      <ContactMemoryCards character={character} disabled={pending || !!draft} />
       <section className="contact-info-section" aria-labelledby="relationship-title">
         <h2 id="relationship-title">Relationship</h2>
         <div className="contact-since"><span>Contact since</span>{since ? <time dateTime={since.toISOString()}>
