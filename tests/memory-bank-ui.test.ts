@@ -166,7 +166,7 @@ test("the Journal section adds a keyword entry apart from the memory list, and d
     const { MemoryBankPage } = await import("../components/memory-bank");
     let clock = 1000;
     const storage = new MemoryStorage(() => app.factory, () => ++clock, passthrough);
-    await app.render(createElement(MemoryBankPage, { characterId: "p", storage }));
+    await app.render(createElement(MemoryBankPage, { characterId: "p", storage, initialTab: "journal" }));
     await app.wait(() => app.container.textContent!.includes("No Journal entries yet."));
     await app.click(button(app.container, "Add Journal entry")!);
     const [text, keywords] = [...app.dom.window.document.querySelectorAll("textarea")];
@@ -195,7 +195,7 @@ test("a Journal edit that collides with another tab keeps the user's text and sa
     let clock = 1000;
     const storage = new MemoryStorage(() => app.factory, () => ++clock, passthrough);
     await addJournalEntry(storage, "p", { text: "Lives by the sea", keywords: ["sea"] });
-    await app.render(createElement(MemoryBankPage, { characterId: "p", storage }));
+    await app.render(createElement(MemoryBankPage, { characterId: "p", storage, initialTab: "journal" }));
     await app.wait(() => !!button(app.container, "Edit"));
     await app.click(button(app.container, "Edit")!);
     const textarea = app.dom.window.document.querySelector("textarea")!;
@@ -211,5 +211,28 @@ test("a Journal edit that collides with another tab keeps the user's text and sa
     await app.click(button(app.container, "Save")!);
     await app.wait(() => !app.dom.window.document.querySelector("form"));
     assert.equal((await storage.listMemories("p"))[0].text, "Lives in the mountains");
+  });
+});
+
+test("the memory page separates Active memories from History and shows what replaced them", async () => {
+  await mounted(async (app) => {
+    const { MemoryBankPage } = await import("../components/memory-bank");
+    let clock = 1000;
+    const storage = new MemoryStorage(() => app.factory, () => ++clock, passthrough);
+    const base = { characterId: "p", kind: "fact", subject: "character", origin: "manual" as const, sources: [] };
+    await storage.applyChange("p", "seed", { put: [
+      { ...base, id: "new", text: "Lives in Queens", status: "active", lineage: { mergedFrom: ["old"] } },
+      { ...base, id: "old", text: "Lives in Brooklyn", status: "superseded", lineage: { supersededBy: "new" } },
+      { ...base, id: "gone", text: "Played chess", status: "archived", lineage: {} },
+    ] });
+    await app.render(createElement(MemoryBankPage, { characterId: "p", storage }));
+    await app.wait(() => app.container.textContent!.includes("Lives in Queens"));
+    assert.ok(!app.container.textContent!.includes("Lives in Brooklyn") && !app.container.textContent!.includes("Played chess"),
+      "Memories lists Active only");
+    assert.deepEqual([...app.container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent), ["Memories", "Journal", "State", "History"]);
+    await app.click([...app.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((tab) => tab.textContent === "History")!);
+    await app.wait(() => app.container.textContent!.includes("Lives in Brooklyn"));
+    assert.ok(app.container.textContent!.includes("Played chess") && app.container.textContent!.includes("Replaced by: Lives in Queens"));
+    assert.ok(!app.container.textContent!.includes("Add memory"), "History is read-only");
   });
 });
