@@ -52,10 +52,10 @@ export function createIndexedDBFoundationStorage(
       };
       if (!memory || scope) return read(scope);
       try { return await memory.withExclusive(read); }
-      catch (error) {
-        // Ordinary read-only Foundation remains available without Web Locks; State stays unavailable.
-        if (error instanceof BackupValidationError && error.code === "coordination-unavailable") return read();
-        throw error;
+      catch {
+        // Snapshot repair is optional for reads. Document errors still propagate from this plain read;
+        // writes and State reads retain their own coordination, restore and authority gates.
+        return read();
       }
     },
     async transact(update, scope) {

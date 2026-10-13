@@ -22,6 +22,8 @@ import { addManualMemory, addJournalEntry } from "../lib/memory/bank";
 import { memoryFingerprint } from "../lib/memory/fingerprint";
 import { createPersistenceWriteGate } from "../lib/backup/persistence-write-gate";
 import { MemoryStorage } from "../lib/memory/storage";
+import { completeClear, recordClearIntent } from "../lib/memory/lifecycle";
+import { withMemoryClear } from "../lib/memory/browser";
 import { lockOrigin } from "./generation-lock-fixture";
 import { exportStaticBackup } from "../lib/backup/static-export";
 import { previewRestore } from "../lib/backup/restore-preview";
@@ -375,4 +377,87 @@ test("source content digest survives annotations and delivery metadata, but chan
   const f = await fixture(); const m = await f.send(); const digest = await memorySourceHash(m);
   assert.equal(await memorySourceHash({ ...m, confirmed: !m.confirmed, outcome: "success", order: 999 }), digest);
   assert.notEqual(await memorySourceHash({ ...m, content: "Replaced content" }), digest);
+});
+
+test("Memory repair failure preserves authoritative Foundation reads but never enables unreviewed State or writes", async () => {
+  const f = await fixture(); const raw = await f.core.read(FOUNDATION_STORAGE_KEY), original = f.memory.transaction.bind(f.memory);
+  f.memory.transaction = (() => Promise.reject(Error("Memory schema unavailable"))) as typeof f.memory.transaction;
+  try {
+    assert.equal((await f.foundation.load()).characters[0].backstory, f.character.backstory);
+    await assert.rejects(f.view());
+    await assert.rejects(f.foundation.transact((doc) => ({ ...doc, characters: doc.characters.map((c) => ({ ...c, backstory: "Not saved" })) })));
+    assert.equal(await f.core.read(FOUNDATION_STORAGE_KEY), raw);
+    await assert.rejects(f.memory.withExclusive((scope) => f.foundation.load(scope)), /Memory schema/);
+  } finally { f.memory.transaction = original; }
+});
+
+test("Foundation remains readable during restore admission, while writes and State reads remain blocked", async () => {
+  const f = await fixture(); const before = await f.core.read(FOUNDATION_STORAGE_KEY); f.raw.set(RESTORE_JOURNAL_KEY, "pending restore");
+  try {
+    assert.equal((await f.foundation.load()).characters[0].name, "Peter");
+    await assert.rejects(f.foundation.transact((doc) => ({ ...doc, user: { ...doc.user, name: "No write" } })));
+    await assert.rejects(f.view()); assert.equal(await f.core.read(FOUNDATION_STORAGE_KEY), before);
+  } finally { f.raw.delete(RESTORE_JOURNAL_KEY); }
+});
+
+test("Background repair fallback cannot mask document database errors or publish defaults", async () => {
+  const f = await fixture(), read = f.core.read.bind(f.core);
+  f.core.read = async () => { throw Error("Foundation unreadable"); };
+  try { await assert.rejects(f.foundation.load(), /Foundation unreadable/); }
+  finally { f.core.read = read; }
+  assert.equal((await f.foundation.load()).characters[0].name, "Peter");
+});
+
+test("whole-session clear replaces targeted invalidation, drops the old cursor and allows maintenance in the new epoch", async () => {
+  const f = await fixture(); const m = await f.send(); await maintain(f, (s) => [create(s)]); await marker(f, [m.id]);
+  await withMemoryClear(f.session, (scope) => f.chat.clearSession(f.session.id, scope), f.memory);
+  assert.deepEqual(await f.memory.listCursors("c"), []); assert.deepEqual((await f.memory.readStateFoundation("c")).states, []);
+  await f.send("A new major change after clear"); await maintain(f, (s) => [create(s)]);
+  assert.equal((await f.view()).entries[0].status, "active");
+});
+
+test("interrupted whole clear discards targeted hash metadata and resumes without invalid marker or stale epoch", async () => {
+  const f = await fixture(); const m = await f.send(); await maintain(f, (s) => [create(s)]); await marker(f, [m.id]);
+  await f.send("Another source in the old epoch");
+  await f.memory.withShared(async (scope) => {
+    await recordClearIntent(f.memory, "c", f.session.id, scope);
+    assert.equal((await f.memory.listCursors("c", scope))[0].sourceInvalidation, undefined);
+    await f.chat.clearSession(f.session.id, scope);
+  });
+  assert.equal((await recovery(f)).completed, 1); assert.deepEqual(await f.memory.listCursors("c"), []);
+  await f.send(); await maintain(f, (s) => [create(s)]); assert.equal((await f.view()).entries[0].status, "active");
+});
+
+test("untargeted cleanup does not retain a targeted cursor even when recordClearIntent was not called again", async () => {
+  const f = await fixture(); const m = await f.send(); await maintain(f, (s) => [create(s)]); await marker(f, [m.id]);
+  await completeClear(f.memory, "c", f.session.id);
+  assert.deepEqual(await f.memory.listCursors("c"), []);
+});
+
+test("failed whole-session chat clear restores the prior targeted cleanup intent and its exact evidence", async () => {
+  const f = await fixture(); const m = await f.send(); await maintain(f, (s) => [create(s)]); await marker(f, [m.id]);
+  const pending = (await f.memory.listCursors("c"))[0];
+  const oldTab = new ChatStorage(() => f.factory, () => f.locks, f.gate, true); await oldTab.editMessage(m.id, "Replaced source");
+  await assert.rejects(withMemoryClear(f.session, async () => { throw Error("chat clear aborted"); }, f.memory), /chat clear aborted/);
+  const restored = (await f.memory.listCursors("c"))[0];
+  assert.deepEqual(restored.sourceInvalidation, pending.sourceInvalidation); assert.equal(restored.clearToken, pending.clearToken);
+  assert.equal((await recovery(f)).completed, 1); assert.deepEqual((await f.memory.readStateFoundation("c")).states, []);
+});
+
+test("whole clear rejects a stale targeted intent token without changing its evidence", async () => {
+  const f = await fixture(); const m = await f.send(); await marker(f, [m.id]); const before = await f.memory.listCursors("c");
+  await assert.rejects(f.memory.withShared((scope) => recordClearIntent(f.memory, "c", f.session.id, scope, "stale-token")));
+  assert.deepEqual(await f.memory.listCursors("c"), before);
+});
+
+test("failed whole clear cannot restore targeted intent over a newer cleanup owner", async () => {
+  const f = await fixture(); const m = await f.send(); await marker(f, [m.id]);
+  await assert.rejects(withMemoryClear(f.session, async (scope) => {
+    await f.memory.transaction("readwrite", async (tx) => {
+      const store = tx.store("cursors"), row = await request(tx.store("cursors").get(cursorId("c", f.session.id)));
+      await request(store.put({ ...row, clearToken: "newer-owner" }));
+    }, scope);
+    throw Error("chat clear failed after another owner replaced its marker");
+  }, f.memory));
+  const current = (await f.memory.listCursors("c"))[0]; assert.equal(current.clearToken, "newer-owner"); assert.equal(current.sourceInvalidation, undefined);
 });

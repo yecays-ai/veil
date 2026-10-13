@@ -7,7 +7,8 @@ import { FOUNDATION_STORAGE_KEY } from "../foundation-storage";
 import { normalizeFoundation } from "../foundation-types";
 import { resumeStartupClears, type StartupClearDeps } from "./startup";
 import { cancelClearIntent, completeClear, recordClearIntent } from "./lifecycle";
-import { MemoryStorage } from "./storage";
+import { MemoryStorage, request } from "./storage";
+import type { MemoryCursor } from "./types";
 
 /** The app's one Memory handle. The database opens lazily on first use and is covered by full backup. */
 export { browserMemoryStorage } from "./instance";
@@ -31,17 +32,27 @@ export async function withMemoryClear<T>(session: Pick<ChatSession, "id" | "char
   let completed: MemoryClearOutcome<T> | undefined;
   try { return await storage.withShared(async (scope) => {
       const characterIds = owners(session), created: string[] = [];
+      const replaced: { before: MemoryCursor; token: string }[] = [];
       let value: T;
       try {
         for (const characterId of characterIds) {
           const existing = (await storage.listCursors(characterId, scope)).find((row) => row.sessionId === session.id);
-          await recordClearIntent(storage, characterId, session.id, scope);
+          if (existing?.sourceInvalidation && !existing.clearToken) throw new Error("Source cleanup authority is unavailable.");
+          const token = await recordClearIntent(storage, characterId, session.id, scope, existing?.sourceInvalidation ? existing.clearToken : undefined);
+          if (existing?.sourceInvalidation) replaced.push({ before: existing, token });
           if (existing?.clearRequestedAt === undefined) created.push(characterId);
         }
         value = await chatOperation(scope);
       }
       catch (error) {
-        const cancelled = await Promise.allSettled(created.map((characterId) => cancelClearIntent(storage, characterId, session.id, scope)));
+        const cancelled = await Promise.allSettled([
+          ...created.map((characterId) => cancelClearIntent(storage, characterId, session.id, scope)),
+          ...replaced.map(({ before, token }) => storage.transaction("readwrite", async (tx) => {
+            const store = tx.store("cursors"), current = await request<MemoryCursor | undefined>(store.get(before.id));
+            // Restore earlier cleanup evidence only while this replacement still owns the intent.
+            if (current?.clearToken === token && current.sourceInvalidation === undefined) await request(store.put(before));
+          }, scope)),
+        ]);
         if (cancelled.some((item) => item.status === "rejected"))
           throw new Error("The conversation was not changed, but a Memory clear marker could not be withdrawn.", { cause: error });
         throw error;

@@ -17,13 +17,12 @@ export function CharacterStatePanel({ character, load = readBrowserCharacterStat
   const [revision, setRevision] = useState(0);
   const { characterId, backstory } = character;
   useEffect(() => {
-    let active = true, request = 0;
-    const refresh = async () => {
-      const owner = ++request;
+    let active = true, request = 0, running = false, queued = false, initial = true;
+    const refresh = async (owner: number) => {
       // Yield initial work; role changes hide the previous view synchronously through the render identity check.
       await Promise.resolve();
       if (!active || owner !== request) return;
-      setSnapshot({ characterId, background: backstory });
+      if (initial) { setSnapshot({ characterId, background: backstory }); initial = false; }
       try {
         const view = await load({ characterId, backstory });
         if (active && owner === request) {
@@ -34,11 +33,20 @@ export function CharacterStatePanel({ character, load = readBrowserCharacterStat
         if (active && owner === request) setSnapshot({ characterId, background: backstory, error: "Could not load Character State." });
       }
     };
-    const wake = () => { if (document.visibilityState !== "hidden") void refresh(); };
+    const wake = () => {
+      if (!active || document.visibilityState === "hidden") return;
+      request++; // New evidence invalidates the current result even when the next read is queued.
+      if (running) { queued = true; return; }
+      running = true;
+      void refresh(request).finally(() => {
+        running = false;
+        if (queued && active) { queued = false; wake(); }
+      });
+    };
     const stopState = subscribeCharacterState(characterId, wake);
     const stopChat = chatStorage.subscribe((change) => { if (change.domain === "messages" || change.domain === "session") wake(); });
     window.addEventListener("focus", wake); document.addEventListener("visibilitychange", wake);
-    void refresh();
+    wake();
     return () => {
       active = false; request++; stopState(); stopChat();
       window.removeEventListener("focus", wake); document.removeEventListener("visibilitychange", wake);

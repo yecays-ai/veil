@@ -2,7 +2,7 @@ import { cleanCharacterStates } from "./state-foundation";
 import { notifyCharacterStateChanged } from "./state-events";
 import { cleanMemoryLineage } from "./lineage";
 import type { PersistenceWriteScope } from "../backup/persistence-write-gate";
-import { cursorId, request, MEMORY_STORES, type MemoryStorage } from "./storage";
+import { cursorId, request, MEMORY_STORES, MemoryConflictError, type MemoryStorage } from "./storage";
 import type { Memory, MemoryCursor, MemoryOperation, MemorySource, Suppression } from "./types";
 
 
@@ -17,12 +17,13 @@ export function deleteCharacterMemory(storage: MemoryStorage, characterId: strin
   }, scope);
 }
 
-/** Step 1 of clearing session A: persist the intent so a crash or reload can finish it. */
-export function recordClearIntent(storage: MemoryStorage, characterId: string, sessionId: string, scope?: PersistenceWriteScope): Promise<void> {
+/** Step 1: persist a whole-session intent and return its token for guarded failure recovery. */
+export function recordClearIntent(storage: MemoryStorage, characterId: string, sessionId: string, scope?: PersistenceWriteScope, expectedToken?: string): Promise<string> {
   return storage.transaction("readwrite", async (tx) => {
     const store = tx.store("cursors");
     const id = cursorId(characterId, sessionId);
     const previous = await request<MemoryCursor | undefined>(store.get(id));
+    if (expectedToken !== undefined && previous?.clearToken !== expectedToken) throw new MemoryConflictError();
     const now = storage.now();
     const targets = new Set(previous?.clearMessageIds ?? []);
     for (const batch of previous?.extraction?.batches ?? []) for (const source of batch.sources) targets.add(source.messageId);
@@ -33,9 +34,13 @@ export function recordClearIntent(storage: MemoryStorage, characterId: string, s
       for (const change of row.changes) { collect(change.before?.sources); collect(change.after?.sources); }
       for (const change of row.suppressionChanges ?? []) { collect(change.before?.sources); collect(change.after.sources); }
     }
-    await request(store.put({ failureCount: 0, ...previous, id, characterId, sessionId,
-      clearRequestedAt: previous?.clearRequestedAt ?? now, clearToken: previous?.clearToken ?? crypto.randomUUID(),
+    const prior: Partial<MemoryCursor> = { ...previous };
+    delete prior.sourceInvalidation; // A whole-session intent supersedes targeted hash evidence.
+    const token = previous?.sourceInvalidation ? crypto.randomUUID() : previous?.clearToken ?? crypto.randomUUID();
+    await request(store.put({ failureCount: 0, ...prior, id, characterId, sessionId,
+      clearRequestedAt: previous?.clearRequestedAt ?? now, clearToken: token,
       clearMessageIds: [...targets].sort(), updatedAt: now } satisfies MemoryCursor));
+    return token;
   }, scope);
 }
 
@@ -96,7 +101,7 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
         || row.suppressionChanges?.some((c) => touches(c.before?.sources ?? []) || touches(c.after.sources)))
         await request(operations.delete(row.id));
 
-    if (!cleaned.incomplete && cursor?.sourceInvalidation && cursor.extraction) {
+    if (!cleaned.incomplete && targets && cursor?.sourceInvalidation && cursor.extraction) {
       const { clearRequestedAt: _requested, clearToken: _token, clearMessageIds: _ids,
         clearLineageIds: _lineage, sourceInvalidation: _source, ...keptCursor } = cursor;
       void [_requested, _token, _ids, _lineage, _source];

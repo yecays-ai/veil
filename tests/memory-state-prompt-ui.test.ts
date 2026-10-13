@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { JSDOM } from "jsdom";
 import { IDBFactory } from "fake-indexeddb";
 import { CharacterStatePanel } from "../components/character-state-panel";
-import { ChatStorage, chatStorage } from "../lib/chat/storage";
+import { ChatStorage, chatStorage, type ChatStorageChange } from "../lib/chat/storage";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { assembleChatPrompt } from "../lib/chat/prompt";
 import { createBuiltinPreset, createPresetDocument } from "../lib/preset";
@@ -68,14 +68,14 @@ test("engine cancellation while State is loading cannot dispatch a late provider
 });
 
 async function mounted(run: (env: { container: HTMLElement; render: (id?: string, background?: string | null) => Promise<void>;
-  loads: ReturnType<typeof deferred<StateView>>[]; unmount: () => Promise<void>; focus: () => Promise<void>; live: () => number }) => Promise<void>) {
+  loads: ReturnType<typeof deferred<StateView>>[]; unmount: () => Promise<void>; focus: () => Promise<void>; chatChange: () => Promise<void>; live: () => number }) => Promise<void>) {
   const dom = new JSDOM('<div id="root"></div>', { url: "https://veil.test" });
   const keys = ["window", "document", "HTMLElement", "IS_REACT_ACT_ENVIRONMENT", "BroadcastChannel"];
   const descriptors = keys.map((key) => Object.getOwnPropertyDescriptor(globalThis, key));
   const values = [dom.window, dom.window.document, dom.window.HTMLElement, true, undefined];
   keys.forEach((key, index) => Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: values[index] }));
-  const original = chatStorage.subscribe; let live = 0;
-  chatStorage.subscribe = () => { live++; return () => { live--; }; };
+  const original = chatStorage.subscribe; let live = 0; const listeners = new Set<(change: ChatStorageChange) => void>();
+  chatStorage.subscribe = (listener) => { live++; listeners.add(listener); return () => { live--; listeners.delete(listener); }; };
   const loads: ReturnType<typeof deferred<StateView>>[] = [];
   const load = async () => { const pending = deferred<StateView>(); loads.push(pending); return pending.promise; };
   const { createRoot } = await import("react-dom/client"); const container = dom.window.document.getElementById("root")!, root = createRoot(container); let ended = false;
@@ -83,7 +83,8 @@ async function mounted(run: (env: { container: HTMLElement; render: (id?: string
   try {
     await run({ container, loads, live: () => live, unmount,
       render: (id = character.characterId, background = character.backstory) => act(async () => { root.render(createElement(CharacterStatePanel, { character: { characterId: id, backstory: background }, load })); }),
-      focus: () => act(async () => { dom.window.dispatchEvent(new dom.window.Event("focus")); }) });
+      focus: () => act(async () => { dom.window.dispatchEvent(new dom.window.Event("focus")); }),
+      chatChange: () => act(async () => { for (const listener of listeners) listener({ domain: "messages", sessionId: "other-session" }); }) });
   } finally {
     await unmount(); chatStorage.subscribe = original; dom.window.close();
     keys.forEach((key, i) => { if (descriptors[i]) Object.defineProperty(globalThis, key, descriptors[i]!); else Reflect.deleteProperty(globalThis, key); });
@@ -112,13 +113,28 @@ test("State UI hides the old role and rejects late replies after role/background
   });
 });
 
-test("State UI rejects foreign authority, offers Retry and ignores superseded refresh", async () => {
+test("State UI rejects foreign authority, offers Retry and queues superseded refresh", async () => {
   await mounted(async (env) => {
     await env.render(); await act(async () => { env.loads[0].resolve(view("wrong")); });
     assert.match(env.container.querySelector('[role="alert"]')!.textContent!, /Could not load/);
     await act(async () => { (env.container.querySelector("button") as HTMLButtonElement).click(); });
     await env.focus();
+    assert.equal(env.loads.length, 2, "focus queues behind the single running load");
     await act(async () => { env.loads[1].resolve(view()); }); assert.doesNotMatch(env.container.textContent!, /scientist/);
     await act(async () => { env.loads[2].resolve(view()); }); assert.match(env.container.textContent!, /scientist/);
+  });
+});
+
+test("State UI coalesces chat event bursts into one pending read and keeps settled content during refresh", async () => {
+  await mounted(async (env) => {
+    await env.render(); await act(async () => { env.loads[0].resolve(view()); });
+    await env.chatChange(); assert.equal(env.loads.length, 2); assert.match(env.container.textContent!, /scientist/); assert.doesNotMatch(env.container.textContent!, /Loading State/);
+    for (let i = 0; i < 20; i++) await env.chatChange();
+    assert.equal(env.loads.length, 2, "twenty events do not start twenty leases");
+    await act(async () => { env.loads[1].resolve({ ...view(), entries: [] }); });
+    assert.equal(env.loads.length, 3, "one coalesced successor starts after the stale read settles");
+    assert.match(env.container.textContent!, /scientist/, "superseded result is not published");
+    await act(async () => { env.loads[2].resolve({ ...view(), entries: [] }); }); assert.match(env.container.textContent!, /No lasting changes/);
+    assert.equal(env.loads.length, 3); await env.unmount(); await env.chatChange(); assert.equal(env.loads.length, 3); assert.equal(env.live(), 0);
   });
 });

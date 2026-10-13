@@ -24,6 +24,8 @@ Lan 批准：重大持续角色生活变化、角色自主控制/用户只读、
 
 顺序：先保留已保存 Background 原快照，Foundation CAS 保存新文档，再追加新快照。这是两个数据库的顺序写入，**不是跨库原子事务**。第二步失败时 Foundation 可能已保存，错误明确返回；新文档与快照文本不一致时 State 一律 pending，不成为事实。load/retry 在同一独占 scope 读取实际 Foundation 并追加缺失版本，旧快照不覆盖。并发读取/写入受同一租约协调，CAS 拒绝覆盖他人文档。
 
+unscoped load 的修复为 best effort：Memory、租约或修复失败时回落普通 Foundation 文档读取，不能因可选快照修复使资料不可读；文档自身读取错误仍传播，不发布默认资料，scoped load 与写入/State 读取的协调和恢复门禁保持严格。
+
 无 Web Locks 时普通 Foundation 读取和 signature/status 保存仍可用；State 不可用，Background 变更安全拒绝。普通新回复/continuation 沿用共享租约，替换来源的编辑/删除/重生成需要独占协调并安全拒绝。未建立可恢复记录的来源替换不能通过降级绕过；这是协调能力限制，真机兼容仍待验证。共享恢复 scope 不自动做快照写入。
 
 ## B/C：唯一正常维护请求及 State 提交
@@ -46,6 +48,8 @@ State 版本新增可选 `sourceHashes: [{sessionId,messageId,hash}]`；SHA-256 
 
 重启比较当前实际 hash：marker 后但 Chat 前中断，证据未变化则撤回意图并保留 State；已删除/替换则仅清理变化来源。重复清理幂等。已有普通 Memory、suppression、Undo 的 lineage/清理原则保留，定向 cursor 保留进度并旋转 incarnation，已分发结果变 uncertain，不重发。
 
+定向清理转整段清空时，新 intent 移除 sourceInvalidation 并换 token，完整清理删除旧 cursor，避免保留旧 epoch 导致维护停滞；如 Chat 清空失败，仅在 replacement token 仍匹配时恢复此前定向证据，拒绝 stale token 或覆盖新 owner，清理中断沿用 startup resume；没有新增持久字段。
+
 旧版本 tab 绕过新包装时，只读 State 在请求末端按实际消息 hash 隐藏失效版本、虚拟恢复独立祖先；下次正常输入准备物理清理。严格备份在物理清理前拒绝失效内容，绝不静默导出旧正文。任何一个贡献来源失效撤销整个混合版本；隐私代价是仍有支持的片段也可能丢失，不调用模型拆分。
 
 原始 Background 只来源于用户基础设定，不写聊天副本或 State 生成内容；来源删除不通过快照保留聊天。Character 删除复用 P1 六表清理，所有链/来源限定 Character。
@@ -57,6 +61,8 @@ State 版本新增可选 `sourceHashes: [{sessionId,messageId,hash}]`；SHA-256 
 仅首个启用的 system Character marker 接入：`backgroundBaseline` 为既有 Character 内容，`stateAuthority` 明确用户基础设定与兼容持续变化的权威，`currentState` 表示现在，较早生活字段按历史理解。immutable/world 设定仍由 Background 约束。pending/suspended/撤销项、其他角色/旧基础设定不注入，不重复完整 Background；禁用或 user-role marker 不注入 State。既有 Memory/Journal/History/WorldBook/runtime/self/pending 保留。State 最多 8 条，连同权威说明的序列化覆盖预算 2,000 字符，整条选取不截断事实。
 
 现有 Social Character 资料页展示 State，用户只有查看权；pending/suspended 明确“not active”。加载、错误与 Retry；角色或 backstory 切换即时隐藏旧视图，旧请求/外角色结果拒绝。提交事件、聊天来源变化、focus/visibility 触发本地刷新；组件卸载清理监听/频道。诊断不保存内容，不实现 Context Inspector，不新增计时器或模型调用。
+
+每个 effect 只允许一次在途读取和一项合并待刷新，事件会使旧结果失效；连续聊天事件不逐个排队取独占租约，后台刷新不反复清空已显示内容，角色/Background/Retry 创建的新 lifetime 才进入 Loading，卸载后不再执行排队读取。
 
 ## 持久化/备份兼容
 
@@ -78,6 +84,6 @@ State 版本新增可选 `sourceHashes: [{sessionId,messageId,hash}]`；SHA-256 
 | Presence/Last Seen/签名、旧 schema/升级失败 | 原受影响回归 | 通过 |
 | 真实模型分类与冲突复核质量、iPhone/Safari、多真实标签页 | 未执行 | 未验证 |
 
-Node 24.19.0：受影响回归 **983/983，零跳过**，其中本阶段新 tests **45**；typecheck、改动文件 lint、webpack build 通过。新 State 原子提交测试使用真实 main 对应的编译后 Progress 模块作隔离负对照，因原协议不提供 State authority 而失败；恢复 P2 模块后通过。仅测试产物替换，未修改 main/原工作树/真实数据。首发 CI 的 Chat 删除确认挂载测试缺 Web Locks 导致失败；补齐模拟锁并保留所有原断言后通过，同时新增无锁普通回复/签名及稳定 hash 的 Red/Green 回归。没有增加等待时长或跳过测试。
+Node 24.19.0：受影响回归 **993/993，零跳过**，其中本阶段新 tests **55**；typecheck、改动文件 lint、webpack build 通过。新 State 原子提交测试使用真实 main 对应的编译后 Progress 模块作隔离负对照，因原协议不提供 State authority 而失败；恢复 P2 模块后通过。仅测试产物替换，未修改 main/原工作树/真实数据。首发 CI 的 Chat 删除确认挂载测试缺 Web Locks 导致失败；补齐模拟锁并保留所有原断言后通过，同时新增无锁普通回复/签名及稳定 hash 的 Red/Green 回归。没有增加等待时长或跳过测试。
 
 发布门禁：重读当前唯一 GitHub CI（仅验证）、scripts/package、仓库部署配置，未发现自动合并、非 main Production 或提升动作；无 vercel.json 或部署脚本。Vercel 实时 main `fe6a209...` 为 Production、其他分支为 Preview，正确绑定 `yecays-ai/veil`；Lan 已确认 Production Branch=main。没有修改 Vercel 项目配置。外部不可见自动化不作未经检查的安全保证；本 PR 仅发布独立分支并允许 Preview。最新 head CI/CodeRabbit/Preview 以 GitHub 与唯一 work-status 核对，不把旧 head 成功充当新 head。
