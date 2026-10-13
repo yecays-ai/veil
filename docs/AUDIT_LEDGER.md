@@ -1,5 +1,13 @@
 # VEIL 审计总账（完整合并版）
 
+## Memory M6 P4：本地固定样本评估（新增，2026-10-13）
+
+状态：**已修待验（独立 P4 施工完成，[PR #171](https://github.com/yecays-ai/veil/pull/171) 待外部审查及 Lan 手动合并）**。本单读取 main/base `8a0f79044c6b291906a518bc07a5d717924a348a` 的本账本；不重审 P1/P2，不进入 P3/P5，不改变任何原 F 编号定义或状态。
+
+复用原 82 项正式质量样例；新增 15 项隔离/状态/Journal/去重/预算/排序边界和 3 项 fresh fake IndexedDB 来源清理 → 检索样例。`npm run test:memory` 编译并执行定向测试，输出固定版本/夹具哈希及逐项预期/实际 ID、字符数、失败原因的 JSON。100/100 与固定预期一致，0 失败；语义命中仍为 35/46、11 项既有漏召回单列，负例误召回 0/36。生产选择器/存储/算法与原样例均未改；没有模型/网络/真实数据操作。
+
+证据级别：本地 Node v24.19.0 / fake IndexedDB 自动化，定向测试 167/167、零跳过，类型检查和改动文件 lint 通过；Character guard、active guard、预算换行负对照均失败，还原正常；两次报告字节一致。来源有效性只证明既有清理完成后的检索结果，不宣称选择器实时核验来源；预算是 5 条/2,000 UTF-16 字符，不是精确 Token。未跑全套/build，无模型或 iPhone/Safari 验收；发布 head 的 CI/CodeRabbit 另核，等待手动合并。见[开发合同与结果](memory-m6-p4-evaluation.md)及[唯一任务记录](work-status/2026-10-13-codex-memory-m6-p4.md)。
+
 ## Memory M6 P2：自动维护、Background 复核与 Prompt（2026-10-13）
 
 最新复审：aca441e4f4f24b7c6df886b9d0d54ee21a0f9222 的 CI #1185 成功（1586/1586）、Preview READY，原四个线程均由 CodeRabbit 关闭；新增并发 clear token 复用（Major）及工作记录过期（Minor），本轮已最小修复：每次 intent 独立 token，失败取消/恢复仅影响自己仍拥有的 marker，两个真实共享租约测试先 Red 后 Green。受影响回归 995/995、57 项 P2 新测试、零跳过，typecheck/lint/webpack build 通过；本轮发布 head 的外部检查/复审另核，下面旧审查状态保留为历史证据，PR 仍未合并。

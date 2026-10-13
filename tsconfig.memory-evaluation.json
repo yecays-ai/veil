@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.tests.json",
+  "compilerOptions": { "outDir": "./node_modules/.cache/veil-memory-evaluation" },
+  "include": [
+    "tests/memory-context.test.ts",
+    "tests/memory-retrieval-quality.test.ts",
+    "tests/memory-retrieval-safety.test.ts",
+    "tests/memory-retrieval-p4.test.ts"
+  ]
+}
