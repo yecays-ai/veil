@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/agents-owner-delegates-merge`；PR 创建后补链接；只改 `AGENTS.md` 的两行规则和本文件。base：4d53d63。
+Claude；分支 `claude/agents-owner-delegates-merge`；PR https://github.com/yecays-ai/veil/pull/172；只改 `AGENTS.md` 的两行规则和本文件。base：4d53d63。
 
 ## 已完成
 
