@@ -3,7 +3,6 @@ import test from "node:test";
 import { JSDOM } from "jsdom";
 import { act, createElement, StrictMode } from "react";
 import { createMaintenanceScheduler } from "../lib/memory/maintenance-scheduler";
-import { MAINTENANCE_IDLE_MS } from "../lib/memory/maintenance-runner";
 import { MAINTENANCE_CONSENT_KEY, MAINTENANCE_CONFIG_EVENT, maintenanceEnabled, maintenanceReleaseApproved, setMaintenanceConsent } from "../lib/memory/maintenance-config";
 import type { ChatSession } from "../lib/chat/types";
 
@@ -58,23 +57,23 @@ test("mounted default-off gate stays inert across StrictMode, rerender, restore-
 
 const row = (id = "c"): ChatSession => ({ id, characterId: id, updatedAt: 1000, autoReplyOnKeyboardDismiss: false, nextOrder: 2,
   memorySequence: { epoch: id, nextSeq: 2 } });
-test("session read failure retries locally, rechecks five-minute gate and dispatches only once", async () => {
-  let reads = 0, calls = 0, next = 0, now = 1000 + MAINTENANCE_IDLE_MS - 10_000;
+test("session read failure retries locally, rechecks the capacity trigger and dispatches only once", async () => {
+  let reads = 0, calls = 0, next = 0;
   const timers = new Map<number, { cb: () => void; delay: number }>();
-  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => now,
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
     sessions: async () => { if (++reads === 1) throw new Error("temporary read"); return [row()]; },
     run: async () => { calls++; return false; }, setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; },
     clearTimer: (id) => { timers.delete(id as number); } });
   await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
   const fire = async () => { const [id, timer] = [...timers][0]; timers.delete(id); timer.cb(); await new Promise((r) => setTimeout(r, 0)); };
-  assert.equal([...timers.values()][0].delay, 5000); now += 5000; await fire();
-  assert.equal(calls, 0); assert.equal([...timers.values()][0].delay, 5000);
-  now += 5000; await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
+  assert.equal([...timers.values()][0].delay, 5000); await fire();
+  assert.equal(calls, 0); assert.equal([...timers.values()][0].delay, 0, "capacity reached: starts without an idle wait");
+  await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
 });
 test("persistent session read failure has finite retries; cleared and stopped retry callbacks are inert", async () => {
   let reads = 0, next = 0, enabled = true, calls = 0;
   const timers = new Map<number, () => void>();
-  const scheduler = createMaintenanceScheduler({ enabled: () => enabled, runnable: () => true, now: () => 1e6,
+  const scheduler = createMaintenanceScheduler({ enabled: () => enabled, runnable: () => true, cursors: async () => [], triggerSequences: 1,
     sessions: async () => { reads++; throw new Error("temporary read"); }, run: async () => { calls++; return false; },
     setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
   await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
@@ -91,14 +90,14 @@ test("persistent session read failure has finite retries; cleared and stopped re
 test("stop clears an outstanding read retry and a late rejection cannot create one", async () => {
   let next = 0, calls = 0, reads = 0, reject!: (error: Error) => void;
   const timers = new Map<number, () => void>();
-  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => 1e6,
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
     sessions: () => { reads++; return Promise.reject(new Error("temporary read")); },
     run: async () => { calls++; return false; }, setTimer: (cb) => { timers.set(++next, cb); return next; },
     clearTimer: (id) => { timers.delete(id as number); } });
   await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
   const stale = [...timers.values()][0]; scheduler.stop(); assert.equal(timers.size, 0); stale();
   await new Promise((r) => setTimeout(r, 0)); assert.equal(reads, 1); assert.equal(calls, 0);
-  const late = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => 1e6,
+  const late = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
     sessions: () => new Promise((_resolve, fail) => { reject = fail; }), run: async () => false,
     setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
   const waking = late.wake(); late.stop(); reject(new Error("late read")); await waking.catch(() => undefined);
@@ -107,7 +106,7 @@ test("stop clears an outstanding read retry and a late rejection cannot create o
 test("a wake received during the last failed read is preserved after automatic retries are exhausted", async () => {
   let reads = 0, next = 0, calls = 0, reject!: (error: Error) => void;
   const timers = new Map<number, () => void>();
-  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => 1e6,
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
     sessions: async () => {
       reads++;
       if (reads < 3) throw new Error("temporary read");
@@ -122,15 +121,15 @@ test("a wake received during the last failed read is preserved after automatic r
   await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
 });
 test("owner contention rechecks after bounded delay without treating it as model retry; repeated wake does not duplicate timers", async () => {
-  let now = 1000 + MAINTENANCE_IDLE_MS, calls = 0, next = 0;
+  let calls = 0, next = 0;
   const timers = new Map<number, { cb: () => void; delay: number }>();
-  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => now, sessions: async () => [row()],
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1, sessions: async () => [row()],
     run: async () => { calls++; return calls === 1 ? "busy" : false; },
     setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
   await scheduler.wake(); await scheduler.wake(); assert.equal(timers.size, 1);
   const fire = () => { const [id, timer] = [...timers][0]; timers.delete(id); timer.cb(); };
   fire(); await new Promise((r) => setTimeout(r, 0)); assert.equal(calls, 1); assert.equal([...timers.values()][0].delay, 5000);
-  now += 5000; fire(); await new Promise((r) => setTimeout(r, 0));
+  fire(); await new Promise((r) => setTimeout(r, 0));
   fire(); await new Promise((r) => setTimeout(r, 0)); assert.equal(calls, 2); assert.equal(timers.size, 0);
   scheduler.stop();
 });
@@ -138,7 +137,7 @@ test("owner contention rechecks after bounded delay without treating it as model
 test("stop cancels page ownership and late session reads cannot create a timer or provider", async () => {
   let release!: (rows: ChatSession[]) => void, scheduled = 0, calls = 0;
   const sessions = new Promise<ChatSession[]>((done) => { release = done; });
-  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, now: () => 1e6, sessions: () => sessions,
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1, sessions: () => sessions,
     run: async () => { calls++; return false; }, setTimer: () => { scheduled++; return 1; }, clearTimer: () => {} });
   const waking = scheduler.wake(); scheduler.stop(); release([row()]); await waking;
   assert.equal(scheduled, 0); assert.equal(calls, 0);

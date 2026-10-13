@@ -14,7 +14,7 @@ import { memorySourceHash } from "../lib/memory/source-hash";
 import { effectiveCharacterStates } from "../lib/memory/state-foundation";
 import { resumeStartupClears } from "../lib/memory/startup";
 import { cursorId, request } from "../lib/memory/storage";
-import { runMaintenance, MAINTENANCE_IDLE_MS } from "../lib/memory/maintenance-runner";
+import { runMaintenance } from "../lib/memory/maintenance-runner";
 import { packageFixture, backupData } from "./backup-fixture";
 import { validateBackupPackage } from "../lib/backup/validation";
 import { IndexedDBDocumentStorage } from "../lib/core-document-storage";
@@ -244,7 +244,7 @@ test("only active State fits the full overlay budget; no duplicate key, pending,
 });
 test("State CREATE and existing Memory processing use exactly one stub request and leave Presence untouched", async () => {
   const f = await fixture(); await f.send(); let calls = 0;
-  const done = await runMaintenance("c", { protocol: f.protocol, memory: f.memory, enabled: () => true, now: () => Date.now() + MAINTENANCE_IDLE_MS + 10_000,
+  const done = await runMaintenance("c", { protocol: f.protocol, memory: f.memory, enabled: () => true, now: () => Date.now() + 310_000, triggerSequences: 1,
     sessions: (scope) => scope ? f.chat.listExistingSessions(scope) : f.chat.listSessions(), readChat: f.chat.readMemorySources.bind(f.chat),
     model: async () => ({ config: { id: "stub", baseUrl: "https://example.invalid", apiKey: "stub", model: "stub" }, context: "Peter" }),
     provider: async function* (_config, input) {

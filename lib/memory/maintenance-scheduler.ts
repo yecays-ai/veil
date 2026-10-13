@@ -1,13 +1,20 @@
 import type { ChatSession } from "../chat/types";
-import { maintenanceDue } from "./maintenance-runner";
+import { maintenanceDue, MAINTENANCE_TRIGGER_SEQUENCES } from "./maintenance-capacity";
+import type { MemoryCursor } from "./types";
 
 export type MaintenanceSchedulerDependencies = {
-  enabled(): boolean; runnable(): boolean; now(): number;
+  enabled(): boolean; runnable(): boolean;
   sessions(): Promise<ChatSession[]>;
+  cursors(characterId: string): Promise<MemoryCursor[]>;
+  /** Test seam only: production always uses MAINTENANCE_TRIGGER_SEQUENCES. */
+  triggerSequences?: number;
   run(characterId: string, signal: AbortSignal): Promise<boolean | "busy">;
   setTimer(callback: () => void, delay: number): unknown; clearTimer(timer: unknown): void;
 };
-/** Page-lifetime wakeups only. Durable Chat activity and M5a progress remain the authority. */
+/**
+ * Page-lifetime wakeups only. Durable Chat activity and M5a progress remain the authority.
+ * A wakeup starts a run only when a full batch of messages (or a recoverable batch) is waiting: there is no idle timer.
+ */
 export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencies) {
   let stopped = false, reading = false, dirty = false, readRetries = 0, retryVersion = 0;
   let readRetry: unknown;
@@ -46,8 +53,10 @@ export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencie
       const characters = new Set(sessions.filter((s) => s.type !== "group" && s.memorySequence && s.memorySequence.nextSeq > 1).map((s) => s.characterId));
       for (const characterId of characters) {
         if (running.has(characterId)) { dirty = true; continue; }
-        const delay = maintenanceDue(sessions, characterId, deps.now());
-        if (delay === null) continue;
+        let due: boolean;
+        try { due = maintenanceDue(sessions, await deps.cursors(characterId), characterId, deps.triggerSequences ?? MAINTENANCE_TRIGGER_SEQUENCES); }
+        catch { continue; } // Unreadable progress: the next lifecycle wakeup re-reads it; nothing is dispatched.
+        if (!due || stopped) continue;
         timers.set(characterId, deps.setTimer(() => {
           timers.delete(characterId);
           if (stopped || running.has(characterId) || !deps.enabled() || !deps.runnable()) return;
@@ -61,7 +70,7 @@ export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencie
             running.delete(characterId);
             if (dirty && !stopped) { dirty = false; void wake().catch(() => undefined); }
           });
-        }, Math.min(delay, 2_147_483_647)));
+        }, 0));
       }
     } finally {
       reading = false;
