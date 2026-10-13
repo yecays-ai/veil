@@ -8,7 +8,9 @@ export type MaintenanceSchedulerDependencies = {
   cursors(characterId: string): Promise<MemoryCursor[]>;
   /** Test seam only: production always uses MAINTENANCE_TRIGGER_SEQUENCES. */
   triggerSequences?: number;
-  run(characterId: string, signal: AbortSignal): Promise<boolean | "busy">;
+  /** True when a direct session of the Character has a rolling summary worth writing. Reads no storage. */
+  summaryDue?(sessions: ChatSession[], characterId: string): boolean;
+  run(characterId: string, signal: AbortSignal, due: { memory: boolean; summary: boolean }): Promise<boolean | "busy">;
   setTimer(callback: () => void, delay: number): unknown; clearTimer(timer: unknown): void;
 };
 /**
@@ -52,19 +54,20 @@ export function createMaintenanceScheduler(deps: MaintenanceSchedulerDependencie
       }
       readRetries = 0;
       if (stopped || !deps.enabled() || !deps.runnable()) return;
-      const characters = new Set(sessions.filter((s) => s.type !== "group" && s.memorySequence && s.memorySequence.nextSeq > 1).map((s) => s.characterId));
+      const characters = new Set(sessions.filter((s) => s.type !== "group" && ((s.memorySequence && s.memorySequence.nextSeq > 1) || deps.summaryDue?.([s], s.characterId))).map((s) => s.characterId));
       let cursorReadFailed = false;
       for (const characterId of characters) {
         if (running.has(characterId)) { dirty = true; continue; }
-        let due: boolean;
-        try { due = maintenanceDue(sessions, await deps.cursors(characterId), characterId, deps.triggerSequences ?? MAINTENANCE_TRIGGER_SEQUENCES); }
-        catch { cursorReadFailed = true; retryRead("cursors"); continue; } // Unreadable progress dispatches nothing.
-        if (!due || stopped) continue;
+        const summary = deps.summaryDue?.(sessions, characterId) ?? false;
+        let memory = false;
+        try { memory = maintenanceDue(sessions, await deps.cursors(characterId), characterId, deps.triggerSequences ?? MAINTENANCE_TRIGGER_SEQUENCES); }
+        catch { cursorReadFailed = true; retryRead("cursors"); if (!summary) continue; } // Unreadable progress dispatches no maintenance.
+        if (!(memory || summary) || stopped) continue;
         timers.set(characterId, deps.setTimer(() => {
           timers.delete(characterId);
           if (stopped || running.has(characterId) || !deps.enabled() || !deps.runnable()) return;
           const controller = new AbortController(); running.set(characterId, controller);
-          void deps.run(characterId, controller.signal).then((more) => {
+          void deps.run(characterId, controller.signal, { memory, summary }).then((more) => {
             if (more === "busy" && !stopped) {
               // Ownership contention is not a model retry. Re-read durable dispatch after lease release.
               timers.set(characterId, deps.setTimer(() => { void wake().catch(() => undefined); }, 5_000));
