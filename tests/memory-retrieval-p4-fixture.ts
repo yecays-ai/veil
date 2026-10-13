@@ -24,7 +24,7 @@ export const p4Memory = (id: string, extra: Partial<Memory> = {}): Memory => ({
 
 export type P4BoundaryCase = { id: string; rows: Memory[]; expectedIds: string[]; current?: string };
 const boundaryText = "Orchids ";
-const overhead = JSON.stringify({ kind: "fact", subject: "character", origin: "auto", text: boundaryText }).length;
+const overhead = JSON.stringify({ kind: "fact", subject: "character", origin: "auto", recordedAt: "1970-01-01", text: boundaryText }).length;
 
 /** Synthetic rows only. Exact expectations encode the existing contract, not a new algorithm. */
 export const P4_BOUNDARY_CASES: P4BoundaryCase[] = [

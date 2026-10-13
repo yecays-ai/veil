@@ -10,7 +10,7 @@ import { validateRegexDocument } from "../regex";
 import { validateWorldBookDocument } from "../worldbook";
 import { normalizeContacts } from "../contact-storage";
 import { normalizePresenceDocument } from "../presence/storage";
-import { isValidBubbleTimingDelay } from "../chat/types";
+import { isValidBubbleTimingDelay, MEMORY_REF_LIMIT } from "../chat/types";
 import { APP_IDS } from "../app-registry";
 import { memoryFingerprint } from "../memory/fingerprint";
 import { journalRowProblem } from "../memory/journal";
@@ -180,7 +180,7 @@ function validateChat(value: unknown) {
   });
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -192,6 +192,14 @@ function validateChat(value: unknown) {
     for (const key of ["requestedBy", "turnId", "attemptId", "attemptFor"]) check(row[key] === undefined || id(row[key]), path);
     for (const key of ["error", "finishReason"]) check(row[key] === undefined || typeof row[key] === "string", path);
     check(row.confirmed === undefined || typeof row.confirmed === "boolean", path);
+    if (row.memoryRefs !== undefined) {
+      // Ids and content hashes only: a backup never carries injected memory text inside a chat message.
+      check(Array.isArray(row.memoryRefs) && row.memoryRefs.length <= MEMORY_REF_LIMIT && row.role === "assistant", path);
+      for (const ref of row.memoryRefs as unknown[]) {
+        keys(ref, ["id", "hash", "journal"], ["id", "hash"], path);
+        check(id(ref.id) && typeof ref.hash === "string" && /^[0-9a-f]{16}$/.test(ref.hash) && (ref.journal === undefined || ref.journal === true), path);
+      }
+    }
     if (row.memorySequence !== undefined) {
       keys(row.memorySequence, ["epoch", "seq"], ["epoch"], path);
       const session = sessions.get(row.sessionId)!, tracking = session.memorySequence as { epoch?: string; nextSeq?: number } | undefined;

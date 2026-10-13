@@ -59,12 +59,28 @@ export async function editMemory(storage: MemoryStorage, memory: Memory, edit: M
   }, { expectUpdatedAt: { [memory.id]: memory.updatedAt } });
 }
 
-/** Delete `memory` (as it was read) and suppress its text so automatic maintenance cannot bring it back. */
+/** Superseded originals that led to `memory`, through every layer of merges. They are its history, so they go with it. */
+export function memoryHistoryOf(memory: Memory, rows: readonly Memory[]): Memory[] {
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const found = new Map<string, Memory>(), queue = [...memory.lineage.mergedFrom ?? []];
+  while (queue.length) {
+    const id = queue.pop()!, row = byId.get(id);
+    if (!row || found.has(id) || id === memory.id || row.characterId !== memory.characterId) continue;
+    found.set(id, row); queue.push(...row.lineage.mergedFrom ?? []);
+  }
+  return [...found.values()];
+}
+
+/**
+ * Delete `memory` (as it was read) with its history, and suppress their texts so automatic maintenance cannot bring
+ * them back. Deleting leaves no earlier version of the text readable anywhere (see MemoryStorage.recordOperation).
+ */
 export async function deleteMemory(storage: MemoryStorage, memory: Memory): Promise<MemoryOperation> {
+  const history = memoryHistoryOf(memory, await storage.listMemories(memory.characterId));
   return storage.applyChange(memory.characterId, "Deleted a memory", {
-    remove: [memory.id],
-    suppress: [{ id: newId(), fingerprint: memory.fingerprint, reason: "deleted", sources: memory.sources }],
-  }, { expectUpdatedAt: { [memory.id]: memory.updatedAt } });
+    remove: [memory.id, ...history.map((row) => row.id)],
+    suppress: [memory, ...history].map((row) => ({ id: newId(), fingerprint: row.fingerprint, reason: "deleted" as const, sources: row.sources })),
+  }, { expectUpdatedAt: Object.fromEntries([memory, ...history].map((row) => [row.id, row.updatedAt])) });
 }
 
 export type JournalEdit = { text: string; keywords: string[] };

@@ -8,7 +8,7 @@ import {
   ChevronRight,
   CircleCheck,
   Copy,
-  Heart,
+  Brain,
   Pencil,
   Plus,
   Quote,
@@ -23,6 +23,7 @@ import {
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { chatStorage } from "../../lib/chat/storage";
+import { MessageMemory } from "./message-memory";
 import { withMemoryClear } from "../../lib/memory/browser";
 import { DEFAULT_BUBBLE_TIMING, type ChatMessage, type ChatSession } from "../../lib/chat/types";
 import {
@@ -186,6 +187,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionStartId, setSelectionStartId] = useState<string | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const [memoryMessage, setMemoryMessage] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
@@ -919,7 +921,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => {
               setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
             }} />
-            <Action label="React" icon={Heart} disabled />
+            <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={() => { setMemoryMessage(activeMessage); closeActions(); }} />
             <Action label="Select" icon={CircleCheck} onClick={() => { const id = activeMessage.id;
               setMultiSelect(true); setSelectionStartId(id); setSelectedIds(new Set([id])); closeActions(); }} />
             <Action label="Favorite" icon={Bookmark} disabled />
@@ -939,6 +941,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </div>
         </div>
       </>}
+      {memoryMessage && <MessageMemory message={memoryMessage} characterId={characterId} onClose={() => setMemoryMessage(null)} />}
       {editingMessage && <div className="chat-dialog-backdrop">
         <form className="chat-dialog" onSubmit={async (e) => { e.preventDefault();
           try { await chatStorage.editMessage(editingMessage.id, editText); setEditingMessage(null); showFeedback("Saved"); }

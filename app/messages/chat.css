@@ -972,3 +972,10 @@
   .conversation-row, .chat-app button.conversation-delete-action,
   .conversation-delete-label { transition: none; }
 }
+
+.chat-memory-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.chat-memory-tabs button { flex: 1; padding: 8px; border-radius: 10px; border: 1px solid var(--border, #ddd); background: transparent; color: inherit; }
+.chat-memory-tabs button[aria-selected="true"] { font-weight: 600; border-color: currentColor; }
+.chat-memory-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.chat-memory-item { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border, #ddd); }
+.chat-memory-text { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
