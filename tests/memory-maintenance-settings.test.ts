@@ -9,7 +9,7 @@ import type { BindingDocument } from "../lib/bindings";
 import type { ChatSession } from "../lib/chat/types";
 import { USAGE_BASELINE_KEY } from "../lib/chat/usage-baseline";
 import { MAINTENANCE_CONSENT_KEY, maintenanceReleaseChecks } from "../lib/memory/maintenance-config";
-import { maintenanceModelStatus, summarizeMaintenanceProgress } from "../lib/memory/maintenance-status";
+import { maintenanceModelStatus, summarizeMaintenanceProgress, summarizeRollingSummary } from "../lib/memory/maintenance-status";
 import type { MemoryCursor } from "../lib/memory/types";
 import { lockOrigin } from "./generation-lock-fixture";
 
@@ -151,4 +151,15 @@ test("Preview builds show the missing approval and cannot be switched on, even w
     assert.equal(dom.window.localStorage.getItem(MAINTENANCE_CONSENT_KEY), "enabled", "no write while unapproved");
     assert.equal(events(), 1);
   });
+});
+
+test("rolling summary status counts only this Character's direct chats and never shows summary text", () => {
+  const summary = (updatedAt: number) => ({ text: "private summary text", throughOrder: 10, digest: "d", updatedAt });
+  const sessions = [session("s1", "c", 5, 1), session("s2", "c", 5, 1, { summary: summary(2000) } as Partial<ChatSession>),
+    session("s3", "c", 5, 1, { summary: summary(3000) } as Partial<ChatSession>), session("g", "c", 5, 1, { type: "group", summary: summary(9000) } as Partial<ChatSession>),
+    session("o", "other", 5, 1, { summary: summary(8000) } as Partial<ChatSession>)];
+  assert.deepEqual(summarizeRollingSummary("c", sessions), { chats: 2, updatedAt: 3000, due: false });
+  assert.deepEqual(summarizeRollingSummary("c", [session("s1", "c", 5, 1)]), { chats: 0, updatedAt: null, due: false });
+  assert.equal(summarizeRollingSummary("c", [{ ...session("s1", "c", 5, 1), nextOrder: 200 }]).due, true, "messages left the History window without a summary");
+  assert.ok(!JSON.stringify(summarizeRollingSummary("c", sessions)).includes("private"));
 });

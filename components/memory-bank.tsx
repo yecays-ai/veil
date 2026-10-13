@@ -116,19 +116,29 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage, ba
   const rows = loaded ? filterMemories(active, filter) : [];
   const kinds = [...new Set([...MANUAL_MEMORY_KINDS, ...active.map((row) => row.kind)])];
   const tabs = <div className="memory-tabs" role="tablist" aria-label="Memory sections">
-    {TABS.map(([id, text]) => <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>{text}</button>)}
+    {TABS.map(([id, text], index) => <button key={id} type="button" role="tab" id={`memory-tab-${id}`} aria-controls={`memory-panel-${id}`}
+      aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)}
+      onKeyDown={(event) => {
+        const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+        if (!step) return;
+        event.preventDefault();
+        const next = TABS[(index + step + TABS.length) % TABS.length][0];
+        setTab(next); window.document.getElementById(`memory-tab-${next}`)?.focus();
+      }}>{text}</button>)}
   </div>;
-  if (tab === "state") return shell(<>{tabs}<MemoryState character={character} /></>);
-  if (tab === "history") return shell(<>{tabs}
+  const panel = (children: React.ReactNode) => <div role="tabpanel" id={`memory-panel-${tab}`} aria-labelledby={`memory-tab-${tab}`}>{children}</div>;
+  if (tab === "state") return shell(<>{tabs}{panel(<MemoryState character={character} />)}</>);
+  if (tab === "history") return shell(<>{tabs}{panel(<>
     {loadError && <Alert variant="danger">{loadError} <button className="text-button" onClick={load}>Try again</button></Alert>}
-    {!loaded ? (!loadError && <p>{C.common.loading}</p>) : <MemoryHistory rows={past} all={regular} />}</>);
-  if (tab === "journal") return shell(<>{tabs}
+    {!loaded ? (!loadError && <p>{C.common.loading}</p>) : <MemoryHistory rows={past} all={regular} />}</>)}</>);
+  if (tab === "journal") return shell(<>{tabs}{panel(<>
     {loadError && <Alert variant="danger">{loadError} <button className="text-button" onClick={load}>Try again</button></Alert>}
     {notice && !draft && <Alert variant="danger">{notice}</Alert>}
     {!loaded ? (!loadError && <p>{C.common.loading}</p>)
-      : <MemoryJournal characterId={characterId} characterName={character.name} entries={journal} storage={storage} busy={busy} write={write} />}</>);
+      : <MemoryJournal characterId={characterId} characterName={character.name} entries={journal} storage={storage} busy={busy} write={write} />}</>)}</>);
   return shell(<>
     {tabs}
+    <div role="tabpanel" id="memory-panel-memories" aria-labelledby="memory-tab-memories">
     <p className="subtle">What {character.name} remembers. Only you can see and change this list.</p>
     <div className="settings-action-row memory-bank-actions">
       <button className="settings-button" disabled={busy || !loaded} onClick={() => setDraft({ memory: null, kind: MANUAL_MEMORY_KINDS[0], text: "", subject: DEFAULT_MEMORY_SUBJECT })}>
@@ -211,5 +221,6 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage, ba
       onConfirm={() => void write(() => deleteMemory(storage, removing), () => setRemoving(null))}>
       {character.name} will forget this. You can undo it from this page.
     </ConfirmDialog>}
+    </div>
   </>);
 }

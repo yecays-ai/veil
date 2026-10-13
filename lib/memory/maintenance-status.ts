@@ -1,3 +1,4 @@
+import { summaryPossiblyDue } from "../chat/summary";
 import type { ApiConfig, NamedApiConfig } from "../api-config";
 import type { BindingDocument } from "../bindings";
 import type { ChatSession } from "../chat/types";
@@ -56,4 +57,17 @@ export function summarizeMaintenanceProgress(characterId: string, sessions: read
   summary.pending = backlog.fresh;
   summary.due = maintenanceSettled(direct, characterId) && (backlog.waiting > 0 || backlog.fresh >= summary.trigger);
   return summary;
+}
+
+export type RollingSummaryStatus = { chats: number; updatedAt: number | null; due: boolean };
+
+/**
+ * Technical state of the rolling chat summary for one Character, read from the sessions already loaded for this page.
+ * An invalid summary is deleted when it is found, so there is no "was invalid" state to show; only what exists and
+ * whether another summary is waiting to be written.
+ */
+export function summarizeRollingSummary(characterId: string, sessions: readonly ChatSession[]): RollingSummaryStatus {
+  const direct = sessions.filter((s) => s.characterId === characterId && s.type !== "group");
+  const written = direct.flatMap((s) => s.summary ? [s.summary.updatedAt] : []);
+  return { chats: written.length, updatedAt: written.length ? Math.max(...written) : null, due: direct.some(summaryPossiblyDue) };
 }

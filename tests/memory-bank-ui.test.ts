@@ -230,6 +230,9 @@ test("the memory page separates Active memories from History and shows what repl
     assert.ok(!app.container.textContent!.includes("Lives in Brooklyn") && !app.container.textContent!.includes("Played chess"),
       "Memories lists Active only");
     assert.deepEqual([...app.container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent), ["Memories", "Journal", "State", "History"]);
+    const selected = app.container.querySelector('[role="tab"][aria-selected="true"]')!;
+    assert.equal(app.container.querySelector(`#${selected.getAttribute("aria-controls")}`)?.getAttribute("role"), "tabpanel", "each tab controls a tabpanel");
+    assert.deepEqual([...app.container.querySelectorAll('[role="tab"]')].map((tab) => tab.getAttribute("tabindex")), ["0", "-1", "-1", "-1"], "only the selected tab is a tab stop");
     await app.click([...app.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((tab) => tab.textContent === "History")!);
     await app.wait(() => app.container.textContent!.includes("Lives in Brooklyn"));
     assert.ok(app.container.textContent!.includes("Played chess") && app.container.textContent!.includes("Replaced by: Lives in Queens"));
