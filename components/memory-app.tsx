@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { countActiveMemories } from "../lib/memory/bank";
 import { browserMemoryStorage } from "../lib/memory/browser";
 import type { MemoryStorage } from "../lib/memory/storage";
 import { useFoundation } from "./foundation-provider";
-import { MemoryBankPage } from "./memory-bank";
+import { MemoryBankPage, type MemoryTab } from "./memory-bank";
 import { PageShell } from "./page-shell";
 import { Avatar } from "./profile-view";
 
@@ -63,6 +63,8 @@ export function MemoryAppPage({ storage = browserMemoryStorage }: { storage?: Me
 export function MemoryCharacterPage({ characterId, storage = browserMemoryStorage }: { characterId: string; storage?: MemoryStorage }) {
   const { document } = useFoundation();
   const single = document.characters.length === 1;
-  return <MemoryBankPage characterId={characterId} storage={storage}
+  const asked = useSearchParams().get("tab");
+  const initialTab = (["memories", "journal", "state", "history"] as const).find((tab) => tab === asked) as MemoryTab | undefined;
+  return <MemoryBankPage characterId={characterId} storage={storage} initialTab={initialTab}
     backHref={single ? "/" : "/memory"} backLabel={single ? "Back to Home" : "Back to Memory"} />;
 }

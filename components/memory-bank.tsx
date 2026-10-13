@@ -8,10 +8,12 @@ import {
 } from "../lib/memory/bank";
 import { browserMemoryStorage } from "../lib/memory/browser";
 import { MemoryConflictError, MemoryDuplicateError, type MemoryStorage } from "../lib/memory/storage";
-import { MEMORY_TEXT_CHARACTERS, type Memory, type MemoryOperation, type MemoryOrigin, type MemoryStatus } from "../lib/memory/types";
+import { MEMORY_TEXT_CHARACTERS, type Memory, type MemoryOperation, type MemoryOrigin } from "../lib/memory/types";
 import { FOUNDATION_COPY as C } from "../lib/foundation-copy";
 import { useFoundation } from "./foundation-provider";
+import { MemoryHistory } from "./memory-history";
 import { MemoryJournal } from "./memory-journal";
+import { MemoryState } from "./memory-state";
 import { PageShell } from "./page-shell";
 import { useBackNavigation } from "./use-back-navigation";
 import { Alert } from "./settings/ui/feedback";
@@ -19,6 +21,8 @@ import { Input, Select } from "./settings/ui/form";
 import { BottomSheet, ConfirmDialog } from "./settings/ui/modal";
 
 type Loaded = { memories: Memory[]; operations: MemoryOperation[]; sources: Record<string, SourceSummary[]> };
+export type MemoryTab = "memories" | "journal" | "state" | "history";
+const TABS: [MemoryTab, string][] = [["memories", "Memories"], ["journal", "Journal"], ["state", "State"], ["history", "History"]];
 type Draft = { memory: Memory | null; kind: string; text: string; subject: string };
 
 const message = (error: unknown) =>
@@ -41,9 +45,10 @@ async function readBank(storage: MemoryStorage, characterId: string): Promise<Lo
   return { memories, operations, sources };
 }
 
-export function MemoryBankPage({ characterId, storage = browserMemoryStorage, backHref, backLabel = "Back to Character" }: {
-  characterId: string; storage?: MemoryStorage; backHref?: string; backLabel?: string;
+export function MemoryBankPage({ characterId, storage = browserMemoryStorage, backHref, backLabel = "Back to Character", initialTab = "memories" }: {
+  characterId: string; storage?: MemoryStorage; backHref?: string; backLabel?: string; initialTab?: MemoryTab;
 }) {
+  const [tab, setTab] = useState<MemoryTab>(initialTab);
   const { document, ready } = useFoundation();
   const back = useBackNavigation();
   const character = document.characters.find((item) => item.characterId === characterId);
@@ -104,10 +109,36 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage, ba
 
   const last = loaded?.operations.at(-1);
   const regular = loaded?.memories.filter((row) => row.origin !== "journal") ?? [];
+  // Memories shows what is Active; everything else (replaced, archived, flagged) is History.
+  const active = regular.filter((row) => row.status === "active");
+  const past = regular.filter((row) => row.status !== "active");
   const journal = loaded?.memories.filter((row) => row.origin === "journal") ?? [];
-  const rows = loaded ? filterMemories(regular, filter) : [];
-  const kinds = [...new Set([...MANUAL_MEMORY_KINDS, ...regular.map((row) => row.kind)])];
+  const rows = loaded ? filterMemories(active, filter) : [];
+  const kinds = [...new Set([...MANUAL_MEMORY_KINDS, ...active.map((row) => row.kind)])];
+  const tabs = <div className="memory-tabs" role="tablist" aria-label="Memory sections">
+    {TABS.map(([id, text], index) => <button key={id} type="button" role="tab" id={`memory-tab-${id}`} aria-controls={`memory-panel-${id}`}
+      aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)}
+      onKeyDown={(event) => {
+        const step = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+        if (!step) return;
+        event.preventDefault();
+        const next = TABS[(index + step + TABS.length) % TABS.length][0];
+        setTab(next); window.document.getElementById(`memory-tab-${next}`)?.focus();
+      }}>{text}</button>)}
+  </div>;
+  const panel = (children: React.ReactNode) => <div role="tabpanel" id={`memory-panel-${tab}`} aria-labelledby={`memory-tab-${tab}`}>{children}</div>;
+  if (tab === "state") return shell(<>{tabs}{panel(<MemoryState character={character} />)}</>);
+  if (tab === "history") return shell(<>{tabs}{panel(<>
+    {loadError && <Alert variant="danger">{loadError} <button className="text-button" onClick={load}>Try again</button></Alert>}
+    {!loaded ? (!loadError && <p>{C.common.loading}</p>) : <MemoryHistory rows={past} all={regular} />}</>)}</>);
+  if (tab === "journal") return shell(<>{tabs}{panel(<>
+    {loadError && <Alert variant="danger">{loadError} <button className="text-button" onClick={load}>Try again</button></Alert>}
+    {notice && !draft && <Alert variant="danger">{notice}</Alert>}
+    {!loaded ? (!loadError && <p>{C.common.loading}</p>)
+      : <MemoryJournal characterId={characterId} characterName={character.name} entries={journal} storage={storage} busy={busy} write={write} />}</>)}</>);
   return shell(<>
+    {tabs}
+    <div role="tabpanel" id="memory-panel-memories" aria-labelledby="memory-tab-memories">
     <p className="subtle">What {character.name} remembers. Only you can see and change this list.</p>
     <div className="settings-action-row memory-bank-actions">
       <button className="settings-button" disabled={busy || !loaded} onClick={() => setDraft({ memory: null, kind: MANUAL_MEMORY_KINDS[0], text: "", subject: DEFAULT_MEMORY_SUBJECT })}>
@@ -125,10 +156,6 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage, ba
         <option value="">All types</option>
         {kinds.map((kind) => <option key={kind} value={kind}>{MEMORY_KIND_LABEL[kind] ?? kind}</option>)}
       </Select>
-      <Select aria-label="Status" value={filter.status ?? ""} onChange={(event) => setFilter({ ...filter, status: (event.target.value || undefined) as MemoryStatus | undefined })}>
-        <option value="">Any status</option>
-        {Object.entries(MEMORY_STATUS_LABEL).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </Select>
       <Select aria-label="Added by" value={filter.origin ?? ""} onChange={(event) => setFilter({ ...filter, origin: (event.target.value || undefined) as MemoryOrigin | undefined })}>
         <option value="">Anyone</option>
         {Object.entries(MEMORY_ORIGIN_LABEL).filter(([value]) => value !== "journal").map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -136,7 +163,7 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage, ba
     </div>
     {notice && !draft && <Alert variant="danger">{notice}</Alert>}
     {loadError && <Alert variant="danger">{loadError} <button className="text-button" onClick={load}>Try again</button></Alert>}
-    {!loaded ? (!loadError && <p>{C.common.loading}</p>) : !regular.length ? (
+    {!loaded ? (!loadError && <p>{C.common.loading}</p>) : !active.length ? (
       <p className="empty-copy subtle">No memories yet.</p>
     ) : !rows.length ? (
       <p className="empty-copy subtle">No memories match.</p>
@@ -163,7 +190,6 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage, ba
         </li>)}
       </ul>
     )}
-    {loaded && <MemoryJournal characterId={characterId} characterName={character.name} entries={journal} storage={storage} busy={busy} write={write} />}
     {draft && <BottomSheet title={draft.memory ? "Edit memory" : "Add memory"} onClose={() => !busy && setDraft(null)}>
       <form className="foundation-form" onSubmit={(event) => {
         event.preventDefault();
@@ -195,5 +221,6 @@ export function MemoryBankPage({ characterId, storage = browserMemoryStorage, ba
       onConfirm={() => void write(() => deleteMemory(storage, removing), () => setRemoving(null))}>
       {character.name} will forget this. You can undo it from this page.
     </ConfirmDialog>}
+    </div>
   </>);
 }

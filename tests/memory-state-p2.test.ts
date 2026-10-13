@@ -9,7 +9,7 @@ import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-ty
 import { buildMaintenanceInput } from "../lib/memory/maintenance-input";
 import { parseMaintenanceOperations } from "../lib/memory/maintenance-operations";
 import { type StateOperation } from "../lib/memory/state-maintenance";
-import { readCharacterState, statePromptEntries, STATE_CONTEXT_LIMITS, STATE_AUTHORITY } from "../lib/memory/state-runtime";
+import { readCharacterState, readCharacterStateDetail, statePromptEntries, STATE_CONTEXT_LIMITS, STATE_AUTHORITY } from "../lib/memory/state-runtime";
 import { memorySourceHash } from "../lib/memory/source-hash";
 import { effectiveCharacterStates } from "../lib/memory/state-foundation";
 import { resumeStartupClears } from "../lib/memory/startup";
@@ -149,6 +149,24 @@ test("State UPDATE versions retain old sources; deleting its new evidence restor
   await f.chat.deleteMessages(f.session.id, [second.id]);
   const data = await f.memory.readStateFoundation("c"); assert.equal(data.states.length, 1); assert.equal(data.states[0].sources[0].messageId, first.id);
   assert.equal((await f.progress())!.throughSeq, 2); await f.chat.deleteMessages(f.session.id, [second.id]); assert.equal((await f.memory.readStateFoundation("c")).states.length, 1);
+});
+test("State change record lists every version oldest first, marks the current one, and drops values whose evidence was deleted", async () => {
+  const f = await fixture(); await f.send(); await maintain(f, (s) => [create(s)]);
+  const second = await f.send("Peter now owns a permanent home.");
+  await maintain(f, (s) => {
+    const operation = create(s, "Peter owns his home."); if (operation.op !== "STATE_CREATE") throw new Error("Invalid test operation");
+    const { key: _key, op: _op, ...value } = operation; void [_key, _op];
+    return [{ ...value, op: "STATE_UPDATE", targetId: s.state!.foundation.states[0].id }];
+  });
+  const detail = () => f.memory.withExclusive((scope) => readCharacterStateDetail(f.memory, f.character, scope, (id, ids) => f.chat.readStateSources(id, ids, scope)));
+  const both = await detail();
+  assert.deepEqual(both.changes.map((c) => [c.key, c.version, c.value, c.current]),
+    [["home", 1, "Peter now lives in Queens.", false], ["home", 2, "Peter owns his home.", true]]);
+  assert.deepEqual(both.view, await f.view(), "the plain read is exactly the view of the detailed read");
+  await f.chat.deleteMessages(f.session.id, [second.id]);
+  const after = await detail();
+  assert.deepEqual(after.changes.map((c) => [c.version, c.current]), [[1, true]], "the value that depended on the deleted message is gone from the record");
+  assert.equal(after.changes.some((c) => c.value === "Peter owns his home."), false);
 });
 for (const verdict of ["compatible", "conflict", "pending"] as const) test(`Background review persists ${verdict} against the exact new version`, async () => {
   const f = await fixture(); await f.send(); await maintain(f, (s) => [create(s)]);
