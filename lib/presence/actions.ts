@@ -2,6 +2,7 @@ import { PRESENCE_VALUES, type Character, type FoundationDocument } from "../fou
 import { normalizeSituation } from "./compute";
 import { isReactionEmoji } from "../chat/reactions";
 import { normalizeTransferAmount, normalizeTransferNote, type TransferAction } from "../chat/transfer";
+import { normalizeGiftContent, normalizeGiftIcon, type GiftAction } from "../chat/gift";
 import {
   addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord, setUserNote,
   type PresenceDocument, type PresenceRecord,
@@ -23,6 +24,8 @@ export type CharacterActions = {
   recallPrevious?: true;
   transfer?: { amount: number; note: string };
   transferAction?: { messageId: string; action: TransferAction };
+  gift?: { icon: string; content: string };
+  giftAction?: { messageId: string; action: GiftAction };
 };
 export const ACTION_TAG = "veil-action";
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
@@ -95,6 +98,13 @@ function parseActions(json: string): CharacterActions | null {
   if (isRecord(value.transferAction) && typeof value.transferAction.messageId === "string" &&
       /^[\w-]{8,80}$/.test(value.transferAction.messageId) && ["receive", "decline", "return"].includes(String(value.transferAction.action)))
     actions.transferAction = { messageId: value.transferAction.messageId, action: value.transferAction.action as TransferAction };
+  if (isRecord(value.gift) && typeof value.gift.icon === "string" && typeof value.gift.content === "string") {
+    try { actions.gift = { icon: normalizeGiftIcon(value.gift.icon), content: normalizeGiftContent(value.gift.content) }; }
+    catch { /* Invalid gift payload is ignored; other reply actions remain usable. */ }
+  }
+  if (isRecord(value.giftAction) && typeof value.giftAction.messageId === "string" && /^[\w-]{8,80}$/.test(value.giftAction.messageId)
+      && (value.giftAction.action === "accept" || value.giftAction.action === "decline"))
+    actions.giftAction = { messageId: value.giftAction.messageId, action: value.giftAction.action };
   return Object.keys(actions).length ? actions : null;
 }
 
@@ -142,6 +152,8 @@ export type ActionDeps = {
   recallPreviousMessage?: (replyMessageId: string) => Promise<void>;
   sendTransfer?: (replyMessageId: string, amount: number, note: string) => Promise<void>;
   actOnTransfer?: (characterId: string, messageId: string, action: TransferAction) => Promise<void>;
+  sendGift?: (replyMessageId: string, icon: string, content: string) => Promise<void>;
+  actOnGift?: (characterId: string, messageId: string, action: GiftAction) => Promise<void>;
 };
 /** The note is Presence data alone, so check and write happen in one transaction; the chat event follows only a real change. */
 async function applyUserNote(deps: ActionDeps, characterId: string, note: string | null, now: number, source: string) {
@@ -175,6 +187,14 @@ export const characterActionApplier = (deps: ActionDeps) =>
     if (actions.transferAction) {
       try { await deps.actOnTransfer?.(characterId, actions.transferAction.messageId, actions.transferAction.action); }
       catch { console.warn("[Presence] the virtual transfer action could not be saved"); }
+    }
+    if (actions.gift) {
+      try { await deps.sendGift?.(messageId, actions.gift.icon, actions.gift.content); }
+      catch { console.warn("[Presence] the gift could not be saved"); }
+    }
+    if (actions.giftAction) {
+      try { await deps.actOnGift?.(characterId, actions.giftAction.messageId, actions.giftAction.action); }
+      catch { console.warn("[Presence] the gift action could not be saved"); }
     }
     if (actions.signature === undefined) return;
     const allowed = actionAllowance(presenceRecord(await deps.presence.load(), characterId), now).signature;

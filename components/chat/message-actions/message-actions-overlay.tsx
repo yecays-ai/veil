@@ -41,14 +41,14 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
       style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(event) => event.stopPropagation()}>
       <div className="chat-message-actions-grid">
         <Action label="Copy" icon={Copy} disabled={!!activeMessage.sticker} onClick={onCopy} />
-        <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || !!activeMessage.sticker || !!activeMessage.transfer || !!activeMessage.transferEvent || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onEdit} />
+        <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || !!activeMessage.sticker || !!activeMessage.transfer || !!activeMessage.transferEvent || !!activeMessage.gift || !!activeMessage.giftEvent || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onEdit} />
         <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onQuote} />
         <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={onMemory} />
         <Action label="Select" icon={CircleCheck} onClick={onSelect} />
         <Action label="Favorite" icon={Bookmark} disabled />
         <Action label="Delete" icon={Trash2} danger onClick={onDelete} />
         <Action label="Regenerate" icon={RotateCcw} disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || revealPending} onClick={onRegenerate} />
-        {activeMessage.role === "user" && activeMessage.status === "sent" && !activeMessage.recalled && !activeMessage.transfer && !activeMessage.transferEvent && !generationActive &&
+        {activeMessage.role === "user" && activeMessage.status === "sent" && !activeMessage.recalled && !activeMessage.transfer && !activeMessage.transferEvent && !activeMessage.gift && !activeMessage.giftEvent && !generationActive &&
           <Action label="Recall" icon={Undo2} onClick={onRecall} />}
         {getMessageActions(activeMessage).map((action) => <Action key={action.id} label={action.label} icon={Plus} onClick={() => onRunRegisteredAction(action.id)} />)}
       </div>

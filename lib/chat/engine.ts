@@ -68,6 +68,8 @@ const applyActionsToStores: ActionApplier = (characterId, actions, now, messageI
       recallPreviousMessage: async (replyId) => { await chatStorage.recallPreviousAssistantMessage(replyId); },
       sendTransfer: async (replyId, amount, note) => { await chatStorage.createTransferForReply(replyId, amount, note); },
       actOnTransfer: async (id, transferId, action) => { await chatStorage.actOnTransferForCharacter(id, transferId, action); },
+      sendGift: async (replyId, icon, content) => { await chatStorage.createGiftForReply(replyId, icon, content); },
+      actOnGift: async (id, giftId, action) => { await chatStorage.actOnGiftForCharacter(id, giftId, action); },
       noteChanged: async (id, note, at) => {
         const character = (await browserFoundationStorage.load()).characters.find((item) => item.characterId === id);
         if (character) await chatStorage.appendSystemEvent(id, characterNoteEventText(character.name, note), at);

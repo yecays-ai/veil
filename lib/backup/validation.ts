@@ -187,7 +187,7 @@ function validateChat(value: unknown) {
   });
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "transfer", "transferEvent", "recalled"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -233,6 +233,28 @@ function validateChat(value: unknown) {
         && ["user", "assistant"].includes(String(event.actor)) && row.role === event.actor
         && number(event.amount) && event.amount === sourceTransfer.amount
         && typeof event.note === "string" && event.note.length <= 240 && row.transfer === undefined, path);
+    }
+    if (row.gift !== undefined) {
+      keys(row.gift, ["icon", "content", "sender", "recipient", "status"], ["icon", "content", "sender", "recipient", "status"], path);
+      const gift = row.gift;
+      check(typeof gift.icon === "string" && gift.icon.length > 0 && Array.from(gift.icon).length <= 24
+        && typeof gift.content === "string" && gift.content.trim().length > 0 && Array.from(gift.content).length <= 500
+        && ["user", "assistant"].includes(String(gift.sender)) && ["user", "assistant"].includes(String(gift.recipient))
+        && gift.sender !== gift.recipient && ["pending", "accepted", "declined"].includes(String(gift.status))
+        && row.role === gift.sender && row.transfer === undefined && row.transferEvent === undefined
+        && row.giftEvent === undefined && row.recalled === undefined, path);
+    }
+    if (row.giftEvent !== undefined) {
+      keys(row.giftEvent, ["giftId", "action", "actor", "icon", "content"], ["giftId", "action", "actor", "icon", "content"], path);
+      const event = row.giftEvent, source = messages.get(String(event.giftId));
+      const sourceGift = source && record(source.gift) ? source.gift : null;
+      check(id(event.giftId) && !!sourceGift && source?.sessionId === row.sessionId
+        && (event.action === "accept" || event.action === "decline")
+        && ["user", "assistant"].includes(String(event.actor)) && row.role === event.actor
+        && typeof event.icon === "string" && event.icon.length > 0 && Array.from(event.icon).length <= 24
+        && typeof event.content === "string" && event.content.trim().length > 0 && Array.from(event.content).length <= 500
+        && event.icon === sourceGift.icon && event.content === sourceGift.content
+        && row.gift === undefined && row.transfer === undefined && row.transferEvent === undefined, path);
     }
     if (row.memorySequence !== undefined) {
       keys(row.memorySequence, ["epoch", "seq"], ["epoch"], path);
