@@ -905,6 +905,70 @@
 .chat-message-actions-grid > button:disabled { opacity: .38; }
 .chat-message-actions-grid > button svg { flex: none; }
 .chat-message-actions-grid small { font-size: 12px; line-height: 1.15; }
+.chat-reaction-bar {
+  position: absolute;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 52px;
+  max-width: calc(100% - 16px);
+  padding: 0 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border: 1px solid rgb(120 120 120 / 20%);
+  border-radius: 26px;
+  background: rgb(255 255 255 / 78%);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 10%), inset 0 1px 0 rgb(255 255 255 / 72%);
+  backdrop-filter: blur(20px) saturate(125%);
+  animation: chat-context-menu-in 160ms cubic-bezier(.2,.8,.2,1);
+}
+.chat-reaction-bar button {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #222;
+  font-size: 24px;
+  line-height: 1;
+}
+.chat-reaction-bar button:active { background: rgb(0 0 0 / 8%); transform: scale(.92); }
+.chat-reaction-bar .chat-reaction-chosen { background: rgb(0 0 0 / 10%); }
+.chat-reaction-picker {
+  position: absolute;
+  z-index: 90;
+  top: 50%;
+  left: 50%;
+  width: min(360px, calc(100% - 16px));
+  transform: translate(-50%, -50%);
+  overflow: hidden;
+  border-radius: 20px;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 22%);
+}
+.chat-reaction-picker-loading { margin: 0; padding: 24px; text-align: center; background: var(--theme-background); }
+.chat-reaction-badge {
+  position: absolute;
+  z-index: 2;
+  top: -16px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--theme-background);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--theme-text) 14%, transparent);
+  pointer-events: none;
+}
+.chat-reaction-badge::after { content: attr(data-emoji); font-size: 17px; line-height: 1; }
+.chat-bubble-role-assistant .chat-reaction-badge { right: -8px; }
+.chat-bubble-role-user .chat-reaction-badge { left: -8px; }
+.chat-bubble-role-assistant .chat-reaction-badge + .chat-reaction-badge { right: 22px; }
+.chat-bubble-role-user .chat-reaction-badge + .chat-reaction-badge { left: 22px; }
 .chat-danger { color: #c9363e !important; }
 .chat-multi-select-bar {
   position: absolute;
