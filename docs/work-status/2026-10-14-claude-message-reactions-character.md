@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-q6qbh8`；PR 见 GitHub。涉及：`lib/chat/reactions.ts`（目标选择、连续限制、lan Reaction 摘要）、`lib/chat/self-context.ts`、`lib/chat/engine.ts`（回复提交后写入）、`lib/presence/actions.ts`（仅解析 `reactToUser`）、`tests/message-reactions-character.test.ts`。未触碰 `lib/memory/*`、主动消息（#189/#191）的调度逻辑。
+Claude；分支 `claude/project-thread-q6qbh8`；PR https://github.com/yecays-ai/veil/pull/193 。涉及：`lib/chat/reactions.ts`（目标选择、连续限制、lan Reaction 摘要）、`lib/chat/self-context.ts`、`lib/chat/engine.ts`（回复提交后写入）、`lib/presence/actions.ts`（仅解析 `reactToUser`）、`tests/message-reactions-character.test.ts`。未触碰 `lib/memory/*`、主动消息（#189/#191）的调度逻辑。
 
 ## 已完成
 
