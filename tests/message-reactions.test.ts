@@ -112,11 +112,11 @@ test("the reaction bar rides the tap-opened message layer and does not create me
   assert.match(room, /emoji === activeMessage\.reactions\?\.user \? null : emoji/, "the full picker also clears the chosen emoji");
 });
 
-test("every part of the message layer shares one focus scope and stays out of the inert set", () => {
+test("every part of the message layer stays out of the inert set", () => {
   assert.equal((room.match(/data-message-overlay=""/g) || []).length, 2);
   assert.match(bar, /data-message-overlay=""[^>]*className="chat-reaction-bar"/);
   assert.match(bar, /className="chat-reaction-picker" data-message-overlay=""/);
-  assert.match(room, /:scope > \[data-message-overlay\]/);
+  assert.match(room, /child\.hasAttribute\("data-message-overlay"\)/);
   assert.doesNotMatch(room, /previousElementSibling/);
 });
 

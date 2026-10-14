@@ -277,12 +277,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     const getRoot = () => overlayKind === "chat-info" ? chatInfoScreen.current :
       overlayKind === "message-actions" ? actionMenu.current : confirmDialog.current;
     const root = getRoot();
-    // The message layer is several siblings (backdrop, reaction bar, picker, menu); they share one focus scope.
-    const scopes = () => overlayKind === "message-actions" && shell.current
-      ? [...shell.current.querySelectorAll<HTMLElement>(":scope > [data-message-overlay]")] : [getRoot()];
-    const focusables = () => scopes().flatMap((scope) => scope ? [...scope.querySelectorAll<HTMLElement>(
+    const focusables = (scope = getRoot()) => scope ? [...scope.querySelectorAll<HTMLElement>(
       'button:not(:disabled), [href], input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
-    )].filter((element) => !element.closest('[inert]') && element.getAttribute("aria-hidden") !== "true") : []);
+    )].filter((element) => !element.closest('[inert]') && element.getAttribute("aria-hidden") !== "true") : [];
     const focusFirst = () => {
       const currentRoot = getRoot();
       const target = overlayKind === "confirm-delete" || overlayKind === "confirm-clear"
@@ -297,6 +294,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     if (overlayKind && root && shell.current) {
       const allowed = new Set<Element | null>([overlayKind === "chat-info" ? root : root.parentElement]);
       for (const child of [...shell.current.children]) {
+        // The message layer is several siblings (backdrop, reaction bar, picker, menu); none of them may be inert.
         if (overlayKind === "message-actions" ? child.hasAttribute("data-message-overlay") : allowed.has(child)) continue;
         const element = child as HTMLElement;
         inerted.push({ element, wasInert: element.hasAttribute("inert") });
