@@ -49,8 +49,15 @@ test("recall is sender-only and Character action targets only its own previous r
 
 test("ChatRoom exposes recall only through the extracted message action overlay", () => {
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+  const actions = readFileSync("components/chat/message-actions/use-message-actions.ts", "utf8");
   const overlay = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
-  assert.match(room, /chatStorage\.recallMessage\(target\.id, "user"\)/);
+  assert.match(room, /useMessageActions/);
+  assert.match(actions, /chatStorage\.recallMessage\(message\.id, "user"\)/);
+  assert.match(actions, /chatStorage\.setReaction\(/);
+  assert.match(actions, /chatStorage\.deleteMessages\(/);
+  assert.match(actions, /navigator\.clipboard\.writeText/);
+  assert.doesNotMatch(room, /chatStorage\.(?:recallMessage|setReaction|deleteMessages)\(/);
+  assert.doesNotMatch(room, /navigator\.clipboard\.writeText/);
   assert.match(overlay, /activeMessage\.role === "user"[\s\S]*?label="Recall"/);
 });
 

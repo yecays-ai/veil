@@ -1,6 +1,6 @@
 "use client";
 import { useBindings } from "../use-bindings";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
   type CSSProperties } from "react";
 import {
   ChevronLeft,
@@ -19,10 +19,6 @@ import { LifeTimelineScreen } from "./life-timeline";
 import { withMemoryClear } from "../../lib/memory/browser";
 import { DEFAULT_BUBBLE_TIMING, type ChatMessage, type ChatSession } from "../../lib/chat/types";
 import {
-  MESSAGE_MENU_GAP_PX,
-  messageMenuPosition,
-  messageStackShift,
-  reactionBarLeft,
   selectMessageRange,
 } from "../../lib/chat/message-actions";
 import { ChatPlusPanel } from "./chat-plus-panel";
@@ -59,6 +55,7 @@ import { chatLoadingNotice } from "../../lib/chat/loading-notice";
 import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
 import { MessageList } from "./messages/message-list";
 import { MessageActionsOverlay } from "./message-actions/message-actions-overlay";
+import { useMessageActions } from "./message-actions/use-message-actions";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -180,17 +177,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     feedbackController.show(text);
   }
   useEffect(() => () => feedbackController.cancel(), [feedbackController]);
-  const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
-  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
-  const reactionBar = useRef<HTMLDivElement>(null);
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [multiSelect, setMultiSelect] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionStartId, setSelectionStartId] = useState<string | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [memoryMessage, setMemoryMessage] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [pendingSearchJumpId, setPendingSearchJumpId] = useState<string | null>(null);
@@ -215,14 +207,17 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const shell = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const composerBar = useRef<HTMLFormElement>(null);
-  const actionMenu = useRef<HTMLDivElement>(null);
   const chatInfoScreen = useRef<HTMLElement>(null);
   const confirmDialog = useRef<HTMLDivElement>(null);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
   const overlayFocusOrigin = useRef(new Map<string, HTMLElement | null>());
   const previousOverlay = useRef<string | null>(null);
-  const positionMenu = useRef<() => void>(() => {});
   const nativeSelectionActive = useRef(false);
+  const messageActions = useMessageActions({ shell, history, session: session?.characterId === characterId ? session : null,
+    multiSelect, nativeSelectionActive, nearBottom, onCloseChatInfo: () => setChatInfoOpen(false), onError: setError,
+    onFeedback: showFeedback, onDeleted: (ids) => { revealQueue.discard(ids); setMultiSelect(false); setSelectedIds(new Set()); } });
+  const { activeMessage, reactionPickerOpen, reactionBar, actionMenu, positionMenu, closeActions, openActions,
+    confirmDelete, cancelDelete, deleteConfirmed } = messageActions;
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -256,21 +251,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }, []);
   const panelOpen = useRef(false);
   useEffect(() => { panelOpen.current = panel !== null; }, [panel]);
-  useEffect(() => {
-    const trackSelection = () => {
-      const selection = window.getSelection();
-      nativeSelectionActive.current = !!selection && !selection.isCollapsed &&
-        !!selection.toString();
-    };
-    globalThis.document.addEventListener("selectionchange", trackSelection);
-    return () => globalThis.document.removeEventListener("selectionchange", trackSelection);
-  }, []);
-
-  const closeActions = useCallback(() => {
-    setActiveMessage(null);
-    setMenuAnchor(null);
-    setReactionPickerOpen(false);
-  }, []);
   const overlayKind = confirmDelete ? "confirm-delete" : confirmClear ? "confirm-clear" :
     chatInfoOpen ? "chat-info" : activeMessage ? "message-actions" : null;
   useLayoutEffect(() => {
@@ -320,7 +300,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         event.stopPropagation();
         if (overlayKind === "chat-info") setChatInfoOpen(false);
         else if (overlayKind === "message-actions") closeActions();
-        else if (overlayKind === "confirm-delete") setConfirmDelete(null);
+        else if (overlayKind === "confirm-delete") cancelDelete();
         else if (overlayKind === "confirm-clear") setConfirmClear(false);
         return;
       }
@@ -354,113 +334,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       }
     };
   }, [overlayKind, closeActions]);
-  useLayoutEffect(() => {
-    if (!activeMessage || !menuAnchor || !actionMenu.current || !shell.current) return;
-    const menu = actionMenu.current, bar = reactionBar.current, scroller = history.current, root = shell.current;
-    const measure = () => {
-      const viewportRect = root.getBoundingClientRect();
-      const scaleX = viewportRect.width / root.clientWidth || 1;
-      const scaleY = viewportRect.height / root.clientHeight || 1;
-      const rect = menuAnchor.getBoundingClientRect();
-      return {
-        bubble: { left: (rect.left - viewportRect.left) / scaleX, right: (rect.right - viewportRect.left) / scaleX,
-          top: (rect.top - viewportRect.top) / scaleY, bottom: (rect.bottom - viewportRect.top) / scaleY },
-        viewport: { width: root.clientWidth, height: root.clientHeight },
-      };
-    };
-    const menuHeight = () => menu.scrollHeight + menu.offsetHeight - menu.clientHeight;
-    // With a reaction bar the bar, bubble and menu are one stack. If it does not fit, the bubble moves (the history
-    // scrolls, with temporary bottom room if it is already at the end) so the bar stays above and the menu below.
-    const wasNearBottom = nearBottom.current.value;
-    let restoreScroll = () => {};
-    if (bar && scroller) {
-      const { bubble, viewport } = measure();
-      const shift = messageStackShift(bubble, { height: bar.offsetHeight }, { height: menuHeight() },
-        { height: viewport.height, safeTop: parseFloat(getComputedStyle(scroller).paddingTop) || 0 });
-      if (shift) {
-        const wanted = scroller.scrollTop - shift;
-        const room = wanted - (scroller.scrollHeight - scroller.clientHeight);
-        if (room > 0) scroller.style.paddingBottom = `${(parseFloat(getComputedStyle(scroller).paddingBottom) || 0) + room}px`;
-        scroller.scrollTop = wanted;
-        restoreScroll = () => {
-          scroller.style.paddingBottom = "";
-          if (wasNearBottom) scroller.scrollTop = scroller.scrollHeight;
-        };
-      }
-    }
-    const position = () => {
-      if (!menu.isConnected || !menuAnchor.isConnected) return;
-      const { bubble, viewport } = measure();
-      menu.style.maxWidth = `${Math.max(0, viewport.width - 16)}px`;
-      const size = { width: menu.offsetWidth, height: menuHeight() };
-      if (bar) {
-        const menuTop = Math.min(bubble.bottom + MESSAGE_MENU_GAP_PX, Math.max(viewport.height - 8 - size.height, 8));
-        Object.assign(bar.style, {
-          left: `${reactionBarLeft(bubble, bar.offsetWidth, viewport.width, activeMessage.role)}px`,
-          top: `${bubble.top - MESSAGE_MENU_GAP_PX - bar.offsetHeight}px`, visibility: "visible" });
-        Object.assign(menu.style, { left: `${messageMenuPosition(bubble, size, viewport).left}px`, top: `${menuTop}px`,
-          maxHeight: `${Math.max(0, viewport.height - 8 - menuTop)}px`, visibility: "visible" });
-        return;
-      }
-      const result = messageMenuPosition(bubble, size, viewport);
-      Object.assign(menu.style, { left: `${result.left}px`, top: `${result.top}px`,
-        maxHeight: `${result.maxHeight}px`, visibility: "visible" });
-    };
-    positionMenu.current = position;
-    const openedAt = performance.now();
-    let frame = requestAnimationFrame(function track() {
-      position();
-      if (performance.now() < openedAt + 180) frame = requestAnimationFrame(track);
-    });
-    const observer = new ResizeObserver(position);
-    observer.observe(menuAnchor);
-    window.addEventListener("resize", position);
-    window.addEventListener("scroll", position, true);
-    window.visualViewport?.addEventListener("resize", position);
-    window.visualViewport?.addEventListener("scroll", position);
-    return () => {
-      cancelAnimationFrame(frame); observer.disconnect();
-      window.removeEventListener("resize", position);
-      window.removeEventListener("scroll", position, true);
-      window.visualViewport?.removeEventListener("resize", position);
-      window.visualViewport?.removeEventListener("scroll", position);
-      restoreScroll();
-    };
-  }, [activeMessage, menuAnchor]);
-
-  function openActions(e: React.MouseEvent<HTMLElement>, message: ChatMessage) {
-    if (multiSelect || message.status === "streaming" || message.recalled) return;
-    const selection = window.getSelection();
-    if (nativeSelectionActive.current ||
-      (selection && !selection.isCollapsed && selection.toString())) return;
-    setActiveMessage(message);
-    setMenuAnchor(e.currentTarget);
-    setChatInfoOpen(false);
-  }
-  async function react(message: ChatMessage, emoji: string | null) {
-    closeActions();
-    try { await chatStorage.setReaction(message.id, "user", emoji); }
-    catch (e) { setError(e instanceof Error ? e.message : "Reaction could not be saved."); }
-  }
-  async function recallActiveMessage() {
-    if (!activeMessage || activeMessage.role !== "user") return;
-    const target = activeMessage;
-    closeActions();
-    try { await chatStorage.recallMessage(target.id, "user"); showFeedback("Message recalled"); }
-    catch (e) { setError(e instanceof Error ? e.message : "Message could not be recalled."); }
-  }
-  async function copyMessage() {
-    if (!activeMessage) return;
-    try { await navigator.clipboard.writeText(activeMessage.content); showFeedback("Copied"); }
-    catch { setError("Message could not be copied."); }
-    closeActions();
-  }
-  async function deleteConfirmed() {
-    if (!session || !confirmDelete) return;
-    try { await chatStorage.deleteMessages(session.id, confirmDelete); revealQueue.discard(confirmDelete); showFeedback("Deleted");
-      setConfirmDelete(null); setMultiSelect(false); setSelectedIds(new Set()); }
-    catch (e) { setError(e instanceof Error ? e.message : "Messages could not be deleted."); }
-  }
   useLayoutEffect(() => {
     if (!framePublished || !session || initialPositionedSession.current === session.id) return;
     initialPositionedSession.current = session.id;
@@ -822,8 +695,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; })}
           onClearHighlight={() => setHighlightedMessageId(null)}
           onRegenerate={(message, continuation) => void regenerate(message, continuation)}
-          onPointerDownMessage={() => { nativeSelectionActive.current = false; }}
-          onContextMenuMessage={() => { nativeSelectionActive.current = true; }}
+          onPointerDownMessage={messageActions.onPointerDownMessage}
+          onContextMenuMessage={messageActions.onContextMenuMessage}
         />}
       </div>
       {(error || loadError) && (
@@ -839,7 +712,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onSelectAll={() => setSelectedIds(new Set(selectable.map((m) => m.id)))}
         onSelectFromHere={() => selectionStartId &&
           setSelectedIds(new Set(selectMessageRange(selectable.map((m) => m.id), selectionStartId)))}
-        onDelete={() => setConfirmDelete([...selectedIds])}
+        onDelete={() => messageActions.requestDelete([...selectedIds])}
         onCancel={() => { setMultiSelect(false); setSelectedIds(new Set()); }} />}
       {panel && <button type="button" className="chat-tray-backdrop" aria-label="Close panel" onClick={() => setPanel(null)} />}
       {stickerManagerOpen && <StickerManager
@@ -940,14 +813,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       <MessageActionsOverlay activeMessage={activeMessage} messages={messages} generationActive={generationActive}
         revealPending={!!revealState?.pending} actionMenuRef={actionMenu} reactionBarRef={reactionBar}
         reactionPickerOpen={reactionPickerOpen} onClose={closeActions}
-        onPickReaction={(emoji) => { if (activeMessage) void react(activeMessage, emoji); }}
-        onOpenReactionPicker={() => setReactionPickerOpen(true)} onCopy={() => void copyMessage()}
+        onPickReaction={(emoji) => { void messageActions.react(emoji); }}
+        onOpenReactionPicker={() => messageActions.setReactionPickerOpen(true)} onCopy={() => void messageActions.copyMessage()}
         onEdit={() => { if (!activeMessage) return; setEditingMessage(activeMessage); setEditText(activeMessage.content); closeActions(); }}
         onQuote={() => { if (!activeMessage) return; setQuotingMessage(activeMessage); closeActions(); composer.current?.focus(); }}
         onMemory={() => { if (!activeMessage) return; setMemoryMessage(activeMessage); closeActions(); }}
         onSelect={() => { if (!activeMessage) return; setMultiSelect(true); setSelectionStartId(activeMessage.id); setSelectedIds(new Set([activeMessage.id])); closeActions(); }}
-        onDelete={() => { if (!activeMessage) return; setConfirmDelete([activeMessage.id]); closeActions(); }}
-        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }} onRecall={() => void recallActiveMessage()}
+        onDelete={() => { if (!activeMessage) return; messageActions.requestDelete([activeMessage.id], true); }}
+        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }} onRecall={() => void messageActions.recallActiveMessage()}
         onRunRegisteredAction={(id) => {
           if (!activeMessage) return;
           const message = activeMessage;
@@ -969,7 +842,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       </div>}
       {confirmDelete && <ConfirmDialog dialogRef={confirmDialog} title="Delete messages?"
         text={`Delete ${confirmDelete.length} message${confirmDelete.length === 1 ? "" : "s"} from this conversation?`}
-        onCancel={() => setConfirmDelete(null)} onConfirm={() => void deleteConfirmed()} />}
+        onCancel={cancelDelete} onConfirm={() => void deleteConfirmed()} />}
       {confirmClear && <ConfirmDialog dialogRef={confirmDialog} title="Clear Chat History?"
         text={`Delete all ${messages.length} messages from this conversation? The conversation itself will remain.`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
