@@ -145,7 +145,8 @@ export class MemoryProgressProtocol {
   }
 
   /** Re-snapshot edited/deleted evidence only before dispatch or after a proven failure. Retry counts survive. */
-  async refresh(ticket: MemoryBatchTicket, candidateIds?: readonly string[], tooLarge?: boolean): Promise<MemoryBatchTicket> {
+  async refresh(ticket: MemoryBatchTicket, candidateIds?: readonly string[], tooLarge?: boolean,
+    size?: { attempts: number; budgetKey: string }): Promise<MemoryBatchTicket> {
     const state = this.ticket(ticket);
     return this.exclusive(state.owner, async (scope) => {
       const { characterId } = this.owner(state.owner), chat = await this.authority(state.owner, state.sessionId, scope);
@@ -155,6 +156,10 @@ export class MemoryProgressProtocol {
       const captured = await this.capture(state.owner, chat, batch.fromSeq, batch.toSeq, candidateIds ?? batch.candidates.map((c) => c.id), scope);
       const next: MemoryBatch = { id: crypto.randomUUID(), fromSeq: batch.fromSeq, toSeq: batch.toSeq, attempts: batch.attempts,
         state: (tooLarge ?? batch.state === "too-large") ? "too-large" : "ready", ...captured };
+      // The size history belongs to the range and survives a refresh until the range is committed.
+      const sizeAttempts = size?.attempts ?? batch.sizeAttempts, budgetKey = size?.budgetKey ?? batch.budgetKey;
+      if (sizeAttempts !== undefined) next.sizeAttempts = sizeAttempts;
+      if (budgetKey !== undefined) next.budgetKey = budgetKey;
       await this.memory.transaction("readwrite", async (tx) => {
         const current = await this.cursor(tx, characterId, state), index = current.extraction!.batches.findIndex((b) => b.id === batch.id);
         if (index < 0 || current.extraction!.batches[index].state !== batch.state) return fail();
@@ -180,7 +185,7 @@ export class MemoryProgressProtocol {
           else if (batch.state === "in-flight" || batch.state === "commit-pending") { batch.state = "uncertain"; batch.errorCode = "owner-lost"; }
         }
         await request(store.put({ ...row, updatedAt: this.memory.now() }));
-        return row.extraction.batches.filter((batch) => batch.state === "ready" || batch.state === "failed").map((batch) => ({ owner, sessionId,
+        return row.extraction.batches.filter((batch) => batch.state === "ready" || batch.state === "failed" || batch.state === "too-large").map((batch) => ({ owner, sessionId,
           epoch: row.extraction!.epoch, incarnation: row.extraction!.incarnation, batchId: batch.id }));
       }, scope);
       return states.map((state) => { const ticket = Object.freeze({}) as MemoryBatchTicket; this.tickets.set(ticket, state); return ticket; });
@@ -304,13 +309,14 @@ export class MemoryProgressProtocol {
   }
 
   /** Ticket metadata only, for bounded safe recovery. Never exposes persisted message text. */
-  async describe(ticket: MemoryBatchTicket): Promise<Pick<MemoryBatch, "state" | "attempts" | "fromSeq" | "toSeq">> {
+  async describe(ticket: MemoryBatchTicket): Promise<Pick<MemoryBatch, "state" | "attempts" | "fromSeq" | "toSeq" | "sizeAttempts" | "budgetKey">> {
     const state = this.ticket(ticket);
     return this.exclusive(state.owner, async (scope) => {
       const row = await this.memory.transaction("readonly", (tx) => this.cursor(tx, this.owner(state.owner).characterId, state), scope);
       const batch = row.extraction!.batches.find((b) => b.id === state.batchId);
       if (!batch) return fail();
-      return { state: batch.state, attempts: batch.attempts, fromSeq: batch.fromSeq, toSeq: batch.toSeq };
+      return { state: batch.state, attempts: batch.attempts, fromSeq: batch.fromSeq, toSeq: batch.toSeq,
+        ...(batch.sizeAttempts !== undefined ? { sizeAttempts: batch.sizeAttempts } : {}), ...(batch.budgetKey !== undefined ? { budgetKey: batch.budgetKey } : {}) };
     });
   }
 
@@ -376,6 +382,8 @@ export class MemoryProgressProtocol {
       if (state.completed) return "already-committed";
       const batch = row.extraction!.batches.find((b) => b.id === state.batchId);
       if (!batch || batch.state !== "commit-pending" || batch.ownerId !== id || batch.attemptId !== state.attemptId || !state.attemptId) return fail();
+      // A committed batch must have carried the State lane: its evidence is gone for good once the range is done.
+      if (this.stateEnabled && (!state.stateInput || !state.stateHash)) return fail();
       await this.evidence(state.owner, state, batch, scope, true);
       let nextState: StateMaintenanceInput["foundation"] | undefined;
       if (change.stateOperations?.length) {

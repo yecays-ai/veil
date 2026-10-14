@@ -116,7 +116,9 @@ test("verified input rejects edited evidence; construction rejects secrets, cros
     const t = await f.protocol.prepare(owner, f.session.id, 1, 1), snapshot = await f.protocol.readInput(t);
     assert.throws(() => buildMaintenanceInput(snapshot, { characterId: "other", context: "" }));
     assert.throws(() => buildMaintenanceInput(snapshot, { characterId: "c", context: "" }, 5), MaintenanceInputTooLarge);
-    assert.throws(() => buildMaintenanceInput(snapshot, { characterId: "c", context: "password: secret" }));
+    // A secret in any field is redacted locally and never fails the request or reaches the model.
+    const redacted = buildMaintenanceInput(snapshot, { characterId: "c", context: "password: hunter2xyz" }).map((turn) => turn.content).join("\n");
+    assert.ok(!redacted.includes("hunter2xyz") && redacted.includes("[redacted]"));
     await f.chat.editMessage(m.id, "changed"); await assert.rejects(f.protocol.readInput(t));
   });
 });

@@ -111,6 +111,8 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
       keptCursor.extraction = structuredClone(cursor.extraction);
       keptCursor.extraction.incarnation = crypto.randomUUID();
       for (const batch of keptCursor.extraction.batches) {
+        // An edited or deleted message changes what the size was measured on: a paused too-large range is looked at again.
+        if (batch.state === "too-large" && batch.sources.some((source) => targets.has(source.messageId))) { delete batch.sizeAttempts; delete batch.budgetKey; }
         if (["in-flight", "commit-pending"].includes(batch.state)) { batch.state = "uncertain"; batch.errorCode = "source-changed"; }
         else if (batch.state === "claimed") { batch.state = "ready"; delete batch.ownerId; delete batch.attemptId; }
       }

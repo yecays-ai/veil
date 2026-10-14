@@ -38,7 +38,8 @@ export function startBrowserMaintenance(): () => void {
       if (!character) throw new Error("Memory Character authority unavailable.");
       const config = await resolveMaintenanceModel(await browserBindingStorage.load(), characterId,
         (id) => browserApiConfigStorage.getApiConfig(id, scope));
-      return { config, timezone: foundation.user.timezone ?? undefined, context: JSON.stringify({ name: character.name, characterId, personality: character.personality,
+      // Only hashed by the runner: it tells a paused too-large range that the Character, Backstory or profile changed.
+      return { config, timezone: foundation.user.timezone ?? undefined, budget: JSON.stringify([character.backstory, foundation.user.name]), context: JSON.stringify({ name: character.name, characterId, personality: character.personality,
         speakingStyle: character.speakingStyle, user: foundation.user.name, worldSetting: foundation.universe.worldSetting }) };
     } };
   // What this page already looked at (or failed to summarize) is not read or sent again until the chat or summary changes.

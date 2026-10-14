@@ -197,7 +197,7 @@ test("long messages form smaller complete batches; overlarge single complete inp
   assert.equal(await f.run(), true); assert.equal((await f.progress())?.throughSeq, 1);
   assert.equal(await f.run(), true); assert.equal((await f.progress())?.throughSeq, 2); assert.equal(f.calls(), 2);
   const large = await fixture(); await large.send("short"); const reply = await large.chat.beginReply(large.session.id); assert.ok(reply);
-  await large.chat.finalizeReply(reply.assistant.id, "x".repeat(25_000)); await large.send("confirm");
+  await large.chat.finalizeReply(reply.assistant.id, "x".repeat(32_000)); await large.send("confirm");
   assert.equal(await large.run(), true); assert.equal((await large.progress())?.throughSeq, 1);
   assert.equal(await large.run(), false); assert.equal((await large.progress())?.batches[0].state, "too-large");
   assert.equal((await large.progress())?.throughSeq, 1); assert.equal(large.calls(), 1);

@@ -62,6 +62,8 @@ test("backup rejects duplicate sequence, wrong epoch, overlap, invented fields a
     (d: ReturnType<typeof data>) => { d.memory.cursors[0].extraction!.batches.push({ ...d.memory.cursors[0].extraction!.batches[0], id: "overlap" }); },
     (d: ReturnType<typeof data>) => { Object.assign(d.memory.cursors[0].extraction!, { rawChatText: "must not persist" }); },
     (d: ReturnType<typeof data>) => { d.memory.cursors[0].extraction!.batches[0].sources[0].seq = 2; },
+    (d: ReturnType<typeof data>) => { Object.assign(d.memory.cursors[0].extraction!.batches[0], { sizeAttempts: -1 }); },
+    (d: ReturnType<typeof data>) => { Object.assign(d.memory.cursors[0].extraction!.batches[0], { budgetKey: "" }); },
     (d: ReturnType<typeof data>) => {
       d.foundation!.characters.push({ ...d.foundation!.characters[0], characterId: "other" });
       d.memory.memories.push({ ...d.memory.memories[0], id: "other-memory", characterId: "other", sources: [] });
@@ -70,6 +72,18 @@ test("backup rejects duplicate sequence, wrong epoch, overlap, invented fields a
   ];
   for (const mutate of mutations) { const d = data(); mutate(d); const f = await packageFixture(d); await assert.rejects(validateBackupPackage(JSON.stringify(f.manifest), f.files)); }
   assert.equal(validMemoryProgress({ ...data().memory.cursors[0].extraction!, throughSeq: -1 }), false);
+});
+
+test("too-large size history (sizeAttempts, budgetKey) roundtrips through backup and restore unchanged", async () => {
+  const source = data("too-large");
+  Object.assign(source.memory.cursors[0].extraction!.batches[0], { sizeAttempts: 2, budgetKey: "32000:abc123" });
+  const f = await packageFixture(source), manifest = JSON.stringify(f.manifest);
+  await validateBackupPackage(manifest, f.files);
+  const d = device(), locks = lockOrigin().client();
+  await restoreIntoEmpty(manifest, f.files, d, locks);
+  const batch = ((await readStaticBackupSource(d)).memory.cursors[0] as { extraction: { batches: { state: string; sizeAttempts?: number; budgetKey?: string }[] } }).extraction.batches[0];
+  assert.equal(batch.state, "too-large"); assert.equal(batch.sizeAttempts, 2); assert.equal(batch.budgetKey, "32000:abc123");
+  assert.equal(validMemoryProgress(source.memory.cursors[0].extraction), true);
 });
 
 test("rollback after a landed Memory write preserves logical progress but invalidates old capabilities", async () => {

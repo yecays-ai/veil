@@ -3,6 +3,8 @@ export type MemoryBatch = {
   id: string; fromSeq: number; toSeq: number; state: MemoryBatchState; attempts: number;
   sources: { messageId: string; seq: number; hash: string }[];
   candidates: { id: string; updatedAt: number; hash: string }[];
+  /** Consecutive too-large evaluations under `budgetKey`; automatic attempts pause at two. Never marks the range done. */
+  sizeAttempts?: number; budgetKey?: string;
   ownerId?: string; attemptId?: string; errorCode?: "known-failed" | "source-changed" | "commit-failed" | "owner-lost";
 };
 export type MemoryProgress = {
@@ -28,10 +30,11 @@ export function validMemoryProgress(value: unknown): value is MemoryProgress {
   }
   const ids = new Set<string>();
   for (const batch of value.batches) {
-    if (!obj(batch) || !keys(batch, ["id", "fromSeq", "toSeq", "state", "attempts", "sources", "candidates", "ownerId", "attemptId", "errorCode"])
+    if (!obj(batch) || !keys(batch, ["id", "fromSeq", "toSeq", "state", "attempts", "sources", "candidates", "ownerId", "attemptId", "errorCode", "sizeAttempts", "budgetKey"])
       || !str(batch.id) || ids.has(batch.id) || !int(batch.fromSeq) || !int(batch.toSeq) || batch.fromSeq <= value.throughSeq || batch.toSeq < batch.fromSeq
       || !["ready", "claimed", "in-flight", "commit-pending", "failed", "uncertain", "too-large"].includes(String(batch.state)) || !int(batch.attempts)
       || !Array.isArray(batch.sources) || !Array.isArray(batch.candidates)
+      || (batch.sizeAttempts !== undefined && !int(batch.sizeAttempts)) || (batch.budgetKey !== undefined && !str(batch.budgetKey))
       || (batch.ownerId !== undefined && !str(batch.ownerId)) || (batch.attemptId !== undefined && !str(batch.attemptId))
       || (batch.errorCode !== undefined && !["known-failed", "source-changed", "commit-failed", "owner-lost"].includes(String(batch.errorCode)))) return false;
     const active = memoryBatchActive(batch as MemoryBatch);
