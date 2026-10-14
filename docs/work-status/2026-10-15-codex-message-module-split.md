@@ -20,10 +20,11 @@ Codex；分支 `codex/message-module-split-20261015`；PR #200；base `origin/ma
 - 更新既有消息展示、Reaction、引用、贴纸和布局回归测试，并新增模块边界检查。
 - 目标回归：61/61 通过，覆盖消息菜单、Reaction、引用、贴纸、多选、覆盖层焦点、聊天布局和首帧。
 - ESLint：0 error；`chat-room.tsx` 保留已有的两条 `react-hooks/exhaustive-deps` warning。
+- PR 首次 CI 的 typecheck 与 lint 已通过；测试中有一条旧源码断言仍要求消息循环留在 `chat-room.tsx`，已改为验证新的薄接线与时间线组件，等待重跑。
 
 ## 尚未验证
 
-- 完整 TypeScript 检查受本地缺失 `emoji-picker-react` 依赖阻塞（`components/chat/reaction-picker.tsx`）；并非此次变更引入。
+- 完整 TypeScript 检查受本地缺失 `emoji-picker-react` 依赖阻塞（`components/chat/reaction-picker.tsx`）；并非此次变更引入。PR CI 的完整 typecheck 已通过。
 - 尚未在真实浏览器或移动设备验证。
 
 ## 下一步
