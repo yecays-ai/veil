@@ -68,27 +68,33 @@ test("the presence line shows status and Last Seen after loading, keeps its plac
   });
 });
 
-test("the chat header keeps one status line for a contact, empty or filled, and none for the loading title", async () => {
+test("the chat header puts the shared badge on the avatar, temporarily Online while generating", async () => {
   await withDom(async ({ container }) => {
     const { createRoot } = await import("react-dom/client");
     const { ChatHeader } = await import("../components/chat/chat-header");
     const root = createRoot(container);
     const contact = { characterId: "a", name: "Ada", profile: { name: "Ada", avatar: null } };
-    const render = (props: { contact: typeof contact | null; status?: string }) => act(async () => {
+    const render = (props: { contact: typeof contact | null; presence?: "busy" | "offline"; generating?: boolean }) => act(async () => {
       root.render(createElement(ChatHeader, { ...props, settingsTrigger: { current: null } }));
     });
     try {
       await render({ contact: null });
       assert.equal(container.querySelector(".chat-contact-status"), null);
-      await render({ contact, status: "" });
-      const status = container.querySelector(".chat-contact-status")!;
-      assert.equal(status.textContent, "");
-      assert.equal(container.querySelector(".chat-contact-text strong")!.textContent, "Ada");
+      await render({ contact });
+      assert.equal(container.querySelector(".chat-contact-status"), null);
+      assert.equal(container.querySelector("strong")!.textContent, "Ada");
       assert.equal(container.querySelector("a.chat-contact-summary")!.getAttribute("aria-label"), "Open Contact Info for Ada");
-      await render({ contact, status: "Busy · Last seen 1h ago" });
-      assert.equal(container.querySelector("a.chat-contact-summary")!.getAttribute("aria-label"), "Open Contact Info for Ada, Busy · Last seen 1h ago");
-      assert.equal(container.querySelector(".chat-contact-status") === status, true, "the status line is updated in place");
-      assert.equal(status.textContent, "Busy · Last seen 1h ago");
+      await render({ contact, presence: "busy" });
+      const avatar = container.querySelector(".chat-avatar-presence .chat-avatar");
+      assert.ok(avatar);
+      assert.ok(container.querySelector(".chat-avatar-presence > .presence-busy"));
+      assert.equal(container.querySelector("a.chat-contact-summary")!.getAttribute("aria-label"), "Open Contact Info for Ada, Busy");
+      await render({ contact, presence: "busy", generating: true });
+      assert.ok(container.querySelector(".chat-avatar-presence > .presence-online"));
+      assert.equal(container.querySelector(".chat-avatar"), avatar, "generation does not remount the avatar");
+      await render({ contact, presence: "busy", generating: false });
+      assert.ok(container.querySelector(".presence-busy"));
+      assert.equal(container.textContent?.includes("Last seen"), false);
     } finally { await act(async () => { root.unmount(); }); }
   });
 });

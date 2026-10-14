@@ -93,7 +93,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
   const contact = contacts.document.contacts.find((item) => item.characterId === characterId);
   const contactName = character ? contactDisplayName(contact, character.name) : "";
-  const presence = useCharacterPresence(character, { lastSeen: true });
+  const presence = useCharacterPresence(character);
   const [regexReadState, setRegexReadState] = useState<{
     owner: string; groups: RegexGroup[]; ready: boolean;
   }>({ owner: "", groups: [], ready: false });
@@ -702,7 +702,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       data-chat-background-entry={framePublished && chatBackground.url && chatBackground.late ? "fade" : undefined}
       data-context-menu-open={activeMessage ? "" : undefined}>
       {framePublished && session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
-      <ChatHeader key="header" settingsTrigger={settingsTrigger} status={presence.text}
+      <ChatHeader key="header" settingsTrigger={settingsTrigger} presence={presence.ready ? presence.status : undefined} generating={generationActive}
         contact={framePublished ? { characterId: character.characterId, name: contactName, profile: character } : null}
         onOpenSettings={() => {
           overlayFocusOrigin.current.set("chat-info",

@@ -14,6 +14,7 @@ import { sortChatSessions } from "../../lib/chat/session-order";
 import { CONVERSATION_DELETE_WIDTH, conversationDeleteMotion, conversationSwipeOffset, isHorizontalConversationSwipe,
   conversationSwipeReleaseTarget } from "../../lib/chat/swipe-gesture";
 import { ChatAvatar } from "./avatar";
+import { CharacterPresenceBadge } from "../presence";
 import { RootAppHeader } from "../root-app-header";
 import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
@@ -182,7 +183,9 @@ export function MessagesHome() {
                 }
               }
             }}>
-            {group ? <span className="chat-avatar group-avatar"><Users /></span> : namesReady && character ? <ChatAvatar profile={character} /> : <span className="chat-avatar">{namesReady ? "?" : ""}</span>}
+            {group ? <span className="chat-avatar group-avatar"><Users /></span> : namesReady && character ?
+              <span className="chat-avatar-presence"><ChatAvatar profile={character} /><CharacterPresenceBadge character={character} /></span>
+              : <span className="chat-avatar">{namesReady ? "?" : ""}</span>}
             <span className="conversation-summary">
               <span className="conversation-title-line"><strong>{name ?? "Loading contact…"}</strong>
                 {!!session.updatedAt && <time dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}
