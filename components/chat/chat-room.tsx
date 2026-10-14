@@ -252,21 +252,24 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   useLayoutEffect(() => {
     const bar = composerBar.current;
     if (!bar || !shell.current) return;
-    const update = () => shell.current?.style.setProperty("--chat-composer-height", `${bar.offsetHeight}px`);
+    let previous = bar.offsetHeight;
+    const update = () => {
+      const height = bar.offsetHeight, list = history.current;
+      // A panel under the input row grows the composer, and the history's bottom padding grows with it. If the reader was at the
+      // latest message, scroll along so it stays above the panel instead of ending up behind it.
+      const atBottom = !!list && list.scrollHeight - list.scrollTop - list.clientHeight < 80 + Math.max(0, height - previous);
+      shell.current?.style.setProperty("--chat-composer-height", `${height}px`);
+      if (list && panelOpen.current && atBottom && height !== previous)
+        requestAnimationFrame(() => list.scrollTo({ top: list.scrollHeight }));
+      previous = height;
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(bar);
     return () => observer.disconnect();
   }, []);
-  // The panel grows the composer and the history above it shrinks; keep the latest message in view when it was.
-  useEffect(() => {
-    if (panel === null) return;
-    const frame = requestAnimationFrame(() => {
-      const list = history.current;
-      if (list && nearBottom.current.value) list.scrollTo({ top: list.scrollHeight });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [panel]);
+  const panelOpen = useRef(false);
+  useEffect(() => { panelOpen.current = panel !== null; }, [panel]);
   useEffect(() => {
     const trackSelection = () => {
       const selection = window.getSelection();

@@ -199,3 +199,12 @@ test("a reaction is only its emoji: no circle, fill, border or shadow", () => {
   assert.doesNotMatch(badge, /(?<![-\w])(?:background|border|box-shadow|width|height)/);
   assert.match(badge, /position:\s*absolute/);
 });
+
+test("opening a panel recomputes the chat area: the history follows the composer's new height when it was at the latest message", () => {
+  const observer = room.match(/let previous = bar\.offsetHeight;[\s\S]*?observer\.observe\(bar\)/)![0];
+  assert.match(observer, /panelOpen\.current && atBottom && height !== previous/);
+  assert.match(observer, /list\.scrollTo\(\{ top: list\.scrollHeight \}\)/);
+  assert.match(observer, /--chat-composer-height/);
+  assert.match(css, /\.chat-composer:has\(\.chat-tray\) \{[^}]*backdrop-filter: blur\(26px\)/);
+  assert.match(css.match(/\.chat-reaction-badge \{[^}]*\}/)![0], /bottom:\s*-1px/);
+});

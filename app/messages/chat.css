@@ -550,6 +550,12 @@
   backdrop-filter: blur(18px) saturate(145%);
   -webkit-backdrop-filter: blur(18px) saturate(145%);
 }
+/* With a panel open the composer becomes a frosted sheet, so the messages behind it do not show through its text. */
+.chat-composer:has(.chat-tray) {
+  background: color-mix(in srgb, var(--theme-background) 88%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+}
 .chat-input-label {
   position: absolute;
   width: 1px;
@@ -979,7 +985,7 @@
 .chat-reaction-badge {
   position: absolute;
   z-index: 2;
-  bottom: -9px;
+  bottom: -1px;
   display: block;
   font-size: 16px;
   line-height: 1;
