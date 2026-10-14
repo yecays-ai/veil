@@ -66,7 +66,7 @@ VEIL has no account system, cloud sync, or server-side copy of your local app da
 
 VEIL can make network requests only when a feature needs them:
 
-- your configured OpenAI-compatible provider for chat and optional generated features;
+- your configured OpenAI-compatible provider for chat and optional generated features. Chat requests send conversation context and your API key directly to that provider;
 - Open-Meteo for weather or place lookup when a saved location is used;
 - external image URLs that you choose to display.
 
