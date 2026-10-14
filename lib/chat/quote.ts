@@ -1,4 +1,5 @@
 import type { ChatMessage, MessageQuote } from "./types";
+import { stickerPreview } from "./sticker-message";
 
 /** The text-only part of float's [引用:preview] protocol. */
 export function parseQuotedReply(content: string) {
@@ -12,7 +13,7 @@ export function quoteMessage(message: ChatMessage): MessageQuote {
   if ((message.role !== "user" && message.role !== "assistant") || message.status === "streaming")
     throw new Error("This message cannot be quoted.");
   return { messageId: message.id, role: message.role,
-    preview: parseQuotedReply(message.content).content.slice(0, 50) };
+    preview: message.sticker ? stickerPreview(message.sticker) : parseQuotedReply(message.content).content.slice(0, 50) };
 }
 
 export function messageHistoryContent(message: ChatMessage): string {

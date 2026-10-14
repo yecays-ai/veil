@@ -24,6 +24,7 @@ import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { chatStorage } from "../../lib/chat/storage";
 import { MessageMemory } from "./message-memory";
+import { LifeTimelineScreen } from "./life-timeline";
 import { withMemoryClear } from "../../lib/memory/browser";
 import { DEFAULT_BUBBLE_TIMING, type ChatMessage, type ChatSession } from "../../lib/chat/types";
 import {
@@ -35,6 +36,11 @@ import {
 } from "../../lib/chat/message-actions";
 import { canReactTo, reactionBadges } from "../../lib/chat/reactions";
 import { ReactionBar, ReactionPickerSheet } from "./reaction-bar";
+import { ChatPlusPanel } from "./chat-plus-panel";
+import { StickerPanel } from "./sticker-panel";
+import { StickerManager } from "./sticker-manager";
+import { StickerImage } from "./sticker-image";
+import type { MessageSticker } from "../../lib/chat/sticker-message";
 import { ChatAvatar } from "./avatar";
 import { ChatHeader } from "./chat-header";
 import { useCharacterPresence } from "../use-character-presence";
@@ -160,6 +166,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [generating, setGenerating] = useState(false);
   const generationActive = generating || !!session?.generation;
   const [error, setError] = useState("");
+  const [panel, setPanel] = useState<null | "plus" | "stickers">(null);
+  const [stickerManagerOpen, setStickerManagerOpen] = useState(false);
   const [failedDraft, setFailedDraft] = useState<{ sessionId: string; content: string; quote: ChatMessage | null; editVersion: number } | null>(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
@@ -592,6 +600,24 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         );
     }
   }
+  async function sendSticker(sticker: MessageSticker) {
+    if (!session || session.characterId !== characterId || generationActive || chatEngine.isGenerating(session.id) || sendingLock.current || loadError) return;
+    const sessionId = session.id, quote = quotingMessage;
+    sendingLock.current = true;
+    setSending(true);
+    setError("");
+    setPanel(null);
+    try {
+      nearBottom.current = { characterId, sessionId, value: true };
+      await chatEngine.sendSticker(sessionId, sticker, quote?.id);
+      if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === quote?.id ? null : current);
+    } catch (e) {
+      if (mounted.current && currentSessionId.current === sessionId) setError(e instanceof Error ? e.message : "表情包没有发出去。");
+    } finally {
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) { sendingLock.current = false; setSending(false); }
+    }
+  }
   async function reply(source: "manual-reply" | "keyboard-auto-reply" = "manual-reply", retry?: NonNullable<typeof failedDraft>) {
     if (!session || session.characterId !== characterId || replyLock.current || sendingLock.current ||
       generationActive || chatEngine.isGenerating(session.id) || loadError) return;
@@ -815,7 +841,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               {isGroupStart && <ChatAvatar profile={character} />}
             </div>}
             <div className="chat-message">
-              <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown`}
+              <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
                 onAnimationEnd={() => { if (highlightedMessageId === message.id) setHighlightedMessageId(null); }}
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
                 onContextMenu={() => { nativeSelectionActive.current = true; }}
@@ -824,7 +850,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                   data-emoji={emoji} data-side={index === 0 && message.reactions?.character ? "character" : "user"} role="img" aria-label={`Reaction ${emoji}`} />)}
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
-                {message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
+                {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
+                {message.sticker ? null : message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
                   ? applyRegex(parsed.content, regexGroups, message.role, "display",
                     { character: character.name, user: document.user.name }) : parsed.content) ||
                   (message.status === "streaming" && generationActive ? "…" : "")}
@@ -868,6 +895,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           setSelectedIds(new Set(selectMessageRange(selectable.map((m) => m.id), selectionStartId)))}
         onDelete={() => setConfirmDelete([...selectedIds])}
         onCancel={() => { setMultiSelect(false); setSelectedIds(new Set()); }} />}
+      {panel && <button type="button" className="chat-tray-backdrop" aria-label="Close panel" onClick={() => setPanel(null)} />}
+      {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} />}
+      {panel === "stickers" && <StickerPanel onSend={(sticker) => void sendSticker(sticker)}
+        onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
+      {stickerManagerOpen && <StickerManager
+        characters={document.characters.map((item) => ({ characterId: item.characterId, name: item.name }))}
+        current={{ characterId: character.characterId, name: character.name }}
+        onClose={() => setStickerManagerOpen(false)} />}
       <form
         key="composer"
         className="chat-composer chat-input-bar"
@@ -883,7 +918,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           <button type="button" aria-label="Cancel Quote" onClick={() => setQuotingMessage(null)}>×</button>
         </div>}
         <button type="button" className="chat-composer-icon chat-composer-plus"
-          aria-label="More message options" title="More message options">
+          aria-label="More message options" title="More message options" aria-expanded={panel !== null}
+          onPointerDown={(e) => e.preventDefault()} onClick={() => setPanel((current) => current === null ? "plus" : null)}>
           <Plus aria-hidden="true" />
         </button>
         <div className="chat-input-shell">
@@ -940,6 +976,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         session={session}
         messages={messages}
         characterName={contactName}
+        character={character}
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
         pinned={session?.pinned === true}
@@ -962,8 +999,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         <div ref={actionMenu} tabIndex={-1} data-message-overlay="" className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
-            <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
-            <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => { setEditingMessage(activeMessage);
+            <Action label="Copy" icon={Copy} disabled={!!activeMessage.sticker} onClick={() => void copyMessage()} />
+            <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || !!activeMessage.sticker || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => { setEditingMessage(activeMessage);
               setEditText(activeMessage.content); closeActions(); }} />
             <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => {
               setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
@@ -1017,12 +1054,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
 }
 
-function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnline, autoReplyOnKeyboardDismiss, pinned,
+function ChatInfoScreen({ screenRef, session, messages, characterName, character, streamOnline, autoReplyOnKeyboardDismiss, pinned,
   canClear, onBack, onJumpToMessage, onUpdate, onClear }: {
   screenRef: React.Ref<HTMLElement>;
   session: ChatSession | null;
   messages: ChatMessage[];
   characterName: string;
+  character: { characterId: string; name: string; timezone: string | null } | undefined;
   streamOnline: boolean;
   autoReplyOnKeyboardDismiss: boolean;
   pinned: boolean;
@@ -1039,6 +1077,7 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnl
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [customCSSOpen, setCustomCSSOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [lifeOpen, setLifeOpen] = useState(false);
   const [settingsError, setSettingsError] = useState("");
   const settingsScreenMounted = useRef(false);
   const settingsUpdateRevision = useRef(0);
@@ -1064,13 +1103,14 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnl
     const screen = typeof screenRef === "function" ? null : screenRef?.current;
     screen?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled), textarea:not(:disabled)")
       ?.focus({ preventScroll: true });
-  }, [backgroundOpen, customCSSOpen, searchOpen, screenRef]);
+  }, [backgroundOpen, customCSSOpen, searchOpen, lifeOpen, screenRef]);
   if (backgroundOpen && session)
     return <ChatBackgroundSettings screenRef={screenRef} session={session} onBack={() => setBackgroundOpen(false)} />;
   if (customCSSOpen && session)
     return <CustomCSSSettings screenRef={screenRef} session={session} onBack={() => setCustomCSSOpen(false)} />;
   if (searchOpen) return <ChatHistorySearchPage screenRef={screenRef} sessionId={session?.id ?? ""} messages={messages}
     characterName={characterName} onBack={() => setSearchOpen(false)} onJumpToMessage={onJumpToMessage} />;
+  if (lifeOpen && character) return <LifeTimelineScreen screenRef={screenRef} character={character} onBack={() => setLifeOpen(false)} />;
   return <section ref={screenRef} className="chat-info-screen" role="dialog" aria-modal="true" aria-label="Chat Info">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
@@ -1085,6 +1125,12 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnl
         <button type="button" className="chat-session-setting chat-info-row"
           onClick={() => setSearchOpen(true)}>
           <span>Search Chat History</span><ChevronRight aria-hidden="true" />
+        </button>
+      </section>
+      <section className="chat-info-group" aria-label="Character life">
+        <button type="button" className="chat-session-setting chat-info-row" disabled={!character}
+          onClick={() => setLifeOpen(true)}>
+          <span>Life<small>See what {characterName || "this Character"} has been doing.</small></span><ChevronRight aria-hidden="true" />
         </button>
       </section>
       <section className="chat-info-group" aria-label="Conversation settings">

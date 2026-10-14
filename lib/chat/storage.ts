@@ -27,6 +27,7 @@ import { historyFingerprint, type WorldBookActivationState } from "../worldbook-
 import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
+import { isMessageSticker, stickerContent, stickerPreview, type MessageSticker } from "./sticker-message";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
@@ -241,7 +242,7 @@ export class ChatStorage {
         .sort((a, b) => a.order - b.order).at(-1) : undefined;
       await request(sessions.put({ ...session, generation: undefined,
         ...(dropped ? { lastMessageId: tail?.id, updatedAt: tail?.createdAt ?? session.updatedAt,
-          lastMessagePreview: tail ? tail.content.slice(0, 120) || (tail.status === "error" ? "Reply failed" : "") : "" }
+          lastMessagePreview: tail ? (tail.sticker ? stickerPreview(tail.sticker) : tail.content.slice(0, 120)) || (tail.status === "error" ? "Reply failed" : "") : "" }
           : last?.status === "streaming" || !last ? { lastMessagePreview: "Generation interrupted" } : {}) }));
       changed = true;
     }
@@ -948,6 +949,7 @@ export class ChatStorage {
       const table = tx.objectStore("messages");
       const existing: ChatMessage | undefined = await request(table.get(id));
       if (!existing) throw new Error("Message not found.");
+      if (existing.sticker) throw new Error("表情包不能编辑。");
       const current: ChatSession = await request(tx.objectStore("sessions").get(existing.sessionId));
       if (current.generation) throw new Error("A reply is in progress. Stop it before editing this conversation.");
       if (existing.status === "streaming")
@@ -1053,7 +1055,7 @@ export class ChatStorage {
       const staleSummary = !!session.summary && deleting.some((message) => message.order <= session.summary!.throughOrder);
       await request(sessions.put({ ...session, updatedAt: Date.now(),
         nextOrder: remaining.length + 1, lastMessageId: last?.id,
-        lastMessagePreview: last?.content.slice(0, 120) || "", ...(staleSummary ? { summary: undefined } : {}) }));
+        lastMessagePreview: last ? (last.sticker ? stickerPreview(last.sticker) : last.content.slice(0, 120)) : "", ...(staleSummary ? { summary: undefined } : {}) }));
       return deleting.length;
     }, STORES, (count) => count ? { domain: "messages", sessionId } : null, undefined, scope);
   }
@@ -1120,7 +1122,7 @@ export class ChatStorage {
       nextOrder: message.order + 1,
       updatedAt: message.createdAt,
       lastMessageId: message.id,
-      lastMessagePreview: message.content.slice(0, 120) || "Replying…",
+      lastMessagePreview: message.sticker ? stickerPreview(message.sticker) : message.content.slice(0, 120) || "Replying…",
     };
     await request(tx.objectStore("sessions").put(next));
     return next;
@@ -1143,7 +1145,12 @@ export class ChatStorage {
       return message;
     }, STORES, (message) => message ? { domain: "messages", sessionId: message.sessionId } : null);
   }
-  async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string): Promise<ChatMessage> {
+  /** A sticker from the user: saved like a sent message (no reply is requested); `content` is its semantic text. */
+  sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string): Promise<ChatMessage> {
+    if (!isMessageSticker(sticker)) return Promise.reject(new Error("这个表情包不可用。"));
+    return this.send(sessionId, stickerContent("user", sticker), quoteMessageId, undefined, sticker);
+  }
+  async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
     if (content.length > 12000)
@@ -1183,6 +1190,7 @@ export class ChatStorage {
         createdAt: Date.now(),
         order: session.nextOrder,
         ...(quote ? { quote } : {}),
+        ...(sticker ? { sticker } : {}),
       };
       const sequenced = this.sequence(session, message);
       await this.append(tx, session, sequenced);
@@ -1345,7 +1353,7 @@ export class ChatStorage {
   }
   async finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
     transformPart: (part: string) => string = (part) => part, attemptId?: string, finishReason?: string, signal?: AbortSignal, scope?: PersistenceWriteScope,
-    memoryRefs?: MemoryRef[]): Promise<ChatMessage[]> {
+    memoryRefs?: MemoryRef[], sticker?: MessageSticker): Promise<ChatMessage[]> {
     if (this.sourceMemory && !scope) {
       const draft = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
       if (!draft) throw new Error("Generation attempt is no longer active.");
@@ -1353,7 +1361,7 @@ export class ChatStorage {
       try {
         // New replies and continuations append content; they do not replace cited evidence.
         if (draft.attemptMode !== "regenerate") return await this.sourceMemory.withShared(async (owned) => {
-          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs);
+          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs, sticker);
           finalized = true; return result;
         });
         return await this.sourceMemory.withExclusive(async (owned) => {
@@ -1362,7 +1370,7 @@ export class ChatStorage {
         const targets = draft.attemptMode === "regenerate" && draft.attemptFor ? assistantTurn(view.messages, draft.attemptFor) : [];
         return invalidateChatSources(this.sourceMemory!, view.session, targets,
           async () => {
-            const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs);
+            const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs, sticker);
             finalized = true; return result;
           }, owned);
       }, { signal }); } finally {
@@ -1371,7 +1379,10 @@ export class ChatStorage {
       }
     }
     const parts = splitAssistantReply(content).map(transformPart).map((part) => part.trim()).filter(Boolean);
-    if (!parts.length) throw new Error("The API returned no reply text.");
+    if (!parts.length && !sticker) throw new Error("The API returned no reply text.");
+    // The Character's sticker is its own last bubble, after any text.
+    const entries: { content: string; sticker?: MessageSticker }[] = parts.map((content) => ({ content }));
+    if (sticker) entries.push({ content: stickerContent("assistant", sticker), sticker });
     let owned: string | undefined;
     const completed = await this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("messages"), sessions = tx.objectStore("sessions");
@@ -1397,9 +1408,12 @@ export class ChatStorage {
       const outcome = truncated ? "truncated" : "success";
       const remove = new Set([draft.id, ...(replacing ? target.map((m) => m.id) : [])]);
       for (const deleting of remove) await request(table.delete(deleting));
-      const generated: ChatMessage[] = parts.map((part, index) => ({
-        ...first, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
-        content: part, status: "complete", outcome, finishReason, error: undefined,
+      // A regenerated turn never inherits an old sticker; only this reply's own sticker is stored.
+      const firstBase: ChatMessage = { ...first };
+      delete firstBase.sticker;
+      const generated: ChatMessage[] = entries.map((part, index) => ({
+        ...firstBase, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
+        content: part.content, ...(part.sticker ? { sticker: part.sticker } : {}), status: "complete", outcome, finishReason, error: undefined,
         attemptFor: undefined, attemptMode: undefined, failureStage: undefined,
         // Each reply records only its own request; a regenerated or continued part never inherits an older one.
         memoryRefs: memoryRefs?.slice(0, MEMORY_REF_LIMIT),
@@ -1423,7 +1437,7 @@ export class ChatStorage {
       const unreadCount = replacing || this.viewing.has(draft.sessionId) ? session.unreadCount
         : (session.unreadCount ?? 0) + generated.length;
       await request(sessions.put({ ...session, generation: undefined, nextOrder: ordered.length + 1,
-        updatedAt: Date.now(), lastMessageId: last.id, lastMessagePreview: last.content.slice(0, 120),
+        updatedAt: Date.now(), lastMessageId: last.id, lastMessagePreview: last.sticker ? stickerPreview(last.sticker) : last.content.slice(0, 120),
         ...(unreadCount ? { unreadCount } : {}) }));
       if (worldBookState) await commitWorldBookState(tx, draft.sessionId, worldBookState);
       return generated;

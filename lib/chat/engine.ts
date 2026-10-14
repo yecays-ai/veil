@@ -36,6 +36,8 @@ import { applyRegex } from "../regex-engine";
 import { loadWeatherState } from "../weather";
 import type { Coordinates, WeatherState } from "../participant-config";
 import { logPromptSummary, type CompletionSource, type CompletionRequestContext } from "./request-diagnostics";
+import { browserStickerStorage, resolveStickerChoice, stickerMenu, type StickerChoice } from "./sticker-storage";
+import type { MessageSticker } from "./sticker-message";
 import { startGenerationPersistence, type GenerationPersistenceOutcome } from "./persistence-diagnostics";
 
 /** Records when a Character's reply was committed, for Last Seen. Resolves once saved. */
@@ -67,6 +69,17 @@ const applyActionsToStores: ActionApplier = (characterId, actions, now, messageI
         const character = (await browserFoundationStorage.load()).characters.find((item) => item.characterId === id);
         if (character) await chatStorage.appendSystemEvent(id, characterNoteEventText(character.name, note), at);
       } })(characterId, actions, now, messageId);
+
+/** The Character's sticker library, read twice per reply: the menu it is offered, and the check of its choice just before saving. */
+export type StickerSource = {
+  menu(characterId: string): Promise<StickerChoice[]>;
+  resolve(characterId: string, choices: readonly StickerChoice[], code: string): Promise<MessageSticker | null>;
+};
+export const browserStickerSource: StickerSource = {
+  menu: async (characterId) => typeof window === "undefined" ? [] : stickerMenu(await browserStickerStorage.load(), characterId),
+  resolve: async (characterId, choices, code) =>
+    typeof window === "undefined" ? null : resolveStickerChoice(await browserStickerStorage.load(), characterId, choices, code),
+};
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
 type StateLoader = (character: Character) => Promise<import("../memory/state-runtime").StateView | undefined>;
@@ -104,6 +117,7 @@ export function createChatEngine(
   applyActions: ActionApplier = applyActionsToStores,
   memories: MemoryLoader = loadMemory,
   states: StateLoader = loadCharacterState,
+  stickerSource: StickerSource = browserStickerSource,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   let stopSequence = 0;
@@ -233,6 +247,11 @@ export function createChatEngine(
           lastReplyAt: batch.messages.reduce<number | null>((latest, message) =>
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
               ? message.createdAt : latest, null) }), controller.signal);
+      // Stickers are offered like the other own actions: not on Continue, and not twice in a row.
+      const previousReply = batch.messages.findLast((message) => message.role === "assistant" && message.status === "complete");
+      const choices = ownState && source !== "continue" && !previousReply?.sticker
+        ? await awaited(stickerSource.menu(character.characterId).catch((): StickerChoice[] => []), controller.signal) : [];
+      const offered = ownState && choices.length ? { ...ownState, stickers: choices } : ownState;
       const memory = await awaited(memoryRead, controller.signal);
       await storage.generationStage(sessionId, attempt.id, "provider");
       if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
@@ -242,7 +261,7 @@ export function createChatEngine(
         ? await awaited(Promise.resolve().then(() => states(character)).catch(() => undefined), controller.signal) : undefined;
       controller.signal.throwIfAborted();
       const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, memory.slot, preset,
-        now(), activation, regexGroups, weather, ownState, characterState, batch.session.summary);
+        now(), activation, regexGroups, weather, offered, characterState, batch.session.summary);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
       if (proactive) prompt.messages.push({ role: "system", content: PROACTIVE_INSTRUCTION });
@@ -268,20 +287,24 @@ export function createChatEngine(
       await storage.generationStage(sessionId, attempt.id, "finalizing");
       controller.signal.throwIfAborted();
       const { text: replyText, actions } = splitActions(rawContent);
-      if (proactive && isSilence(replyText)) {
+      // The Character's choice is checked against the library as it is now; an unknown or no longer bound code is dropped.
+      const sticker = actions?.sticker && choices.length
+        ? await awaited(stickerSource.resolve(character.characterId, choices, actions.sticker).catch(() => null), controller.signal) : null;
+      if (proactive && !sticker && isSilence(replyText)) {
         // The attempt stays counted; nothing is left in the conversation and nothing is retried.
         await storage.discardReply(sessionId, attempt.id, assistant.id, before!);
         return null;
       }
       const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(replyText), activation.nextState,
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
-        attempt.id, finishReason, controller.signal, undefined, memory.refs);
+        attempt.id, finishReason, controller.signal, undefined, memory.refs, sticker ?? undefined);
       persisted = "committed";
       // Last Seen only: a failure here can neither undo the committed reply nor delay it.
       void Promise.resolve().then(() => recordSent(target.characterId, now().getTime()))
         .catch(() => { console.warn("[Presence] last message time was not saved"); });
       // The Character's own changes: after the commit, once, and never for Continue, which only extends a reply.
       const { reactToUser, ...ownChanges } = actions ?? {};
+      delete ownChanges.sticker; // chat data, saved with the reply itself
       if (Object.keys(ownChanges).length && source !== "continue") void Promise.resolve().then(() => applyActions(target.characterId, ownChanges, now().getTime(), completed[0].id))
         .catch(() => { console.warn("[Presence] the Character's own change was not saved"); });
       // The reaction is chat data: checked again against what is stored now, and a failure never undoes the reply.
@@ -342,6 +365,8 @@ export function createChatEngine(
   }
   return {
     send: (sessionId: string, content: string, quoteMessageId?: string) => sendMessage(sessionId, content, quoteMessageId),
+    /** The user's sticker: saved as a sent message like Send; a reply is still requested separately. */
+    sendSticker: (sessionId: string, sticker: MessageSticker, quoteMessageId?: string) => storage.sendSticker(sessionId, sticker, quoteMessageId),
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
     initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),

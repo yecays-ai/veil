@@ -20,6 +20,7 @@ import { memoryMessageEligible } from "../memory/sequence";
 import { memoryBatchActive, validMemoryProgress } from "../memory/progress-types";
 import type { ChatMessage } from "../chat/types";
 import { isMessageReactions } from "../chat/reactions";
+import { isMessageSticker } from "../chat/sticker-message";
 import { parseBackupJson } from "./json";
 import {
   BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, BackupValidationError,
@@ -186,7 +187,7 @@ function validateChat(value: unknown) {
   });
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -207,6 +208,7 @@ function validateChat(value: unknown) {
       }
     }
     check(row.reactions === undefined || (isMessageReactions(row.reactions) && (row.role === "user" || row.role === "assistant")), path);
+    check(row.sticker === undefined || (isMessageSticker(row.sticker) && (row.role === "user" || row.role === "assistant")), path);
     if (row.memorySequence !== undefined) {
       keys(row.memorySequence, ["epoch", "seq"], ["epoch"], path);
       const session = sessions.get(row.sessionId)!, tracking = session.memorySequence as { epoch?: string; nextSeq?: number } | undefined;
