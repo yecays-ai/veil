@@ -6,10 +6,17 @@ import { explicitMemoryRequest } from "./explicit-request";
 import { historyTimestamp } from "../chat/time-context";
 import type { MemoryProgressProtocol } from "./progress";
 import { MEMORY_TEXT_CHARACTERS, type Memory } from "./types";
+import { selectBackground, splitBackground } from "../chat/character-background";
+import { textMatcher } from "./context";
 
 export type MaintenanceSnapshot = Awaited<ReturnType<MemoryProgressProtocol["readInput"]>>;
-/** Temporary engineering guards shared by the runner, not measured input token limits. */
-export const MAINTENANCE_LIMITS = { inputCharacters: 24_000, candidateCharacters: 8_000,
+/**
+ * Temporary engineering guards shared by the runner, not measured input token limits and not a promise that any
+ * particular model accepts this much. The request is built message-first: whatever the messages, the State lane and
+ * the fixed rules take is kept, and the Character text, Backstory, candidates and manual memories share the rest.
+ */
+export const MAINTENANCE_LIMITS = { inputCharacters: 32_000, candidateCharacters: 8_000, contextCharacters: 4_000,
+  manualCharacters: 1_000, candidateReserve: 2_000, backgroundFloor: 1_500,
   outputCharacters: 12_000, operations: 20, entryCharacters: MEMORY_TEXT_CHARACTERS, maxOutputTokens: 2_000 } as const;
 export class MaintenanceInputTooLarge extends Error {
   constructor() { super("Memory maintenance input exceeds its temporary character guard."); }
@@ -17,6 +24,14 @@ export class MaintenanceInputTooLarge extends Error {
 // Conservative local filter, not a promise to identify every possible secret.
 export function sensitiveMemoryText(text: string): boolean {
   return /\b(?:sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9]{20,}|Bearer\s+\S+|(?:api[_ -]?key|password|access[_ -]?token)\s*[:=]\s*\S+)/i.test(text);
+}
+const SECRET_LABELLED = /\b(?:api[_ -]?key|password|access[_ -]?token)\s*[:=][^\n]*/gi;
+const SECRET_TOKEN = /\b(?:sk-[a-z0-9_-]{12,}|gh[pousr]_[a-z0-9]{20,}|Bearer\s+\S+)/gi;
+/** Local redaction before anything is sent: a labelled secret loses the rest of its line, a prefix token only itself. */
+export function redactSecrets(text: string): { text: string; removed: number } {
+  let removed = 0;
+  const mark = (match: string) => { removed += match.length; return "[redacted]"; };
+  return { text: text.replace(SECRET_LABELLED, mark).replace(SECRET_TOKEN, mark), removed };
 }
 function terms(text: string): Set<string> {
   const stop = new Set(["the", "and", "that", "this", "with", "have", "was", "were", "you", "your", "today"]);
@@ -100,25 +115,99 @@ const MAINTENANCE_SYSTEM_PROMPT = [
     "Attribute lines to the right speaker by role; text the Character says about itself is the Character's, text about the user is the user's, and neither becomes the other's fact."
 ].join(" ");
 
-export function buildMaintenanceInput(snapshot: MaintenanceSnapshot, character: { characterId: string; context: string; timezone?: string },
-  characterLimit: number = MAINTENANCE_LIMITS.inputCharacters, now?: number): PromptTurn[] {
+const MARK = "[...part of the background was left out to fit this request; its core and the parts relevant to these messages are kept]";
+const jlen = (value: unknown) => JSON.stringify(value).length;
+const cutAt = (text: string, room: number) => {
+  if (text.length <= room) return text;
+  const head = text.slice(0, Math.max(0, room));
+  const boundary = Math.max(head.lastIndexOf("\n\n"), head.search(/[。！？!?.](?=[^。！？!?.]*$)/u));
+  return (boundary > room / 2 ? head.slice(0, boundary + 1) : head).trimEnd();
+};
+/** Core paragraphs first, then the paragraphs these messages point at; what is left out is said so, never cut silently. */
+export function fitBackground(text: string, room: number, query: string): { text: string; omitted: number } {
+  if (jlen(text) - 2 <= room) return { text, omitted: 0 };
+  const split = splitBackground(text), budget = Math.max(0, room - MARK.length - 4);
+  const core = cutAt(split.core ?? "", budget);
+  const entries: string[] = []; let used = core.length;
+  for (const entry of selectBackground(split.retrievable, query, "").entries)
+    if (used + entry.length + 2 <= budget) { entries.push(entry); used += entry.length + 2; }
+  const fitted = [core, ...entries, MARK].filter(Boolean).join("\n\n");
+  return { text: fitted, omitted: Math.max(0, text.length - fitted.length) };
+}
+const visibleMessages = (messages: MaintenanceSnapshot["messages"]) => {
+  let redacted = 0, omitted = 0;
+  const visible = messages.flatMap((m) => {
+    const clean = redactSecrets(m.content);
+    // More than half redacted: the rest is not worth a request and is not sent. The batch is not lost for it.
+    if (clean.removed * 2 > m.content.length) { omitted++; redacted += clean.removed; return []; }
+    redacted += clean.removed;
+    return [{ ...m, content: clean.text, explicit: m.role === "user" && explicitMemoryRequest(m.content) }];
+  });
+  return { visible, redacted, omitted };
+};
+export type MaintenanceStats = { redactedCharacters: number; omittedMessages: number; backgroundOmitted: number; manualSent: number };
+export type MaintenancePlan = { input: PromptTurn[]; messages: MaintenanceSnapshot["messages"]; stats: MaintenanceStats; candidateRoom: number };
+
+/**
+ * Builds the request in a fixed order: rules and State lane, then the messages, then the Character text, Backstory and
+ * manual memories, and whatever room is left goes to candidates. Suppressions are never sent: local protection checks all
+ * of them. A request that cannot hold even the State lane and the messages is too large; State is never dropped.
+ */
+export function planMaintenanceInput(snapshot: MaintenanceSnapshot, character: { characterId: string; context: string; timezone?: string },
+  characterLimit: number = MAINTENANCE_LIMITS.inputCharacters, now?: number): MaintenancePlan {
   if (character.characterId !== snapshot.characterId || snapshot.messages.some((m) => m.sessionId !== snapshot.sessionId)
     || [...snapshot.candidates, ...snapshot.manual, ...snapshot.suppressions].some((r) => r.characterId !== snapshot.characterId))
     throw new Error("Memory maintenance input authority mismatch.");
+  if (!Number.isSafeInteger(characterLimit) || characterLimit < 1) throw new MaintenanceInputTooLarge();
   const state = snapshot.state;
-  const data = { character: character.context,
-    ...(state ? { background: { id: state.background.id, text: state.background.text },
-      states: effectiveCharacterStates(state.foundation, snapshot.characterId).map(({ row, status }) =>
-        ({ id: row.id, key: row.key, value: row.value, status })) } : {}),
-    messages: snapshot.messages.map((m) => ({ id: m.id, role: m.role, turnId: m.turnId, time: historyTimestamp(m.createdAt, character.timezone || "UTC"), content: m.content,
-      ...(m.role === "user" && explicitMemoryRequest(m.content) ? { explicitRequest: true } : {}) })),
-    candidates: snapshot.candidates.filter((r) => r.status === "active").map((r) => candidateProjection(r, now)),
-    manual: snapshot.manual.map((r) => ({ text: r.text, kind: r.kind, subject: r.subject })),
-    suppressions: snapshot.suppressions.map((s) => ({ fingerprint: s.fingerprint, sources: s.sources })) };
-  const messages: PromptTurn[] = [{ role: "system", content: MAINTENANCE_SYSTEM_PROMPT + (state ? " " + STATE_MAINTENANCE_RULES : " No State operations are authorized.") },
-  { role: "user", content: JSON.stringify(data) }];
-  const total = messages.reduce((sum, m) => sum + m.content.length, 0);
-  if (!Number.isSafeInteger(characterLimit) || characterLimit < 1 || total > characterLimit) throw new MaintenanceInputTooLarge();
-  if (sensitiveMemoryText(messages.map((m) => m.content).join("\n"))) throw new Error("Memory maintenance input contains a possible secret.");
-  return messages;
+  const system = MAINTENANCE_SYSTEM_PROMPT + (state ? " " + STATE_MAINTENANCE_RULES : " No State operations are authorized.");
+  const { visible, redacted, omitted } = visibleMessages(snapshot.messages);
+  const messages = visible.map((m) => ({ id: m.id, role: m.role, turnId: m.turnId, time: historyTimestamp(m.createdAt, character.timezone || "UTC"), content: m.content,
+    ...(m.explicit ? { explicitRequest: true } : {}) }));
+  const states = state ? effectiveCharacterStates(state.foundation, snapshot.characterId).map(({ row, status }) =>
+    ({ id: row.id, key: row.key, value: redactSecrets(row.value).text, status })) : undefined;
+  const background = state ? { id: state.background.id, text: state.background.text === null ? null : redactSecrets(state.background.text).text } : undefined;
+  const query = visible.map((m) => m.content).join("\n");
+  const assemble = (context: string, backgroundText: string | null, manual: unknown[], candidates: unknown[]) => JSON.stringify({ character: context,
+    ...(background ? { background: { id: background.id, text: backgroundText }, states } : {}), messages, candidates, manual });
+  const fixed = system.length + assemble("", background ? "" : null, [], []).length + 2;
+  let room = characterLimit - fixed;
+  if (room < 0) throw new MaintenanceInputTooLarge();
+  const context = redactSecrets(character.context).text;
+  const contextRoom = Math.min(MAINTENANCE_LIMITS.contextCharacters, Math.floor(room / 4));
+  let sentContext = cutAt(context, contextRoom);
+  while (sentContext && jlen(sentContext) - 2 > contextRoom) sentContext = cutAt(sentContext, sentContext.length - (jlen(sentContext) - 2 - contextRoom));
+  room -= jlen(sentContext) - 2;
+  // Only manual memories that this conversation touches are sent; local protection still checks every one of them.
+  const match = textMatcher(query), manualRoom = Math.min(MAINTENANCE_LIMITS.manualCharacters, Math.floor(room / 10));
+  const manual: { text: string; kind: string; subject: string }[] = []; let manualUsed = 2;
+  for (const { row } of snapshot.manual.map((row) => ({ row, score: match(row.text) })).filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score || (a.row.id < b.row.id ? -1 : 1))) {
+    const item = { text: redactSecrets(row.text).text, kind: row.kind, subject: row.subject }, cost = jlen(item) + 1;
+    if (manualUsed + cost <= manualRoom) { manual.push(item); manualUsed += cost; }
+  }
+  room -= manual.length ? manualUsed : 0;
+  let backgroundText = background?.text ?? null, backgroundOmitted = 0;
+  if (backgroundText) {
+    let allowed = room - Math.min(MAINTENANCE_LIMITS.candidateReserve, room);
+    for (let round = 0; round < 4; round++) {
+      const fit = fitBackground(background!.text!, allowed, query);
+      backgroundText = fit.text; backgroundOmitted = fit.omitted;
+      const over = jlen(backgroundText) - 2 - allowed;
+      if (over <= 0) break;
+      allowed -= over;
+    }
+    // State review is judged against the Background: without a usable part of it the request is not worth sending.
+    if (allowed < Math.min(jlen(background!.text) - 2, MAINTENANCE_LIMITS.backgroundFloor) || jlen(backgroundText) - 2 > allowed) throw new MaintenanceInputTooLarge();
+    room -= jlen(backgroundText) - 2;
+  }
+  const candidateRoom = Math.max(0, Math.min(MAINTENANCE_LIMITS.candidateCharacters, room - 2));
+  const candidates = snapshot.candidates.filter((r) => r.status === "active").map((r) => {
+    const item = candidateProjection(r, now); return { ...item, text: redactSecrets(item.text).text };
+  });
+  const turns: PromptTurn[] = [{ role: "system", content: system }, { role: "user", content: assemble(sentContext, backgroundText, manual, candidates) }];
+  if (turns.reduce((sum, m) => sum + m.content.length, 0) > characterLimit) throw new MaintenanceInputTooLarge();
+  return { input: turns, messages: snapshot.messages.filter((m) => visible.some((v) => v.id === m.id)),
+    stats: { redactedCharacters: redacted, omittedMessages: omitted, backgroundOmitted, manualSent: manual.length }, candidateRoom };
 }
+export const buildMaintenanceInput = (...args: Parameters<typeof planMaintenanceInput>): PromptTurn[] => planMaintenanceInput(...args).input;
