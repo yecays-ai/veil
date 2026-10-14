@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-chat-presence-note-cooldown
 
 更新人：Codex
-更新时间：2026-10-14T16:39:36+08:00
+更新时间：2026-10-14T16:44:00+08:00
 发现范围：本任务开工与发布前通过 GitHub API 核对 main `83088ec3769fc8fbe862e4c70e8a4f8a7035c3b2`；开工时检查开放 PR、远程分支和相关 T4/T5 状态，未发现开放 PR 冲突；未检查他人未发布工作。本地使用逐 blob 校验的独立副本，不改同步 sources。以 `docs/AUDIT_LEDGER.md` 为既有验收状态依据，不变更原 F 编号或状态。
 
 ## 当前任务
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `codex/chat-presence-note-cooldown-20261014`；PR 尚未创建。涉及：`app/messages/chat.css`、`components/chat/{chat-header,chat-room,messages-home}.tsx`、`lib/chat/self-context.ts`、`lib/presence/actions.ts`、`tests/{chat-header,presence-ui,presence-note-cooldown}.test.ts`。
+Codex；分支 `codex/chat-presence-note-cooldown-20261014`；PR https://github.com/yecays-ai/veil/pull/186。涉及：`app/messages/chat.css`、`components/chat/{chat-header,chat-room,messages-home}.tsx`、`lib/chat/self-context.ts`、`lib/presence/actions.ts`、`tests/{chat-header,presence-ui,presence-note-cooldown}.test.ts`。
 
 ## 已完成
 
@@ -22,11 +22,11 @@ Codex；分支 `codex/chat-presence-note-cooldown-20261014`；PR 尚未创建。
 
 ## 尚未验证
 
-- GitHub CI 与审查：PR 创建后查询，不能把本地验证当作 CI 结果。
+- 首次代码 head `16f061d`：Vercel Preview 成功，GitHub verify 与 CodeRabbit 尚在执行（2026-10-14T08:44Z 查询）；此记录更新后的最终 head 以 PR 实时检查为准，不能把本地验证或旧 head 结果当作最终 CI。
 - iPhone Safari/Standalone：实际键盘收起、触摸区域、生成/结束/停止后的显示恢复与主题适配待 Lan 真机验收。
 - 构建首次受沙箱 EPERM 阻止产物目录写入，放宽本机检查执行权限后成功；未部署。
 
 ## 下一步
 
-创建本单独立 PR，查询 CI，交由 Lan 审查及手动合并；真机验收另记。
+本单独立 PR 已提交，交由 Lan 审查及手动合并；继续查询最终 head 检查，真机验收另记。不自动合并。
 
