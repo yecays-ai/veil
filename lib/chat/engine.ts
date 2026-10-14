@@ -169,7 +169,8 @@ export function createChatEngine(
       const { session: target } = await awaited(storage.readSession(sessionId), controller.signal);
       before = { updatedAt: target.updatedAt, lastMessageId: target.lastMessageId, lastMessagePreview: target.lastMessagePreview };
       const prepared = await prepareGeneration(target.characterId, controller.signal);
-      attempt.id = await storage.claimGeneration(sessionId, regenerateId, source === "continue" ? "continue" : "regenerate");
+      attempt.id = await storage.claimGeneration(sessionId, regenerateId,
+        source === "continue" ? "continue" : proactive ? "initiate" : "regenerate");
       controller.signal.throwIfAborted();
       unsubscribe = storage.subscribe((change) => {
         if (change.domain === "messages" && change.generationChanged && change.sessionId === sessionId)

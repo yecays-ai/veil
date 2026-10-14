@@ -25,6 +25,8 @@ export type ChatSession = {
   /** When this Character was last offered a chance to message first (see proactive.ts); absent until the first attempt. Survives clearing the history. */
   proactiveAttempts?: number[];
   generation?: { id: string; draftId?: string; targetId?: string; mode?: "regenerate" | "continue";
+    /** A Character-initiated attempt: if interrupted, recovery drops its empty draft instead of leaving a failed reply. */
+    initiated?: true;
     stage: "preparing" | "provider" | "finalizing" };
 };
 

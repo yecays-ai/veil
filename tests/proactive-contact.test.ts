@@ -33,6 +33,11 @@ async function at<T>(time: number, body: () => Promise<T>): Promise<T> {
   try { return await body(); } finally { Date.now = real; }
 }
 const T0 = Date.UTC(2026, 9, 14, 12);
+/** The page dies: its lock goes away, but the stored generation and draft stay behind. */
+async function crash(storage: ChatStorage, id: string) {
+  const locks = (storage as unknown as { generationLocks: Map<string, () => Promise<void>> }).generationLocks;
+  await locks.get(id)!(); locks.delete(id);
+}
 
 test("the budget is two attempts a day, three hours apart, and old attempts expire", () => {
   assert.equal(PROACTIVE_DAILY_MAX, 2); assert.equal(PROACTIVE_MIN_GAP_MS, 3 * HOUR);
@@ -129,6 +134,59 @@ test("a failed request leaves no error marker or draft, is not retried, and stil
   assert.deepEqual(stored.proactiveAttempts, [T0]);
 });
 
+test("a user message whose reply was deleted still counts as unanswered", async () => {
+  const { storage, prompts, reply } = setup();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "hello");
+  const answer = await reply("Hi").requestReply(session.id);
+  await storage.deleteMessages(session.id, [answer!.id]);
+  assert.equal(await at(T0, () => reply("hello again").initiate(session.id)), null);
+  assert.equal(prompts.length, 1, "only the earlier requested reply reached the provider");
+  assert.equal((await storage.readSession(session.id)).session.proactiveAttempts, undefined);
+});
+
+test("recovery drops an interrupted initiated draft but keeps partial text as an interrupted reply", async () => {
+  for (const partial of [false, true]) {
+    const factory = new IDBFactory();
+    const dying = new ChatStorage(() => factory), reopened = new ChatStorage(() => factory);
+    const session = await dying.openSession("a");
+    await dying.send(session.id, "hello");
+    const answered = await createChatEngine(dying, async () => setup().document, async function* () { yield "Hi"; },
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined, async () => {}, async () => undefined).requestReply(session.id);
+    assert.equal(answered?.content, "Hi");
+    const settled = (await dying.readSession(session.id)).session;
+    const id = await dying.claimGeneration(session.id, undefined, "initiate");
+    const batch = await at(T0, () => dying.beginReply(session.id, undefined, id, "initiate"));
+    assert.ok(batch);
+    if (partial) await dying.updateReply(batch.assistant.id, { content: "I was going to say", status: "streaming" }, undefined, id);
+    await crash(dying, id);
+    assert.equal(await reopened.recoverGeneration(session.id), true);
+    const { session: after, messages } = await reopened.readSession(session.id);
+    assert.equal(after.generation, undefined);
+    assert.deepEqual(after.proactiveAttempts, [T0]);
+    if (partial) {
+      assert.deepEqual(messages.map((m) => [m.content, m.status]), [["hello", "sent"], ["Hi", "complete"], ["I was going to say", "error"]]);
+    } else {
+      assert.deepEqual(messages.map((m) => m.content), ["hello", "Hi"]);
+      assert.equal(after.lastMessageId, settled.lastMessageId);
+      assert.equal(after.lastMessagePreview, settled.lastMessagePreview);
+      assert.ok(after.updatedAt <= settled.updatedAt, "the abandoned attempt does not move the conversation up");
+    }
+  }
+});
+
+test("a claim interrupted before any draft exists does not turn unanswered user messages into answered ones", async () => {
+  const factory = new IDBFactory();
+  const dying = new ChatStorage(() => factory), reopened = new ChatStorage(() => factory);
+  const session = await dying.openSession("a");
+  const user = await dying.send(session.id, "still waiting");
+  await crash(dying, await dying.claimGeneration(session.id, undefined, "initiate"));
+  assert.equal(await reopened.recoverGeneration(session.id), true);
+  const { session: after, messages } = await reopened.readSession(session.id);
+  assert.equal(after.generation, undefined);
+  assert.deepEqual(messages.map((m) => [m.id, m.role, m.requestedBy ?? null]), [[user.id, "user", null]]);
+});
+
 test("clearing the conversation keeps the budget", async () => {
   const { storage, reply } = setup();
   const session = await storage.openSession("a");
@@ -159,6 +217,14 @@ test("a pass starts one attempt per eligible Character, in turn, and skips every
   const { deps, started } = checkDeps(sessions, statuses);
   assert.equal(await runProactiveCheck(deps, () => true), 3);
   assert.deepEqual(started, ["s-on", "s-away", "s-none"]);
+});
+
+test("the clock and each Character's status are read fresh for every attempt", async () => {
+  let clock = T0; const seen: [string, number][] = [];
+  const { deps } = checkDeps([direct("a"), direct("b")], {}, { now: () => (clock += HOUR),
+    status: async (id, now) => { seen.push([id, now]); return "online"; } });
+  await runProactiveCheck(deps, () => true);
+  assert.deepEqual(seen, [["a", T0 + HOUR], ["b", T0 + 2 * HOUR]]);
 });
 
 test("a pass skips a Character whose chat is generating, stops when no longer alive, and survives a failed attempt", async () => {

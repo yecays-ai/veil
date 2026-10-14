@@ -17,8 +17,9 @@ Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-
 - 试运行默认值（lan 2026-10-14 确定）：每个 Character 每天最多 2 次主动模型尝试，两次至少相隔 3 小时；Online / Away 可以主动，Busy / DND / Offline 不可以；没有作息表的角色按可联系处理；模型选择沉默也计入预算；过期机会不补发（不存任何错过记录）。
 - 预算账本是会话上的 `proactiveAttempts`（时间戳列表，首次尝试前不存在），在 `beginReply("initiate")` 的同一事务里占用，清空聊天不重置；已加入备份校验白名单（最多 10 项、非负整数、群聊不允许）。
 - 引擎新增 `initiate(sessionId)`：不要求用户待回复消息；有未回复的用户消息、群聊、预算不足时直接返回 null，不占预算、不发请求。沉默约定为整条回复只有 `<veil-silence/>`（或空）；流式阶段不显示该标记，沉默时草稿被删除并恢复会话的更新时间和预览。请求失败或被停止且没有任何文字时同样静默删除草稿，不留 "Generation failed"，不重试，预算仍记一次。
-- 触发器：页面生命周期内，启动 10 秒后一次、每 15 分钟一次、页面重新可见时一次；只在可见时运行、不重叠；每个符合条件的 Character 一次，依次进行。
-- 检查（Node 24.21.0）：`tsc --noEmit`、`eslint lib tests/proactive-contact.test.ts components/proactive-contact-gate.tsx app/layout.tsx`、`npm run build`、chat/generation/backup/presence/restore 等相关 674 条测试全过。新增 13 条测试覆盖预算、状态、沉默、失败、清空保留、有待回复消息、触发器与备份。
+- 中断恢复：Character 发起的尝试在 `generation.initiated` 上留标记；页面中途关闭时，恢复只删除还没有文字的草稿（恢复预览，保留预算），不留失败回复，也不会把你尚未回复的消息标成已回复；已有部分文字的草稿仍按普通中断处理。有任何没有回复的用户消息（包括回复被删后）时不发起。
+- 触发器：页面生命周期内，启动 10 秒后一次、每 15 分钟一次、页面重新可见时一次；只在可见时运行、不重叠；每个符合条件的 Character 一次，依次进行；每次尝试前重新读取时钟和该 Character 的状态。
+- 检查（Node 24.21.0）：`tsc --noEmit`、`eslint lib tests/proactive-contact.test.ts components/proactive-contact-gate.tsx app/layout.tsx`、`npm run build`、chat/generation/backup/presence/restore 等相关 704 条测试全过（含新增 17 条）。新增测试覆盖预算、状态、沉默、失败、清空保留、有待回复消息、触发器、中断恢复与备份。
 
 ## 尚未验证
 

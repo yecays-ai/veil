@@ -16,14 +16,15 @@ export type ProactiveCheckDeps = {
 
 /**
  * One pass over the direct conversations. Each Character with a free budget and an available status gets at most one
- * attempt, one after another. Nothing is stored about missed passes, so being away never builds up a backlog.
+ * attempt, one after another; the storage budget check stays the final authority. Nothing is stored about missed passes, so being away never builds up a backlog.
  */
 export async function runProactiveCheck(deps: ProactiveCheckDeps, alive: () => boolean): Promise<number> {
-  const now = deps.now();
   let started = 0;
   for (const session of await deps.sessions()) {
     if (!alive()) break;
     if (session.type === "group" || !session.characterId || session.generation || deps.isGenerating(session.id)) continue;
+    // An earlier attempt can take a while, so the clock and the Character's status are read fresh for each one.
+    const now = deps.now();
     if (!attemptsAllow(session.proactiveAttempts, now)) continue;
     const status = await deps.status(session.characterId, now);
     if (status === undefined || !statusMayInitiate(status)) continue;

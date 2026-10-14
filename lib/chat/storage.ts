@@ -209,13 +209,19 @@ export class ChatStorage {
     if (!session) throw new Error("Conversation not found.");
     const messages: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
     let changed = false;
+    const initiated = session.generation?.initiated === true;
+    let dropped: ChatMessage | undefined;
     for (const message of messages) if (message.status === "streaming") {
+      // A Character-initiated draft that never held text leaves nothing behind: no one asked for it.
+      if (initiated && !message.content && message.id === session.generation?.draftId) {
+        await request(table.delete(message.id)); dropped = message; changed = true; continue;
+      }
       await request(table.put({ ...message, turnId: message.turnId ?? message.id,
         status: "error", outcome: "interrupted", failureStage: session.generation?.stage,
         error: "Generation interrupted. Retry or delete this attempt." }));
       changed = true;
     }
-    if (session.generation && !session.generation.draftId) {
+    if (session.generation && !session.generation.draftId && !initiated) {
       const id = crypto.randomUUID();
       const target = session.generation.targetId ? assistantTurn(messages, session.generation.targetId)[0] : undefined;
       session = await this.append(tx, session, { id, turnId: id, sessionId, role: "assistant", content: "",
@@ -228,8 +234,12 @@ export class ChatStorage {
     }
     if (session.generation || changed) {
       const last = messages.find((message) => message.id === session.lastMessageId);
+      const tail = dropped ? messages.filter((message) => message.id !== dropped!.id && message.role !== "system")
+        .sort((a, b) => a.order - b.order).at(-1) : undefined;
       await request(sessions.put({ ...session, generation: undefined,
-        ...(last?.status === "streaming" || !last ? { lastMessagePreview: "Generation interrupted" } : {}) }));
+        ...(dropped ? { lastMessageId: tail?.id, updatedAt: tail?.createdAt ?? session.updatedAt,
+          lastMessagePreview: tail ? tail.content.slice(0, 120) || (tail.status === "error" ? "Reply failed" : "") : "" }
+          : last?.status === "streaming" || !last ? { lastMessagePreview: "Generation interrupted" } : {}) }));
       changed = true;
     }
     return changed;
@@ -252,7 +262,7 @@ export class ChatStorage {
         (changed) => changed ? { domain: "messages", sessionId, generationChanged: true } : null);
     } finally { await release(); }
   }
-  async claimGeneration(sessionId: string, targetId?: string, mode: "regenerate" | "continue" = "regenerate") {
+  async claimGeneration(sessionId: string, targetId?: string, mode: "regenerate" | "continue" | "initiate" = "regenerate") {
     const release = await this.acquireSessionLock(sessionId);
     if (!release) throw new Error("A reply is already in progress.");
     try {
@@ -267,7 +277,8 @@ export class ChatStorage {
             throw new Error("Only the latest unconfirmed Assistant turn is eligible.");
         }
         await request(sessions.put({ ...session, generation: { id, stage: "preparing",
-          ...(targetId ? { targetId, mode } : {}) } }));
+          ...(targetId ? { targetId, mode: mode === "initiate" ? "regenerate" : mode } : {}),
+          ...(mode === "initiate" ? { initiated: true as const } : {}) } }));
       }, STORES, { domain: "messages", sessionId, generationChanged: true });
       this.generationLocks.set(id, release);
       return id;
@@ -1165,7 +1176,7 @@ export class ChatStorage {
    */
   async beginReply(sessionId: string, regenerateId?: string, attemptId?: string,
     mode: "regenerate" | "continue" | "initiate" = "regenerate"): Promise<ReplyBatch | null> {
-    const owned = attemptId ?? await this.claimGeneration(sessionId, regenerateId, mode === "initiate" ? "regenerate" : mode);
+    const owned = attemptId ?? await this.claimGeneration(sessionId, regenerateId, mode);
     try {
       const batch = await this.transaction("readwrite", async (tx) => {
         let session: ChatSession | undefined = await request(tx.objectStore("sessions").get(sessionId));
@@ -1189,7 +1200,9 @@ export class ChatStorage {
             messages = messages.filter((m) => !ids.has(m.id));
           }
         } else if (mode === "initiate") {
-          if (session.type === "group" || pending.length || !attemptsAllow(session.proactiveAttempts, Date.now())) return null;
+          // Any user message without a reply counts, including one whose reply was deleted (that is no longer "sent").
+          if (session.type === "group" || messages.some((m) => m.role === "user" && !m.requestedBy)
+            || !attemptsAllow(session.proactiveAttempts, Date.now())) return null;
         } else if (!pending.length) return null;
         const id = crypto.randomUUID();
         if (regenerateId === undefined) for (const message of pending) {

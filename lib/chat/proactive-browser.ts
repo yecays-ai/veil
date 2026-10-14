@@ -10,11 +10,11 @@ const visible = () => document.visibilityState === "visible";
 /** Starts the page-lifetime trigger for Characters writing first. Returns its cleanup. */
 export function startBrowserProactive(): () => void {
   const scheduler = createProactiveScheduler(async (alive) => {
-    // Read once per pass: the Characters and their Presence, to decide who is available.
-    const [foundation, presence] = await Promise.all([browserFoundationStorage.load(), browserPresenceStorage.load()]);
     await runProactiveCheck({
       sessions: () => chatStorage.listSessions(),
       status: async (characterId, now) => {
+        // Read per Character, right before its attempt, so a status change during an earlier attempt is seen.
+        const [foundation, presence] = await Promise.all([browserFoundationStorage.load(), browserPresenceStorage.load()]);
         const character = foundation.characters.find((item) => item.characterId === characterId);
         return character ? selfState(character, undefined, presenceRecord(presence, characterId), now, null, false, false).status : undefined;
       },
