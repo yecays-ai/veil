@@ -7,6 +7,7 @@ import { StandaloneMode } from "../components/standalone-mode";
 import { RestoreGate } from "../components/restore-gate";
 import { ProductBootstrap } from "../components/product-bootstrap";
 import { MemoryMaintenanceGate } from "../components/memory-maintenance-gate";
+import { ProactiveContactGate } from "../components/proactive-contact-gate";
 import { ChatDiagnosticsGate } from "../components/diagnostics/chat-diagnostics";
 import { ContextInspectorGate } from "../components/diagnostics/context-inspector";
 import "./globals.css";
@@ -79,6 +80,7 @@ export default function RootLayout({
         <RestoreGate>
           <ProductBootstrap />
           <MemoryMaintenanceGate />
+          <ProactiveContactGate />
           <main className="app-root">
             <PhoneShell>
               <ThemeProvider>

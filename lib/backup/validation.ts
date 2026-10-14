@@ -131,7 +131,7 @@ function validateChat(value: unknown) {
   const sessions = new Map(value.sessions.map((row) => [row.id, row])), direct = new Set<string>();
   value.sessions.forEach((row, index) => {
     const path = `chat.sessions[${index}]`;
-    keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder", "memorySequence", "summary"],
+    keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder", "memorySequence", "summary", "proactiveAttempts"],
       ["id", "characterId", "updatedAt", "autoReplyOnKeyboardDismiss", "nextOrder"], path);
     check(typeof row.characterId === "string", path, "invalid-data", "characterId-not-string");
     check(integer(row.updatedAt), path, "invalid-data", "updatedAt-not-integer");
@@ -149,6 +149,9 @@ function validateChat(value: unknown) {
         && typeof row.summary.digest === "string" && /^\d+:[0-9a-f]{1,14}$/.test(row.summary.digest) && integer(row.summary.updatedAt),
         path, "invalid-data", "summary-invalid");
     }
+    if (row.proactiveAttempts !== undefined)
+      check(row.type !== "group" && Array.isArray(row.proactiveAttempts) && row.proactiveAttempts.length >= 1
+        && row.proactiveAttempts.length <= 10 && row.proactiveAttempts.every(integer), path, "invalid-data", "proactiveAttempts-invalid");
     for (const key of ["pinned", "streamOnline"]) check(row[key] === undefined || typeof row[key] === "boolean", path, "invalid-data", `${key}-not-boolean`);
     for (const key of ["title", "lastMessagePreview", "customCSS"]) check(row[key] === undefined || typeof row[key] === "string", path, "invalid-data", `${key}-not-string`);
     for (const key of ["lastMessageId", "backgroundImage"]) check(row[key] === undefined || id(row[key]), path, "invalid-data", `${key}-invalid-id`);

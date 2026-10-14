@@ -22,6 +22,8 @@ export type ChatSession = {
   memorySequence?: import("../memory/sequence").SessionMemorySequence;
   /** Rolling summary of messages that left the History window; absent until one is written. Deleted with the history. */
   summary?: ChatSummary;
+  /** When this Character was last offered a chance to message first (see proactive.ts); absent until the first attempt. Survives clearing the history. */
+  proactiveAttempts?: number[];
   generation?: { id: string; draftId?: string; targetId?: string; mode?: "regenerate" | "continue";
     stage: "preparing" | "provider" | "finalizing" };
 };

@@ -14,6 +14,7 @@ import { emptyMemoryContext, memoryEntryHash, selectMemoryContext } from "../mem
 import { journalEntry, selectJournal } from "../memory/journal";
 import type { Memory } from "../memory/types";
 import { selfState, type SelfState } from "./self-context";
+import { isSilence, maybeSilence, PROACTIVE_INSTRUCTION } from "./proactive";
 import { browserContactStorage } from "../contact-storage";
 import {
   openAITextProvider,
@@ -21,7 +22,7 @@ import {
   type TextProvider,
 } from "./provider";
 import { ChatStorage, chatStorage } from "./storage";
-import type { ChatMessage, MemoryRef } from "./types";
+import type { ChatMessage, ChatSession, MemoryRef } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
 import { characterActionApplier, splitActions, type ActionApplier } from "../presence/actions";
@@ -158,12 +159,15 @@ export function createChatEngine(
     let rawContent = "", finishReason: string | undefined;
     let iterator: AsyncIterator<string> | undefined;
     let draftSaved = false;
+    let before: Pick<ChatSession, "updatedAt" | "lastMessageId" | "lastMessagePreview"> | undefined;
+    const proactive = source === "proactive";
     const recordPersistence = startGenerationPersistence(source);
     let persisted: GenerationPersistenceOutcome = "nothing-persisted";
     try {
       // Validate prerequisites before any ownership or pending-message claim; failures here
       // leave no attempt, claim or failed assistant behind.
       const { session: target } = await awaited(storage.readSession(sessionId), controller.signal);
+      before = { updatedAt: target.updatedAt, lastMessageId: target.lastMessageId, lastMessagePreview: target.lastMessagePreview };
       const prepared = await prepareGeneration(target.characterId, controller.signal);
       attempt.id = await storage.claimGeneration(sessionId, regenerateId, source === "continue" ? "continue" : "regenerate");
       controller.signal.throwIfAborted();
@@ -180,7 +184,8 @@ export function createChatEngine(
         }), controller.signal);
         controller.signal.throwIfAborted();
       }
-      const batch = await storage.beginReply(sessionId, regenerateId, attempt.id, source === "continue" ? "continue" : "regenerate");
+      const batch = await storage.beginReply(sessionId, regenerateId, attempt.id,
+        source === "continue" ? "continue" : proactive ? "initiate" : "regenerate");
       if (!batch) return null;
       assistant = batch.assistant;
       controller.signal.throwIfAborted();
@@ -235,6 +240,7 @@ export function createChatEngine(
         now(), activation, regexGroups, weather, ownState, characterState, batch.session.summary);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
+      if (proactive) prompt.messages.push({ role: "system", content: PROACTIVE_INSTRUCTION });
       const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };
       logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages, {
         ids: memory.ids, characterLength: memory.characterLength, outcome: memory.outcome,
@@ -247,13 +253,21 @@ export function createChatEngine(
         if (chunk.done) break;
         rawContent += chunk.value;
         controller.signal.throwIfAborted();
-        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(splitActions(rawContent).text, true), status: "streaming" },
+        const visible = splitActions(rawContent).text;
+        // The silence tag is held back, so a Character that stays quiet never flashes text.
+        if (proactive && maybeSilence(visible)) continue;
+        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(visible, true), status: "streaming" },
           undefined, attempt.id, controller.signal);
       }
       controller.signal.throwIfAborted();
       await storage.generationStage(sessionId, attempt.id, "finalizing");
       controller.signal.throwIfAborted();
       const { text: replyText, actions } = splitActions(rawContent);
+      if (proactive && isSilence(replyText)) {
+        // The attempt stays counted; nothing is left in the conversation and nothing is retried.
+        await storage.discardReply(sessionId, attempt.id, assistant.id, before!);
+        return null;
+      }
       const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(replyText), activation.nextState,
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
         attempt.id, finishReason, controller.signal, undefined, memory.refs);
@@ -271,6 +285,11 @@ export function createChatEngine(
         // Stopped before any claim: nothing was persisted, so there is nothing to report either.
         if (controller.signal.aborted) return null;
         throw error;
+      }
+      // A Character-initiated attempt that failed or was stopped before writing anything leaves no marker: no one asked for it.
+      if (proactive) {
+        if (assistant && await storage.discardReply(sessionId, attempt.id, assistant.id, before!).catch(() => false)) return null;
+        if (!assistant) { if (controller.signal.aborted) return null; throw error; }
       }
       // Stopped before the draft reached storage: there is no user turn to answer, and a stopped reply here
       // would be an empty bubble whose Retry asks the model to answer nothing. Genuine failures stay recorded.
@@ -313,6 +332,8 @@ export function createChatEngine(
   return {
     send: (sessionId: string, content: string, quoteMessageId?: string) => sendMessage(sessionId, content, quoteMessageId),
     isGenerating: (sessionId: string) => active.has(sessionId),
+    /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
+    initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),
     // Lifecycle cleanup only aborts a local attempt; persisting a Stop is an explicit user action.
     stop: (sessionId: string, options?: { persist?: boolean }) => {
       lastStop.set(sessionId, ++stopSequence);
