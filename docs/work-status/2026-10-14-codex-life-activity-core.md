@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-life-activity-core
 
 更新人：Codex  
-更新时间：2026-10-14T23:05:00+08:00  
+更新时间：2026-10-14T23:20:00+08:00  
 发现范围：2026-10-14T22:20:00+08:00 核对 GitHub 最新 `main` 为 `b0a3e3ecf133422bbf68fbb6133f72f0017c84c8`，开放 PR 为空；本分支从该提交创建。已读根 `AGENTS.md`、`docs/work-status/README.md`、`docs/AUDIT_LEDGER.md` 及现有 Presence、Contact Info、Chat Info 边界。
 
 ## 当前任务
@@ -19,7 +19,8 @@ Codex；分支 `feat/life-activity-core-20261014`；PR https://github.com/yecays
 - 活动有独立 `id` 与稳定 `occurrenceKey`；显示文案变化不会产生第二顿午餐。重复唤醒保留已经落定的活动与 Moment，不重写。
 - 活动状态由绝对开始/结束时间投影为 upcoming / active / completed；关闭网页不会暂停时间。第一版拒绝两个主活动重叠。
 - 数据限制为最多 96 项、保留最近 7 天和未来 3 天；单项最长 36 小时；标题和 Moment 有长度上限。Life 暂作为 Presence 记录的可选字段，复用现有 local-first 写入锁、备份/恢复和旧数据兼容边界，不增加新的备份格式版本。
-- 自动化：Node 24.19.0；测试编译通过；Activity Core 6/6、Presence storage / backup / validation 40/40；改动文件 ESLint 通过。
+- CodeRabbit 三条边界意见已核实并修复：直接写入也执行保留窗口校验；时钟回拨时统一使用不倒退的 reconciliation 时间；`recent=0` 返回空历史。
+- 自动化：Node 24.19.0；测试编译通过；Activity Core 8/8、Presence storage / backup / validation 40/40，共 48/48；改动文件 ESLint 通过。
 
 ## 尚未验证
 

@@ -27,6 +27,7 @@ test("activity status is a projection of absolute time and survives a closed pag
   const state = reconcileLifeActivities(undefined, [activity], 11 * HOUR);
   assert.equal(lifeTimeline(state, 12 * HOUR + 30_000).current?.occurrenceKey, activity.occurrenceKey);
   assert.equal(lifeTimeline(state, 14 * HOUR).completed[0]?.occurrenceKey, activity.occurrenceKey);
+  assert.deepEqual(lifeTimeline(state, 14 * HOUR, 0).completed, []);
 });
 
 test("a row id cannot be reused for another occurrence", () => {
@@ -38,6 +39,23 @@ test("a row id cannot be reused for another occurrence", () => {
 test("the first core rejects two simultaneous primary activities", () => {
   assert.throws(() => reconcileLifeActivities(undefined, [lunch(), lunch({ id: "patrol", occurrenceKey: "patrol",
     kind: "work", title: "Patrol", startsAt: 12 * HOUR + 30_000, endsAt: 14 * HOUR })], 11 * HOUR), /overlap/);
+});
+
+test("direct persisted state cannot bypass the retention window", () => {
+  const reconciledAt = 10 * 24 * HOUR;
+  assert.equal(normalizeLifeState({ reconciledAt, activities: [lunch({ startsAt: HOUR, endsAt: 2 * HOUR })] }), null);
+  assert.equal(normalizeLifeState({ reconciledAt, activities: [lunch({
+    startsAt: reconciledAt + 4 * 24 * HOUR, endsAt: reconciledAt + 4 * 24 * HOUR + HOUR,
+  })] }), null);
+});
+
+test("a backward clock change uses the last reconciliation time consistently", () => {
+  const now = 10 * 24 * HOUR;
+  const future = lunch({ startsAt: now + 3 * 24 * HOUR, endsAt: now + 3 * 24 * HOUR + HOUR });
+  const state = reconcileLifeActivities(undefined, [future], now);
+  const afterClockChange = reconcileLifeActivities(state, [], now - HOUR);
+  assert.deepEqual(afterClockChange.activities, [future]);
+  assert.equal(afterClockChange.reconciledAt, now);
 });
 
 test("persisted life state is strict, bounded and preserved by Presence normalization", () => {

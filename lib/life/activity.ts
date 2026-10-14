@@ -52,8 +52,8 @@ export function normalizeLifeActivity(value: unknown): LifeActivity | null {
 
 /** Strict normalization for persisted data: duplicate identities are invalid, not silently merged. */
 export function normalizeLifeState(value: unknown): LifeState | null {
-  const raw = plain(value);
-  if (!Array.isArray(raw.activities) || !safeTime(raw.reconciledAt) || raw.activities.length > LIFE_ACTIVITY_LIMIT) return null;
+  const raw = plain(value), reconciledAt = raw.reconciledAt;
+  if (!Array.isArray(raw.activities) || !safeTime(reconciledAt) || raw.activities.length > LIFE_ACTIVITY_LIMIT) return null;
   const ids = new Set<string>(), occurrences = new Set<string>(), activities: LifeActivity[] = [];
   for (const item of raw.activities) {
     const activity = normalizeLifeActivity(item);
@@ -61,8 +61,10 @@ export function normalizeLifeState(value: unknown): LifeState | null {
     ids.add(activity.id); occurrences.add(activity.occurrenceKey); activities.push(activity);
   }
   activities.sort((a, b) => a.startsAt - b.startsAt || a.id.localeCompare(b.id));
+  if (activities.some((item) => item.endsAt < reconciledAt - LIFE_HISTORY_MS
+    || item.startsAt > reconciledAt + LIFE_FUTURE_MS)) return null;
   if (activities.some((item, index) => index > 0 && item.startsAt < activities[index - 1].endsAt)) return null;
-  return { activities, reconciledAt: raw.reconciledAt };
+  return { activities, reconciledAt };
 }
 
 export function lifeActivityStatus(activity: LifeActivity, now: number): LifeActivityStatus {
@@ -75,8 +77,9 @@ export function lifeActivityStatus(activity: LifeActivity, now: number): LifeAct
  */
 export function reconcileLifeActivities(current: LifeState | undefined, candidates: readonly LifeActivity[], now: number): LifeState {
   if (!safeTime(now)) throw new Error("Invalid life reconciliation time.");
-  const kept = (current?.activities ?? []).filter((item) => item.endsAt >= now - LIFE_HISTORY_MS
-    && item.startsAt <= now + LIFE_FUTURE_MS);
+  const effectiveNow = Math.max(current?.reconciledAt ?? 0, now);
+  const kept = (current?.activities ?? []).filter((item) => item.endsAt >= effectiveNow - LIFE_HISTORY_MS
+    && item.startsAt <= effectiveNow + LIFE_FUTURE_MS);
   const ids = new Map(kept.map((item) => [item.id, item.occurrenceKey] as const));
   const occurrences = new Set(kept.map((item) => item.occurrenceKey));
   const additions: LifeActivity[] = [];
@@ -86,20 +89,21 @@ export function reconcileLifeActivities(current: LifeState | undefined, candidat
     if (occurrences.has(item.occurrenceKey)) continue;
     const owner = ids.get(item.id);
     if (owner && owner !== item.occurrenceKey) throw new Error("Life activity ID collision.");
-    if (item.endsAt < now - LIFE_HISTORY_MS || item.startsAt > now + LIFE_FUTURE_MS) continue;
+    if (item.endsAt < effectiveNow - LIFE_HISTORY_MS || item.startsAt > effectiveNow + LIFE_FUTURE_MS) continue;
     ids.set(item.id, item.occurrenceKey); occurrences.add(item.occurrenceKey); additions.push(item);
   }
   const activities = [...kept, ...additions].sort((a, b) => a.startsAt - b.startsAt || a.id.localeCompare(b.id));
   if (activities.length > LIFE_ACTIVITY_LIMIT) throw new Error("Too many life activities.");
   if (activities.some((item, index) => index > 0 && item.startsAt < activities[index - 1].endsAt))
     throw new Error("Life activities overlap.");
-  return { activities, reconciledAt: Math.max(current?.reconciledAt ?? 0, now) };
+  return { activities, reconciledAt: effectiveNow };
 }
 
 export function lifeTimeline(state: LifeState | undefined, now: number, recent = 8) {
   const activities = state?.activities ?? [];
   const current = activities.find((item) => lifeActivityStatus(item, now) === "active") ?? null;
-  const completed = activities.filter((item) => item.endsAt <= now).slice(-Math.max(0, recent)).reverse();
+  const limit = Math.max(0, recent);
+  const completed = limit ? activities.filter((item) => item.endsAt <= now).slice(-limit).reverse() : [];
   const upcoming = activities.filter((item) => item.startsAt > now).slice(0, 3);
   return { current, completed, upcoming };
 }
