@@ -184,7 +184,9 @@ export function MessagesHome() {
               }
             }}>
             {group ? <span className="chat-avatar group-avatar"><Users /></span> : namesReady && character ?
-              <span className="chat-avatar-presence"><ChatAvatar profile={character} /><CharacterPresenceBadge character={character} /></span>
+              <span className="chat-avatar-presence"><ChatAvatar profile={character} /><CharacterPresenceBadge character={character} />
+                {!!session.unreadCount && <span className="chat-unread-badge" data-testid={`unread-${session.id}`}
+                  aria-label={`${session.unreadCount} unread`}>{session.unreadCount > 99 ? "99+" : session.unreadCount}</span>}</span>
               : <span className="chat-avatar">{namesReady ? "?" : ""}</span>}
             <span className="conversation-summary">
               <span className="conversation-title-line"><strong>{name ?? "Loading contact…"}</strong>
