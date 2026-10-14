@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-life-timeline-ui
 
 更新人：Codex
-更新时间：2026-10-14T22:35:00+08:00
+更新时间：2026-10-14T23:10:54+08:00
 发现范围：GitHub 最新 `main` 为 `be3221e7daf4479f4829b7f29819518bf8708bde`（PR #196 已合并），开放 PR 为空；本分支从该提交创建。
 
 ## 当前任务
@@ -21,6 +21,7 @@ Codex；分支 `feat/life-timeline-ui-20261014`；PR https://github.com/yecays-a
 - 读取或结算失败保留已有内容并显示错误；无内容显示空状态。返回只回到 Chat Info，不改变聊天滚动位置。
 - 测试编译通过；Chat UI 13/13、Life plan 6/6、Activity Core 8/8，共 27/27；改动文件 ESLint 无新增错误（`chat-room.tsx` 两条既有 hook warning）；`git diff --check` 通过；Next.js 16.3.8 生产构建及其 TypeScript 检查通过（26 个静态页面）。
 - 针对 PR #197 的 CodeRabbit 意见，新增两个真实挂载 `LifeTimelineScreen` 的调用层持久化测试：Routine 存在时验证该角色投影活动已保存；Routine、Situations 和旧 Life 都缺失时验证 ready 效果运行且 Presence 存储原文不变。定向测试 2/2 通过，测试 TypeScript 编译通过。
+- 后续评审指出空状态用例只等到事务启动；现改为捕获并等待 `browserPresenceStorage.transact` 返回的 promise 后再断言，无固定延时。定向测试、ESLint 和 `git diff --check` 均通过。
 
 ## 尚未验证
 

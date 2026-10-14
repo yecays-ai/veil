@@ -13,7 +13,7 @@ const routine = { defaultStatus: "offline" as const, jitterMinutes: 0,
 
 async function mounted(initial: ReturnType<typeof emptyPresenceDocument>, run: (result: {
   dom: JSDOM; render: () => Promise<void>; text: () => string; wait: (check: () => boolean) => Promise<void>;
-  transactCalls: () => number;
+  settleTransactions: () => Promise<void>; transactCalls: () => number;
 }) => Promise<void>) {
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
   const storage = dom.window.localStorage;
@@ -26,9 +26,12 @@ async function mounted(initial: ReturnType<typeof emptyPresenceDocument>, run: (
 
   const originalTransact = browserPresenceStorage.transact;
   let transactCalls = 0;
+  const transactions: Promise<unknown>[] = [];
   browserPresenceStorage.transact = ((...args: Parameters<typeof originalTransact>) => {
     transactCalls++;
-    return originalTransact(...args);
+    const transaction = originalTransact(...args);
+    transactions.push(Promise.resolve(transaction));
+    return transaction;
   }) as typeof originalTransact;
   const moduleIds = [require.resolve("../lib/presence/live"), require.resolve("../components/chat/life-timeline")];
   moduleIds.forEach((id) => { delete require.cache[id]; });
@@ -47,7 +50,7 @@ async function mounted(initial: ReturnType<typeof emptyPresenceDocument>, run: (
     }
   };
   try { await run({ dom, render, text: () => container.textContent ?? "", wait,
-    transactCalls: () => transactCalls }); }
+    settleTransactions: async () => { await Promise.all(transactions); }, transactCalls: () => transactCalls }); }
   finally {
     await act(async () => root.unmount());
     browserPresenceStorage.transact = originalTransact;
@@ -59,9 +62,10 @@ async function mounted(initial: ReturnType<typeof emptyPresenceDocument>, run: (
 
 test("LifeTimelineScreen persists the matching Character's projected activities when Routine exists", async () => {
   const initial = setRoutine(emptyPresenceDocument(), character.characterId, routine, { changedAt: Date.now(), source: "test" });
-  await mounted(initial, async ({ dom, render, wait, transactCalls }) => {
+  await mounted(initial, async ({ dom, render, wait, settleTransactions, transactCalls }) => {
     await render();
     await wait(() => !!presenceRecord(JSON.parse(dom.window.localStorage.getItem("veil.presence.v1")!), character.characterId)?.life?.activities.length);
+    await settleTransactions();
     const saved = JSON.parse(dom.window.localStorage.getItem("veil.presence.v1")!);
     assert.ok(presenceRecord(saved, character.characterId)?.life?.activities.length);
     assert.equal(transactCalls(), 1);
@@ -72,11 +76,11 @@ test("LifeTimelineScreen leaves storage unchanged when Routine, Situations and p
   const initial = emptyPresenceDocument();
   const unchanged = { ...initial, characters: [{ characterId: character.characterId, routine: null, situations: [],
     signature: null, lastOnlineAt: null, lastMessageAt: null }] };
-  await mounted(unchanged, async ({ dom, render, wait, transactCalls }) => {
+  await mounted(unchanged, async ({ dom, render, settleTransactions, transactCalls }) => {
     const before = dom.window.localStorage.getItem("veil.presence.v1");
     await render();
-    await wait(() => transactCalls() === 1);
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)); });
+    await settleTransactions();
+    assert.equal(transactCalls(), 1);
     assert.match(dom.window.document.body.textContent ?? "", /No activity yet\./);
     assert.equal(dom.window.localStorage.getItem("veil.presence.v1"), before);
   });
