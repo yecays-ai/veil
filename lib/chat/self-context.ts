@@ -5,6 +5,7 @@ import { effectivePresence } from "../presence/compute";
 import { presenceLabel } from "../presence/view";
 import type { PresenceRecord } from "../presence/storage";
 import type { UserReactionNote } from "./reactions";
+import type { StickerChoice } from "./sticker-storage";
 import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
 
 /** What the Character knows about itself for one reply: read once per request, never stored or sent as history. */
@@ -26,6 +27,8 @@ export type SelfState = {
   canReact?: true;
   /** The user's reactions on the Character's latest messages. */
   userReactions?: UserReactionNote[];
+  /** The stickers this Character may send in this reply (its bound packs), each with a code valid for this reply only. */
+  stickers?: StickerChoice[];
 };
 export type ReactionState = { canReact: boolean; notes: UserReactionNote[] };
 
@@ -63,14 +66,15 @@ function remarkLines(state: SelfState): string[] {
   return state.remark ? [`Background, needs no response: the remark the user has saved for you is ${quoted(state.remark)}. Mention it only when it fits naturally.`] : [];
 }
 
-function actionLines(allow: ActionAllowance | null, canReact = false): string[] {
+function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = []): string[] {
   const own = !!allow && (allow.situation || allow.signature || allow.note);
-  if (!own && !canReact) return [];
+  if (!own && !canReact && !stickers.length) return [];
   const fields = [
     allow?.signature ? `"signature": your new signature text ("" clears it)` : null,
     allow?.note ? `"userNote": what you now call the user, a short nickname or note ("" clears it)` : null,
     allow?.situation ? `"situation": {"status": "online"|"away"|"busy"|"dnd"|"offline", "reason": short text, "startInMinutes": optional, "durationMinutes": optional}, "endSituation": "current"|"all", "cancelUpcoming": true` : null,
     canReact ? `"reactToUser": one emoji, a reaction to the user's message you are replying to` : null,
+    stickers.length ? `"sticker": exactly one code from your sticker list below` : null,
   ].filter((field): field is string => field !== null);
   const names = [allow?.signature ? "signature" : null, allow?.note ? "note on the user" : null, allow?.situation ? "situation" : null].filter(Boolean);
   return [
@@ -78,6 +82,8 @@ function actionLines(allow: ActionAllowance | null, canReact = false): string[] 
       " when this conversation really gives you a reason; most replies need no change and you never have to explain one.",
     "Only for something happening now or about to happen, never for something you merely recall or tell about."] : []),
     ...(canReact ? ["You may also react to the user's message with one emoji, the way a person reacts to a message, only when it truly moves you; most replies need no reaction."] : []),
+    ...(stickers.length ? ["You may send one of your own stickers, the way a person sends a sticker in a chat: after your text, or instead of text (then write no text before the line). Only when it truly fits the moment; most replies need no sticker. Each entry is pack name｜sticker name, so you know whose picture it is. Use only these codes, never invent one:",
+      ...stickers.map((choice) => `${choice.code} = ${choice.label}`)] : []),
     `To change, end the reply with one line <${ACTION_TAG}>{JSON}</${ACTION_TAG}> using only these optional fields: ${fields.join("; ")}. VEIL removes this line before anyone sees the reply; never mention it.`];
 }
 
@@ -91,7 +97,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
     ...(state.userReactions ?? []).map((note) => `Background, needs no response: the user reacted ${note.emoji} to your message ${quoted(note.preview)}.`),
-    ...actionLines(state.canChange, !!state.canReact),
+    ...actionLines(state.canChange, !!state.canReact, state.stickers),
   ].filter((line): line is string => line !== null);
   if (!lines.length) return null;
   return ["Your own state (VEIL runtime facts, not message content):", ...lines,

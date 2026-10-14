@@ -16,6 +16,8 @@ export type CharacterActions = {
   cancelUpcoming?: true;
   /** One emoji reacting to the user's message this reply answers. Applied by the chat, not by Presence. */
   reactToUser?: string;
+  /** One of this reply's sticker codes (S01 …), sent as the Character's own last bubble. Checked and applied by the chat. */
+  sticker?: string;
 };
 export const ACTION_TAG = "veil-action";
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
@@ -79,6 +81,7 @@ function parseActions(json: string): CharacterActions | null {
   if (value.endSituation === "current" || value.endSituation === "all") actions.endSituation = value.endSituation;
   if (value.cancelUpcoming === true) actions.cancelUpcoming = true;
   if (isReactionEmoji(value.reactToUser)) actions.reactToUser = value.reactToUser;
+  if (typeof value.sticker === "string" && /^S\d{2,3}$/i.test(value.sticker.trim())) actions.sticker = value.sticker.trim().toUpperCase();
   return Object.keys(actions).length ? actions : null;
 }
 
