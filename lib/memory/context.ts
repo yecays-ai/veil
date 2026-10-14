@@ -80,6 +80,12 @@ function evidence(memory: Terms, current: Terms, recent: readonly RecentTerms[],
   return { band: 0, features: new Set() };
 }
 
+/** Lexical overlap of a query with other texts, using the same term rules as Memory retrieval (no model, no storage). */
+export function textMatcher(query: string): (text: string) => number {
+  const q = terms(query);
+  return (text) => match(q, terms(text)).size;
+}
+
 /** One injected entry. `recordedAt` is the day the memory was first written (UTC), so the model can place it in time. */
 export function memoryEntry(row: Pick<Memory, "kind" | "subject" | "origin" | "text" | "createdAt">): string {
   return JSON.stringify({ kind: row.kind, subject: row.subject, origin: row.origin,
