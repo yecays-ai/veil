@@ -1,16 +1,16 @@
 # STATUS — 2026-10-14-claude-generation-owner
 
 更新人：Claude
-更新时间：2026-10-14T10:30:00Z
+更新时间：2026-10-14T10:25:00Z
 发现范围：2026-10-14 10:10Z 起点 `origin/main` = `8045a304ab0b399700222a260bce242990fa74df`，分支基于该提交。已读 AGENTS.md、work-status README、最新 main 的 chat 引擎与会话生命周期代码；未逐个核对开放 PR 的改动文件（PR 1 只改 `lib/chat/session-lifecycle.ts` 与测试，发布前用 GitHub 集成再查一次开放 PR）。
 
 ## 当前任务
 
-进行中。Character Life & Autonomy 第一阶段 PR 1：生成所有权迁移——离开聊天页不再取消正在进行的回复。不含主动消息、未读，不改任何回复触发规则。
+待审查（PR #188 已开，CodeRabbit 仅提出补 PR 链接一条，已处理）。Character Life & Autonomy 第一阶段 PR 1：生成所有权迁移——离开聊天页不再取消正在进行的回复。不含主动消息、未读，不改任何回复触发规则。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-iwht8v`；PR 尚未创建；涉及 `lib/chat/session-lifecycle.ts`、`tests/chat-session-lifecycle.test.ts`、`tests/generation-safety.test.ts`。
+Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-ai/veil/pull/188；涉及 `lib/chat/session-lifecycle.ts`、`tests/chat-session-lifecycle.test.ts`、`tests/generation-safety.test.ts`。
 
 ## 已完成
 
@@ -24,4 +24,4 @@ Claude；分支 `claude/project-thread-iwht8v`；PR 尚未创建；涉及 `lib/c
 
 ## 下一步
 
-跑 typecheck/lint/目标测试/build，开 PR；之后 PR 2（无用户输入的一轮生成）。
+CI/评论清空后合并 PR #188；之后 PR 2（无用户输入的一轮生成）。
