@@ -3,6 +3,7 @@ import type { StringStorage } from "../storage-types";
 import { browserPersistenceWriteGate, runPersistenceWrite, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { LAST_ONLINE_LOOKBACK_MS, MAX_JITTER_MINUTES, SITUATION_MAX_MS,
   type PresenceRoutine, type PresenceSituation } from "./compute";
+import { normalizeLifeState, type LifeState } from "../life/activity";
 
 // Per-Character Presence data: the routine, a few situations, the signature's change mark and the two
 // Last Seen values. Its own storage domain; it never reads or writes Character, chat or Contact data, and
@@ -37,6 +38,8 @@ export type PresenceRecord = {
   /** Latest simulated online time, and latest time the Character sent a message. Neither ever goes down. */
   lastOnlineAt: number | null;
   lastMessageAt: number | null;
+  /** Coarse life activities share Presence's existing backup/restore and write coordination in the first MVP. */
+  life?: LifeState;
 };
 export type PresenceDocument = { version: 1; characters: PresenceRecord[] };
 
@@ -101,13 +104,15 @@ function normalizeRecord(value: unknown): PresenceRecord | null {
   const raw = record(value);
   if (!validId(raw.characterId)) return null;
   const routine = normalizeRoutine(record(raw.routine).routine);
+  const life = raw.life === undefined ? undefined : normalizeLifeState(raw.life);
   const situations = layers((Array.isArray(raw.situations) ? raw.situations : []).flatMap((item) => normalizeStoredSituation(item) ?? []));
   return { characterId: raw.characterId,
     routine: routine ? { routine, ...markOf(raw.routine) } : null, situations,
     signature: raw.signature ? markOf(raw.signature) : null,
     ...(raw.situationChange ? { situationChange: markOf(raw.situationChange) } : {}),
     ...(typeof record(raw.userNote).text === "string" ? { userNote: { text: Array.from((record(raw.userNote).text as string).trim()).slice(0, 100).join(""), ...markOf(raw.userNote) } } : {}),
-    lastOnlineAt: time(raw.lastOnlineAt), lastMessageAt: time(raw.lastMessageAt) };
+    lastOnlineAt: time(raw.lastOnlineAt), lastMessageAt: time(raw.lastMessageAt),
+    ...(life ? { life } : {}) };
 }
 export function normalizePresenceDocument(value: unknown): PresenceDocument {
   const seen = new Set<string>();
@@ -185,6 +190,11 @@ export function markSituationChange(document: PresenceDocument, characterId: str
 /** Raises Last Seen values; lower, equal, invalid or future (beyond a small clock skew) values are ignored. */
 export function setUserNote(document: PresenceDocument, characterId: string, text: string, mark: ChangeMark): PresenceDocument {
   return update(document, characterId, (current) => ({ ...current, userNote: { text, ...markOf(mark) } }));
+}
+export function setLifeState(document: PresenceDocument, characterId: string, life: LifeState): PresenceDocument {
+  const valid = normalizeLifeState(life);
+  if (!valid) throw new Error("Invalid life state.");
+  return update(document, characterId, (current) => ({ ...current, life: valid }));
 }
 export function advanceLastSeen(document: PresenceDocument, characterId: string,
   values: { lastOnlineAt?: number | null; lastMessageAt?: number | null }, now: number): PresenceDocument {
