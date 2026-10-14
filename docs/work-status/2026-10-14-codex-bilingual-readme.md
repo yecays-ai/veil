@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-bilingual-readme
 
 更新人：Codex
-更新时间：2026-10-14T19:06:00+08:00
+更新时间：2026-10-14T19:10:00+08:00
 发现范围：2026-10-14 检查 fork `Xiaoqiush81/veil`、上游 `yecays-ai/veil`、上游开放 PR 与 `8790e408` 以来主线提交。
 
 ## 当前任务
@@ -26,8 +26,9 @@ Codex；branch `codex/bilingual-readme`；基线 `8045a304ab0b399700222a260bce24
 ## 尚未验证
 
 - 文档链接、Markdown 格式、标题结构、`git diff --check` 与两种语言的事实一致性已检查。
+- PR #190 的 GitHub `verify`（`npm run typecheck`、`npm run lint`、`npm test`、`npm run build`、`git diff --check`）、Vercel 与 CodeRabbit 复审均已通过；CodeRabbit 没有新增问题。
 - 本任务只改文档；运行时与真机行为不适用，未据此宣称新的功能验证。
 
 ## 下一步
 
-PR #190 已推送至上游 `yecays-ai/veil`；CodeRabbit 的一条可执行评论已整改，等待复审与 owner 手动合并；不自动合并。
+PR #190 已推送至上游 `yecays-ai/veil`；CodeRabbit 的一条可执行评论已整改并通过复审，等待 owner 手动合并；不自动合并。
