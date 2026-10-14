@@ -97,6 +97,8 @@ export type ChatMessage = {
   memorySequence?: import("../memory/sequence").MessageMemorySequence;
   /** Memory injected into the request that produced this reply. Absent on replies from before this was recorded. */
   memoryRefs?: MemoryRef[];
+  /** One emoji per side. Absent until someone reacts, and removed again when the last one is cleared. */
+  reactions?: import("./reactions").MessageReactions;
 };
 
 /** What a reply was given from Memory: the row and a hash of the injected content. Never the memory text itself. */

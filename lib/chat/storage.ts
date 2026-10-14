@@ -21,6 +21,7 @@ import {
 import { splitAssistantReply } from "./reply-splitter";
 import { attemptsAllow, recentAttempts } from "./proactive";
 import { quoteMessage } from "./quote";
+import { canReactTo, isReactionEmoji, withReaction, type ReactionSide } from "./reactions";
 import { historyEligible, summaryDigest, SUMMARY_CHARACTERS } from "./summary";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
 import { normalizeBackgroundBlur } from "./types";
@@ -962,6 +963,23 @@ export class ChatStorage {
           ...(staleSummary ? { summary: undefined } : {}) }));
       return next;
     }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }), undefined, scope);
+  }
+
+  /** Sets or clears one side's reaction. Touches only the message row: no summary, preview, Memory or generation state. */
+  async setReaction(id: string, side: ReactionSide, emoji: string | null): Promise<ChatMessage> {
+    if (emoji !== null && !isReactionEmoji(emoji)) throw new Error("Reaction must be a single emoji.");
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const existing: ChatMessage | undefined = await request(table.get(id));
+      if (!existing) throw new Error("Message not found.");
+      if (!canReactTo(existing)) throw new Error("This message cannot be reacted to.");
+      const reactions = withReaction(existing.reactions, side, emoji);
+      if (JSON.stringify(reactions) === JSON.stringify(existing.reactions ?? null)) return existing;
+      const next: ChatMessage = { ...existing };
+      if (reactions) next.reactions = reactions; else delete next.reactions;
+      await request(table.put(next));
+      return next;
+    }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
   }
 
   async regenerationSessionId(id: string): Promise<string> {
