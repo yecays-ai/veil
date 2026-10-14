@@ -120,7 +120,8 @@ export function memoryConversation(context: PromptRuntimeContext, preset: Preset
     earlier: history.filter((message) => !currentIds.has(message.id) && !recentIds.has(message.id)).map(body) };
 }
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
-  const body = message.role === "user" || message.role === "assistant"
+  // A sticker's semantic text is VEIL's own, not the user's or the Character's wording, so user regex rules leave it alone.
+  const body = !message.sticker && (message.role === "user" || message.role === "assistant")
     ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt",
       { character: context.character.name, user: context.foundation.user.name })
     : message.content;
