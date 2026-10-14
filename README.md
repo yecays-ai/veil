@@ -1,123 +1,201 @@
 # VEIL
 
-'A phone across worlds.'
+> A phone across worlds.
 
-Minimal, character-neutral Next.js App Router and TypeScript app. Mobile-first phone viewport with a Home Screen, Character text conversations in Messages, and Appearance settings.
+[简体中文](README.zh-CN.md)
 
-## Development
+VEIL is a little companion phone that lives in your browser. Create Characters, build their world, talk with them, give them memories, and make the phone look like yours.
 
-Use Node.js 24 and npm.
+It is local-first, mobile-first, and character-neutral. VEIL provides the phone and the system; the people, stories, prompts, and worlds are yours.
+
+## ✨ What is inside?
+
+| | |
+| --- | --- |
+| 💬 **Messages** | Private and group chats, streaming replies, quotes, search, message actions, retries, custom backgrounds, and per-chat styling |
+| 🧠 **Memory** | Per-Character memories, Journal, State, History, rolling summaries, manual editing, undo, and optional automatic upkeep |
+| 🌌 **Characters & Universe** | Character profiles, relationships, shared history, Presence, daily situations, and a draggable relationship map |
+| 🪪 **Profile & Contacts** | Your profile, Character contacts, remarks, contact backgrounds, Last Seen, and quick chat entry |
+| 🎨 **Appearance** | Wallpapers, colors, fonts, icons, Dock styling, layouts, Widgets, and reusable theme presets |
+| 🏠 **Home Screen** | A multi-page app grid, editable Dock, resizable Widgets, and a phone-like experience on desktop and mobile |
+| 🧩 **Creative tools** | Presets, Text APIs, Bindings, WorldBooks, Regex rules, and tools for shaping chat context |
+| 💾 **Backup & Restore** | A whole-app ZIP backup, package checks, restore preview, rollback, and recovery after an interrupted restore |
+
+## 💬 Conversations that remember
+
+Messages are more than a plain chat box. VEIL keeps conversation history on the device and supports private chats, group chats, quotes, search, multi-select actions, continuing or regenerating replies, bubble timing, backgrounds, and custom CSS.
+
+When VEIL builds a reply, it can bring together the current conversation, Character and Universe information, relationship context, Presence and State, active WorldBooks, and relevant Memory. Bindings decide which API, Preset, WorldBooks, and Regex rules each Character or app should use.
+
+Sending a message and asking a Character to reply are separate actions. If a model request fails or is cancelled, the user's saved message stays safe.
+
+## 🧠 Memory with a place of its own
+
+Each Character has an independent Memory space with four views:
+
+- **Memories** for long-term facts and experiences;
+- **Journal** for user-written, keyword-triggered notes;
+- **State** for what is happening with the Character now;
+- **History** for older or replaced memories.
+
+Users can add, edit, remove, search, filter, and undo Memory changes. Optional Memory Maintenance can create and refresh memories after enough new conversation has accumulated. It runs only while VEIL is open, uses its own configurable model choice, and cannot overwrite protected manual memories.
+
+A reply can also show which Memory and Journal entries were actually available to it.
+
+## 🌌 A world, not just a contact list
+
+VEIL has one User, many Characters, and one shared Universe.
+
+- Character profiles keep appearance, backstory, personality, speaking style, life settings, State, and Presence separate.
+- The Universe stores world information, directional relationships, relationship kinds, shared history, and graph positions.
+- Presence uses timezones and routines to show situations, status, and Last Seen.
+- Characters can update parts of their own situation through supported chat actions.
+- Deleting a Character uses a coordinated cleanup flow for contacts, chats, group membership, bindings, widgets, Presence, and Memory.
+
+## 🎨 Make the phone yours
+
+Appearance controls the phone without mixing decoration into Character data. You can change colors, fonts, wallpaper, icons, Dock styling, opacity, blur, positioning, and layout. Named presets keep full snapshots of the current look.
+
+The Home Screen supports multiple pages, drag-free grid editing, collision checks, an editable Dock, and resizable Widgets. **Here & There** can show User and Character time, location, weather, and optional generated remarks.
+
+The **Moments** app is currently an empty shell. It is not a working social feed yet.
+
+## 🔒 Your data stays in your browser
+
+VEIL has no account system, cloud sync, or server-side copy of your local app data. Profiles, conversations, Memory, settings, and images belong to the browser storage for this site.
+
+VEIL can make network requests only when a feature needs them:
+
+- your configured OpenAI-compatible provider for chat and optional generated features. Chat requests send conversation context and your API key directly to that provider;
+- Open-Meteo for weather or place lookup when a saved location is used;
+- external image URLs that you choose to display.
+
+There is no VEIL telemetry service in this repository.
+
+### Backups matter
+
+Clearing site data removes VEIL's local data. Use **Settings → Backup & Restore** to download a checked ZIP backup.
+
+Backups include the supported app data and local images, but never API keys. Import replaces the current device data instead of merging it. VEIL previews and validates the file first, keeps a safety copy during replacement, and can resume or roll back an interrupted restore.
+
+Backup files are not encrypted and may contain private conversations, profiles, Memory, locations, and images. Keep them somewhere safe.
+
+## 📱 iPhone Home Screen
+
+VEIL includes a web app manifest, Apple standalone metadata, safe-area support, and an iOS standalone fallback. Add it from Safari with **Share → Add to Home Screen** for the intended phone presentation.
+
+There is no service worker or bundled install icon yet. If deployment metadata changes, remove the old shortcut and add it again. Mobile automation is useful, but real iPhone behavior still needs a physical-device check.
+
+---
+
+## 🛠️ For developers
+
+### Stack
+
+- Next.js 16 App Router
+- React 19
+- TypeScript 5
+- Browser `localStorage` and IndexedDB
+- Node's test runner, JSDOM, fake IndexedDB, and Playwright
+
+VEIL does not need a backend or environment variables for its base features. Model credentials are configured locally in the browser.
+
+### Quick start
+
+Use Node.js 24.x and npm.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-## Validation
+Open [http://localhost:3000](http://localhost:3000).
 
-```sh
-npm run build
-npm run typecheck
-npm run lint
-npm test
-npm start
+Foundation, Home, Appearance, Contacts, local editors, and existing data work without a model provider. To generate text, add an OpenAI-compatible configuration in **Settings → Text API**, then choose it globally or through **Settings → Bindings**.
+
+### How the code is arranged
+
+```text
+Next.js routes
+    ↓
+React feature components and providers
+    ↓
+Chat / Memory / Presence / Foundation / Theme / Backup services
+    ↓
+Storage adapters and coordinated writes
+    ↓
+Browser localStorage + IndexedDB
 ```
 
-`npm run test:browser` is a separate, local-only smoke test (not part of `npm test` or CI). It opens two real
-pages of one Chromium context and checks that a Chat message and a Character rename made in one tab reach the
-other, without a reload, and are stored in IndexedDB. Each test gets a fresh browser context, so it never touches
-real data and calls no model. It builds and starts its own copy of the app on port 3123 (`VEIL_E2E_PORT` changes it; the port must be free, because a server that is already running is never reused) and needs
-Chromium: run `npx playwright install chromium` once, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to an existing one.
+| Path | Purpose |
+| --- | --- |
+| `app/` | Routes, layouts, metadata, manifest, and global styles |
+| `components/` | Product UI, providers, dialogs, Widgets, and Settings screens |
+| `lib/chat/` | Sessions, messages, model requests, prompts, context, and chat behavior |
+| `lib/memory/` | Memory storage, retrieval, summaries, Journal, State, and maintenance |
+| `lib/presence/` | Routines, situations, notes, actions, and live Presence |
+| `lib/backup/` | Backup packages, snapshots, validation, restore, rollback, and recovery |
+| `lib/` | Foundation, themes, Contacts, resources, bindings, and shared domain logic |
+| `tests/` | Node, JSDOM, and fake-IndexedDB regression coverage |
+| `e2e/` | Local Playwright browser smoke tests |
+| `docs/` | Architecture notes, audit evidence, and task handoffs |
 
-`npm test` also reports the current rendering/navigation lifecycle regression
-contracts as JSON. See [Lifecycle regression contracts](docs/regression-contracts.md)
-for the protected invariants and how to add a focused maintenance check.
+`app/layout.tsx` owns the persistent application shell. It blocks ordinary startup during interrupted restore recovery, starts product defaults and optional Memory Maintenance, and mounts the phone, theme, Foundation, and opt-in diagnostic providers.
 
-The Home Screen reads the App Registry and links to Messages, Appearance, User Profile, Characters, and Universe.
+The app list has one source of truth in `lib/app-registry.ts`. Data domains have separate storage authorities; React providers and caches are views, not backups.
 
-User defaults live in `config/user.ts`; Character identity comes from the Foundation document. The only placeholder names are `Character` and `User`; generic routes and UI remain independent of identity configuration.
+### Storage at a glance
 
-The Foundation and Home work without external services or credentials. Optional Character text chat uses a locally configured OpenAI-compatible provider and IndexedDB. See [Chat Core v1](docs/chat-core-v1.md) for API setup, Send versus Request Reply, storage and context behavior.
+| Data | Authority |
+| --- | --- |
+| Appearance metadata, Contacts, Bindings, Presets, Regex, WorldBooks, Presence | `localStorage` documents |
+| User, Characters, Universe | IndexedDB `veil-core-v1` |
+| Chats, messages, settings, and chat images | IndexedDB `veil-chat-v2` |
+| Memory, Journal, history, operations, and maintenance state | IndexedDB `veil-memory-v1` |
+| Text API configurations and keys | IndexedDB `veil-api-config-v1` |
+| Appearance image bytes | IndexedDB `veil-appearance-images-v1` |
 
-## Storage and Data Safety
+Keep these domains separate. Storage changes need deliberate migration and cleanup behavior; a convenient React snapshot is never a second persistence authority.
 
-VEIL's app data is stored by the browser for this site origin. There is no app-wide backup, cloud sync, or server-side copy of these local documents. The storage adapters below are the persistence authorities; React provider snapshots and in-memory caches are views of that data, not extra backups.
+### Checks
 
-| Data | Authoritative storage and main read/write entry | Delete and residual cleanup | Import, export, and backup coverage |
-| --- | --- | --- | --- |
-| Appearance and Home layout | `localStorage` key `companion-phone.appearance.v1`; `lib/theme-storage.ts`, `lib/theme-types.ts`, `components/theme-provider.tsx`, and `components/appearance.tsx`. The document contains the current snapshot and named Appearance presets; the current snapshot includes decoration, App/Widget positions and Dock order. | Restore Default replaces the current snapshot and layouts but retains named presets. Removing a Widget removes its layout instance; it does not delete its registry entry or other data. Character deletion keeps Widgets and clears only the deleted Character's Here & There link and remark, in the current layout and in saved presets. | Appearance exports/imports the current snapshot only. It does not include the Appearance preset list or other app data. |
-| Appearance image files | IndexedDB `veil-appearance-images-v1`, object store `assets`; `lib/appearance-image-storage.ts`. The Theme document stores references to these blobs. | After a successful Theme write, collection removes unreferenced assets after a 10-minute grace period when no active staging holder protects them. This is opportunistic collection, not a full database sweep on page entry. | A Theme package embeds referenced image bytes in the exported snapshot. There is no separate full image-library backup. |
-| User, Characters, Universe, runtime | IndexedDB `veil-core-v1`, object store `documents`, document key `veil.foundation.v1`; `lib/core-document-storage.ts`, `lib/foundation-storage.ts`, `components/foundation-provider.tsx`. | User and Universe are edited in Foundation screens. Character deletion (`lib/character-deletion.ts`) first commits the Foundation delete, which also drops the Character's relationships and node position; this is the commit point. It then runs idempotent cleanup steps in other stores (Here & There widget links, group memberships, the private conversation, the Contact record, Binding overrides), reports each step, and offers a retry for any that failed; see the R3 note below. | No Foundation export/import or app-wide backup is implemented. Clearing this site's browser data removes the local Foundation document. |
-| Bindings | `localStorage` key `veil.bindings.v1`; `lib/binding-storage.ts`, `lib/bindings.ts`, and Settings Binding screens. Bindings are a separate document, not part of the Foundation IndexedDB record. | Deleting a Preset, Text API config, WorldBook, or Regex group clears references through the corresponding cleanup path. Character deletion removes that Character's entry from `bindings.characters` (the pre-R3 cleanup, now one step of the R3 cleanup). Entries of already-deleted Characters are also cleared when the Characters page opens. | No Binding import/export or backup is implemented. |
-| Presets and prompts | `localStorage` key `veil.preset.v1`; `lib/preset-storage.ts`, `lib/preset-library.ts`, and Settings → Presets. | Deleting a Preset clears its Binding references; a failed cross-document cleanup attempts a guarded rollback. VEIL Default is protected. | The UI imports/exports one Preset at a time. This is not a Preset-library backup. |
-| Regex groups and rules | `localStorage` key `veil.regex.v1`; `lib/regex-storage.ts`, `lib/regex.ts`, and Settings → Regex. | Deleting a Regex group clears its Binding references; group deletion has rollback handling if cleanup fails. Rules are deleted within their group. | The UI imports/exports one group or rule at a time. There is no full Regex-library backup. |
-| WorldBooks and entries | `localStorage` key `veil.worldbooks.v1`; `lib/worldbook-storage.ts`, `lib/worldbook.ts`, and Settings → WorldBooks. | Deleting a WorldBook clears its Binding references; book deletion has rollback handling if cleanup fails. Entries are deleted within their book. | The UI imports/exports one book or entry at a time. There is no full WorldBook-library backup. |
-| Contacts | `localStorage` key `veil.contacts.v1`; `lib/contact-storage.ts` and Contacts screens. Contact remarks and Contact-specific backgrounds are separate from Character profiles. | Removing a Contact only removes that Contact. Character deletion removes the deleted Character's Contact record as one of its cleanup steps. A Contact record left by an earlier deletion is listed on the Characters page and removed only after the user confirms. | The storage adapter has `exportPortable` and merge-style `restorePortable` methods, but no current UI calls them. They are not a user-facing or app-wide backup. |
-| Chats and chat settings | IndexedDB `veil-chat-v2`, object stores `sessions`, `messages`, `chatSettings`, `assets`, and `worldBookStates`; `lib/chat/storage.ts`. Sessions/messages are the durable conversation history. `worldBookStates` is persisted activation state associated with a session. | Clear Conversation History removes that session's messages and WorldBook activation state while retaining its conversation shell. Delete Conversation removes the session and its history. Unreferenced chat images are deleted immediately when a reference is removed where possible; orphan images from interrupted saves are collected during a later image save after a one-hour grace period. Deleting a Character deletes its private conversation through Delete Conversation (messages, WorldBook activation state, and a background image no other chat uses). Group conversations are kept: the Character is removed from `participantIds`, and a group left with no member keeps an empty `participantIds` and `characterId: ""`. Private conversations left by earlier deletions are listed on the Characters page and removed only after the user confirms; see [Chat Core v1](docs/chat-core-v1.md). | There is no Chat/session/message/image backup or export. Bubble-timing methods can serialize only the three timing values and are not wired to a Settings UI. |
-| Text API configurations and credentials | IndexedDB `veil-api-config-v1`, object store `configs`; `lib/api-config-storage.ts` and Settings → Text API. API keys stay in this browser's IndexedDB and are not included in the resource packages described above. | Deleting a config clears its Binding references; failed cleanup can restore the config when safe. | No API config or credential import/export/backup is implemented. IndexedDB is browser storage, not an encrypted vault. |
+```sh
+npm test
+npm run typecheck
+npm run lint
+npm run build
+```
 
-### Backup, restore, and browser cleanup
+Focused and browser checks:
 
-The transferable files above are resource-level packages, not snapshots of all VEIL data. Contacts and bubble-timing serialization exist only as storage APIs and are not exposed in the current UI. There is no full-site backup/restore, cloud backup, or cross-device sync. `lib/storage-health.ts` can read the browser's storage usage/quota and persistence status and request persistent storage, but no production code or UI calls it; only its tests do (a leftover from a removed backup page, kept for now). Requesting persistent storage is not a backup.
+```sh
+npm run test:mutations
+npm run test:memory
+npm run test:browser
+```
 
-Browser **Clear site data** removes the site's localStorage and IndexedDB data together. VEIL has no general old-key or deleted-record sweeper. The implemented residual cleanup is limited to the Appearance and Chat image rules described above, plus explicit scoped deletion and association cleanup in the relevant resource flows. Do not interpret a resource export, a successful storage-health check, or provider state as a complete backup.
+`npm test` also writes the current lifecycle regression contracts as JSON. `test:browser` starts an isolated build on port `3123`, uses a fresh Chromium context, calls no model, and does not touch real data. Install Chromium once with `npx playwright install chromium`, or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE`.
 
-**R3 (Character deletion and data cleanup):** merged in PR #46. This mapping describes `main` at `8790e408ee3f0db06107a5b1c5983782f6423877` (2026-10-08), which includes it. The Foundation delete is the only commit point; the other stores cannot be changed atomically with it, so a failed cleanup step leaves that step's data in place, is reported on the page, and can be retried. Here & There widgets are kept: the deleted Character's link and generated remark are cleared from the current layout and from saved Appearance presets, which also stops a late remark from being written back. References that hold no user content (Binding entries, widget links, group member IDs) of Characters missing from a successfully read, non-empty Foundation are cleared when the Characters page opens; conversations and Contacts are never removed without confirmation. The frozen PR #36 only changes Chat first-frame loading files; this documentation task does not alter that PR.
+### Useful reading
 
-## Appearance
+- [Repository agent guide](AGENTS.md)
+- [Chat Core v1](docs/chat-core-v1.md)
+- [Backup format](docs/backup-format-v1.md) and [Backup entry](docs/backup-entry.md)
+- [Memory construction](docs/memory-m5a-construction.md) and [Memory integration](docs/memory-m6-p2-integration.md)
+- [Lifecycle regression contracts](docs/regression-contracts.md)
+- [Current audit ledger](docs/AUDIT_LEDGER.md)
 
-`lib/app-registry.ts` registers the available routes. `lib/theme-types.ts` defines and validates the independent `ThemeProfile` and `ThemeSnapshot` (profile, positioned Apps, Widgets, page count and Dock order). Character/user configuration does not form part of a theme.
+Historical reports describe the revision they were written for. When they disagree, current source and the current audit ledger win.
 
-`components/theme-provider.tsx` connects the UI to the asynchronous `ThemeStorage` interface in `lib/theme-storage.ts`. The current adapter persists a single document in browser localStorage. Replacing this adapter can introduce user-isolated storage without changing the Appearance controls. Failed writes report an error and retain the previous theme.
+### Deploying to Vercel
 
-Appearance supports colors, uploaded or URL wallpaper/icons, wallpaper fit/opacity/blur/scale/position, Dock color/image/radius and layout, typography, and documented CSS variable overrides. Overrides affect decoration only and take precedence over the ordinary controls; they cannot alter Phone Shell dimensions.
+Import the repository root, use the Next.js preset and Node.js 24.x, and keep the default install and build commands. The base app needs no environment variables. Text API keys remain local to each browser and are not deployment secrets.
 
-`lib/theme-presets.ts` saves up to ten named snapshots with their image data and layouts. Applying a preset restores the full snapshot. Deleting a preset leaves the current theme intact. Restore Default resets the current theme and both layouts while retaining presets.
+### Before opening a PR
 
-`lib/theme-package.ts` exports/imports versioned JSON decoration packages containing only validated theme fields, image sources, and registered App layouts. Uploaded images are embedded, while image URLs remain external references. Packages contain no character/user data or other app state; old-project packages are not supported.
-
-Uploads support PNG/JPEG/WebP/GIF (first frame), at most 20 MB before resizing to a maximum edge of 1200px. Encoded images must fit within 600,000 characters; import packages are capped at 3 MB. Browser storage quotas still apply, especially when saving several image-heavy presets. Export a theme before clearing browser data.
-
-## Vercel
-
-Import this repository, select the Next.js framework preset, and use the repository root. Keep the default install and build commands. Use Node.js 24.x. No environment variables are needed.
-
-## iPhone Home Screen presentation
-
-`app/manifest.ts` serves `/manifest.webmanifest` with VEIL naming, standalone display and the UI's light background/theme color. Root metadata includes Apple standalone-capable tags and `viewport-fit=cover`. No existing install icon asset is available; no new artwork or service worker is added.
-
-On mobile standalone launch, the simulated status bar and visible phone bezel are suppressed in portrait and landscape. Existing content safe-area padding protects native status/Home Indicator areas without doubling insets. Desktop shell dimensions and normal mobile browsing remain unchanged. `StandaloneMode` handles standard display-mode detection and the iOS `navigator.standalone` fallback without changing stored themes.
-
-After deployment, replace the old Home Screen shortcut using Safari's Share → Add to Home Screen so iOS picks up the new metadata. Verify launch on a physical iPhone; browser automation simulates standalone modes and inset values.
-
-## Home Desktop v1
-
-The desktop uses four columns and six rows per page. Positions are 1-based `page / row / col`. Two pages are available by default; swipe horizontally or use the page dots. Dock stays outside the page scroller and reads Appearance's existing layout and decoration (at most four registered Apps).
-
-Hold the desktop (mouse or touch) to enter edit mode, or focus it and press Shift+F10. Use **Done** or Escape to leave. Select an App or Widget, then choose a free grid cell. Switch pages while selected to move across pages. Widgets can resize to `2x2` or `4x2` (columns × rows); occupied or out-of-bounds moves are rejected. Add page supports up to eight pages. Short screens scroll the grid vertically while the Dock stays fixed.
-
-The edit-mode minus button removes only its Widget instance from the current desktop. Registry entries, presets, decoration, App/Dock layouts and profile/Universe data are retained. Empty Widget layouts persist without restoring defaults.
-
-`lib/desktop-layout.ts` owns occupancy, collision repair, movement and legacy App-order migration independently of the Theme Engine. The theme snapshot composes this desktop data for atomic persistence, presets and import/export. All existing decoration is retained when loading older snapshots.
-
-`lib/widget-registry.ts` owns supported sizes and normalized config; `components/widgets/widget-renderer.tsx` maps registered types to views. Adding a Widget requires its type, registry definition and view, without changing the Home grid. Clock reads local device time/date and updates every second. It remains registered, but fresh/restored default layouts only include Here & There; stored layouts keep their existing Widgets. Here & There reads the singleton User and selected Character from the Foundation provider; an unset timezone explicitly falls back to the device timezone. Without Characters it offers a link to create/select one.
-
-Each participant's location is either unset or a manually chosen label with optional latitude/longitude. `lib/participant-config.ts` defines the weather state; `lib/weather.ts` fetches it from Open-Meteo. Here & There requests current weather from `api.open-meteo.com` for a participant who has saved coordinates or a place name; a place name is first looked up through `geocoding-api.open-meteo.com`, so the coordinates or place name are sent to that keyless service. A participant with no location makes no request. Results are cached in memory (10 minutes, 1 minute for failures), requests have a deadline, and a failure shows the widget's weather-unavailable text. Names, locations and timezones are never stored in theme packages.
-
-`npm test` exercises collision/bounds handling, full-layout normalization, legacy migration, preset/package round trips and IANA timezone/DST behavior using Node's built-in test runner. Test compilation goes to `node_modules/.cache/veil-desktop-tests`.
-
-## Character & Universe Foundation v1
-
-One User ↔ one fixed Universe → many Characters. `/profile` shows the unique User with a separate edit screen; `/characters` creates, selects, views, edits and deletes Characters with permanent UUIDs. Birthday and Age remain independent. Character Appearance, Backstory, Personality and Speaking Style are distinct fields. `/universe` edits the singleton's name/world setting and owns Character relationships, directional context and shared history. Drag glass nodes to arrange the canvas, or use focused-node arrow keys; click nodes for profiles and connection labels for relation editing. Drag empty canvas space to pan without browser scrollbars; Fit view recenters the graph.
-
-`lib/foundation-types.ts` validates the whitelisted document; `lib/foundation.ts` owns immutable operations and cascade deletion. `lib/foundation-storage.ts` exposes asynchronous load/transaction operations with a serialized browser adapter at `veil.foundation.v1`. Profile data is separate from themes, presets and decoration exports. Failed writes retain stored data. Clearing browser storage removes this local prototype's profiles; no cloud backup is provided. UI consumes `components/foundation-provider.tsx`; replacing the storage adapter does not require changing forms. User-facing foundation copy lives in `lib/foundation-copy.ts`, without an i18n runtime.
-
-`lib/bindings.ts` defines optional configuration references and resolves Global → Character → Character × registered App. Missing fields inherit; scalar `null` and list `[]` clear inherited bindings, and lists replace instead of merge. `lib/binding-storage.ts` persists bindings in its own `veil.bindings.v1` localStorage document. Character deletion removes that Character's `bindings.characters` entry as one of its cleanup steps, together with its Contact, conversation, group memberships and Here & There links.
-
-Foundation tests cover independent ages/birthdays, stable IDs, singleton normalization, directional relationships, deletion cleanup, node positions, resolver precedence, storage round trips and failed writes.
-
-## UI polish
-
-User and Character profiles share avatar-led headers, compact basic information and narrative cards. Empty narrative sections stay hidden. Editing reuses the same data operations and adds a shared 1:1 avatar cropper: upload, drag, zoom, save crop, then save the profile. Crops are embedded 512px WebP images; GIF uploads use a still frame. URL avatars remain a secondary option. Birthday and Age still have independent values. Profile/world/relationship forms disable browser autocomplete; the native date picker and intentional timezone/gender suggestions remain available.
-
-Universe information has distinct view/edit states. Relationship context labels use selected Character names. Node moves save quietly, and only errors surface. Canvas pan/fit is transient; node positions keep the existing storage format. Shared English copy lives in `lib/foundation-copy.ts` and `lib/ui-copy.ts`; no i18n runtime or services are added.
+- Read `AGENTS.md` and the relevant domain notes.
+- Preserve existing user data unless the task explicitly includes a migration.
+- Give every request, subscription, and background task an owner, cleanup path, and bounded lifetime.
+- Add focused regression coverage for changed behavior.
+- Keep source reading, automated tests, browser checks, and physical-device acceptance as separate evidence levels.
+- Keep the PR focused and leave merge/release decisions to the repository owner.
