@@ -10,7 +10,7 @@ Message 模块最小等价拆分（待本地回归与 PR 审查）。
 
 ## 谁在改哪里
 
-Codex；分支 `codex/message-module-split-20261015`；PR 尚未创建；base `origin/main` `732c6a7d5789a3e22e6e3ac19c2353510588d3c8`。涉及 `components/chat/chat-room.tsx`、`components/chat/messages/message-list.tsx`、`components/chat/message-actions/message-actions-overlay.tsx` 及相关回归测试。
+Codex；分支 `codex/message-module-split-20261015`；PR #200；base `origin/main` `732c6a7d5789a3e22e6e3ac19c2353510588d3c8`。涉及 `components/chat/chat-room.tsx`、`components/chat/messages/message-list.tsx`、`components/chat/message-actions/message-actions-overlay.tsx` 及相关回归测试。
 
 ## 已完成
 
@@ -28,4 +28,4 @@ Codex；分支 `codex/message-module-split-20261015`；PR 尚未创建；base `o
 
 ## 下一步
 
-完成本地回归后创建独立 PR，等待 CI 和审查通过，再按授权合并。
+等待 PR #200 的 CI 和审查通过，再按授权合并。
