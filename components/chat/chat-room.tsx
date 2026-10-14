@@ -980,7 +980,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </button>
         </div>
         {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} />}
-        {panel === "stickers" && <StickerPanel onSend={(sticker) => void sendSticker(sticker)}
+        {panel === "stickers" && <StickerPanel disabled={generationActive || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
       {chatInfoOpen && <ChatInfoScreen

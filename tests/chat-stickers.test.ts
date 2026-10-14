@@ -208,3 +208,8 @@ test("opening a panel recomputes the chat area: the history follows the composer
   assert.match(css, /\.chat-composer:has\(\.chat-tray\) \{[^}]*backdrop-filter: blur\(26px\)/);
   assert.match(css.match(/\.chat-reaction-badge \{[^}]*\}/)![0], /bottom:\s*-1px/);
 });
+
+test("stickers cannot be tapped while a reply is generating or a message is being saved", () => {
+  assert.match(room, /<StickerPanel disabled=\{generationActive \|\| sending \|\| !!loadError\}/);
+  assert.match(readFileSync("components/chat/sticker-panel.tsx", "utf8"), /disabled=\{disabled\} onClick/);
+});
