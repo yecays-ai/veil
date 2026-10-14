@@ -72,3 +72,17 @@ test("one activity carries at most one short settled Moment", () => {
   const valid = normalizeLifeState({ reconciledAt: 1, activities: [lunch({ moment: "Told a joke. Nobody laughed." })] });
   assert.equal(valid?.activities[0].moment, "Told a joke. Nobody laughed.");
 });
+
+test("the timeline only shows a repeated settled moment once without changing stored history", () => {
+  const repeated = "Spilled a little water and cleaned it up before anyone noticed.";
+  const older = lunch({ id: "older", occurrenceKey: "older", startsAt: 8 * HOUR, endsAt: 9 * HOUR, moment: repeated });
+  const newer = lunch({ id: "newer", occurrenceKey: "newer", startsAt: 10 * HOUR, endsAt: 11 * HOUR, moment: repeated });
+  const state = reconcileLifeActivities(undefined, [older, newer], 12 * HOUR);
+
+  const timeline = lifeTimeline(state, 12 * HOUR);
+  assert.equal(timeline.completed.find((item) => item.id === "newer")?.moment, repeated);
+  assert.equal(timeline.completed.find((item) => item.id === "older")?.moment, undefined);
+  assert.equal(state.activities.filter((item) => item.moment === repeated).length, 2,
+    "display deduplication must not rewrite persisted settled activity");
+});
+
