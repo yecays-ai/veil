@@ -1,16 +1,16 @@
 # STATUS — 2026-10-14-codex-bilingual-readme
 
 更新人：Codex
-更新时间：2026-10-14T18:31:35+08:00
+更新时间：2026-10-14T18:36:00+08:00
 发现范围：2026-10-14 检查 fork `Xiaoqiush81/veil`、上游 `yecays-ai/veil`、上游开放 PR 与 `8790e408` 以来主线提交。
 
 ## 当前任务
 
-已完成，待 owner 审阅：基于当前主线功能与架构，重写默认英文 README，并新增完整的简体中文版。
+已完成，待审查：基于当前主线功能与架构，重写默认英文 README，并新增完整的简体中文版；已创建上游 PR #190。
 
 ## 谁在改哪里
 
-Codex；branch `codex/bilingual-readme`；基线 `8045a304ab0b399700222a260bce242990fa74df`；涉及 `README.md`、`README.zh-CN.md` 与本记录。
+Codex；branch `codex/bilingual-readme`；基线 `8045a304ab0b399700222a260bce242990fa74df`；上游 PR [#190](https://github.com/yecays-ai/veil/pull/190)；涉及 `README.md`、`README.zh-CN.md` 与本记录。
 
 开放 PR #188 修改聊天生成生命周期与测试，不涉及 README 路径；本任务不接管其范围。
 
@@ -29,4 +29,4 @@ Codex；branch `codex/bilingual-readme`；基线 `8045a304ab0b399700222a260bce24
 
 ## 下一步
 
-提交并推送到 fork 的文档分支供 owner 审阅；不向上游创建 PR，除非 owner 后续确认。
+PR #190 已推送至上游 `yecays-ai/veil`，等待 owner 手动合并与 CodeRabbit 审查；不自动合并。
