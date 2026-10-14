@@ -77,11 +77,13 @@ const button = (container: HTMLElement, label: string | RegExp) =>
     ? item.textContent?.trim() === label : label.test(item.textContent ?? "")) as HTMLButtonElement | undefined;
 const passthrough: PersistenceWriteGate = { withWrite: (operation) => operation() };
 
-test("the Character page links to its Memory Bank", async () => {
+test("the Character Background keeps its profile and no longer exposes the retired Memory shortcut", async () => {
   await mounted(async (app) => {
     const pages = await import("../components/profile-pages");
     await app.render(createElement(pages.CharacterPage, { characterId: "p" }));
-    await app.wait(() => !!app.container.querySelector('a[href="/memory/p"]'));
+    await app.wait(() => app.container.textContent!.includes("A character profile long enough to scroll."));
+    assert.equal(app.container.querySelector('a[href="/memory/p"]'), null);
+    assert.doesNotMatch(app.container.textContent!, /What Peter remembers/);
   });
 });
 

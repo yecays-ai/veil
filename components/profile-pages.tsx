@@ -264,10 +264,6 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
           <ProfileView profile={character!} kind="character">
             <button onClick={() => { setBaseline(structuredClone(character!)); setEditing(true); }}>{C.common.edit}</button>
           </ProfileView>
-          <section className="profile-card">
-            <h2>Memory</h2>
-            <Link href={`/memory/${encodeURIComponent(characterId!)}`}>What {character!.name} remembers ›</Link>
-          </section>
           <footer className="danger-area">
             {confirmDelete ? (
               <>
