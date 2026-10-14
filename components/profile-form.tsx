@@ -206,6 +206,11 @@ export function ProfileForm({
                 setDraft((d) => ({ ...d, [key]: e.target.value || null }))
               }
             />
+            {kind === "character" && key === "backstory" && <small className="subtle" id="profile-backstory-hint">
+              Separate topics with a blank line. The first paragraph and any paragraph starting with [Core] (or [常驻]) are always
+              sent; other paragraphs are sent only when the chat is about them. Add a line like &ldquo;Keywords: nickname, other name&rdquo;
+              (or 关键词：…) to a paragraph to help it match; that line is never sent.
+            </small>}
           </section>
         ))}
         <div className="foundation-actions">

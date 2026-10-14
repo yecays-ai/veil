@@ -293,3 +293,12 @@ S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 La
 - 已实现：开发环境复用 `request-diagnostics` 已有的真实请求脱敏摘要，按 requestId 合并进仅内存、白名单字段、最多 20 条的 Inspector；`?veilInspector=1` 打开只读浮动面板。不存正文/关键词/密钥，不持久化，不改 Prompt 或模型调用次数；生产不采集、不渲染入口。
 - 自动化证据：JSDOM/stub fetch 定向测试，见[任务状态](work-status/2026-10-13-claude-memory-m6-p5.md)。
 - 未验证：真实开发服务器面板交互、iPhone/Safari。
+
+## Character Background 按需检索（Memory 原需求遗漏补齐，2026-10-14）
+
+基线 `main a8c2b5be6164cae46c5138b6bb79846aaf48a8bb`。这是 Memory 设计阶段已讨论、但在开发交接中遗漏的需求，不是新功能；Lan 2026-10-14 批准方案 D1–D5 与超长段规则。状态：独立 PR（见[任务状态](work-status/2026-10-14-claude-background-retrieval.md)）。
+
+- 已实现：聊天 Prompt 不再每轮整包注入 Backstory。纯函数按空行切段（不改存储、编辑框、备份）：第一段（不足 80 字的标题行并入下一段）与 `[常驻]`/`[Core]` 段常驻 Character 段；其余段落仅在本轮输入或最近两轮命中时，作为 History 之后的独立 `[background]` system 块注入（最多 3 段/1500 字，整段保留不截断，无命中则省略）。`关键词：`/`Keywords:` 行只用于匹配、不注入；ASCII 关键词按词边界、CJK 按子串；正文复用 Memory 的本地分词。≤600 字、单段、空值的旧 Backstory 原样常驻。超过预算的段按句子边界切成约 700 字块（保持原序、不改原文）；关键词只让开头块兜底，同段最多 2 块；单句超预算无法注入时在诊断中记 `background-skipped-oversize`。`STATE_AUTHORITY` 改为说明常驻核心、`[background]` 节选与“未显示部分仍有效”；State 维护/校验仍读取完整 Backstory，未改动。Profile 字段、Personality、Speaking Style、State、Memory、Journal、WorldBook、滚动摘要均不变；engine.ts 未改，无新增模型请求、后台任务或存储。
+- 自动化证据（Node 本地，fake/stub，非真机）：`tests/character-background-retrieval.test.ts` 13 项以真实 `assembleChatPrompt` 输出断言：闲聊无节选、事件命中、别称/中英混用、无关键词的连续话题、无关段不入、State 权威、Preset 关闭/非 system、多角色隔离、旧数据兼容、关键词行解析、预算、超长切块、超长单句诊断；另跑 33 个相关测试文件 312 项通过；typecheck、改动文件 lint 通过。
+- 已知限制：纯语义关联（无共享词也没写关键词）无法命中；单个中文双字词只有在位于词串首尾时才算命中，其余依赖关键词行；跨语言别称（如“蜘蛛侠”对 Spider-Man）只能靠关键词行；不内置同义词表。
+- 未验证：真实模型是否利用 `[background]` 节选及人格稳定性变化、命中率（只有本地构造数据）、iPhone/Safari、`npm run build`、全量测试、Vercel Preview。

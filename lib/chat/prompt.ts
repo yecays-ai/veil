@@ -8,6 +8,7 @@ import type { WorldBookActivation } from "../worldbook-activation";
 import { applyRegex } from "../regex-engine";
 import type { RegexGroup } from "../regex";
 import { selfStateContent, type SelfState } from "./self-context";
+import { backgroundBlock, selectBackground, splitBackground } from "./character-background";
 import { historyEligible, RECENT_MESSAGES, summaryTurn, validSummary } from "./summary";
 import type { MemoryConversation, MemoryContextMessage } from "../memory/context";
 
@@ -142,7 +143,7 @@ export function resolvePresetMarker(
       return context.worldInfo?.after.map((item) => item.entry.content).join("\n\n") || null;
     case "character": {
       const currentState = statePromptEntries(context.state, context.character);
-      const setting = { ...profile(context.character), backstory: context.character.backstory,
+      const setting = { ...profile(context.character), backstory: splitBackground(context.character.backstory).core,
         personality: context.character.personality, speakingStyle: context.character.speakingStyle };
       // Explicit temporal authority: the baseline is historical for overridden life fields, not a competing current fact.
       return JSON.stringify(currentState.length ? { backgroundBaseline: setting, stateAuthority: STATE_AUTHORITY, currentState } : setting);
@@ -234,6 +235,20 @@ export function assembleChatPrompt(
   // Keep stable Preset context cacheable, then add history, runtime facts and pending input.
   messages.push(...historyTurns);
   diagnostics.push(...historyDiagnostics);
+  // Relevant Background excerpts follow History so the Character section stays stable; only with the system Character slot.
+  if (characterInjected) {
+    const conversation = memoryConversation(context, preset);
+    const picked = selectBackground(splitBackground(character.backstory).retrievable,
+      conversation.current.map((message) => message.content).join("\n"),
+      conversation.recent.flat().map((message) => message.content).join("\n"));
+    if (picked.entries.length) {
+      const content = backgroundBlock(picked.entries);
+      messages.push({ role: "system", content });
+      diagnostics.push({ identifier: "background", role: "system", characterLength: content.length });
+    }
+    // Sentences longer than the whole budget can never be injected; make that visible instead of dropping them silently.
+    if (picked.skippedOversizeCharacters) diagnostics.push({ identifier: "background-skipped-oversize", role: "system", characterLength: picked.skippedOversizeCharacters });
+  }
   // Runtime facts remain present even when a custom Preset omits History.
   injectTime();
   injectSelf();
