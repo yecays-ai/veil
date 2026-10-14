@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-iwht8v`；PR：见 PR 页面（创建后补链接）。涉及 `lib/chat/proactive.ts`、`lib/chat/proactive-scheduler.ts`、`lib/chat/proactive-browser.ts`、`lib/chat/engine.ts`、`lib/chat/storage.ts`、`lib/chat/types.ts`、`lib/chat/request-diagnostics.ts`、`lib/backup/validation.ts`、`components/proactive-contact-gate.tsx`、`app/layout.tsx`、`tests/proactive-contact.test.ts`。未改 `lib/memory/*`。
+Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-ai/veil/pull/189。涉及 `lib/chat/proactive.ts`、`lib/chat/proactive-scheduler.ts`、`lib/chat/proactive-browser.ts`、`lib/chat/engine.ts`、`lib/chat/storage.ts`、`lib/chat/types.ts`、`lib/chat/request-diagnostics.ts`、`lib/backup/validation.ts`、`components/proactive-contact-gate.tsx`、`app/layout.tsx`、`tests/proactive-contact.test.ts`。未改 `lib/memory/*`。
 
 ## 已完成
 
