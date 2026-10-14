@@ -19,6 +19,7 @@ import {
   isTruncatedReason,
 } from "./types";
 import { splitAssistantReply } from "./reply-splitter";
+import { attemptsAllow, recentAttempts } from "./proactive";
 import { quoteMessage } from "./quote";
 import { historyEligible, summaryDigest, SUMMARY_CHARACTERS } from "./summary";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
@@ -208,13 +209,19 @@ export class ChatStorage {
     if (!session) throw new Error("Conversation not found.");
     const messages: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
     let changed = false;
+    const initiated = session.generation?.initiated === true;
+    let dropped: ChatMessage | undefined;
     for (const message of messages) if (message.status === "streaming") {
+      // A Character-initiated draft that never held text leaves nothing behind: no one asked for it.
+      if (initiated && !message.content && message.id === session.generation?.draftId) {
+        await request(table.delete(message.id)); dropped = message; changed = true; continue;
+      }
       await request(table.put({ ...message, turnId: message.turnId ?? message.id,
         status: "error", outcome: "interrupted", failureStage: session.generation?.stage,
         error: "Generation interrupted. Retry or delete this attempt." }));
       changed = true;
     }
-    if (session.generation && !session.generation.draftId) {
+    if (session.generation && !session.generation.draftId && !initiated) {
       const id = crypto.randomUUID();
       const target = session.generation.targetId ? assistantTurn(messages, session.generation.targetId)[0] : undefined;
       session = await this.append(tx, session, { id, turnId: id, sessionId, role: "assistant", content: "",
@@ -227,8 +234,12 @@ export class ChatStorage {
     }
     if (session.generation || changed) {
       const last = messages.find((message) => message.id === session.lastMessageId);
+      const tail = dropped ? messages.filter((message) => message.id !== dropped!.id && message.role !== "system")
+        .sort((a, b) => a.order - b.order).at(-1) : undefined;
       await request(sessions.put({ ...session, generation: undefined,
-        ...(last?.status === "streaming" || !last ? { lastMessagePreview: "Generation interrupted" } : {}) }));
+        ...(dropped ? { lastMessageId: tail?.id, updatedAt: tail?.createdAt ?? session.updatedAt,
+          lastMessagePreview: tail ? tail.content.slice(0, 120) || (tail.status === "error" ? "Reply failed" : "") : "" }
+          : last?.status === "streaming" || !last ? { lastMessagePreview: "Generation interrupted" } : {}) }));
       changed = true;
     }
     return changed;
@@ -251,7 +262,7 @@ export class ChatStorage {
         (changed) => changed ? { domain: "messages", sessionId, generationChanged: true } : null);
     } finally { await release(); }
   }
-  async claimGeneration(sessionId: string, targetId?: string, mode: "regenerate" | "continue" = "regenerate") {
+  async claimGeneration(sessionId: string, targetId?: string, mode: "regenerate" | "continue" | "initiate" = "regenerate") {
     const release = await this.acquireSessionLock(sessionId);
     if (!release) throw new Error("A reply is already in progress.");
     try {
@@ -266,7 +277,8 @@ export class ChatStorage {
             throw new Error("Only the latest unconfirmed Assistant turn is eligible.");
         }
         await request(sessions.put({ ...session, generation: { id, stage: "preparing",
-          ...(targetId ? { targetId, mode } : {}) } }));
+          ...(targetId ? { targetId, mode: mode === "initiate" ? "regenerate" : mode } : {}),
+          ...(mode === "initiate" ? { initiated: true as const } : {}) } }));
       }, STORES, { domain: "messages", sessionId, generationChanged: true });
       this.generationLocks.set(id, release);
       return id;
@@ -1158,8 +1170,12 @@ export class ChatStorage {
     }, STORES, { domain: "messages", sessionId });
   }
 
+  /**
+   * `mode: "initiate"` starts a reply nobody asked for (the Character writes first). It needs a direct conversation
+   * with no unanswered user message and a free proactive budget, which it spends here, in the same transaction as the draft.
+   */
   async beginReply(sessionId: string, regenerateId?: string, attemptId?: string,
-    mode: "regenerate" | "continue" = "regenerate"): Promise<ReplyBatch | null> {
+    mode: "regenerate" | "continue" | "initiate" = "regenerate"): Promise<ReplyBatch | null> {
     const owned = attemptId ?? await this.claimGeneration(sessionId, regenerateId, mode);
     try {
       const batch = await this.transaction("readwrite", async (tx) => {
@@ -1183,6 +1199,10 @@ export class ChatStorage {
             const ids = new Set(target.map((m) => m.id));
             messages = messages.filter((m) => !ids.has(m.id));
           }
+        } else if (mode === "initiate") {
+          // Any user message without a reply counts, including one whose reply was deleted (that is no longer "sent").
+          if (session.type === "group" || messages.some((m) => m.role === "user" && !m.requestedBy)
+            || !attemptsAllow(session.proactiveAttempts, Date.now())) return null;
         } else if (!pending.length) return null;
         const id = crypto.randomUUID();
         if (regenerateId === undefined) for (const message of pending) {
@@ -1192,8 +1212,10 @@ export class ChatStorage {
         const assistant: ChatMessage = { id, turnId: id, attemptId: owned, sessionId, role: "assistant", content: "",
           ...(this.tracking() && session.type !== "group" ? memoryBirth(session) : {}),
           status: "streaming", createdAt: Date.now(), order: session.nextOrder,
-          ...(target.length ? { attemptFor: target[0].turnId ?? target[0].id, attemptMode: mode } : {}) };
-        session = { ...session, generation: { ...session.generation, id: owned, draftId: id, stage: "preparing" } };
+          ...(target.length ? { attemptFor: target[0].turnId ?? target[0].id, attemptMode: mode === "initiate" ? "regenerate" : mode } : {}) };
+        session = { ...session, generation: { ...session.generation, id: owned, draftId: id, stage: "preparing" },
+          ...(mode === "initiate" && regenerateId === undefined
+            ? { proactiveAttempts: [...recentAttempts(session.proactiveAttempts, Date.now()), Date.now()] } : {}) };
         const nextSession = await this.append(tx, session, assistant);
         return { session: nextSession, messages, pending: regenerateId === undefined ? pending : [], assistant };
       }, STORES, (result) => result ? { domain: "messages", sessionId } : null);
@@ -1203,6 +1225,25 @@ export class ChatStorage {
       if (!attemptId) await this.releaseGeneration(sessionId, owned);
       throw error;
     }
+  }
+  /**
+   * Removes a Character-initiated draft that never received text (it stayed silent, or its request failed) and puts the
+   * session's update time and preview back to what the caller read before the attempt, so nothing looks attempted. Returns false, leaving everything as is, when this attempt
+   * no longer owns the session or the draft already holds text.
+   */
+  discardReply(sessionId: string, id: string, draftId: string,
+    restore: Pick<ChatSession, "updatedAt" | "lastMessageId" | "lastMessagePreview">): Promise<boolean> {
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions"), table = tx.objectStore("messages");
+      const session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (session?.generation?.id !== id || session.generation.draftId !== draftId) return false;
+      const draft: ChatMessage | undefined = await request(table.get(draftId));
+      if (!draft || draft.role !== "assistant" || draft.status !== "streaming" || draft.content) return false;
+      await request(table.delete(draftId));
+      await request(sessions.put({ ...session, generation: undefined, updatedAt: restore.updatedAt,
+        lastMessageId: restore.lastMessageId, lastMessagePreview: restore.lastMessagePreview }));
+      return true;
+    }, STORES, (discarded) => discarded ? { domain: "messages", sessionId, generationChanged: true } : null);
   }
   generationStage(sessionId: string, id: string, stage: NonNullable<ChatSession["generation"]>["stage"]) {
     return this.transaction("readwrite", async (tx) => {
