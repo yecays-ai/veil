@@ -5,6 +5,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage, type ChatStorageChange } from "../lib/chat/storage";
 import { canReactTo, isMessageReactions, isReactionEmoji, reactionBadges, withReaction } from "../lib/chat/reactions";
 import { validateBackupPackage } from "../lib/backup/validation";
+import { BackupValidationError } from "../lib/backup/format";
 import { backupData, packageFixture } from "./backup-fixture";
 
 test("a reaction is exactly one emoji", () => {
@@ -94,7 +95,7 @@ test("backup accepts reactions, rejects malformed ones, and treats absence as th
     const data = backupData();
     (data.chat.messages[1] as Record<string, unknown>).reactions = bad;
     const fixture = await packageFixture(data);
-    await assert.rejects(validateBackupPackage(JSON.stringify(fixture.manifest), fixture.files), (error: unknown) => { void error; return true; }, `accepted ${JSON.stringify(bad)}`);
+    await assert.rejects(validateBackupPackage(JSON.stringify(fixture.manifest), fixture.files), (error: unknown) => error instanceof BackupValidationError && error.path === "chat.messages[1]", `not rejected at the reaction: ${JSON.stringify(bad)}`);
   }
 });
 
@@ -108,6 +109,15 @@ test("the reaction bar rides the tap-opened message layer and does not create me
   assert.match(room, /chatStorage\.setReaction\(message\.id, "user", emoji\)/);
   assert.doesNotMatch(room.match(/async function react\([\s\S]*?\n  }\n/)![0], /send\(|beginReply|engine\./);
   assert.match(room, /messageStackShift\(/);
+  assert.match(room, /emoji === activeMessage\.reactions\?\.user \? null : emoji/, "the full picker also clears the chosen emoji");
+});
+
+test("every part of the message layer shares one focus scope and stays out of the inert set", () => {
+  assert.equal((room.match(/data-message-overlay=""/g) || []).length, 2);
+  assert.match(bar, /data-message-overlay=""[^>]*className="chat-reaction-bar"/);
+  assert.match(bar, /className="chat-reaction-picker" data-message-overlay=""/);
+  assert.match(room, /:scope > \[data-message-overlay\]/);
+  assert.doesNotMatch(room, /previousElementSibling/);
 });
 
 test("the full picker is loaded on demand and uses native emoji so no glyph is fetched from a CDN", () => {

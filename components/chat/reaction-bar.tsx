@@ -16,7 +16,7 @@ export function ReactionBar({ barRef, current, onPick, onMore }: {
   onMore: () => void;
 }) {
   const custom = current && !(QUICK_REACTIONS as readonly string[]).includes(current) ? current : undefined;
-  return <div ref={barRef} className="chat-reaction-bar" role="toolbar" aria-label="Reactions"
+  return <div ref={barRef} data-message-overlay="" className="chat-reaction-bar" role="toolbar" aria-label="Reactions"
     style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
     {[...(custom ? [custom] : []), ...QUICK_REACTIONS].map((emoji) => <button key={emoji} type="button"
       aria-label={`React ${emoji}`} aria-pressed={emoji === current}
@@ -27,7 +27,7 @@ export function ReactionBar({ barRef, current, onPick, onMore }: {
 }
 
 export function ReactionPickerSheet({ onPick }: { onPick: (emoji: string) => void }) {
-  return <div className="chat-reaction-picker" role="dialog" aria-label="All reactions" onPointerDown={(e) => e.stopPropagation()}>
+  return <div className="chat-reaction-picker" data-message-overlay="" aria-label="All reactions" onPointerDown={(e) => e.stopPropagation()}>
     <Suspense fallback={<p className="chat-reaction-picker-loading" role="status">Loading…</p>}>
       <EmojiPicker onPick={onPick} />
     </Suspense>
