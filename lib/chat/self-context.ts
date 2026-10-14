@@ -28,6 +28,7 @@ export type SelfState = {
   /** The Character may recall its previous completed message on a normal reply, never on Continue. */
   canRecall?: true;
   canTransfer?: true;
+  canGift?: true;
   /** The user's reactions on the Character's latest messages. */
   userReactions?: UserReactionNote[];
   /** The stickers this Character may send in this reply (its bound packs), each with a code valid for this reply only. */
@@ -56,6 +57,7 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     ...(allowActions && reactions?.canReact ? { canReact: true as const } : {}),
     ...(allowActions ? { canRecall: true as const } : {}),
     ...(allowActions ? { canTransfer: true as const } : {}),
+    ...(allowActions ? { canGift: true as const } : {}),
     ...(reactions?.notes.length ? { userReactions: reactions.notes } : {}) };
 }
 
@@ -71,9 +73,9 @@ function remarkLines(state: SelfState): string[] {
   return state.remark ? [`Background, needs no response: the remark the user has saved for you is ${quoted(state.remark)}. Mention it only when it fits naturally.`] : [];
 }
 
-function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], canRecall = false, canTransfer = false): string[] {
+function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], canRecall = false, canTransfer = false, canGift = false): string[] {
   const own = !!allow && (allow.situation || allow.signature || allow.note);
-  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer) return [];
+  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift) return [];
   const fields = [
     allow?.signature ? `"signature": your new signature text ("" clears it)` : null,
     allow?.note ? `"userNote": what you now call the user, a short nickname or note ("" clears it)` : null,
@@ -82,6 +84,7 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     stickers.length ? `"sticker": exactly one code from your sticker list below` : null,
     canRecall ? `"recallPrevious": true to withdraw your immediately previous message if you need to correct something` : null,
     canTransfer ? `"transfer": {"recipient":"user","amount":number,"note":string} to send a VEIL virtual transfer; "transferAction":{"messageId":string,"action":"receive"|"decline"|"return"} to process a transfer addressed to you` : null,
+    canGift ? `"gift":{"icon":string,"content":string} to send a gift card; "giftAction":{"messageId":string,"action":"accept"|"decline"} to process a gift addressed to you` : null,
   ].filter((field): field is string => field !== null);
   const names = [allow?.signature ? "signature" : null, allow?.note ? "note on the user" : null, allow?.situation ? "situation" : null].filter(Boolean);
   return [
@@ -91,6 +94,7 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     ...(canReact ? ["You may also react to the user's message with one emoji, the way a person reacts to a message, only when it truly moves you; most replies need no reaction."] : []),
     ...(canRecall ? ["You may withdraw your immediately previous completed message only when you have a clear reason; the old message will be replaced by a recalled notice."] : []),
     ...(canTransfer ? ["VEIL transfers are virtual chat gestures with no real money or payment. You may send one when it fits. For a transfer addressed to you, wait, talk first, or decide later; use its exact message ID from the conversation to receive or decline a pending transfer, or return one already received. Never claim a real payment occurred."] : []),
+    ...(canGift ? ["You may send a gift card with an icon and your own short description when it fits the conversation. Gifts are chat gestures, never purchases or inventory. For a gift addressed to you, you may talk first or decide later, then accept or decline using the exact gift message ID. Never imply that an external item was delivered."] : []),
     ...(stickers.length ? ["You may send one of your own stickers, the way a person sends a sticker in a chat: after your text, or instead of text (then write no text before the line). Only when it truly fits the moment; most replies need no sticker. Each entry is pack name｜sticker name, so you know whose picture it is. Use only these codes, never invent one:",
       ...stickers.map((choice) => `${choice.code} = ${choice.label}`)] : []),
     `To change, end the reply with one line <${ACTION_TAG}>{JSON}</${ACTION_TAG}> using only these optional fields: ${fields.join("; ")}. VEIL removes this line before anyone sees the reply; never mention it.`];
@@ -106,7 +110,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
     ...(state.userReactions ?? []).map((note) => `Background, needs no response: the user reacted ${note.emoji} to your message ${quoted(note.preview)}.`),
-    ...actionLines(state.canChange, !!state.canReact, state.stickers, !!state.canRecall, !!state.canTransfer),
+    ...actionLines(state.canChange, !!state.canReact, state.stickers, !!state.canRecall, !!state.canTransfer, !!state.canGift),
   ].filter((line): line is string => line !== null);
   if (!lines.length) return null;
   return ["Your own state (VEIL runtime facts, not message content):", ...lines,

@@ -3,9 +3,9 @@
 import { ArrowLeftRight, Gift, Image as ImageIcon, Music, Paperclip, Smile } from "lucide-react";
 
 /** First layer of the `+` button: only stickers do anything; the rest only hold their place. */
-export function ChatPlusPanel({ onStickers, onTransfer }: { onStickers: () => void; onTransfer: () => void }) {
+export function ChatPlusPanel({ onStickers, onTransfer, onGift }: { onStickers: () => void; onTransfer: () => void; onGift: () => void }) {
   const soon = [
-    { label: "照片", icon: ImageIcon }, { label: "礼物", icon: Gift },
+    { label: "照片", icon: ImageIcon },
     { label: "一起听歌", icon: Music }, { label: "文件", icon: Paperclip },
   ];
   return <div className="chat-tray chat-plus-panel" role="menu" aria-label="更多">
@@ -14,6 +14,9 @@ export function ChatPlusPanel({ onStickers, onTransfer }: { onStickers: () => vo
     </button>
     <button type="button" role="menuitem" className="chat-plus-item" onClick={onTransfer}>
       <span className="chat-plus-icon"><ArrowLeftRight aria-hidden="true" /></span><span>转账</span>
+    </button>
+    <button type="button" role="menuitem" className="chat-plus-item" onClick={onGift}>
+      <span className="chat-plus-icon"><Gift aria-hidden="true" /></span><span>礼物</span>
     </button>
     {soon.map(({ label, icon: Icon }) => <button key={label} type="button" role="menuitem" className="chat-plus-item" disabled>
       <span className="chat-plus-icon"><Icon aria-hidden="true" /></span><span>{label}</span><small>开发中</small>

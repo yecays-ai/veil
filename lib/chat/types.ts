@@ -105,6 +105,10 @@ export type ChatMessage = {
   transfer?: import("./transfer").VirtualTransfer;
   /** Durable operation result, linked to the original transfer row and never counted as another transfer. */
   transferEvent?: import("./transfer").TransferEvent;
+  /** A freely described gift card. The stable message row ID identifies the gift. */
+  gift?: import("./gift").ChatGift;
+  /** Durable accept/decline result linked to its original gift card. */
+  giftEvent?: import("./gift").GiftEvent;
   /** The sender withdrew this message. Its original body is cleared when this marker is written. */
   recalled?: { at: number; by: "user" | "assistant" };
 };

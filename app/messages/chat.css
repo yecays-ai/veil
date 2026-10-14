@@ -479,6 +479,27 @@
 .chat-transfer-preview { margin: 0; font-size: .82em; opacity: .75; }
 .chat-transfer-composer-actions { display: flex; gap: 10px; }
 .chat-transfer-composer-actions button[type="submit"] { background: var(--theme-accent); color: var(--theme-background); }
+.chat-gift-card {
+  width: min(260px, 100%); padding: 14px; border: 1px solid color-mix(in srgb, var(--theme-accent) 28%, color-mix(in srgb, var(--theme-text) 18%, transparent));
+  border-radius: 20px; background: var(--theme-surface); color: var(--theme-text); box-shadow: 0 4px 18px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+.chat-turn-user .chat-gift-card { background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-background)); }
+.chat-gift-heading { display: flex; align-items: center; gap: 10px; font-size: .82em; }
+.chat-gift-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--theme-accent) 14%, transparent); font-size: 1.55em; }
+.chat-gift-content { min-height: 2em; margin: 14px 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.chat-gift-status { padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent); font-size: .82em; }
+.chat-gift-actions { display: flex; gap: 8px; margin-top: 10px; }
+.chat-gift-actions button, .chat-gift-composer-actions button { flex: 1; min-height: 38px; border: 1px solid color-mix(in srgb, var(--theme-text) 18%, transparent); border-radius: 12px; background: var(--theme-surface); color: inherit; }
+.chat-gift-result { width: fit-content; max-width: min(260px, 100%); padding: 8px 12px; border-radius: 16px; background: color-mix(in srgb, var(--theme-text) 7%, var(--theme-background)); font-size: .78em; overflow-wrap: anywhere; }
+.chat-gift-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(0 0 0 / 42%); }
+.chat-gift-composer { display: grid; gap: 14px; width: min(420px, 100%); padding: 22px; border: 1px solid color-mix(in srgb, var(--theme-text) 18%, transparent); border-radius: 22px; background: var(--theme-background); color: var(--theme-text); }
+.chat-gift-composer h2 { margin: 0; font-size: 1.15em; }
+.chat-gift-composer label { display: grid; gap: 6px; font-size: .88em; }
+.chat-gift-composer input, .chat-gift-composer textarea { width: 100%; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--theme-text) 18%, transparent); border-radius: 12px; background: var(--theme-surface); color: inherit; font: inherit; }
+.chat-gift-preview { margin: 0; font-size: .9em; overflow-wrap: anywhere; opacity: .75; }
+.chat-gift-preview span { font-size: 1.5em; vertical-align: middle; }
+.chat-gift-composer-actions { display: flex; gap: 10px; }
+.chat-gift-composer-actions button[type="submit"] { background: var(--theme-accent); color: var(--theme-background); }
 .chat-turn-user .chat-bubble {
   background: color-mix(
     in srgb,

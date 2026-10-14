@@ -14,6 +14,8 @@ import { QuoteBubble } from "../quote-bubble";
 import { StickerImage } from "../sticker-image";
 import { TransferCard, TransferResultCard } from "../transfers/transfer-card";
 import type { TransferAction } from "../../../lib/chat/transfer";
+import { GiftCard, GiftResultCard } from "../gifts/gift-card";
+import type { GiftAction } from "../../../lib/chat/gift";
 
 type GroupedMessage = { message: ChatMessage; showTimestamp: boolean; isGroupStart: boolean; isGroupEnd: boolean };
 
@@ -22,7 +24,7 @@ export function MessageList({
   groupedMessages, messages, selectedIds, activeMessageId, highlightedMessageId, multiSelect, typing, typingBeforeId,
   typingIndicator, character, userName, streamOnline, generationActive, regexGroups, lastVisibleMessageId,
   onOpenActions, onToggleSelected, onClearHighlight, onRegenerate,
-  onPointerDownMessage, onContextMenuMessage, onTransferAction,
+  onPointerDownMessage, onContextMenuMessage, onTransferAction, onGiftAction,
 }: {
   groupedMessages: readonly GroupedMessage[];
   messages: readonly ChatMessage[];
@@ -46,6 +48,7 @@ export function MessageList({
   onPointerDownMessage: () => void;
   onContextMenuMessage: () => void;
   onTransferAction: (messageId: string, action: TransferAction) => void;
+  onGiftAction: (messageId: string, action: GiftAction) => void;
 }) {
   return <>
     {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
@@ -75,6 +78,9 @@ export function MessageList({
           <div className="chat-message">
             {message.transfer ? <TransferCard message={message} actor="user" characterName={character.name} onAction={onTransferAction}
               onOpenActions={onOpenActions} onPointerDown={onPointerDownMessage} onContextMenu={onContextMenuMessage} />
+              : message.gift ? <GiftCard message={message} actor="user" characterName={character.name} onAction={onGiftAction}
+                onOpenActions={onOpenActions} onPointerDown={onPointerDownMessage} onContextMenu={onContextMenuMessage} />
+                : message.giftEvent ? <GiftResultCard message={message} characterName={character.name} />
               : message.transferEvent ? <TransferResultCard message={message} characterName={character.name} /> : <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
               onAnimationEnd={() => { if (highlighted) onClearHighlight(message.id); }}
               onPointerDown={onPointerDownMessage}

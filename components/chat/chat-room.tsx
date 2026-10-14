@@ -58,6 +58,8 @@ import { MessageActionsOverlay } from "./message-actions/message-actions-overlay
 import { useMessageActions } from "./message-actions/use-message-actions";
 import { TransferComposer } from "./transfers/transfer-composer";
 import { useTransferActions } from "./transfers/use-transfer-actions";
+import { GiftComposer } from "./gifts/gift-composer";
+import { useGiftActions } from "./gifts/use-gift-actions";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -164,6 +166,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
   const transfers = useTransferActions(session?.characterId === characterId ? session.id : undefined, setError,
     () => { setPanel(null); feedbackController.show("转账已发送"); });
+  const gifts = useGiftActions(session?.characterId === characterId ? session.id : undefined, setError,
+    () => { setPanel(null); feedbackController.show("礼物已发送"); });
   const sendingLock = useRef(false);
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
@@ -717,6 +721,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           onPointerDownMessage={onPointerDownMessage}
           onContextMenuMessage={onContextMenuMessage}
           onTransferAction={(id, action) => void transfers.act(id, action)}
+          onGiftAction={(id, action) => void gifts.act(id, action)}
         />}
       </div>
       {(error || loadError) && (
@@ -808,12 +813,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <SendHorizontal aria-hidden="true" />
           </button>
         </div>
-        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }} />}
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
+          onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
         {panel === "stickers" && <StickerPanel disabled={generationActive || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
       {transfers.composerOpen && <TransferComposer disabled={transfers.working || generationActive || !!loadError}
         onClose={() => transfers.setComposerOpen(false)} onSend={(amount, note) => void transfers.send(amount, note)} />}
+      {gifts.composerOpen && <GiftComposer disabled={gifts.working || generationActive || !!loadError}
+        onClose={() => gifts.setComposerOpen(false)} onSend={(icon, content) => void gifts.send(icon, content)} />}
       {chatInfoOpen && <ChatInfoScreen
         screenRef={chatInfoScreen}
         session={session}

@@ -31,6 +31,8 @@ import { isMessageSticker, stickerContent, stickerPreview, type MessageSticker }
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
   type TransferAction, type TransferActor, type TransferEvent, type VirtualTransfer } from "./transfer";
+import { canApplyGiftAction, giftEventContent, giftMessageContent, normalizeGiftContent, normalizeGiftIcon,
+  type ChatGift, type GiftAction, type GiftActor, type GiftEvent } from "./gift";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
@@ -952,7 +954,7 @@ export class ChatStorage {
       const existing: ChatMessage | undefined = await request(table.get(id));
       if (!existing) throw new Error("Message not found.");
       if (existing.recalled) throw new Error("A recalled message cannot be edited.");
-      if (existing.transfer || existing.transferEvent) throw new Error("Transfer cards cannot be edited.");
+      if (existing.transfer || existing.transferEvent || existing.gift || existing.giftEvent) throw new Error("Special message cards cannot be edited.");
       if (existing.sticker) throw new Error("表情包不能编辑。");
       const current: ChatSession = await request(tx.objectStore("sessions").get(existing.sessionId));
       if (current.generation) throw new Error("A reply is in progress. Stop it before editing this conversation.");
@@ -1008,7 +1010,7 @@ export class ChatStorage {
       if (!message) throw new Error("Message not found.");
       if (message.role !== by || (by === "user" ? message.status !== "sent" : message.status !== "complete"))
         throw new Error("Only your own sent message can be recalled.");
-      if (message.transfer || message.transferEvent) throw new Error("Transfer cards cannot be recalled; update or delete the card instead.");
+      if (message.transfer || message.transferEvent || message.gift || message.giftEvent) throw new Error("Special message cards cannot be recalled; update or delete the card instead.");
       if (message.recalled) return message;
       const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(message.sessionId));
       if (!session) throw new Error("Conversation not found.");
@@ -1063,8 +1065,9 @@ export class ChatStorage {
         const view = await this.readMemorySources(sessionId, owned);
         if (!view.session) throw new Error("Conversation not found.");
         const selected = new Set(ids);
-        const transferIds = new Set(view.messages.filter((m) => selected.has(m.id) && m.transfer).map((m) => m.id));
-        const expanded = new Set([...selected, ...view.messages.filter((m) => m.transferEvent && transferIds.has(m.transferEvent.transferId)).map((m) => m.id)]);
+        const relatedIds = new Set(view.messages.filter((m) => selected.has(m.id) && (m.transfer || m.gift)).map((m) => m.id));
+        const expanded = new Set([...selected, ...view.messages.filter((m) =>
+          (m.transferEvent && relatedIds.has(m.transferEvent.transferId)) || (m.giftEvent && relatedIds.has(m.giftEvent.giftId))).map((m) => m.id)]);
         const targets = view.messages.filter((m) => expanded.has(m.id));
         return invalidateChatSources(this.sourceMemory!, view.session, targets, () => this.deleteMessages(sessionId, [...expanded], owned), owned);
       });
@@ -1080,8 +1083,9 @@ export class ChatStorage {
       const table = tx.objectStore("messages");
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
       if (this.tracking()) all.sort((a, b) => a.order - b.order);
-      const selectedTransferIds = new Set(all.filter((message) => targets.has(message.id) && message.transfer).map((message) => message.id));
-      for (const message of all) if (message.transferEvent && selectedTransferIds.has(message.transferEvent.transferId)) targets.add(message.id);
+      const selectedRelatedIds = new Set(all.filter((message) => targets.has(message.id) && (message.transfer || message.gift)).map((message) => message.id));
+      for (const message of all) if ((message.transferEvent && selectedRelatedIds.has(message.transferEvent.transferId)) ||
+          (message.giftEvent && selectedRelatedIds.has(message.giftEvent.giftId))) targets.add(message.id);
       const latestUserOrder = Math.max(0, ...all.filter((m) => m.role === "user").map((m) => m.order));
       const previousNextSeq = session.memorySequence?.nextSeq;
       for (const message of all) if (message.role === "assistant" && message.order < latestUserOrder && !message.confirmed) {
@@ -1273,6 +1277,73 @@ export class ChatStorage {
       const event: ChatMessage = { id: crypto.randomUUID(), sessionId: original.sessionId, role: actor,
         content: transferEventContent(eventData, "Character"), status: actor === "user" ? "sent" : "complete",
         createdAt: Date.now(), order: session.nextOrder, transferEvent: eventData };
+      await request(table.put(next));
+      const sequenced = this.sequence(session, event);
+      await this.append(tx, session, sequenced);
+      return { message: next, event: sequenced };
+    }, STORES, { domain: "messages", sessionId: view.session.id }, undefined, scope);
+  }
+  async createGift(sessionId: string, iconValue: string, contentValue: string, sender: GiftActor): Promise<ChatMessage> {
+    const icon = normalizeGiftIcon(iconValue), content = normalizeGiftContent(contentValue), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions"), session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Gifts are available in direct conversations only.");
+      if (session.generation) throw new Error("Wait until the current reply finishes before sending a gift.");
+      if (typeof this.memoryTracking === "function" && this.tracking() && !session.memorySequence)
+        session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const gift: ChatGift = { icon, content, sender, recipient: sender === "user" ? "assistant" : "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId, role: sender, content: giftMessageContent(gift, id),
+        status: sender === "user" ? "sent" : "complete", createdAt: Date.now(), order: session.nextOrder,
+        ...(this.tracking() ? memoryBirth(session) : {}), gift };
+      await this.append(tx, session, this.sequence(session, message));
+      return message;
+    }, STORES, { domain: "messages", sessionId });
+  }
+  async createGiftForReply(replyMessageId: string, icon: string, content: string): Promise<ChatMessage> {
+    const reply = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyMessageId)), ["messages"]);
+    if (!reply || reply.role !== "assistant") throw new Error("Gift action has no committed reply.");
+    const view = await this.readSession(reply.sessionId);
+    if (view.session.type === "group") throw new Error("Gifts are available in direct conversations only.");
+    return this.createGift(reply.sessionId, icon, content, "assistant");
+  }
+  async actOnGiftForCharacter(characterId: string, id: string, action: GiftAction): Promise<void> {
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Gift was not found.");
+    const view = await this.readSession(target.sessionId);
+    if (view.session.type === "group" || view.session.characterId !== characterId) throw new Error("Gift is outside this Character's conversation.");
+    await this.actOnGift(id, "assistant", action);
+  }
+  async actOnGift(id: string, actor: GiftActor, action: GiftAction, scope?: PersistenceWriteScope): Promise<{ message: ChatMessage; event: ChatMessage }> {
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+      if (!target) throw new Error("Gift was not found.");
+      const view = await this.readSession(target.sessionId);
+      await this.recoverGeneration(view.session.id);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const snapshot = await this.readSession(view.session.id);
+        return invalidateChatSources(this.sourceMemory!, snapshot.session, snapshot.messages.filter((item) => item.id === id),
+          () => this.actOnGift(id, actor, action, owned), owned);
+      });
+    }
+    if (scope) this.sourceMemory?.assertExclusive(scope);
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Gift was not found.");
+    const view = await this.readSession(target.sessionId);
+    await this.recoverGeneration(view.session.id);
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages"), original: ChatMessage | undefined = await request(table.get(id));
+      if (!original?.gift) throw new Error("Gift was not found.");
+      if (!canApplyGiftAction(original.gift, actor, action)) throw new Error("This gift action is not available.");
+      const status: ChatGift["status"] = action === "accept" ? "accepted" : "declined";
+      const gift: ChatGift = { ...original.gift, status };
+      const next: ChatMessage = { ...original, gift, content: giftMessageContent(gift, original.id) };
+      const data: GiftEvent = { giftId: id, action, actor, icon: gift.icon, content: gift.content };
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(original.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const event: ChatMessage = { id: crypto.randomUUID(), sessionId: original.sessionId, role: actor,
+        content: giftEventContent(data), status: actor === "user" ? "sent" : "complete", createdAt: Date.now(),
+        order: session.nextOrder, giftEvent: data };
       await request(table.put(next));
       const sequenced = this.sequence(session, event);
       await this.append(tx, session, sequenced);
