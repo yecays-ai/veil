@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-bilingual-readme
 
 更新人：Codex
-更新时间：2026-10-14T18:21:10+08:00
+更新时间：2026-10-14T18:31:35+08:00
 发现范围：2026-10-14 检查 fork `Xiaoqiush81/veil`、上游 `yecays-ai/veil`、上游开放 PR 与 `8790e408` 以来主线提交。
 
 ## 当前任务
@@ -20,6 +20,7 @@ Codex；branch `codex/bilingual-readme`；基线 `8045a304ab0b399700222a260bce24
 - 保留 “A phone across worlds.”，默认英文首页添加简体中文入口。
 - 两种语言采用相同信息架构：产品能力、功能地图、架构、请求上下文、数据与隐私、完整备份、网络边界、仓库结构、开发验证、iPhone 与部署。
 - 移除旧 README 已失实的“没有全站备份”表述，并明确当前 Moments、Service Worker、凭据与真机验证边界。
+- 根据 owner 反馈重写展示顺序与语气：先用 Emoji 功能速览和面向用户的短章节介绍聊天、Memory、Universe、外观、隐私与 iPhone，再以分隔线进入开发者内容；减少说明书式措辞。
 
 ## 尚未验证
 
