@@ -52,18 +52,11 @@ test("suppression and manual authority prevent predecessor resurrection", async 
   }
 });
 
-for (const broken of ["missing", "cycle", "unreciprocated"] as const) test(`damaged ${broken} chain is quarantined with intent retained`, async () => {
-  const s = setup();
-  const rows = broken === "missing" ? [draft("bad", ["A"], { lineage: { mergedFrom: ["missing"] } })]
-    : broken === "cycle" ? [draft("bad", ["A"], { status: "superseded", lineage: { supersededBy: "other" } }),
-      draft("other", ["B"], { status: "superseded", lineage: { supersededBy: "bad" } })]
-      : [draft("bad", ["A"], { lineage: { mergedFrom: ["other"] } }), draft("other", ["B"] )];
-  await s.applyChange("c", "seed", { put: [...rows, draft("manual", ["A"], { origin: "manual" }), draft("unrelated", ["B"])] });
-  await recordClearIntent(s, "c", "A"); await assert.rejects(completeClear(s, "c", "A"), /damaged chain/);
-  assert.equal((await s.getMemory("bad"))?.status, "flagged"); assert.equal((await s.getMemory("bad"))?.text, "fact bad");
-  assert.equal((await s.getMemory("manual"))?.status, "active"); assert.equal((await s.getMemory("unrelated"))?.status, "active");
-  assert.notEqual((await s.listCursors("c"))[0].clearRequestedAt, undefined);
-  await assert.rejects(completeClear(s, "c", "A"), /damaged chain/);
+test("a pointer to a missing row is not damage: the touched row is cleaned and the intent finishes", async () => {
+  const s = setup(); await s.applyChange("c", "seed", { put: [draft("bad", ["A"], { lineage: { mergedFrom: ["missing"] } }), draft("unrelated", ["B"])] });
+  await recordClearIntent(s, "c", "A"); await completeClear(s, "c", "A");
+  assert.equal(await s.getMemory("bad"), undefined); assert.equal((await s.getMemory("unrelated"))?.status, "active");
+  assert.deepEqual(await s.listCursors("c"), []);
 });
 
 test("targeted source deletion preserves newer evidence and other Characters", async () => {

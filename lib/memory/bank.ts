@@ -1,6 +1,7 @@
 import { memoryFingerprint } from "./fingerprint";
 import type { MemoryStorage } from "./storage";
 import { JOURNAL_KIND } from "./journal";
+import { memoryHistory } from "./lineage";
 import { MEMORY_TEXT_CHARACTERS, type Memory, type MemoryDraft, type MemoryOperation, type MemoryOrigin, type MemoryStatus } from "./types";
 
 /**
@@ -59,16 +60,12 @@ export async function editMemory(storage: MemoryStorage, memory: Memory, edit: M
   }, { expectUpdatedAt: { [memory.id]: memory.updatedAt } });
 }
 
-/** Superseded originals that led to `memory`, through every layer of merges. They are its history, so they go with it. */
+/**
+ * Earlier versions that led to `memory`, through every layer of merges and supersessions. They are its history, so
+ * they go with it: deleting a memory must leave no older text of it behind and no pointer to a row that is gone.
+ */
 export function memoryHistoryOf(memory: Memory, rows: readonly Memory[]): Memory[] {
-  const byId = new Map(rows.map((row) => [row.id, row]));
-  const found = new Map<string, Memory>(), queue = [...memory.lineage.mergedFrom ?? []];
-  while (queue.length) {
-    const id = queue.pop()!, row = byId.get(id);
-    if (!row || found.has(id) || id === memory.id || row.characterId !== memory.characterId) continue;
-    found.set(id, row); queue.push(...row.lineage.mergedFrom ?? []);
-  }
-  return [...found.values()];
+  return memoryHistory(memory, rows);
 }
 
 /**

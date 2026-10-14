@@ -9,6 +9,8 @@ export type MemoryOrigin = "manual" | "auto" | "journal";
 /** A pointer to a persisted chat message. Chat text is never copied into Memory. */
 /** Hard cap for one long-term memory text, automatic or manual (Journal keeps its own 500). */
 export const MEMORY_TEXT_CHARACTERS = 600;
+/** Hidden earlier versions kept per automatic memory; older ones are dropped when a newer version is written. */
+export const MEMORY_HISTORY_LIMIT = 3;
 
 export type MemorySource = { sessionId: string; messageId: string };
 

@@ -15,7 +15,8 @@ export type StartupClearDeps = {
   sourceHashes?(sessionId: string, ids: readonly string[], scope: PersistenceWriteScope): Promise<ReadonlyMap<string, string>>;
   existingMessageIds(sessionId: string, ids: readonly string[], scope?: PersistenceWriteScope): Promise<ReadonlySet<string>>;
 };
-export type StartupClearReport = { completed: number; cancelled: number; deferred: number; failed: number };
+/** `isolated` counts memory rows flagged because their lineage was damaged during a completed clear. */
+export type StartupClearReport = { completed: number; cancelled: number; deferred: number; failed: number; isolated: number };
 
 /**
  * Finishes clear intents that an earlier run recorded but did not complete. It only looks at existing cursors with
@@ -31,7 +32,7 @@ export type StartupClearReport = { completed: number; cancelled: number; deferre
  * A failure keeps the record, increments failureCount for diagnostics, and is retried at the next startup.
  */
 export async function resumeStartupClears(storage: MemoryStorage, deps: StartupClearDeps, signal?: AbortSignal): Promise<StartupClearReport> {
-  const report: StartupClearReport = { completed: 0, cancelled: 0, deferred: 0, failed: 0 };
+  const report: StartupClearReport = { completed: 0, cancelled: 0, deferred: 0, failed: 0, isolated: 0 };
   const cursors = await storage.transaction("readonly", (tx) => request<MemoryCursor[]>(tx.store("cursors").getAll()));
   const pending = cursors.filter((row) => row.clearRequestedAt !== undefined);
   if (!pending.length || signal?.aborted) return report;
@@ -60,7 +61,7 @@ export async function resumeStartupClears(storage: MemoryStorage, deps: StartupC
             await cancelClearIntent(storage, current.characterId, current.sessionId, scope); report.cancelled++; return;
           }
         }
-        await completeClear(storage, current.characterId, current.sessionId, targets, scope);
+        report.isolated += (await completeClear(storage, current.characterId, current.sessionId, targets, scope)).isolated;
         report.completed++;
       }, { signal });
     } catch (error) {

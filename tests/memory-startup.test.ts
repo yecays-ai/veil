@@ -30,10 +30,10 @@ test("an interrupted delete is finished at startup, and a second startup changes
   const { storage, deps, add, ids } = setup();
   await add("old", "A"); await add("keep", "B");
   await recordClearIntent(storage, "c1", "A"); // crashed before cleanup; the session is already gone
-  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 1, cancelled: 0, deferred: 0, failed: 0 });
+  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 1, cancelled: 0, deferred: 0, failed: 0, isolated: 0 });
   assert.deepEqual(await ids(), ["keep"]);
   assert.deepEqual(await storage.listCursors("c1"), []);
-  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 0, cancelled: 0, deferred: 0, failed: 0 });
+  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 0, cancelled: 0, deferred: 0, failed: 0, isolated: 0 });
   assert.deepEqual(await ids(), ["keep"]);
 });
 
@@ -43,7 +43,7 @@ test("a failed clear is withdrawn, but a clear followed by new messages cleans o
   await add("kept", "A", "c1", "old-1");
   chat.sessions.set("A", new Set(["old-1", "old-2"]));
   await recordClearIntent(storage, "c1", "A");
-  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 0, cancelled: 1, deferred: 0, failed: 0 });
+  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 0, cancelled: 1, deferred: 0, failed: 0, isolated: 0 });
   assert.deepEqual(await ids(), ["kept"]);
   assert.deepEqual(await storage.listCursors("c1"), [], "no pending intent is left");
 
@@ -52,7 +52,7 @@ test("a failed clear is withdrawn, but a clear followed by new messages cleans o
   await recordClearIntent(storage, "c1", "B");
   chat.sessions.set("B", new Set(["b-new"]));
   await add("fresh", "B", "c1", "b-new");
-  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 1, cancelled: 0, deferred: 0, failed: 0 });
+  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 1, cancelled: 0, deferred: 0, failed: 0, isolated: 0 });
   assert.deepEqual(await ids(), ["fresh", "kept"], "the old source is cleaned, the new one protected");
   assert.deepEqual(await storage.listCursors("c1"), []);
 });
@@ -152,7 +152,7 @@ test("readAliveCharacters: a saved empty list is an empty set, an unsaved or unr
 test("with no pending intent nothing is read beyond the cursor list, and an aborted run does nothing", async () => {
   const { storage, chat, deps, add, ids } = setup();
   await add("m", "A");
-  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 0, cancelled: 0, deferred: 0, failed: 0 });
+  assert.deepEqual(await resumeStartupClears(storage, deps), { completed: 0, cancelled: 0, deferred: 0, failed: 0, isolated: 0 });
   assert.equal(chat.reads, 0);
   await recordClearIntent(storage, "c1", "A");
   const controller = new AbortController(); controller.abort();

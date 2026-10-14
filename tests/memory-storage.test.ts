@@ -20,21 +20,21 @@ function setup() {
 }
 const ids = (rows: { id: string }[]) => rows.map((row) => row.id).sort();
 
-test("pending clears isolate damaged lineage, complete later sessions and retain the failed intent", async () => {
+test("pending clears flag a damaged chain, still complete every session and leave no intent behind", async () => {
   const { storage } = setup();
   await storage.applyChange("c1", "seed", { put: [
-    draft("damaged", "c1", "damaged", { sources: [src("A"), src("kept")], status: "superseded", lineage: { supersededBy: "missing" } }),
+    draft("damaged", "c1", "damaged", { sources: [src("A"), src("kept")], status: "superseded", lineage: { supersededBy: "partner" } }),
+    draft("partner", "c1", "partner", { sources: [src("kept")], status: "superseded", lineage: { supersededBy: "damaged" } }),
     draft("healthy", "c1", "healthy", { sources: [src("B")] }),
   ] });
   await recordClearIntent(storage, "c1", "A");
   await recordClearIntent(storage, "c1", "B");
-  assert.deepEqual(await resumePendingClears(storage, "c1"), ["B"]);
+  assert.deepEqual((await resumePendingClears(storage, "c1")).sort(), ["A", "B"]);
   assert.equal(await storage.getMemory("healthy"), undefined);
-  const pending = await storage.listCursors("c1");
-  assert.deepEqual(pending.map((row) => row.sessionId), ["A"]);
-  assert.ok(pending[0].clearRequestedAt !== undefined);
+  assert.equal((await storage.getMemory("damaged"))?.status, "flagged");
+  assert.deepEqual((await storage.getMemory("damaged"))?.sources, [src("kept")]);
+  assert.deepEqual(await storage.listCursors("c1"), []);
   assert.deepEqual(await resumePendingClears(storage, "c1"), []);
-  assert.ok((await storage.listCursors("c1"))[0].clearRequestedAt !== undefined);
 });
 
 test("pending clears do not report an intent removed before exclusive admission as successful", async () => {
