@@ -10,16 +10,16 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-18lv2g`；PR 尚未创建；base 204acfb。涉及：`lib/memory/{bank,lineage,lifecycle,progress,startup,types}.ts`、`tests/memory-history-lifecycle.test.ts`、`tests/memory-lineage.test.ts`、`docs/code-rollback.md`。
+Claude；分支 `claude/project-thread-18lv2g`；PR https://github.com/yecays-ai/veil/pull/184；base 204acfb。涉及：`lib/memory/{bank,lineage,lifecycle,progress,startup,types}.ts`、`tests/memory-history-lifecycle.test.ts`、`tests/memory-lineage.test.ts`、`docs/code-rollback.md`。
 
 ## 已完成
 
 - 删除记忆时双向收集历史（`mergedFrom` + 反向 `supersededBy`），一并移除并抑制旧文本。
 - `cleanMemoryLineage`：指向不存在行的指针视为已消失；仅自链、环、互指不一致才隔离。
 - `completeClear`：损坏链标 Flagged 后仍结束清除意图，返回隔离行数（启动报告新增 `isolated`）。
-- 自动提交时同一事务把每条 head 的隐藏历史裁到最近 3 个并改写 `mergedFrom`。
+- 自动提交时同一事务把每条 head 的隐藏历史裁到最近 3 个并改写 `mergedFrom`（仅对全部为自动且已被取代的历史生效；含手动/非隐藏行的历史不裁）。头部包含 active / archived / flagged。
 - 新增 `docs/code-rollback.md`。
-- 检查结果见 PR 描述（typecheck / lint / 定向测试 / 全量测试一次）。
+- 检查（Node 22，自动化测试，非真机）：`npm run typecheck` 通过；`npm run lint` 0 错误、3 个既有警告；memory/backup/chat 定向测试 835 通过；全量 `npm test` 1777 项，仅 2 项既有失败（Regex/WorldBook 回滚锁竞争，main 上同样失败）。
 
 ## 尚未验证
 

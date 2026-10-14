@@ -116,6 +116,23 @@ test("an automatic UPDATE keeps at most three hidden versions and leaves every p
   assert.deepEqual(selectMaintenanceCandidates("c", rows, "").ids.sort(), ["v3", "v4", "v5", "v6"]);
 });
 
+test("an automatic ARCHIVE of a head also trims its hidden history to three", async () => {
+  const f = await progressFixture(), message = await f.send(), at = { sessionId: f.session.id, messageId: message.id };
+  const version = (n: number, extra: Partial<MemoryDraft> = {}): MemoryDraft => ({ id: `v${n}`, characterId: "c", text: `fact v${n}`, kind: "fact", subject: "user",
+    status: "superseded", origin: "auto", sources: [at], lineage: n ? { mergedFrom: [`v${n - 1}`], supersededBy: `v${n + 1}` } : { supersededBy: "v1" }, ...extra });
+  const head = version(5, { status: "active", lineage: { mergedFrom: ["v4"] } });
+  await f.memory.applyChange("c", "seed", { put: [version(0), version(1), version(2), version(3), version(4), head] });
+  await f.protocol.withOwner("c", async (owner) => {
+    const ticket: MemoryBatchTicket = await f.protocol.prepare(owner, f.session.id, 1, 1, ["v5", "v4"]);
+    await f.protocol.claim(ticket, 2); await f.protocol.transition(ticket, "in-flight"); await f.protocol.transition(ticket, "commit-pending");
+    await f.protocol.commitAutomatic(ticket, { put: [{ ...head, status: "archived" }] });
+  });
+  const rows = await f.memory.listMemories("c");
+  assert.deepEqual(rows.map((r) => r.id).sort(), ["v2", "v3", "v4", "v5"]);
+  assert.equal(rows.find((r) => r.id === "v5")?.status, "archived");
+  assert.deepEqual(dangling(rows), []);
+});
+
 test("a manual add and delete never touch other memories' history", async () => {
   const s = setup(); await s.applyChange("c", "seed", { put: [...supersedeChain(), draft("keep-old", ["B"], { status: "superseded", lineage: { supersededBy: "keep" } }), draft("keep", ["B"])] });
   await addManualMemory(s, "c", { kind: "fact", text: "manual one" });

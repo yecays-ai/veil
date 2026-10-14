@@ -481,7 +481,7 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
   };
   for (const id of plan.keys()) visit(id);
   // Keep only the most recent hidden versions of each new head, in this same transaction, without leaving a dangling pointer.
-  const pruned = pruneMemoryHistory([...all.values()], [...plan.values()].filter((r) => r.status === "active").map((r) => r.id), MEMORY_HISTORY_LIMIT, now);
+  const pruned = pruneMemoryHistory([...all.values()], [...plan.values()].filter((r) => r.status !== "superseded").map((r) => r.id), MEMORY_HISTORY_LIMIT, now);
   for (const row of pruned.rows) plan.set(row.id, row);
   for (const id of pruned.deleted) { plan.delete(id); await request(store.delete(id)); }
   for (const row of plan.values()) await request(store.put(row));
