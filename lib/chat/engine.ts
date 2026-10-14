@@ -66,6 +66,8 @@ const applyActionsToStores: ActionApplier = (characterId, actions, now, messageI
   typeof window === "undefined" ? Promise.resolve()
     : characterActionApplier({ presence: browserPresenceStorage, foundation: browserFoundationStorage,
       recallPreviousMessage: async (replyId) => { await chatStorage.recallPreviousAssistantMessage(replyId); },
+      sendTransfer: async (replyId, amount, note) => { await chatStorage.createTransferForReply(replyId, amount, note); },
+      actOnTransfer: async (id, transferId, action) => { await chatStorage.actOnTransferForCharacter(id, transferId, action); },
       noteChanged: async (id, note, at) => {
         const character = (await browserFoundationStorage.load()).characters.find((item) => item.characterId === id);
         if (character) await chatStorage.appendSystemEvent(id, characterNoteEventText(character.name, note), at);

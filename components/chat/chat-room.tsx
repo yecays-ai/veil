@@ -56,6 +56,8 @@ import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagno
 import { MessageList } from "./messages/message-list";
 import { MessageActionsOverlay } from "./message-actions/message-actions-overlay";
 import { useMessageActions } from "./message-actions/use-message-actions";
+import { TransferComposer } from "./transfers/transfer-composer";
+import { useTransferActions } from "./transfers/use-transfer-actions";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -160,6 +162,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [failedDraft, setFailedDraft] = useState<{ sessionId: string; content: string; quote: ChatMessage | null; editVersion: number } | null>(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
+  const transfers = useTransferActions(session?.characterId === characterId ? session.id : undefined, setError,
+    () => { setPanel(null); feedbackController.show("转账已发送"); });
   const sendingLock = useRef(false);
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
@@ -712,6 +716,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           onRegenerate={(message, continuation) => void regenerate(message, continuation)}
           onPointerDownMessage={onPointerDownMessage}
           onContextMenuMessage={onContextMenuMessage}
+          onTransferAction={(id, action) => void transfers.act(id, action)}
         />}
       </div>
       {(error || loadError) && (
@@ -803,10 +808,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <SendHorizontal aria-hidden="true" />
           </button>
         </div>
-        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} />}
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }} />}
         {panel === "stickers" && <StickerPanel disabled={generationActive || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
+      {transfers.composerOpen && <TransferComposer disabled={transfers.working || generationActive || !!loadError}
+        onClose={() => transfers.setComposerOpen(false)} onSend={(amount, note) => void transfers.send(amount, note)} />}
       {chatInfoOpen && <ChatInfoScreen
         screenRef={chatInfoScreen}
         session={session}

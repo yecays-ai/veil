@@ -29,6 +29,8 @@ import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
 import { isMessageSticker, stickerContent, stickerPreview, type MessageSticker } from "./sticker-message";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
+import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
+  type TransferAction, type TransferActor, type TransferEvent, type VirtualTransfer } from "./transfer";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
@@ -950,6 +952,7 @@ export class ChatStorage {
       const existing: ChatMessage | undefined = await request(table.get(id));
       if (!existing) throw new Error("Message not found.");
       if (existing.recalled) throw new Error("A recalled message cannot be edited.");
+      if (existing.transfer || existing.transferEvent) throw new Error("Transfer cards cannot be edited.");
       if (existing.sticker) throw new Error("表情包不能编辑。");
       const current: ChatSession = await request(tx.objectStore("sessions").get(existing.sessionId));
       if (current.generation) throw new Error("A reply is in progress. Stop it before editing this conversation.");
@@ -1005,6 +1008,7 @@ export class ChatStorage {
       if (!message) throw new Error("Message not found.");
       if (message.role !== by || (by === "user" ? message.status !== "sent" : message.status !== "complete"))
         throw new Error("Only your own sent message can be recalled.");
+      if (message.transfer || message.transferEvent) throw new Error("Transfer cards cannot be recalled; update or delete the card instead.");
       if (message.recalled) return message;
       const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(message.sessionId));
       if (!session) throw new Error("Conversation not found.");
@@ -1058,8 +1062,11 @@ export class ChatStorage {
       return this.sourceMemory.withExclusive(async (owned) => {
         const view = await this.readMemorySources(sessionId, owned);
         if (!view.session) throw new Error("Conversation not found.");
-        const targets = view.messages.filter((m) => ids.includes(m.id));
-        return invalidateChatSources(this.sourceMemory!, view.session, targets, () => this.deleteMessages(sessionId, ids, owned), owned);
+        const selected = new Set(ids);
+        const transferIds = new Set(view.messages.filter((m) => selected.has(m.id) && m.transfer).map((m) => m.id));
+        const expanded = new Set([...selected, ...view.messages.filter((m) => m.transferEvent && transferIds.has(m.transferEvent.transferId)).map((m) => m.id)]);
+        const targets = view.messages.filter((m) => expanded.has(m.id));
+        return invalidateChatSources(this.sourceMemory!, view.session, targets, () => this.deleteMessages(sessionId, [...expanded], owned), owned);
       });
     }
     const targets = new Set(ids);
@@ -1073,6 +1080,8 @@ export class ChatStorage {
       const table = tx.objectStore("messages");
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
       if (this.tracking()) all.sort((a, b) => a.order - b.order);
+      const selectedTransferIds = new Set(all.filter((message) => targets.has(message.id) && message.transfer).map((message) => message.id));
+      for (const message of all) if (message.transferEvent && selectedTransferIds.has(message.transferEvent.transferId)) targets.add(message.id);
       const latestUserOrder = Math.max(0, ...all.filter((m) => m.role === "user").map((m) => m.order));
       const previousNextSeq = session.memorySequence?.nextSeq;
       for (const message of all) if (message.role === "assistant" && message.order < latestUserOrder && !message.confirmed) {
@@ -1200,6 +1209,75 @@ export class ChatStorage {
   sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string): Promise<ChatMessage> {
     if (!isMessageSticker(sticker)) return Promise.reject(new Error("这个表情包不可用。"));
     return this.send(sessionId, stickerContent("user", sticker), quoteMessageId, undefined, sticker);
+  }
+  async createTransfer(sessionId: string, amountValue: number, noteValue: string, sender: TransferActor): Promise<ChatMessage> {
+    const amount = normalizeTransferAmount(amountValue), note = normalizeTransferNote(noteValue), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions"), session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Virtual transfers are available in direct conversations only.");
+      if (session.generation) throw new Error("Wait until the current reply finishes before sending a transfer.");
+      if (typeof this.memoryTracking === "function" && this.tracking() && !session.memorySequence)
+        session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const transfer: VirtualTransfer = { amount, note, sender, recipient: sender === "user" ? "assistant" : "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId, role: sender, content: transferMessageContent(transfer, id, "Character"),
+        status: sender === "user" ? "sent" : "complete", createdAt: Date.now(), order: session.nextOrder,
+        ...(this.tracking() ? memoryBirth(session) : {}), transfer };
+      await this.append(tx, session, this.sequence(session, message));
+      return message;
+    }, STORES, { domain: "messages", sessionId });
+  }
+  async createTransferForReply(replyMessageId: string, amount: number, note: string): Promise<ChatMessage> {
+    const reply = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyMessageId)), ["messages"]);
+    if (!reply || reply.role !== "assistant") throw new Error("Transfer action has no committed reply.");
+    const session = await this.readSession(reply.sessionId);
+    if (session.session.type === "group") throw new Error("Virtual transfers are available in direct conversations only.");
+    return this.createTransfer(reply.sessionId, amount, note, "assistant");
+  }
+  async actOnTransferForCharacter(characterId: string, id: string, action: TransferAction): Promise<void> {
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Transfer was not found.");
+    const session = await this.readSession(target.sessionId);
+    if (session.session.type === "group" || session.session.characterId !== characterId) throw new Error("Transfer is outside this Character's conversation.");
+    await this.actOnTransfer(id, "assistant", action);
+  }
+  async actOnTransfer(id: string, actor: TransferActor, action: TransferAction, scope?: PersistenceWriteScope): Promise<{ message: ChatMessage; event: ChatMessage }> {
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+      if (!target) throw new Error("Transfer was not found.");
+      const view = await this.readSession(target.sessionId);
+      await this.recoverGeneration(view.session.id);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const snapshot = await this.readSession(view.session.id);
+        const previous = snapshot.messages.filter((item) => item.id === id);
+        return invalidateChatSources(this.sourceMemory!, snapshot.session, previous,
+          () => this.actOnTransfer(id, actor, action, owned), owned);
+      });
+    }
+    if (scope) this.sourceMemory?.assertExclusive(scope);
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Transfer was not found.");
+    const view = await this.readSession(target.sessionId);
+    await this.recoverGeneration(view.session.id);
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages"), sessions = tx.objectStore("sessions");
+      const original: ChatMessage | undefined = await request(table.get(id));
+      if (!original?.transfer) throw new Error("Transfer was not found.");
+      if (!canApplyTransferAction(original.transfer, actor, action)) throw new Error("This transfer action is not available.");
+      const nextStatus: VirtualTransfer["status"] = action === "receive" ? "received" : action === "decline" ? "declined" : "returned";
+      const transfer = { ...original.transfer, status: nextStatus };
+      const next: ChatMessage = { ...original, transfer, content: transferMessageContent(transfer, original.id, "Character") };
+      const eventData: TransferEvent = { transferId: id, action, actor, amount: transfer.amount, note: transfer.note };
+      const session: ChatSession | undefined = await request(sessions.get(original.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const event: ChatMessage = { id: crypto.randomUUID(), sessionId: original.sessionId, role: actor,
+        content: transferEventContent(eventData, "Character"), status: actor === "user" ? "sent" : "complete",
+        createdAt: Date.now(), order: session.nextOrder, transferEvent: eventData };
+      await request(table.put(next));
+      const sequenced = this.sequence(session, event);
+      await this.append(tx, session, sequenced);
+      return { message: next, event: sequenced };
+    }, STORES, { domain: "messages", sessionId: view.session.id }, undefined, scope);
   }
   async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker): Promise<ChatMessage> {
     if (!content.trim())

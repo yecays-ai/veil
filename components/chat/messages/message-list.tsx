@@ -12,6 +12,8 @@ import { ChatAvatar } from "../avatar";
 import { MessageFooter } from "../message-footer";
 import { QuoteBubble } from "../quote-bubble";
 import { StickerImage } from "../sticker-image";
+import { TransferCard, TransferResultCard } from "../transfers/transfer-card";
+import type { TransferAction } from "../../../lib/chat/transfer";
 
 type GroupedMessage = { message: ChatMessage; showTimestamp: boolean; isGroupStart: boolean; isGroupEnd: boolean };
 
@@ -20,7 +22,7 @@ export function MessageList({
   groupedMessages, messages, selectedIds, activeMessageId, highlightedMessageId, multiSelect, typing, typingBeforeId,
   typingIndicator, character, userName, streamOnline, generationActive, regexGroups, lastVisibleMessageId,
   onOpenActions, onToggleSelected, onClearHighlight, onRegenerate,
-  onPointerDownMessage, onContextMenuMessage,
+  onPointerDownMessage, onContextMenuMessage, onTransferAction,
 }: {
   groupedMessages: readonly GroupedMessage[];
   messages: readonly ChatMessage[];
@@ -43,6 +45,7 @@ export function MessageList({
   onRegenerate: (message: ChatMessage, continuation?: boolean) => void;
   onPointerDownMessage: () => void;
   onContextMenuMessage: () => void;
+  onTransferAction: (messageId: string, action: TransferAction) => void;
 }) {
   return <>
     {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
@@ -70,7 +73,9 @@ export function MessageList({
           {multiSelect && <span className="chat-selection-control" aria-hidden="true">{selected ? "✓" : ""}</span>}
           {message.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">{isGroupStart && <ChatAvatar profile={character} />}</div>}
           <div className="chat-message">
-            <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
+            {message.transfer ? <TransferCard message={message} actor="user" characterName={character.name} onAction={onTransferAction}
+              onOpenActions={onOpenActions} onPointerDown={onPointerDownMessage} onContextMenu={onContextMenuMessage} />
+              : message.transferEvent ? <TransferResultCard message={message} characterName={character.name} /> : <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
               onAnimationEnd={() => { if (highlighted) onClearHighlight(message.id); }}
               onPointerDown={onPointerDownMessage}
               onContextMenu={onContextMenuMessage}
@@ -83,7 +88,7 @@ export function MessageList({
               {message.sticker ? null : message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
                 ? applyRegex(parsed.content, regexGroups, message.role, "display", { character: character.name, user: userName }) : parsed.content) ||
                 (message.status === "streaming" && generationActive ? "…" : "")}
-            </p>
+            </p>}
             <MessageFooter messageId={message.id} />
             <span className="chat-message-meta">
               {message.status === "streaming" && !generationActive && <span>Interrupted reply</span>}
