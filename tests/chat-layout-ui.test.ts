@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+const life = readFileSync("components/chat/life-timeline.tsx", "utf8");
 const css = readFileSync("app/messages/chat.css", "utf8");
 const globalCss = readFileSync("app/globals.css", "utf8");
 const layout = readFileSync("app/layout.tsx", "utf8");
@@ -110,6 +111,13 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(room, /className="chat-info-screen"/);
   assert.match(room, /<h1>Chat Info<\/h1>/);
   assert.match(room, /Search Chat History/);
+  assert.match(room, /<span>Life<small>See what/);
+  assert.match(room, /<LifeTimelineScreen screenRef=\{screenRef\} character=\{character\}/);
+  assert.match(life, /reconcileProjectedLife/);
+  assert.match(life, /Back to Chat Info/);
+  assert.match(life, /No activity yet\./);
+  assert.match(css, /\.life-timeline-body/);
+  assert.match(css, /\.life-timeline-active \.life-timeline-dot/);
   assert.match(room, /Search messages in this conversation/);
   assert.match(room, /placeholder="Search messages"/);
   assert.match(room, /Pin Conversation/);

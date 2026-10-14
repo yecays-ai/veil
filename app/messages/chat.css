@@ -723,6 +723,30 @@
   line-height: 1.5;
   opacity: .65;
 }
+.life-timeline-body { gap: 18px; }
+.life-timeline-intro { margin: 0 2px; font-size: 14px; line-height: 1.5; opacity: .62; }
+.life-timeline { position: relative; display: flex; flex-direction: column; }
+.life-timeline::before {
+  position: absolute; top: 10px; bottom: 10px; left: 7px; width: 1px;
+  background: color-mix(in srgb, var(--theme-text) 16%, transparent); content: "";
+}
+.life-timeline-item { position: relative; display: grid; grid-template-columns: 16px 1fr; gap: 14px; padding: 0 0 24px; }
+.life-timeline-item:last-child { padding-bottom: 0; }
+.life-timeline-dot {
+  z-index: 1; width: 12px; height: 12px; margin: 5px 0 0 1px; border: 2px solid var(--theme-text);
+  border-radius: 50%; background: var(--theme-background);
+}
+.life-timeline-active .life-timeline-dot { border-color: var(--theme-accent); background: var(--theme-accent); }
+.life-timeline-content { min-width: 0; padding: 0 0 0 2px; }
+.life-timeline-content time { display: block; margin-bottom: 5px; font-size: 13px; opacity: .58; }
+.life-timeline-content h2 { margin: 0; font-size: 18px; line-height: 1.3; }
+.life-timeline-content p { margin: 7px 0 0; font-size: 15px; line-height: 1.55; opacity: .72; }
+.life-timeline-upcoming { opacity: .56; }
+.life-timeline-empty {
+  display: flex; flex-direction: column; gap: 7px; padding: 24px 20px; border-radius: 20px;
+  background: var(--theme-surface); text-align: center;
+}
+.life-timeline-empty span { font-size: 14px; line-height: 1.5; opacity: .62; }
 .chat-history-search-field {
   min-height: 48px;
   display: flex;
