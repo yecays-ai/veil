@@ -69,6 +69,26 @@ test("planned anecdotes are unique within the projection and avoid recent settle
   assert.equal(new Set(details).size, details.length);
 });
 
+test("reconciliation forwards retained moments and ignores activities outside the retention window", () => {
+  const now = mondayNoon + DAY;
+  const candidate = projectDailyLife(presence(), now).find((item) => item.moment);
+  assert.ok(candidate?.moment, "fixture must select a moment to exercise the guard");
+
+  const retainedAt = now - 6 * DAY;
+  const retained = reconcileLifeActivities(undefined, [{ ...candidate, id: "stored-recent", occurrenceKey: "stored-recent",
+    startsAt: retainedAt, endsAt: retainedAt + HOUR }], retainedAt);
+  const planned = reconcileProjectedLife(retained, presence(), now);
+  assert.notEqual(planned.activities.find((item) => item.occurrenceKey === candidate.occurrenceKey)?.moment, candidate.moment,
+    "a retained activity's moment must be passed to the new projection");
+
+  const expiredAt = now - 10 * DAY;
+  const expired = reconcileLifeActivities(undefined, [{ ...candidate, id: "stored-expired", occurrenceKey: "stored-expired",
+    startsAt: expiredAt, endsAt: expiredAt + HOUR }], expiredAt);
+  const plannedAfterExpiry = reconcileProjectedLife(expired, presence(), now);
+  assert.equal(plannedAfterExpiry.activities.find((item) => item.occurrenceKey === candidate.occurrenceKey)?.moment, candidate.moment,
+    "a moment whose activity will be pruned must not suppress the replacement plan");
+});
+
 test("local-day windows remain non-overlapping across a daylight-saving transition", () => {
   const now = Date.UTC(2026, 2, 8, 12);
   const activities = projectDailyLife(presence({ timezone: "America/New_York" }), now);

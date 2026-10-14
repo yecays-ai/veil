@@ -1,6 +1,6 @@
 import type { Presence } from "../foundation-types";
 import { localDayWindow, presenceSegments, type PresenceInputs, type PresenceSegment } from "../presence/compute";
-import { reconcileLifeActivities, type LifeActivity, type LifeActivityKind, type LifeState } from "./activity";
+import { LIFE_FUTURE_MS, LIFE_HISTORY_MS, reconcileLifeActivities, type LifeActivity, type LifeActivityKind, type LifeState } from "./activity";
 
 const MAX_DAILY_SEGMENTS = 12;
 
@@ -93,7 +93,11 @@ export function projectDailyLife(inputs: PresenceInputs, now: number, recentMome
 
 /** Freezes already-settled time. A later Routine edit may fill gaps but cannot replace an activity the user could have seen. */
 export function reconcileProjectedLife(current: LifeState | undefined, inputs: PresenceInputs, now: number): LifeState {
-  const recentMoments = current?.activities.flatMap((item) => item.moment ? [item.moment] : []) ?? [];
+  const effectiveNow = Math.max(current?.reconciledAt ?? 0, now);
+  const recentMoments = current?.activities
+    .filter((item) => item.endsAt >= effectiveNow - LIFE_HISTORY_MS
+      && item.startsAt <= effectiveNow + LIFE_FUTURE_MS)
+    .flatMap((item) => item.moment ? [item.moment] : []) ?? [];
   const candidates = projectDailyLife(inputs, now, recentMoments).filter((candidate) => !(current?.activities.some((stored) =>
     stored.occurrenceKey !== candidate.occurrenceKey && candidate.startsAt < stored.endsAt && stored.startsAt < candidate.endsAt)));
   return reconcileLifeActivities(current, candidates, now);
