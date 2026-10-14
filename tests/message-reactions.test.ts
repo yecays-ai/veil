@@ -99,6 +99,7 @@ test("backup accepts reactions, rejects malformed ones, and treats absence as th
   }
 });
 
+const room = readFileSync("components/chat/chat-room.tsx", "utf8");
 const actionHook = readFileSync("components/chat/message-actions/use-message-actions.ts", "utf8");
 const actions = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
 const bar = readFileSync("components/chat/reaction-bar.tsx", "utf8");
