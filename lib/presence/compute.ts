@@ -17,6 +17,7 @@ export type PresenceInputs = {
   situations: readonly PresenceSituation[];
 };
 export type EffectivePresence = { status: Presence; source: "situation" | "routine"; situation: PresenceSituation | null };
+export type PresenceSegment = EffectivePresence & { startsAt: number; endsAt: number };
 
 const MINUTE = 60_000, HOUR = 60 * MINUTE, DAY = 24 * HOUR;
 export const SITUATION_DEFAULT_MS = 6 * HOUR;
@@ -70,6 +71,23 @@ export function lastOnlineAt(inputs: PresenceInputs, now: number, lookbackMs = L
     if (to > from && effectivePresence(inputs, from).status === "online") return to;
   }
   return null;
+}
+
+/** Stable local-calendar bounds used by readers that project Presence into a day-sized view. */
+export function localDayWindow(instant: number, timezone: string | null, offsetDays = 0) {
+  const zone = validTimezone(timezone) ?? "UTC";
+  let date = localDate(instant, zone);
+  for (let index = 0; index < Math.abs(offsetDays); index++) date = offsetDays < 0
+    ? makeDate(date.year, date.month, date.day - 1) : nextDate(date);
+  return { key: date.key, startsAt: localInstant(date, 0, zone), endsAt: localInstant(nextDate(date), 0, zone) };
+}
+
+/** A bounded, read-only projection. It does not schedule work or call a model. */
+export function presenceSegments(inputs: PresenceInputs, from: number, to: number): PresenceSegment[] {
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
+  const edges = [from, ...boundaries(inputs, from, to).filter((edge) => edge < to), to];
+  return edges.slice(0, -1).map((startsAt, index) => ({ ...effectivePresence(inputs, startsAt),
+    startsAt, endsAt: edges[index + 1] })).filter((item) => item.endsAt > item.startsAt);
 }
 
 function activeSituation(situations: readonly PresenceSituation[], now: number) {
