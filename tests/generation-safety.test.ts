@@ -364,7 +364,7 @@ test("browsers without Web Locks fail closed for generation while idle Send/Edit
 });
 
 regressionContract("chat.generation-route-interruption", "async-race-safety",
-  "navigation/remount cancels the old route owner while a destination session generates independently", async () => {
+  "navigation/remount does not cancel a reply in flight, a remounted route cannot submit it twice, and a destination session generates independently", async () => {
     const { storage, session, document } = await setup();
     await storage.send(session.id, "A context");
     const prepared = deferred(), finish = deferred(), mounted = deferred();
@@ -380,19 +380,22 @@ regressionContract("chat.generation-route-interruption", "async-race-safety",
     route.mount(true); await mounted.promise;
     const pending = engine.requestReply(session.id);
     await prepared.promise; route.unmount();
+    assert.equal(engine.isGenerating(session.id), true, "leaving the page leaves the reply running");
     const destination = deferred();
     const nextRoute = createChatSessionLifecycle("b", storage, (snapshot) => { if (snapshot) destination.resolve(); }, engine.stop);
     nextRoute.mount(true);
     try {
       await destination.promise;
+      await assert.rejects(engine.requestReply(session.id), /already in progress/, "a remounted route cannot submit a second reply");
       const other = await storage.openSession("b");
       await storage.send(other.id, "B context");
       await engine.requestReply(other.id);
       assert.deepEqual(generated, [other.id]);
-      assert.equal((await pending)?.outcome, "stopped");
-      finish.resolve(); await new Promise<void>((resolve) => setImmediate(resolve));
-      assert.deepEqual(generated, [other.id]);
-      assert.equal((await storage.readSession(session.id)).messages.at(-1)?.status, "cancelled");
+      finish.resolve();
+      assert.equal((await pending)?.status, "complete");
+      assert.deepEqual(generated, [other.id, session.id], "exactly one provider request per session");
+      assert.equal((await storage.readSession(session.id)).messages.at(-1)?.content, "B answer");
       assert.equal((await storage.readSession(other.id)).messages.at(-1)?.content, "B answer");
+      assert.equal(engine.isGenerating(session.id), false);
     } finally { finish.resolve(); await pending; nextRoute.unmount(); }
   });

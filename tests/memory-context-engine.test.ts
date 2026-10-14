@@ -106,7 +106,7 @@ test("Stop settles while Memory is pending; late success and rejection cannot st
   }
 });
 
-test("switching from Character A to B via existing lifecycle Stop prevents A's late read from generating", async () => {
+test("switching from Character A to B leaves A's reply running and each request uses only its own Memory", async () => {
   const gate = deferred<readonly Memory[]>(), started = deferred<void>();
   const { engine, storage, calls } = setup((id) => {
     if (id === "a") { started.resolve(); return gate.promise; }
@@ -125,9 +125,11 @@ test("switching from Character A to B via existing lifecycle Stop prevents A's l
   await engine.requestReply(b.id);
   gate.resolve([row()]);
   await pending;
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert(JSON.stringify(calls[0].messages).includes("balcony"));
   assert(!JSON.stringify(calls[0].messages).includes("greenhouse"));
+  assert(JSON.stringify(calls[1].messages).includes("greenhouse"));
+  assert(!JSON.stringify(calls[1].messages).includes("balcony"));
 });
 
 test("ownership lost during Memory read cannot invoke provider even before a subscription abort arrives", async () => {

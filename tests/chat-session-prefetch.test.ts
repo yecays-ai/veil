@@ -154,7 +154,7 @@ test("Chat uses a seed on its first frame, preserves it while reading, and isola
     await act(() => { root.render(createElement(Probe, { characterId: "switched" })); });
     assert.equal(observed.slice(beforeSwitch).find((entry) => entry.characterId === "switched")?.messages,
       "switched history", "a same-component character switch renders only that character's seed immediately");
-    assert.deepEqual(stopped, [pressed.id], "leaving while the read is pending cleans up the seeded session");
+    assert.deepEqual(stopped, [], "leaving while the read is pending does not stop a reply the engine owns");
     pendingRead.resolve(switchedSnapshot);
     chatStorage.readExistingSession = originalRead;
     await until(() => read().messages === "switched history");

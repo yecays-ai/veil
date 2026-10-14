@@ -5,7 +5,8 @@ import { measureChatDiagnostic } from "../diagnostics/chat-first-paint";
 type Snapshot = { session: ChatSession; messages: ChatMessage[] };
 type Storage = Pick<ChatStorage, "readExistingSession" | "openSession" | "readSession" | "subscribe">;
 
-/** Per-route request owner. A seed is display-only; this owner still reads authoritative storage. */
+/** Per-route request owner for reads and the subscription. A seed is display-only; this owner still reads authoritative storage.
+ * It does not own generation: that lives in the chat engine and survives unmounting. */
 export function createChatSessionLifecycle(characterId: string, storage: Storage,
   publish: (snapshot: Snapshot | null, error: string) => void, stop: (sessionId: string) => void) {
   let active = false, enabled = false, checkedExisting = false, revision = 0;
@@ -130,8 +131,8 @@ export function createChatSessionLifecycle(characterId: string, storage: Storage
       active = false;
       unsubscribe();
       changedBeforeResolution.clear();
-      const id = sessionId ?? seededId;
-      if (enabled && id) stop(id);
+      // A reply in flight belongs to the engine, not to this route: leaving the page must not cancel it.
+      // Stop stays with the explicit Stop button, storage ownership loss, and losing the Character (setEnabled).
       enabled = false;
     },
   };
