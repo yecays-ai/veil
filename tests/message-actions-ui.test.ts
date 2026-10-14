@@ -32,7 +32,8 @@ test("the fixed 4 by 2 action set uses one Lucide icon family", () => {
     ["Memory", "Brain"], ["Select", "CircleCheck"], ["Favorite", "Bookmark"],
     ["Delete", "Trash2"], ["Regenerate", "RotateCcw"],
   ]) assert.match(actions, new RegExp(`label="${mapping[0]}" icon=\\{${mapping[1]}\\}`));
-  assert.equal((actions.match(/<Action label=/g) || []).length, 8);
+  assert.equal((actions.match(/<Action label="(?:Copy|Edit|Quote|Memory|Select|Favorite|Delete|Regenerate)"/g) || []).length, 8);
+  assert.match(actions, /activeMessage\.role === "user"[\s\S]*?label="Recall"/);
   assert.match(actions, /<Icon size=\{25\} strokeWidth=\{1\.75\}/);
   assert.match(css, /grid-template-columns:\s*repeat\(4,/);
   assert.match(css, /width:\s*min\(360px, 92%\)/);

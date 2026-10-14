@@ -30,8 +30,8 @@ export function withReaction(current: MessageReactions | undefined, side: Reacti
   return Object.keys(next).length ? next : null;
 }
 
-export function canReactTo(message: Pick<ChatMessage, "role" | "status">) {
-  return message.role !== "system" && (message.status === "sent" || message.status === "complete");
+export function canReactTo(message: Pick<ChatMessage, "role" | "status" | "recalled">) {
+  return !message.recalled && message.role !== "system" && (message.status === "sent" || message.status === "complete");
 }
 
 export function reactionBadges(message: Pick<ChatMessage, "reactions">): string[] {

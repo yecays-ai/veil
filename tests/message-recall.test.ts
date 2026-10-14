@@ -1,0 +1,63 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { IDBFactory } from "fake-indexeddb";
+import { ChatStorage } from "../lib/chat/storage";
+import { searchConversationMessages } from "../lib/chat/search";
+import { historyEligible } from "../lib/chat/summary";
+import { assembleChatPrompt, emptyMemorySlot } from "../lib/chat/prompt";
+import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
+import { splitActions } from "../lib/presence/actions";
+import { validateBackupPackage } from "../lib/backup/validation";
+import { backupData, packageFixture } from "./backup-fixture";
+
+test("recall clears message text, replaces quoted previews and excludes it from search, summary and prompt", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("recall");
+  const target = await storage.send(session.id, "private sentence");
+  const reply = await storage.send(session.id, "response", target.id);
+  const recalled = await storage.recallMessage(target.id, "user");
+  assert.deepEqual(recalled.recalled?.by, "user");
+  assert.equal(recalled.content, "");
+  const { messages } = await storage.readSession(session.id);
+  assert.equal(messages.find((message) => message.id === reply.id)?.quote?.preview, "Message recalled");
+  assert.deepEqual(await searchConversationMessages(messages, session.id, "private sentence"), []);
+  assert.equal(historyEligible(messages).some((message) => message.id === target.id), false);
+  const foundation = defaultFoundation();
+  foundation.runtime.timeAware = false;
+  const character = { characterId: "recall", ...normalizeCharacterInput({ name: "Recall" }) };
+  foundation.characters = [character];
+  const prompt = assembleChatPrompt(foundation, character, messages, [], emptyMemorySlot());
+  assert.doesNotMatch(prompt.messages.map((message) => message.content).join("\n"), /private sentence/);
+  assert.match(prompt.messages.map((message) => message.content).join("\n"), /Message recalled/);
+});
+
+test("recall is sender-only and Character action targets only its own previous reply", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("recall");
+  const user = await storage.send(session.id, "user line");
+  const firstReply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "first reply"))[0];
+  await storage.send(session.id, "second user line");
+  const secondReply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "second reply"))[0];
+  await assert.rejects(storage.recallMessage(user.id, "assistant"), /own sent message/);
+  await assert.rejects(storage.recallMessage(firstReply.id, "user"), /own sent message/);
+  const recalled = await storage.recallPreviousAssistantMessage(secondReply.id);
+  assert.equal(recalled?.id, firstReply.id);
+  assert.equal((await storage.readSession(session.id)).messages.find((message) => message.id === user.id)?.content, "user line");
+  assert.equal(splitActions('<veil-action>{"recallPrevious":true}</veil-action>').actions?.recallPrevious, true);
+});
+
+test("ChatRoom exposes recall only through the extracted message action overlay", () => {
+  const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+  const overlay = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
+  assert.match(room, /chatStorage\.recallMessage\(target\.id, "user"\)/);
+  assert.match(overlay, /activeMessage\.role === "user"[\s\S]*?label="Recall"/);
+});
+
+test("backup preserves a recalled message after its body has been cleared", async () => {
+  const data = backupData();
+  data.chat.messages[0] = { ...data.chat.messages[0], content: "", recalled: { at: 10, by: "user" } };
+  const fixture = await packageFixture(data);
+  const result = await validateBackupPackage(JSON.stringify(fixture.manifest), fixture.files);
+  assert.equal(result.data.chat.messages[0].recalled?.by, "user");
+});

@@ -429,7 +429,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }, [activeMessage, menuAnchor]);
 
   function openActions(e: React.MouseEvent<HTMLElement>, message: ChatMessage) {
-    if (multiSelect || message.status === "streaming") return;
+    if (multiSelect || message.status === "streaming" || message.recalled) return;
     const selection = window.getSelection();
     if (nativeSelectionActive.current ||
       (selection && !selection.isCollapsed && selection.toString())) return;
@@ -441,6 +441,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     closeActions();
     try { await chatStorage.setReaction(message.id, "user", emoji); }
     catch (e) { setError(e instanceof Error ? e.message : "Reaction could not be saved."); }
+  }
+  async function recallActiveMessage() {
+    if (!activeMessage || activeMessage.role !== "user") return;
+    const target = activeMessage;
+    closeActions();
+    try { await chatStorage.recallMessage(target.id, "user"); showFeedback("Message recalled"); }
+    catch (e) { setError(e instanceof Error ? e.message : "Message could not be recalled."); }
   }
   async function copyMessage() {
     if (!activeMessage) return;
@@ -940,7 +947,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onMemory={() => { if (!activeMessage) return; setMemoryMessage(activeMessage); closeActions(); }}
         onSelect={() => { if (!activeMessage) return; setMultiSelect(true); setSelectionStartId(activeMessage.id); setSelectedIds(new Set([activeMessage.id])); closeActions(); }}
         onDelete={() => { if (!activeMessage) return; setConfirmDelete([activeMessage.id]); closeActions(); }}
-        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }}
+        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }} onRecall={() => void recallActiveMessage()}
         onRunRegisteredAction={(id) => {
           if (!activeMessage) return;
           const message = activeMessage;

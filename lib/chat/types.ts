@@ -101,6 +101,8 @@ export type ChatMessage = {
   reactions?: import("./reactions").MessageReactions;
   /** A sticker message: `content` then holds its semantic text (for search, summaries, Memory and the prompt), not bubble text. Absent on text messages. */
   sticker?: import("./sticker-message").MessageSticker;
+  /** The sender withdrew this message. Its original body is cleared when this marker is written. */
+  recalled?: { at: number; by: "user" | "assistant" };
 };
 
 /** What a reply was given from Memory: the row and a hash of the injected content. Never the memory text itself. */

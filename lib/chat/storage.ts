@@ -949,6 +949,7 @@ export class ChatStorage {
       const table = tx.objectStore("messages");
       const existing: ChatMessage | undefined = await request(table.get(id));
       if (!existing) throw new Error("Message not found.");
+      if (existing.recalled) throw new Error("A recalled message cannot be edited.");
       if (existing.sticker) throw new Error("表情包不能编辑。");
       const current: ChatSession = await request(tx.objectStore("sessions").get(existing.sessionId));
       if (current.generation) throw new Error("A reply is in progress. Stop it before editing this conversation.");
@@ -982,6 +983,55 @@ export class ChatStorage {
       await request(table.put(next));
       return next;
     }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
+  }
+
+  async recallMessage(id: string, by: "user" | "assistant", scope?: PersistenceWriteScope): Promise<ChatMessage> {
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
+      if (!target) throw new Error("Message not found.");
+      await this.recoverGeneration(target.sessionId);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(target.sessionId, owned);
+        if (!view.session) throw new Error("Conversation not found.");
+        const affected = view.messages.filter((message) => message.id === id && !message.recalled);
+        return invalidateChatSources(this.sourceMemory!, view.session, affected, () => this.recallMessage(id, by, owned), owned);
+      });
+    }
+    const owner = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
+    if (owner && !scope) await this.recoverGeneration(owner.sessionId);
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const message: ChatMessage | undefined = await request(table.get(id));
+      if (!message) throw new Error("Message not found.");
+      if (message.role !== by || (by === "user" ? message.status !== "sent" : message.status !== "complete"))
+        throw new Error("Only your own sent message can be recalled.");
+      if (message.recalled) return message;
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(message.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.generation) throw new Error("A reply is in progress. Stop it before recalling a message.");
+      const next: ChatMessage = { ...message, content: "", recalled: { at: Date.now(), by },
+        ...(message.memorySequence ? { memorySequence: { epoch: message.memorySequence.epoch } } : {}) };
+      await request(table.put(next));
+      const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
+      for (const quoted of all) if (quoted.quote?.messageId === id && quoted.quote.preview !== "Message recalled")
+        await request(table.put({ ...quoted, quote: { ...quoted.quote, preview: "Message recalled" } }));
+      const staleSummary = !!session.summary && message.order <= session.summary.throughOrder;
+      if (session.lastMessageId === id || staleSummary)
+        await request(tx.objectStore("sessions").put({ ...session,
+          ...(session.lastMessageId === id ? { updatedAt: Date.now(), lastMessagePreview: "Message recalled" } : {}),
+          ...(staleSummary ? { summary: undefined } : {}) }));
+      return next;
+    }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }), undefined, scope);
+  }
+
+  async recallPreviousAssistantMessage(replyId: string): Promise<ChatMessage | null> {
+    const reply = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyId)));
+    if (!reply || reply.role !== "assistant") return null;
+    const { messages } = await this.readSession(reply.sessionId);
+    const target = messages.filter((message) => message.role === "assistant" && !message.recalled && message.order < reply.order)
+      .sort((a, b) => b.order - a.order)[0];
+    if (!target) return null;
+    return this.recallMessage(target.id, "assistant");
   }
 
   async regenerationSessionId(id: string): Promise<string> {
