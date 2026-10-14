@@ -73,7 +73,7 @@ function PackDetail({ pack, characters, onBack }: { pack: StickerPack; character
       const bound = !!pack.characterIds?.includes(character.characterId);
       return <li key={character.characterId}><label>
         <input type="checkbox" checked={bound}
-          onChange={(e) => void run(() => browserStickerStorage.transact((d) => setPackCharacter(d, pack.id, character.characterId, e.target.checked)))} />
+          onChange={(e) => { const next = e.target.checked; void run(() => browserStickerStorage.transact((d) => setPackCharacter(d, pack.id, character.characterId, next))); }} />
         {character.name}</label></li>;
     })}</ul> : <p className="sticker-note">还没有角色。</p>}
     <p className="sticker-note">只有被选中的角色才会收到这个图集里的表情，并且只会从里面挑选。</p>
