@@ -1,5 +1,6 @@
 import { PRESENCE_VALUES, type Character, type FoundationDocument } from "../foundation-types";
 import { normalizeSituation } from "./compute";
+import { isReactionEmoji } from "../chat/reactions";
 import {
   addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord, setUserNote,
   type PresenceDocument, type PresenceRecord,
@@ -13,6 +14,8 @@ export type CharacterActions = {
   situation?: { status: string; reason?: string; startInMinutes?: number; durationMinutes?: number };
   endSituation?: "current" | "all";
   cancelUpcoming?: true;
+  /** One emoji reacting to the user's message this reply answers. Applied by the chat, not by Presence. */
+  reactToUser?: string;
 };
 export const ACTION_TAG = "veil-action";
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
@@ -75,6 +78,7 @@ function parseActions(json: string): CharacterActions | null {
   }
   if (value.endSituation === "current" || value.endSituation === "all") actions.endSituation = value.endSituation;
   if (value.cancelUpcoming === true) actions.cancelUpcoming = true;
+  if (isReactionEmoji(value.reactToUser)) actions.reactToUser = value.reactToUser;
   return Object.keys(actions).length ? actions : null;
 }
 
