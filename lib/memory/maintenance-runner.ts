@@ -61,7 +61,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     const { config, context, timezone, budget } = await deps.model(characterId);
     const character = { characterId, context, timezone };
     // Everything that decides how much fits: when it changes, a paused too-large range is evaluated again.
-    const budgetKey = `${MAINTENANCE_LIMITS.inputCharacters}:${hash(`${config.model}\0${budget ?? context}`)}`;
+    const budgetKey = `${MAINTENANCE_LIMITS.inputCharacters}:${hash(`${config.model}\0${budget ?? ""}\0${context}`)}`;
     let ticket: MemoryBatchTicket | undefined;
     const sizeFits = async (candidate: MemoryBatchTicket): Promise<boolean> => {
       try { planMaintenanceInput(await deps.protocol.readInput(candidate), character, undefined, deps.now()); return true; }

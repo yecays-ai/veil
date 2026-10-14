@@ -114,3 +114,27 @@ test("a committed batch must have carried the State lane: with State on, a commi
   });
   assert.equal((await f.progress())!.throughSeq, 0);
 });
+
+test("editing the message that blocked a paused too-large range clears its size history, so it is looked at again on the next trigger", async () => {
+  const f = await fixture({ state: false, backstory: 0 });
+  const big = await bigReply(f, 40_000);
+  await f.run(); await f.run();
+  assert.equal((await f.progress())!.batches[0].sizeAttempts, 2);
+  await f.chat.editMessage(big.id, "Peter adopted a rescue kitten and named her Biscuit.");
+  const batch = (await f.progress())?.batches.find((b) => b.state === "too-large");
+  assert.ok(!batch || (batch.sizeAttempts === undefined && batch.budgetKey === undefined), "the size history of an edited source is gone");
+  await f.send("Peter says hello again.");
+  assert.equal(await f.run(), true); assert.equal((await f.progress())!.batches.length, 0);
+});
+
+test("the size key follows the Character text too: a shorter personality with the same Backstory resumes a paused range", async () => {
+  let context = "A".repeat(100);
+  const f = await fixture({ state: false, backstory: 0, budget: () => "same-backstory" });
+  f.deps.model = async () => ({ config: { id: "selected", baseUrl: "https://example.invalid/v1", apiKey: "stub-only", model: "stub" }, context, budget: "same-backstory" });
+  await bigReply(f, 40_000); await f.run(); await f.run();
+  const paused = (await f.progress())!.batches[0].budgetKey;
+  context = "B".repeat(50);
+  await f.send("Peter says hello again."); await f.run();
+  const again = (await f.progress())!.batches.find((b) => b.state === "too-large")!;
+  assert.notEqual(again.budgetKey, paused); assert.equal(again.sizeAttempts, 1);
+});
