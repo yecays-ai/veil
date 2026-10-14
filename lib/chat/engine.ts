@@ -65,6 +65,7 @@ const loadSelfState: SelfLoader = async (character, now, reply) => {
 const applyActionsToStores: ActionApplier = (characterId, actions, now, messageId) =>
   typeof window === "undefined" ? Promise.resolve()
     : characterActionApplier({ presence: browserPresenceStorage, foundation: browserFoundationStorage,
+      recallPreviousMessage: async (replyId) => { await chatStorage.recallPreviousAssistantMessage(replyId); },
       noteChanged: async (id, note, at) => {
         const character = (await browserFoundationStorage.load()).characters.find((item) => item.characterId === id);
         if (character) await chatStorage.appendSystemEvent(id, characterNoteEventText(character.name, note), at);

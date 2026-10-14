@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Brain, CircleCheck, Copy, Pencil, Plus, Quote, RotateCcw, Trash2, type LucideIcon } from "lucide-react";
+import { Bookmark, Brain, CircleCheck, Copy, Pencil, Plus, Quote, RotateCcw, Trash2, Undo2, type LucideIcon } from "lucide-react";
 import type { RefObject } from "react";
 import { canReactTo } from "../../../lib/chat/reactions";
 import { getMessageActions } from "../../../lib/chat/message-action-registry";
@@ -10,7 +10,7 @@ import { ReactionBar, ReactionPickerSheet } from "../reaction-bar";
 
 export function MessageActionsOverlay({ activeMessage, messages, generationActive, revealPending, actionMenuRef, reactionBarRef,
   reactionPickerOpen, onClose, onPickReaction, onOpenReactionPicker, onCopy, onEdit, onQuote, onMemory, onSelect, onDelete,
-  onRegenerate, onRunRegisteredAction }: {
+  onRegenerate, onRecall, onRunRegisteredAction }: {
   activeMessage: ChatMessage | null;
   messages: readonly ChatMessage[];
   generationActive: boolean;
@@ -28,6 +28,7 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
   onSelect: () => void;
   onDelete: () => void;
   onRegenerate: () => void;
+  onRecall: () => void;
   onRunRegisteredAction: (id: string) => void;
 }) {
   if (!activeMessage) return null;
@@ -47,6 +48,8 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
         <Action label="Favorite" icon={Bookmark} disabled />
         <Action label="Delete" icon={Trash2} danger onClick={onDelete} />
         <Action label="Regenerate" icon={RotateCcw} disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || revealPending} onClick={onRegenerate} />
+        {activeMessage.role === "user" && activeMessage.status === "sent" && !activeMessage.recalled && !generationActive &&
+          <Action label="Recall" icon={Undo2} onClick={onRecall} />}
         {getMessageActions(activeMessage).map((action) => <Action key={action.id} label={action.label} icon={Plus} onClick={() => onRunRegisteredAction(action.id)} />)}
       </div>
     </div>

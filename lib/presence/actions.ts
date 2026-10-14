@@ -18,6 +18,8 @@ export type CharacterActions = {
   reactToUser?: string;
   /** One of this reply's sticker codes (S01 …), sent as the Character's own last bubble. Checked and applied by the chat. */
   sticker?: string;
+  /** Withdraw your immediately previous completed message after this reply is committed. */
+  recallPrevious?: true;
 };
 export const ACTION_TAG = "veil-action";
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
@@ -82,6 +84,7 @@ function parseActions(json: string): CharacterActions | null {
   if (value.cancelUpcoming === true) actions.cancelUpcoming = true;
   if (isReactionEmoji(value.reactToUser)) actions.reactToUser = value.reactToUser;
   if (typeof value.sticker === "string" && /^S\d{2,3}$/i.test(value.sticker.trim())) actions.sticker = value.sticker.trim().toUpperCase();
+  if (value.recallPrevious === true) actions.recallPrevious = true;
   return Object.keys(actions).length ? actions : null;
 }
 
@@ -126,6 +129,7 @@ export type ActionDeps = {
   foundation: { transact(update: (document: FoundationDocument) => FoundationDocument): Promise<FoundationDocument> };
   /** Tells the chat the Character changed its note on the user (null = removed); a failure never undoes the change. */
   noteChanged?: (characterId: string, note: string | null, at: number) => Promise<void>;
+  recallPreviousMessage?: (replyMessageId: string) => Promise<void>;
 };
 /** The note is Presence data alone, so check and write happen in one transaction; the chat event follows only a real change. */
 async function applyUserNote(deps: ActionDeps, characterId: string, note: string | null, now: number, source: string) {
@@ -148,6 +152,10 @@ export const characterActionApplier = (deps: ActionDeps) =>
     const source = `${CHARACTER_SOURCE_PREFIX}${messageId}`;
     await deps.presence.transact((document) => applySituationActions(document, { characterId }, actions, now, source));
     if (actions.userNote !== undefined) await applyUserNote(deps, characterId, actions.userNote, now, source);
+    if (actions.recallPrevious) {
+      try { await deps.recallPreviousMessage?.(messageId); }
+      catch { console.warn("[Presence] the previous message could not be recalled"); }
+    }
     if (actions.signature === undefined) return;
     const allowed = actionAllowance(presenceRecord(await deps.presence.load(), characterId), now).signature;
     if (!allowed) return;

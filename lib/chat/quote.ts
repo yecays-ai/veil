@@ -13,7 +13,7 @@ export function quoteMessage(message: ChatMessage): MessageQuote {
   if ((message.role !== "user" && message.role !== "assistant") || message.status === "streaming")
     throw new Error("This message cannot be quoted.");
   return { messageId: message.id, role: message.role,
-    preview: message.sticker ? stickerPreview(message.sticker) : parseQuotedReply(message.content).content.slice(0, 50) };
+    preview: message.recalled ? "Message recalled" : message.sticker ? stickerPreview(message.sticker) : parseQuotedReply(message.content).content.slice(0, 50) };
 }
 
 export function messageHistoryContent(message: ChatMessage): string {

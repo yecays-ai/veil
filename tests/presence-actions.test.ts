@@ -36,11 +36,13 @@ test("a signature is cleaned: control and invisible characters out, spaces colla
 });
 
 const character = () => ({ characterId: "a", ...normalizeCharacterInput({ name: "A", statusMessage: "old" }) });
-function stores(presence = emptyPresenceDocument(), foundation?: FoundationDocument) {
+function stores(presence = emptyPresenceDocument(), foundation?: FoundationDocument,
+  recallPreviousMessage?: () => Promise<void>) {
   const state = { presence, foundation: foundation ?? { ...defaultFoundation(), characters: [character()] } };
   const deps = {
     presence: { load: async () => state.presence, transact: async (f: (d: PresenceDocument) => PresenceDocument) => (state.presence = f(state.presence)) },
     foundation: { transact: async (f: (d: FoundationDocument) => FoundationDocument) => (state.foundation = f(state.foundation)) },
+    recallPreviousMessage,
   };
   return { state, apply: characterActionApplier(deps) };
 }
@@ -48,6 +50,15 @@ const active = (document: PresenceDocument, at: number) => {
   const record = presenceRecord(document, "a");
   return effectivePresence({ characterId: "a", timezone: null, routine: null, situations: record?.situations ?? [] }, at);
 };
+
+test("a failed Character recall does not block the remaining committed actions", async () => {
+  const { state, apply } = stores(undefined, undefined, async () => { throw new Error("recall unavailable"); });
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try { await apply("a", { recallPrevious: true, signature: "still updated" }, T, "reply"); }
+  finally { console.warn = originalWarn; }
+  assert.equal(state.foundation.characters[0].statusMessage, "still updated");
+});
 
 test("a situation action starts now at the earliest, defaults and caps its length, and never writes the past", async () => {
   const { state, apply } = stores();
