@@ -180,3 +180,22 @@ test("a sticker message draws only the picture, is saved without a reply request
   assert.match(room, /label="Edit" icon=\{Pencil\} disabled=\{activeMessage\.role === "system" \|\| !!activeMessage\.sticker/);
   assert.match(image, /referrerPolicy="no-referrer"/);
 });
+
+const css = readFileSync("app/messages/chat.css", "utf8");
+
+test("the panels are the composer's own expansion below the input row, four to a row", () => {
+  const form = room.match(/<form\s+key="composer"\s+className="chat-composer chat-input-bar"\s+ref=\{composerBar\}\s+onSubmit[\s\S]*?<\/form>/)![0];
+  assert.match(form, /<ChatPlusPanel/);
+  assert.match(form, /<StickerPanel/);
+  assert.ok(form.indexOf("chat-input-shell") < form.indexOf("<ChatPlusPanel"), "input row first, panel after it");
+  assert.doesNotMatch(room.replace(form, ""), /<ChatPlusPanel|<StickerPanel/);
+  const tray = css.match(/\.chat-tray \{[^}]*\}/)![0];
+  assert.doesNotMatch(tray, /position:\s*absolute/);
+  assert.match(css, /\.chat-plus-panel \{[^}]*repeat\(4, 1fr\)/);
+});
+
+test("a reaction is only its emoji: no circle, fill, border or shadow", () => {
+  const badge = css.match(/\.chat-reaction-badge \{[^}]*\}/)![0];
+  assert.doesNotMatch(badge, /(?<![-\w])(?:background|border|box-shadow|width|height)/);
+  assert.match(badge, /position:\s*absolute/);
+});
