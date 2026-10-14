@@ -1,8 +1,13 @@
 import { isTruncatedReason, type PromptTurn } from "./types";
 import type { PromptDiagnosticSection } from "./prompt";
+import { appendUsageBaseline, buildUsageBaselineRecord, type UsageBaselineMeta } from "./usage-baseline";
+import type { MemoryContext } from "../memory/context";
+import { recordContextInspector } from "./context-inspector";
 
-export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue"
-  | "test-connection" | "here-there-comment" | "presence-routine" | "unclassified";
+type MemorySummary = Pick<MemoryContext, "ids" | "characterLength" | "outcome">;
+
+export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue" | "proactive"
+  | "test-connection" | "here-there-comment" | "presence-routine" | "memory-maintenance" | "memory-summary" | "unclassified";
 export type CompletionRequestContext = { requestId: string; source: CompletionSource; sessionId?: string };
 export type CompletionUsage = {
   prompt_tokens: number | null;
@@ -51,7 +56,7 @@ export function completionStartSummary(context: CompletionRequestContext, model:
 }
 
 export function promptSummary(context: CompletionRequestContext, model: string,
-  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[]) {
+  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[], memory?: MemorySummary) {
   return {
     requestId: context.requestId,
     source: context.source,
@@ -60,6 +65,7 @@ export function promptSummary(context: CompletionRequestContext, model: string,
     sections: sections.map((section) => ({ ...section })),
     totalMessageCount: messages.length,
     totalCharacters: messages.reduce((total, message) => total + message.content.length, 0),
+    ...(memory ? { memory: { ids: [...memory.ids], characterLength: memory.characterLength, outcome: memory.outcome } } : {}),
   };
 }
 
@@ -84,21 +90,27 @@ export function parseCompletionUsage(value: unknown): CompletionUsage | null {
 export function logCompletionStart(context: CompletionRequestContext, model: string,
   messages: readonly PromptTurn[], stream: boolean) {
   if (process.env.NODE_ENV !== "development") return;
-  try { console.info("[VEIL completion:start]", completionStartSummary(context, model, messages, stream)); }
-  catch { /* Diagnostics must never affect generation. */ }
+  try {
+    const summary = completionStartSummary(context, model, messages, stream);
+    console.info("[VEIL completion:start]", summary);
+    recordContextInspector("start", summary);
+  } catch { /* Diagnostics must never affect generation. */ }
 }
 
 export function logPromptSummary(context: CompletionRequestContext, model: string,
-  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[]) {
+  sections: readonly PromptDiagnosticSection[], messages: readonly PromptTurn[], memory?: MemorySummary) {
   if (process.env.NODE_ENV !== "development") return;
-  try { console.info("[VEIL prompt:summary]", promptSummary(context, model, sections, messages)); }
-  catch { /* Diagnostics must never affect generation. */ }
+  try {
+    const summary = promptSummary(context, model, sections, messages, memory);
+    console.info("[VEIL prompt:summary]", summary);
+    recordContextInspector("prompt", summary);
+  } catch { /* Diagnostics must never affect generation. */ }
 }
 
 export function logCompletionUsage(context: CompletionRequestContext, usage: CompletionUsage | null) {
   if (process.env.NODE_ENV !== "development") return;
   try {
-    console.info("[VEIL completion:usage]", {
+    const summary = {
       requestId: context.requestId,
       source: context.source,
       prompt_tokens: usage?.prompt_tokens ?? null,
@@ -106,7 +118,9 @@ export function logCompletionUsage(context: CompletionRequestContext, usage: Com
       total_tokens: usage?.total_tokens ?? null,
       prompt_cache_hit_tokens: usage?.prompt_cache_hit_tokens ?? null,
       prompt_cache_miss_tokens: usage?.prompt_cache_miss_tokens ?? null,
-    });
+    };
+    console.info("[VEIL completion:usage]", summary);
+    recordContextInspector("usage", summary);
   } catch { /* Diagnostics must never affect generation. */ }
 }
 
@@ -151,16 +165,26 @@ export function completionTerminalSummary(context: CompletionRequestContext, ter
   };
 }
 
-/** Starts the clock for one model call. The returned function records the first outcome and ignores any later one. */
-export function startCompletionTerminal(context: CompletionRequestContext): (terminal: CompletionTerminal) => void {
+/**
+ * Starts the clock for one model call. The returned function records the first outcome and ignores any later one.
+ * With `meta` it also appends exactly one content-free usage record (usage-baseline.ts) in every environment.
+ */
+export function startCompletionTerminal(context: CompletionRequestContext, meta?: UsageBaselineMeta):
+  (terminal: CompletionTerminal, usage?: CompletionUsage | null) => void {
   const started = Date.now();
   let recorded = false;
-  return (terminal) => {
+  return (terminal, usage = null) => {
     if (recorded) return;
     recorded = true;
+    if (meta) {
+      try { appendUsageBaseline(buildUsageBaselineRecord(meta, context.source, terminal.outcome, Date.now() - started, usage)); }
+      catch { /* Diagnostics must never affect generation. */ }
+    }
     if (process.env.NODE_ENV !== "development") return;
     try {
-      console.info("[VEIL completion:terminal]", completionTerminalSummary(context, terminal, Date.now() - started));
+      const summary = completionTerminalSummary(context, terminal, Date.now() - started);
+      console.info("[VEIL completion:terminal]", summary);
+      recordContextInspector("terminal", summary);
     } catch { /* Diagnostics must never affect generation. */ }
   };
 }

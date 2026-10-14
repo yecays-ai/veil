@@ -43,6 +43,7 @@ function foundation() {
       id: "ab",
       characterAId: "a",
       characterBId: "b",
+      kind: null,
       label: "DIRECT AB",
       aToBContext: "trust",
       bToAContext: "respect",
@@ -52,6 +53,7 @@ function foundation() {
       id: "bc",
       characterAId: "b",
       characterBId: "c",
+      kind: null,
       label: "INDIRECT BC",
       aToBContext: null,
       bToAContext: null,
@@ -61,6 +63,7 @@ function foundation() {
       id: "cd",
       characterAId: "c",
       characterBId: "d",
+      kind: null,
       label: "UNRELATED CD",
       aToBContext: null,
       bToAContext: null,
@@ -303,6 +306,40 @@ test("literal Blank separator artifacts are split away before stored Regex and p
     "First paragraph", "Second paragraph", "Third paragraph",
   ]);
   assert(saved.slice(1).every((item) => item.content.toLowerCase() !== "blank"));
+});
+
+test("new generated Blank line placeholders do not persist while legitimate blank-line prose does", async () => {
+  const { storage } = create();
+  const session = await storage.openSession("a");
+  const raw = "First reply\n\nBlank\n\nSecond reply\n\nBlank line...\n\nA blank line separates these thoughts.";
+  const engine = createChatEngine(storage, async () => foundation(), async function* () { yield raw; });
+  await engine.send(session.id, "Tell me something.");
+  await engine.requestReply(session.id);
+  const saved = (await storage.readSession(session.id)).messages;
+  assert.deepEqual(saved.slice(1).map((item) => item.content), [
+    "First reply", "Second reply", "A blank line separates these thoughts.",
+  ]);
+});
+
+test("legacy standalone placeholder bubbles remain stored but are omitted from future prompt history", async () => {
+  const { storage, factory } = create();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "What happened?");
+  const placeholders: ChatMessage[] = ["Blank", "Blank line...", "  BLANK\u00a0LINE !! "].map((content, index) => ({
+    id: `legacy-${index}`, sessionId: session.id, role: "assistant", content, status: "complete",
+    createdAt: index + 1, order: index + 2,
+  }));
+  const valid: ChatMessage = { id: "valid", sessionId: session.id, role: "assistant", content: "Rats eat nearly anything.",
+    status: "complete", createdAt: 10, order: 5 };
+  await editDatabase(factory, (table) => { for (const item of [...placeholders, valid]) table.put(item); });
+
+  const saved = await storage.readSession(session.id);
+  assert.deepEqual(saved.messages.filter((item) => item.role === "assistant").map((item) => item.content),
+    ["Blank", "Blank line...", "  BLANK\u00a0LINE !! ", "Rats eat nearly anything."]);
+  const prompt = assembleChatPrompt(foundation(), foundation().characters[0], saved.messages, []);
+  assert(prompt.messages.some((turn) => turn.content.includes("Rats eat nearly anything.")));
+  for (const placeholder of placeholders.map((item) => item.content))
+    assert(!prompt.messages.some((turn) => turn.content.includes(placeholder)));
 });
 
 test("message maintenance edits storage and deletion repairs order, preview and reply claims", async () => {

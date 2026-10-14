@@ -58,7 +58,7 @@ async function seed(factory: IDBFactory, name: string, stores: Record<string, un
 async function environment() {
   const indexedDB = new IDBFactory(), data = backupData(), values = new Map<string, string>(), imageId = await sha256(png);
   data.foundation!.universe.relations = [{ id: "relation-test", characterAId: "peter", characterBId: "pep",
-    label: "Friends", aToBContext: "Test A", bToAContext: "Test B", sharedHistory: "Test history" }];
+    kind: "friend", label: "Friends", aToBContext: "Test A", bToAContext: "Test B", sharedHistory: "Test history" }];
   data.foundation!.user.avatar = "data:image/png;base64," + Buffer.from(png).toString("base64");
   data.contacts!.contacts[0].heroBackground = data.foundation!.user.avatar;
   data.appearance!.current.profile.wallpaper.source = "appearance-asset:" + imageId;
@@ -75,10 +75,10 @@ async function environment() {
   await seed(indexedDB, "veil-chat-v2", { ...data.chat, assets: [
     { id: "chat-image-test", blob: blob(), createdAt: TEST_NOW }, { id: "chat-orphan", blob: blob(), createdAt: TEST_NOW - 1000 },
   ] });
+  await seed(indexedDB, "veil-memory-v1", data.memory, 2);
   await seed(indexedDB, "veil-appearance-images-v1", { assets: [{ id: imageId, blob: blob(), type: "image/png", createdAt: TEST_NOW,
     holders: [{ id: "temporary-holder", at: TEST_NOW }] }] });
   await seed(indexedDB, "veil-api-config-v1", { configs: data.apiConfigs.map((row) => ({ ...row, apiKey: secret })) });
-  await seed(indexedDB, "unrelated-app", { records: [{ id: "unrelated", secret }] });
   const reads: string[] = [];
   const source: StaticBackupSource = { indexedDB, localStorage: { getItem(key) { reads.push(key); return values.get(key) ?? null; } } };
   return { source, data, values, reads, imageId };
@@ -88,11 +88,12 @@ async function environment() {
 function byId(data: BackupData) {
   const result = structuredClone(data);
   for (const rows of Object.values(result.chat)) rows.sort((a, b) => a.id.localeCompare(b.id));
+  for (const rows of Object.values(result.memory)) rows.sort((a, b) => a.id.localeCompare(b.id));
   result.apiConfigs.sort((a, b) => a.id.localeCompare(b.id));
   return result;
 }
 
-test("four databases and seven keys round-trip through v1 validation with all owned data and image bytes", async () => {
+test("five databases and seven keys round-trip through v2 validation with all owned data and image bytes", async () => {
   const env = await environment(), before = await readStaticBackupSource(env.source);
   env.reads.length = 0;
   const localBefore = new Map(env.values), catalogBefore = await env.source.indexedDB.databases();
@@ -104,7 +105,7 @@ test("four databases and seven keys round-trip through v1 validation with all ow
   let result;
   try { result = await exportStaticBackup(env.source, metadata); }
   finally { IDBDatabase.prototype.transaction = original; }
-  assert.equal(modes.length, 4); assert.equal(env.reads.length, 7);
+  assert.equal(modes.length, 5); assert.equal(env.reads.length, 7);
   assert.deepEqual(new Set(env.reads), new Set(Object.values(BACKUP_LOCAL_KEYS)));
   assert.deepEqual(env.values, localBefore); assert.deepEqual(await env.source.indexedDB.databases(), catalogBefore);
   assert.deepEqual(await readStaticBackupSource(env.source), before);
@@ -128,6 +129,7 @@ test("exporting an empty environment neither creates databases nor writes defaul
   assert.deepEqual(await indexedDB.databases(), []); assert.equal(requested.length, 7);
   assert.equal(checked.data.foundation, null); assert.equal(checked.data.appearance, null); assert.equal(checked.data.presets, null);
   assert.deepEqual(checked.data.chat, { sessions: [], messages: [], chatSettings: [], worldBookStates: [] });
+  assert.deepEqual(checked.data.memory, { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] });
 });
 
 test("the same fixed authorities and metadata produce the same bytes, IDs and counts", async () => {
@@ -213,4 +215,26 @@ test("static export makes no network/model requests and returns no UI or restore
   Object.defineProperty(globalThis, "fetch", { configurable: true, get() { throw new Error("No network is allowed"); } });
   try { await exportStaticBackup(env.source, metadata); }
   finally { if (saved) Object.defineProperty(globalThis, "fetch", saved); else Reflect.deleteProperty(globalThis, "fetch"); }
+});
+
+test("an empty legacy session remark is left out of the export copy while stored data is untouched", async () => {
+  const env = await environment();
+  const rows = env.data.chat.sessions.map((row) => ({ ...row, remark: null }));
+  await seed(env.source.indexedDB, "veil-chat-v2", { sessions: rows });
+  const before = await readStaticBackupSource(env.source);
+  const result = await exportStaticBackup(env.source, metadata);
+  const checked = await validateBackupPackage(result.manifestJson, result.files);
+  assert.ok(checked.data.chat.sessions.every((row) => !("remark" in row)));
+  assert.deepEqual(await readStaticBackupSource(env.source), before);
+  assert.ok((before.chat.sessions as Array<Record<string, unknown>>).every((row) => row.remark === null));
+});
+
+test("a non-empty legacy remark and other unknown session fields still refuse the export", async () => {
+  for (const extra of [{ remark: "Simba" }, { remark: null, other: 1 }, { nickname: null }]) {
+    const env = await environment();
+    await seed(env.source.indexedDB, "veil-chat-v2", { sessions: env.data.chat.sessions.map((row) => ({ ...row, ...extra })) });
+    await assert.rejects(exportStaticBackup(env.source, metadata), (error: unknown) =>
+      error instanceof BackupValidationError && error.code === "invalid-data" && error.path === "chat.sessions[0]"
+      && /^unexpected-field:/.test(error.detail ?? ""));
+  }
 });

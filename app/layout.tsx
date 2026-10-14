@@ -4,14 +4,19 @@ import { PhoneShell } from "../components/phone-shell";
 import { ThemeProvider } from "../components/theme-provider";
 import { FoundationProvider } from "../components/foundation-provider";
 import { StandaloneMode } from "../components/standalone-mode";
+import { RestoreGate } from "../components/restore-gate";
 import { ProductBootstrap } from "../components/product-bootstrap";
+import { MemoryMaintenanceGate } from "../components/memory-maintenance-gate";
+import { ProactiveContactGate } from "../components/proactive-contact-gate";
 import { ChatDiagnosticsGate } from "../components/diagnostics/chat-diagnostics";
+import { ContextInspectorGate } from "../components/diagnostics/context-inspector";
 import "./globals.css";
 import "./appearance.css";
 import "./desktop.css";
 import "./foundation.css";
 import "./mobile-foundation.css";
 import "./page-shell.css";
+import "../components/settings/ui/modal.css";
 
 export const metadata: Metadata = {
   title: "VEIL",
@@ -72,14 +77,19 @@ export default function RootLayout({
           } catch {}
         `}</Script>
         <StandaloneMode />
-        <ProductBootstrap />
-        <main className="app-root">
-          <PhoneShell>
-            <ThemeProvider>
-              <FoundationProvider><ChatDiagnosticsGate>{children}</ChatDiagnosticsGate></FoundationProvider>
-            </ThemeProvider>
-          </PhoneShell>
-        </main>
+        <RestoreGate>
+          <ProductBootstrap />
+          <MemoryMaintenanceGate />
+          <ProactiveContactGate />
+          <main className="app-root">
+            <PhoneShell>
+              <ThemeProvider>
+                <FoundationProvider><ChatDiagnosticsGate>{children}</ChatDiagnosticsGate></FoundationProvider>
+                <ContextInspectorGate />
+              </ThemeProvider>
+            </PhoneShell>
+          </main>
+        </RestoreGate>
       </body>
     </html>
   );

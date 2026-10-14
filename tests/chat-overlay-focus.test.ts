@@ -3,6 +3,7 @@ import { IDBFactory } from "fake-indexeddb";
 import { JSDOM } from "jsdom";
 import { act, createElement, StrictMode } from "react";
 import { regressionContract } from "./regression-contract";
+import { lockOrigin } from "./generation-lock-fixture";
 
 regressionContract("chat.overlay-focus-boundary", "render-lifecycle",
   "Chat Info, message actions, and confirmation dialogs contain keyboard focus and restore it safely", async () => {
@@ -24,6 +25,8 @@ regressionContract("chat.overlay-focus-boundary", "render-lifecycle",
     install("BroadcastChannel", undefined);
     install("IS_REACT_ACT_ENVIRONMENT", true);
     Object.defineProperty(dom.window, "indexedDB", { configurable: true, value: indexedDB });
+    // Source deletion now requires the same exclusive coordination as State maintenance and backup.
+    Object.defineProperty(dom.window.navigator, "locks", { configurable: true, value: lockOrigin().client() });
     dom.window.HTMLElement.prototype.scrollTo = () => {};
 
     const { createRoot } = await import("react-dom/client");

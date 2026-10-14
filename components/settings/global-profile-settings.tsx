@@ -6,7 +6,7 @@ import { useFoundation } from "../foundation-provider";
 import { ImageCropDialog } from "../image-crop-dialog";
 import { Switch } from "./ui/switch";
 import { chatStorage } from "../../lib/chat/storage";
-import { getChatImageFromIndexedDB, saveChatImageToIndexedDB } from "../../lib/chat/background";
+import { getChatImageFromIndexedDB } from "../../lib/chat/background";
 import { readImage } from "../../lib/theme-storage";
 import { normalizeBackgroundBlur, isValidBubbleTimingDelay, DEFAULT_BUBBLE_TIMING, type BubbleTiming, type ChatBackgroundSettings,
   type GlobalProfileSettings } from "../../lib/chat/types";
@@ -67,13 +67,10 @@ export function GlobalProfileSettings() {
   async function saveCrop(value: string) {
     fileRevision.current++;
     setBusy(true); setError("");
-    let id: string | undefined;
     try {
-      id = await saveChatImageToIndexedDB(await (await fetch(value)).blob());
-      await chatStorage.updateGlobalChatBackground(id);
+      await chatStorage.setGlobalChatBackgroundImage(await (await fetch(value)).blob());
       setCropSource(null);
     } catch (reason) {
-      if (id) await chatStorage.deleteChatImageIfUnused(id);
       setError(reason instanceof Error ? reason.message : "Chat background could not be saved.");
     } finally { setBusy(false); }
   }

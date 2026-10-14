@@ -10,6 +10,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import type { PersistenceWriteScope } from "../lib/backup/persistence-write-gate";
+import { runQueuedWrite } from "../lib/backup/write-queue";
 import { browserThemeStorage } from "../lib/theme-storage";
 import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../lib/diagnostics/chat-first-paint";
 import { browserAppearanceImageStorage } from "../lib/appearance-image-storage";
@@ -26,7 +28,7 @@ type ThemeContextValue = {
   ready: boolean;
   /** The first load has finished, successfully or not. Until then the document is only the built-in default. */
   settled: boolean;
-  commit: (update: (document: ThemeDocument) => ThemeDocument) => Promise<void>;
+  commit: (update: (document: ThemeDocument) => ThemeDocument, scope?: PersistenceWriteScope) => Promise<void>;
   resolveImage: (source: string | null) => string | null;
   updateProfile: (
     update: (profile: ThemeProfile) => ThemeProfile,
@@ -163,10 +165,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   function commit(
     update: (document: ThemeDocument) => ThemeDocument,
+    scope?: PersistenceWriteScope,
   ): Promise<void> {
     const owner = lifecycle.current;
     const live = () => owner === lifecycle.current && mounted.current;
-    const operation = queue.current.then(async () => {
+    return runQueuedWrite(queue, async (owned) => {
       let failure = await settledLoad();
       // A failed load is retried from the persisted data before any write is refused.
       if (!writable.current && live()) {
@@ -176,7 +179,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       if (!live() || !writable.current)
         throw failure instanceof Error ? failure
           : new Error("Appearance has not loaded. Existing data has not been changed.");
-      await browserThemeStorage.transact(update);
+      await browserThemeStorage.transact(update, owned);
       // The write is durable here; a failed refresh must not report it as a failed save.
       if (live()) {
         try { await refresh.current?.(); }
@@ -184,12 +187,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           if (live()) setError(`Appearance was saved, but could not be reloaded. ${reason instanceof Error ? reason.message : ""}`.trim());
         }
       }
-    }).catch((reason) => {
+    }, scope).catch((reason) => {
       if (live()) setError(reason instanceof Error ? reason.message : "Could not save appearance.");
       throw reason;
     });
-    queue.current = operation.catch(() => {});
-    return operation;
   }
 
   useLayoutEffect(() => {

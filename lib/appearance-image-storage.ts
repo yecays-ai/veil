@@ -1,4 +1,4 @@
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 import {
   THEME_IMAGE_ASSET_PREFIX,
   themeImageAssetId,
@@ -11,7 +11,7 @@ const STORE = "assets";
 // A staging holder keeps an image from collection only for a lease: a tab that closed or crashed before
 // release() would otherwise pin the blob forever.
 type Holder = { id: string; at: number };
-type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: Holder[] };
+export type ImageAsset = { id: string; blob: Blob; type: string; createdAt: number; holders?: Holder[] };
 export const HOLDER_LEASE_MS = 24 * 60 * 60 * 1000;
 // Theme documents live in localStorage while images live here, and another tab's localStorage write
 // has no cross-process visibility guarantee. An image this young is never collected, so a collector
@@ -48,26 +48,34 @@ export class AppearanceImageStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB, private now: () => number = Date.now,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
-  private open(): Promise<IDBDatabase> {
+  private open(scope?: PersistenceWriteScope): Promise<IDBDatabase> {
+    if (this.database) return this.database;
+    return runPersistenceWrite(this.writeGate, () => this.openDatabase(), scope);
+  }
+
+  private openDatabase(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
         let operation: IDBOpenDBRequest;
+        let rejected = false;
         try { operation = this.factory().open(APPEARANCE_IMAGE_DATABASE_NAME, APPEARANCE_IMAGE_DATABASE_VERSION); }
         catch { reject(new Error("Appearance image storage is unavailable.")); return; }
         operation.onupgradeneeded = () => {
+          if (rejected) { operation.transaction?.abort(); return; }
           if (!operation.result.objectStoreNames.contains(STORE))
             operation.result.createObjectStore(STORE, { keyPath: "id" });
         };
         operation.onsuccess = () => {
           const db = operation.result;
+          if (rejected) { db.close(); return; }
           db.onversionchange = () => {
             db.close();
             if (this.database === opening) this.database = undefined;
           };
           resolve(db);
         };
-        operation.onerror = () => reject(new Error("Appearance image storage is unavailable."));
-        operation.onblocked = () => reject(new Error("Close other VEIL tabs to open Appearance image storage."));
+        operation.onerror = () => { rejected = true; reject(new Error("Appearance image storage is unavailable.")); };
+        operation.onblocked = () => { rejected = true; reject(new Error("Close other VEIL tabs to open Appearance image storage.")); };
       });
       this.database = opening;
       void opening.catch(() => { if (this.database === opening) this.database = undefined; });
@@ -75,13 +83,15 @@ export class AppearanceImageStorage {
     return this.database;
   }
 
-  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    const operation = () => this.performTransaction(mode, run);
-    return mode === "readwrite" ? this.writeGate.withWrite(operation) : operation();
+  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, outer?: PersistenceWriteScope): Promise<T> {
+    if (mode !== "readwrite") return this.performTransaction(mode, run, outer);
+    return outer
+      ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, outer), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope));
   }
 
-  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    const db = await this.open();
+  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
+    const db = await this.open(scope);
     const tx = db.transaction(STORE, mode);
     const done = new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -96,6 +106,14 @@ export class AppearanceImageStorage {
       await done.catch(() => {});
       throw error;
     }
+  }
+
+  /** Restore only: replaces every stored image in one transaction. Callers hold the exclusive backup lock. */
+  replaceAllAssets(rows: readonly ImageAsset[], scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (store) => {
+      await request(store.clear());
+      for (const row of rows) await request(store.put(row));
+    }, scope);
   }
 
   async saveBlobs(blobs: readonly Blob[]): Promise<string[]> {
@@ -133,7 +151,7 @@ export class AppearanceImageStorage {
 
   // The existing asset transaction serializes Theme publication and collection across tabs.
   // publish is synchronous: no unrelated asynchronous work is performed inside the transaction.
-  async publish<T>(publish: (available: ReadonlySet<string>) => T): Promise<T> {
+  async publish<T>(publish: (available: ReadonlySet<string>) => T, scope?: PersistenceWriteScope): Promise<T> {
     let published = false;
     let result!: T;
     try {
@@ -141,7 +159,7 @@ export class AppearanceImageStorage {
         const ids = await request<IDBValidKey[]>(store.getAllKeys());
         result = publish(new Set(ids.filter((id): id is string => typeof id === "string")));
         published = true;
-      });
+      }, scope);
     } catch (error) {
       // No assets are changed in this transaction. Once synchronous localStorage publication
       // succeeded, a later transaction abort cannot undo that successful Theme write.
@@ -158,7 +176,7 @@ export class AppearanceImageStorage {
     });
   }
 
-  collect(resolveUsedIds: () => ReadonlySet<string>): Promise<void> {
+  collect(resolveUsedIds: () => ReadonlySet<string>, scope?: PersistenceWriteScope): Promise<void> {
     return this.transaction("readwrite", async (store) => {
       const saved = await request<ImageAsset[]>(store.getAll());
       // Read the persisted authority while holding the same transaction lock as publishers.
@@ -171,7 +189,7 @@ export class AppearanceImageStorage {
       for (const asset of saved)
         if (!usedIds.has(asset.id) && !held(asset) && now - asset.createdAt >= COLLECT_GRACE_MS)
           await request(store.delete(asset.id));
-    });
+    }, scope);
   }
 }
 

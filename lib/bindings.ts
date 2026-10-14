@@ -2,6 +2,7 @@ import { APP_IDS, type AppId } from "./app-registry";
 
 export type BindingSlot = {
   apiConfigId?: string | null;
+  memoryApiConfigId?: string | null;
   presetId?: string | null;
   worldBookIds?: string[];
   regexIds?: string[];
@@ -13,9 +14,9 @@ export type BindingDocument = {
     { defaults: BindingSlot; apps: Partial<Record<AppId, BindingSlot>> }
   >;
 };
-export type ManagedBindingField = "apiConfigId" | "presetId" | "worldBookIds" | "regexIds";
+export type ManagedBindingField = "memoryApiConfigId" | "apiConfigId" | "presetId" | "worldBookIds" | "regexIds";
 export type BindingScope = { characterId?: string; appId?: AppId };
-const scalarKeys = ["apiConfigId", "presetId"] as const;
+const scalarKeys = ["memoryApiConfigId", "apiConfigId", "presetId"] as const;
 const listKeys = ["worldBookIds", "regexIds"] as const;
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -145,6 +146,7 @@ export type AvailableBindingResources = {
 export function cleanStaleBindings(document: BindingDocument, available: AvailableBindingResources): BindingDocument {
   const clean = (slot: BindingSlot): BindingSlot => {
     const next = { ...slot };
+    if (next.memoryApiConfigId && !available.apiConfigIds.has(next.memoryApiConfigId)) next.memoryApiConfigId = null;
     if (next.apiConfigId && !available.apiConfigIds.has(next.apiConfigId))
       next.apiConfigId = null; // Keep a missing Text API fail-closed; inheritance may select another key.
     if (next.presetId && !available.presetIds.has(next.presetId)) delete next.presetId;
@@ -173,8 +175,9 @@ export function withoutPresetBinding(document: BindingDocument, presetId: string
 }
 
 export function withoutApiConfigBinding(document: BindingDocument, apiConfigId: string): BindingDocument {
-  const omit = (slot: BindingSlot): BindingSlot => slot.apiConfigId === apiConfigId
-    ? { ...slot, apiConfigId: null } : slot;
+  const omit = (slot: BindingSlot): BindingSlot => ({ ...slot,
+    ...(slot.apiConfigId === apiConfigId ? { apiConfigId: null } : {}),
+    ...(slot.memoryApiConfigId === apiConfigId ? { memoryApiConfigId: null } : {}) });
   return { global: omit(document.global),
     characters: compactCharacters(Object.fromEntries(Object.entries(document.characters).map(([id, binding]) =>
       [id, { defaults: omit(binding.defaults), apps: Object.fromEntries(Object.entries(binding.apps)

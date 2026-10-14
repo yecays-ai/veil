@@ -5,6 +5,7 @@ import { CirclePlus, MessageCircle, Search, Users } from "lucide-react";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useFoundation } from "../foundation-provider";
 import { chatStorage } from "../../lib/chat/storage";
+import { withMemoryClear } from "../../lib/memory/browser";
 import { prefetchChatSession } from "../../lib/chat/session-prefetch";
 import { lastSessionList, rememberSessionList } from "../../lib/chat/session-list-snapshot";
 import type { ChatSession } from "../../lib/chat/types";
@@ -13,6 +14,7 @@ import { sortChatSessions } from "../../lib/chat/session-order";
 import { CONVERSATION_DELETE_WIDTH, conversationDeleteMotion, conversationSwipeOffset, isHorizontalConversationSwipe,
   conversationSwipeReleaseTarget } from "../../lib/chat/swipe-gesture";
 import { ChatAvatar } from "./avatar";
+import { CharacterPresenceBadge } from "../presence";
 import { RootAppHeader } from "../root-app-header";
 import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
@@ -112,7 +114,8 @@ export function MessagesHome() {
     setDeleteBusy(true);
     setDeleteError("");
     try {
-      await chatStorage.deleteSession(deleteTarget.id);
+      const { cleanupIncomplete } = await withMemoryClear(deleteTarget, (scope) => chatStorage.deleteSession(deleteTarget.id, scope));
+      if (cleanupIncomplete) setDeleteError("Conversation deleted. Memory cleanup is pending.");
       setDeleteTarget(null);
       setOpenRowId(null);
     } catch (reason) {
@@ -180,7 +183,11 @@ export function MessagesHome() {
                 }
               }
             }}>
-            {group ? <span className="chat-avatar group-avatar"><Users /></span> : namesReady && character ? <ChatAvatar profile={character} /> : <span className="chat-avatar">{namesReady ? "?" : ""}</span>}
+            {group ? <span className="chat-avatar group-avatar"><Users /></span> : namesReady && character ?
+              <span className="chat-avatar-presence"><ChatAvatar profile={character} /><CharacterPresenceBadge character={character} />
+                {!!session.unreadCount && <span className="chat-unread-badge" data-testid={`unread-${session.id}`}
+                  aria-label={`${session.unreadCount} unread`}>{session.unreadCount > 99 ? "99+" : session.unreadCount}</span>}</span>
+              : <span className="chat-avatar">{namesReady ? "?" : ""}</span>}
             <span className="conversation-summary">
               <span className="conversation-title-line"><strong>{name ?? "Loading contact…"}</strong>
                 {!!session.updatedAt && <time dateTime={new Date(session.updatedAt).toISOString()}>{new Date(session.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>}

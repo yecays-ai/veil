@@ -1,5 +1,34 @@
 # VEIL 审计总账（完整合并版）
 
+## Memory P1 阶段：lineage 永久锁与维护输入预算（2026-10-14）
+
+基线 `main 204acfb`（审计）→ PR-A 合并为 `1993c1a`。Lan 2026-10-14 批准的 P1 范围；不含 P1-3（长段第一人称回忆）、迁移或其他记忆重构。状态：**已修待验（PR-A 已合并；PR-B 见[任务状态](work-status/2026-10-14-claude-memory-p1-2-input-budget.md)）**。
+
+- **P1-1（PR #184，已合并）**：删除自动记忆时连同被取代历史一并移除并抑制旧文本；指向不存在行的指针不再算损坏；真正损坏的链（环、自链、互指不一致）标 Flagged，清除意图照常结束，不再锁住聊天的编辑/删除/重新生成；自动提交时每条记忆最多保留最近 3 个隐藏历史（仅限全部为自动且已被取代的历史）。新增 `docs/code-rollback.md`。
+- **P1-2（PR-B）**：维护请求按“规则与 State → 消息 → 角色文本/Backstory/相关手动记忆 → 候选”的顺序编排，32,000 字符是工程护栏，不是 token 数，也不宣称适配所有模型；State 通道不被跳过（放不下则 too-large，而不是丢 State）；Backstory 放不下时核心段优先、再按相关性补充并明确标注省略；只发送与本次对话相关的手动记忆，suppression 不再发给模型（本地保护仍检查全部）；疑似密钥本地脱敏，过半被脱敏的消息整条不发，诊断只记计数；too-large 范围保留、每次正常触发在同一预算下最多重评估 2 次后暂停，预算输入变化后恢复评估，永不标记完成。
+- 已知边界：词汇相关性会漏掉纯语义关联的手动记忆；被裁掉的旧版本文本不写抑制；暂停的 too-large 范围只在下一次正常触发（20 条新消息）时恢复评估。
+- 证据级别：fake IndexedDB / Node 自动化测试；**无真机、无真实模型**。Memory 模型的供应商、上下文窗口与 token 参数待 Lan 提供，未验证任何具体模型。
+
+## Memory M6 P4：本地固定样本评估（新增，2026-10-13）
+
+状态：**已修待验（独立 P4 施工完成，[PR #171](https://github.com/yecays-ai/veil/pull/171) 待外部审查及 Lan 手动合并）**。本单读取 main/base `8a0f79044c6b291906a518bc07a5d717924a348a` 的本账本；不重审 P1/P2，不进入 P3/P5，不改变任何原 F 编号定义或状态。
+
+复用原 82 项正式质量样例；新增 15 项隔离/状态/Journal/去重/预算/排序边界和 3 项 fresh fake IndexedDB 来源清理 → 检索样例。`npm run test:memory` 编译并执行定向测试，输出固定版本/夹具哈希及逐项预期/实际 ID、字符数、失败原因的 JSON。100/100 与固定预期一致，0 失败；语义命中仍为 35/46、11 项既有漏召回单列，负例误召回 0/36。生产选择器/存储/算法与原样例均未改；没有模型/网络/真实数据操作。
+
+证据级别：本地 Node v24.19.0 / fake IndexedDB 自动化，定向测试 167/167、零跳过，类型检查和改动文件 lint 通过；Character guard、active guard、预算换行负对照均失败，还原正常；两次报告字节一致。来源有效性只证明既有清理完成后的检索结果，不宣称选择器实时核验来源；预算是 5 条/2,000 UTF-16 字符，不是精确 Token。未跑全套/build，无模型或 iPhone/Safari 验收；发布 head 的 CI/CodeRabbit 另核，等待手动合并。见[开发合同与结果](memory-m6-p4-evaluation.md)及[唯一任务记录](work-status/2026-10-13-codex-memory-m6-p4.md)。
+
+## Memory M6 P2：自动维护、Background 复核与 Prompt（2026-10-13）
+
+最新复审：aca441e4f4f24b7c6df886b9d0d54ee21a0f9222 的 CI #1185 成功（1586/1586）、Preview READY，原四个线程均由 CodeRabbit 关闭；新增并发 clear token 复用（Major）及工作记录过期（Minor），本轮已最小修复：每次 intent 独立 token，失败取消/恢复仅影响自己仍拥有的 marker，两个真实共享租约测试先 Red 后 Green。受影响回归 995/995、57 项 P2 新测试、零跳过，typecheck/lint/webpack build 通过；本轮发布 head 的外部检查/复审另核，下面旧审查状态保留为历史证据，PR 仍未合并。
+
+状态：**已修待验（施工发布完成，[PR #168](https://github.com/yecays-ai/veil/pull/168) 等待外部审查与 Lan 手动验收，未合并）**。重核 main `fe6a209f9938d230dc10b60d822508bf1cb436c5`，包含用户手动合并的 P1 #167；下文 P1“未合并”属于历史施工快照。Lan 恢复额度后授权继续 P2，不继续 P3–P5。
+
+已实现 Background 独占保存/版本追加/分库恢复、同一正常维护请求的严格 State CREATE/UPDATE/REVIEW 与同库进度提交、D1 pending/compatible/conflict、D2 单条删改/整轮重生成/同 ID hash 与可恢复清理、真实 Prompt 覆盖和 Character 只读 UI。release/device consent、owner/cursor/restore/uncertain、完整备份与 manual/Journal/Presence 行为保留，没有新增模型调用或启用真实维护。Background 跨库工作不是原子事务；混合来源隐私优先整体撤销。
+
+复审修复已推送于 `8f9430701b5cc45e4ca2d49a04940f3e4619d5b9`，[CI #1184](https://github.com/yecays-ai/veil/actions/runs/38361506517) 全部成功（全仓 1586/1586、零跳过），同 SHA Preview READY/target=null；CodeRabbit 已确认三条 addressed，Foundation 原线程已回复修复和回归证据但仍 open，最新增量复审 pending，文档收口的新 head 外部检查仍须单独核对，不把 pending 当已通过。
+
+P2 独立证据：Node 24.19.0，受影响回归 **993/993，零跳过，含 55 新测试**；新 State 提交测试在 main 原协议负对照失败、P2 通过；测试编译、typecheck、改动文件 lint、webpack build 通过。原 head `714072abf180a945322fb0c547c25e1f585fd910` 的 [CI #1183](https://github.com/yecays-ai/veil/actions/runs/38358757663)（全仓 1576/1576、lint/typecheck/build/diff）和 Preview 已通过；CodeRabbit 已完成该 head 的 32 文件审查，4 条有效意见（1 Major、3 Minor）本轮本地修复：资料读取不被 Memory 修复错误阻断、State 刷新合并、整段清空删除旧 cursor/替换定向 marker、状态记录格式，并补 clear 失败恢复原定向证据和 token/owner 防护；对应 Red/Green 及安全回归通过，修复后最新 head 的 CI/Preview/复审另核，不沿用旧成功。docstring coverage 警告不作为功能缺陷扩大范围。fake IndexedDB/模拟锁/挂载 JSDOM/stub/构建不替代真实模型、iPhone/Safari、多真实 tab。详见[模块合同](memory-m6-p2-integration.md)和[唯一 P2 work-status](work-status/2026-10-13-codex-memory-m6-p2.md)。只授权 Preview，禁止 Production/提升、合并/automerge、付费调用和真实数据操作。
+
 更新：2026-10-10（Lan 所在时区）｜核对时 main 头 `a58a9b4fda2562ada1849ad1de750744bf86f183`（2026-10-10 第七刀阶段性收口时读取；合并记录覆盖 #38–#107；#38–#83 未逐项复验各 PR 的内容与范围，#86–#107 为本轮逐项核对（第六刀 #92–#100 与第七刀 #101–#107 的收口对账见板块六）；并入 Lan 2026-10-10 的人工验收自述，见“真机验收记录”，录屏/截图未入库）｜来源：六轮审计总账 v2、第一板块交接报告、第二板块核销报告、第三刀对账报告、#61/#56 报告、《前端》审计、仓库原根目录总账（F1/F2/F3/F5）
 主状态只用五种：**已验证修复 / 已修待验 / 部分修复 / 未修 / 新回归**；另有处置说明：接受风险、后移、搁置、不纳入、明确延期。正文里的“已完成”“已验证”“有条件通过”“通过”不是主状态：“已完成”指施工完成，“已验证/通过/未通过/未验”是验收结果，“有条件通过”是附条件的验收结果；每条以其所在行的主状态为准，两者冲突时按“已修待验”处理并回头核对。板块标题括号内的“阶段性关闭/结案”是板块阶段说明，不是主状态。
 本文件是全仓库**唯一**总账（`docs/AUDIT_LEDGER.md`）。原根目录 `AUDIT_LEDGER.md`（#61 起只含 Theme 的那份，后加入 F5/F3）已并入板块五并删除，不留两份。
@@ -29,7 +58,7 @@
 | S8 | 删除角色留下残余 (R3) | #46 | 已修待验 | 删角色后其私聊/消息/联系人/群成员/小组件绑定全清，群聊本身保留，先弹确认清单。Lan 2026-10-10 真机：确认清单会弹出，写明将删除聊天与联系人；“确认删除”本身未试 |
 | S9 | 存储权威/备份覆盖文档 (G2) | #47 | 已完成 | 文档与行为一致 |
 | S10 | 真实浏览器跨窗口验收 (G1) | — | 有条件通过 | 仅 Chromium 无头；Firefox/WebKit/iPhone 未测 |
-| S11 | 全站备份与恢复 (R2) | #118（第 1 张，已合并）；#119（第 2 张，已合并）； #121（第 3 张协调核心，已合并）；#123（第 4 单四库事务接入，已合并）；#124（第 5 单五域 localStorage 接入，已合并）；#125（第 6 单资源删除范围，待审） | 部分修复（P0；格式/只读校验及静态导出已合并，协调核心已合并，四库 readwrite 事务接入已合并，五域 localStorage 写入接入已合并，三项资源删除整项范围已施工；Presence、其他跨域操作及建库尚未全部接入，活动设备一致快照及全站恢复未实现） | Lan 2026-10-11 决策：在线系统仍在开发且受阻，先推进备份；在线系统完成后基于最新 main 增量补核覆盖；两者均验收后才启动 Memory / Context。普通备份排除 API Key，保留配置和绑定，恢复需明确重填且不沿用其他密钥；首版含空环境与明确整站覆盖恢复，不做合并。#119 按 Lan 本次单次授权合并后启动第 3 张；第 3 张为[一致性协调核心](backup-coordination.md)；第 4 单为[四库读写事务接入](backup-idb-write-gate.md)，第 5 单为[五域 localStorage 写入接入](backup-local-write-gate.md)，第 6 单为[资源删除与 Binding 清理范围](backup-library-delete-scope.md)；避开正在修改的 Presence；不开放入口、不改 UI/在线系统/Memory 业务；S11 整体验收未完成。 |
+| S11 | 全站备份与恢复 (R2) | #118（第 1 张，已合并）；#119（第 2 张，已合并）； #121（第 3 张协调核心，已合并）；#123（第 4 单四库事务接入，已合并）；#124（第 5 单五域 localStorage 接入，已合并）；#125（第 6 单资源删除范围，已合并）；#126（第 7 单四库 open 协调，已合并）；#128（第 8 单 Text API 删除范围，已合并）；#129（第 9 单 Presence 键写入，已合并）；#130（第 10 单 Character 删除范围，已合并）；#131–#149（快照读取侧至 API 密钥恢复，均已合并，见文末「S11 关闭」） | 已验证修复（Lan 2026-10-12 用户验收通过，正式关闭；残余风险见文末「S11 关闭」） | Lan 2026-10-11 决策：在线系统仍在开发且受阻，先推进备份；在线系统完成后基于最新 main 增量补核覆盖；两者均验收后才启动 Memory / Context。普通备份排除 API Key，保留配置和绑定，恢复需明确重填且不沿用其他密钥；首版含空环境与明确整站覆盖恢复，不做合并。#119 按 Lan 本次单次授权合并后启动第 3 张；第 3 张为[一致性协调核心](backup-coordination.md)；第 4 单为[四库读写事务接入](backup-idb-write-gate.md)，第 5 单为[五域 localStorage 写入接入](backup-local-write-gate.md)，第 6 单为[资源删除与 Binding 清理范围](backup-library-delete-scope.md)；第 7 单为[四库 open 协调](backup-database-open-gate.md)；第 8 单为[Text API 删除范围](backup-text-api-delete-scope.md)；第 9 单为[Presence 键写入协调](backup-presence-write-gate.md)；第 10 单为[Character 删除整项范围](backup-character-delete-scope.md)；第 11 单为[快照读取侧](backup-snapshot-read-side.md)；不开放入口、不改 UI/在线系统/Memory 业务；S11 整体验收未完成。已知待办（备份入口开放前须单独处理）：Foundation / Theme Provider 的 `commit` 仍是「Provider 队列 → 存储 lease」，若页内有更早的无 scope 写入在独占快照排队后才申请 lease，而 Character 删除的 scoped 提交排在它之后，三者会互相等待（活性风险，不影响快照一致性；仅源码推演，未做复现；触发需同时出现未完成 Provider 写入、备份快照请求与 Character 删除，且备份入口未开放），见 [Character 删除范围](backup-character-delete-scope.md)。 第 12 单（聊天壁纸存图与挂接同一共享租约，待审）见 [聊天壁纸图片生命周期](backup-chat-image-lifecycle.md)；Theme 图片沿用既有流程。Lan 2026-10-11 收尾分类：第 3 阶段除本单外仅剩「Provider 排队顺序」一项阶段阻塞项，安排在 #132 合并后集中修复并验收；崩溃遗留 `generation` 标记不阻塞第 3 阶段（快照一致性不受影响，最坏结果是导出以 `invalid-data` 拒绝，属安全失败），记为入口阶段待办（开放入口前须提示或先触发会话恢复），不单独开 PR。第 14 单（Provider 提交改为「备份租约 → Provider 队列」，已合并）见 [Provider 提交顺序](backup-provider-write-order.md)；上述「已知待办」的活性风险随该单合并解除。 第 13 单（原计划第 4 阶段只读恢复预检，已施工待审）见 [恢复预检](backup-restore-preview.md)；恢复写入、第 5 到 8 阶段未开始。 第 16 单（原审计第 5、6 阶段恢复引擎：空环境完整恢复、恢复日志、中断继续/回滚与故障注入测试，叠在 #134 上，未接入界面）已提交待审。 第 17 单（原审计第 7 阶段显式覆盖：安全副本、覆盖日志、失败整体还原，叠在 #136 上，未接入界面）已提交待审。 第 15 单（备份归档容器，纯逻辑，已施工待审）见 [备份归档](backup-archive.md)。 第 18 单（原审计第 8 阶段：设置页导出/导入、恢复未完成门禁、一句话错误提示，叠在 #137 上并含 #135，真机未验证）已提交待审。 2026-10-11 状态（以此为准，早于此的“待审/未验证”描述为历史）：原审计第 1 到 8 阶段代码均已合并到 main（#134、#135 及后续 #139、#140）。真机证据（Lan 报告，截图）：iPhone 导出下载成功（约 1.6 MB 压缩包）；第二个站点（预览地址，独立数据库）上导入预览正确、整站覆盖恢复完成，点击 Reload VEIL 后配置、API 设置（不含密钥）、绑定、图片（含桌面壁纸）均正确。中断恢复页面真机未触发（恢复过快），仅有自动化测试（假 IndexedDB、jsdom）证据，不得称为真机验证。导出曾被旧版 `chat.sessions.remark` 空值字段阻塞，已在导出副本中忽略值为 null 的该字段（#140；不改本机数据，其他未知字段仍拒绝）。S11 整体验收未标记完成。 2026-10-12 安全收尾（本 PR 待审，基线 main `c91767d767b1632ffb71f5824ed62ecd648e5410`）：保留 #141 真机证据；F1 空文档判定改为与执行/继续/回滚的摘要规则一致，存在的零记录文档需明确确认覆盖并取安全副本，防止写入日志后 target-changed 锁死；未登记 IndexedDB 库（包括空库）阻止导出、预检和恢复，仅现有临时安全副本库明确排除。产品决策：允许新旧设备明确确认后全量覆盖，接受启动默认数据；当前开发阶段不做旧备份格式兼容、不做合并，API Key 排除不变。自动化证据和剩余缺口见 [本单记录](work-status/2026-10-12-codex-s11-restore-safety-closeout.md)。中断恢复真机未触发，仍未验证；本单不宣告 S11 整体验收通过，不启动 Memory。 2026-10-12 夜间核对 main `e7b86d0726e603f55232c9f3f52cf43e98f0da8d`：#142 已合并，F1 与未知库护栏复验通过；#143 补齐原备份审计 F6 两项图片夹具跳过并验证图片中断继续/回滚；#144 修已实际复现的原备份审计 F5 同元数据异字节误判，含两条有效复审修复。三张代码 PR 的临时组合验证 1150/1150、零跳过，不代表 main/真机。#141 原设备证据保留；真机中断未触发仍未验证，不宣告 S11 完成。当前 main 的 F5 缺陷待 #144 手动合并后方可核销。当前证据及最短人工清单见 [夜间交接](night-handoff-2026-10-12.md)，Memory 工单仅准备，未开工。 |
 | S12 | C3 偶发消息缺失 | — | 未修（未定位，接受风险） | 再出现时记录发送→写入→持久化→刷新时序；不得称已修 |
 | S13 | 一次静态资源 404 | — | 未修（未调查） | 待查 |
 R3 产品决策：删除角色 = 关于该角色的所有记录都删。
@@ -163,3 +192,122 @@ DRY-01 PR-B（B01+B02，2026-10-10，基线 `df4d9f9`，记录见 `docs/work-sta
 - ChatRoom 第二块拆分（Lan 2026-10-10 授权“只选一个边界清楚、风险低、不涉及 #36 冻结区的组件”；基线 `1498bd4`，记录见 `docs/work-status/2026-10-10-claude-chatroom-multi-select-bar.md`）：选中多选操作栏（`components/chat/chat-multi-select-bar.tsx`，纯展示），因为它只在进入多选后渲染、不在首帧路径、没有 ref/副作用/焦点/异步；不改行为与 CSS。明确未选：消息气泡与列表（在首帧路径，处理器多）、输入栏（键盘/焦点/ref 测量）、消息操作菜单与 Chat Info（焦点恢复）、编辑对话框（autoFocus + 异步保存）、输入中提示（在首帧路径的历史列表里）。状态：已合并（#104）；自动化测试，真机未验证。
 - 暂存候选（2026-10-10，未启动，不安排）：借鉴 fount（Lan 的 fork `yecays-ai/fount`，只读浏览）的维护体系。可借鉴点：把规矩变成自动检查（如总账状态词、work-status 必填字段与 PR 链接的格式检查）；CI 只在需要时触发（push 与 pull_request 不重复、路径过滤、取消旧运行）；文档头部写“最后核对日期、是否运行测试”并设“已收口”节；上游阻塞写“站立结论”；AGENTS.md 分层并按范围加载。不照搬：依赖不锁版本（VEIL 保持锁定）、Deno 与其规模。只读过其中十来份文件、浅克隆、未看历史，未运行任何东西；证据级别：源码阅读。是参考，不是 VEIL 必须追赶的目标。
 #36 冻结｜备注/签名/最后在线/在线系统｜Memory 系统｜R2 备份｜固定"测试站"域名（让预览共享本地数据，避免每次重配 API）｜CI 额度用尽后的省分钟办法｜GPT 自定义指令改写
+
+## S11 最新核对：API 密钥恢复旁支（2026-10-12）
+
+基线 main `016312efff220cb23d6cb5d734eebd6bb462dcf0`：#148 已合并，F3 写入门禁及故障注入证据在 main；较早“本单待审”保留为历史，不重复施工。本次 Lan 授权独立工单处理 #148 登记的密钥旁支，不新增 F 编号。
+
+相同 API 配置元数据的恢复不再仅凭排除密钥的摘要跳过：设备仍含密钥字段则写入无密钥备份配置；最终验证字段已移除。失败及中断回滚按安全副本还原原密钥并验证，不因元数据相同误跳过或误清日志。密钥仍不进入普通备份、恢复日志或摘要，配置身份和 Binding 不变。分支修复已完成、待本 PR 检查/手动审查，并不声称当前基线已含该修复；证据见[独立工单](work-status/2026-10-12-codex-s11-api-key-restore.md)。
+
+7 条 main 负向回归全部失败，修复后通过；S11 相关回归 264/264、零跳过。iPhone 本单密钥专项尚未验证，中断真机仍未实测；不替代 N1 原用户验收，不宣布 S11 关闭。
+## S11 最新核对：原备份审计 F3（2026-10-12）
+
+核对基线 main `65668b881c20d77ea55530b90a406361eee9e517`，以下覆盖较早记录中的待审/待合并文字，不改变其他命名空间 F 编号。
+
+- N1：#147 已合并；Lan 本次工单报告 iPhone 导出、导入、覆盖恢复和 Reload 验收通过（用户报告，未独立操作真机）。废弃测试库清理已核销，未知数据库仍拒绝。
+- F3：实际复现日志保留后旧标签页能写聊天，使继续/回滚均 target-changed。最小修复为取得共享租约后每次读日志、存在/不可读则拒绝，恢复专用写入仍在独占锁内。施工已完成、待 PR 验证及审查；不提前写已验收。见[设计与覆盖](backup-interrupted-write-gate.md)及[本单记录](work-status/2026-10-12-codex-s11-f3-interrupted-write-gate.md)。
+- F4：恢复后手动 Reload 是保留的产品流程，Lan 已按此流程完成真机恢复验收，不新增自动刷新或 Provider 重构。
+- F5：#144 已合并，图片字节摘要、预检变化及恢复写后验证自动化随本单回归；不再以历史待合并文字称未修。
+- F6：#143 已合并，原两项图片夹具跳过已补齐；本单 S11 回归 257/257、零跳过。自动化不替代真机进程终止证据。
+- 中断恢复：Lan 允许确定性故障注入作为主要验收证据；本单继续/回滚、旧写入阻断、竞态及恢复后重新写入的定向测试通过。**iPhone 真机中断仍未实测**，不要求用户拼手速。
+- Web Locks：仅同 origin、当前协议参与者具有共享/独占严格协调。无锁环境有日志时拒绝写入，但检查与异步写入不宣称跨标签页原子，备份/恢复保持无锁拒绝；旧未升级代码/非协议脚本仍可能写入，target-changed 保护不移除。
+- 只登记的旁支：模拟覆盖恢复中，API 配置元数据相同、设备有密钥时，摘要跳过该单元可能保留设备密钥，违反需重填、不静默沿用的产品要求。本单不扩修，建议独立工单核销后再决定整体验收。
+
+S11 整体验收仍待 Lan；此 PR 的完成不是 S11 关闭或 Memory 开工授权。
+## 夜间前置核销（2026-10-12）
+
+S11 N1 新决策与施工（2026-10-12，基线 `b1b8e2468689f99c5b04e53044ec6d7e3475d95b`）：Lan 明确 Memory 正式建成前现有数据为可丢弃测试数据，授权精确删除废弃 `veil-chat-v1`；不迁移、不归档、不兼容读取。本单清理失败/占用/超时则停止备份与恢复，成功重新列库；`veil-chat-v2` 等正式库和其他未知库拦截保持。错误提示区分本机检查失败与无效 ZIP。#143–#146 已合并，不再按上文历史待审文字重复施工。具体测试和待审状态见[本单记录](work-status/2026-10-12-codex-s11-n1-legacy-cleanup.md)。**S11 整体验收继续待定，真机中断恢复仍未验证。**
+
+本节更新的是既有“在线系统 / Memory 系统”登记，没有新建数字 ID；更早“在线系统未启动/受阻”的描述保留为历史，不作为当前状态。基于 main `e7b86d0726e603f55232c9f3f52cf43e98f0da8d`，Presence T1–T8（#109/#110/#111/#112/#113/#114/#115/#117/#127）均已合并；当前相关自动化通过，#145 仅补提交边界与最新在线数据完整备份恢复证据，待手动合并。T4 原 Lan 真机验收及接受的软键盘位移保留；T6–T8 的真实模型行为与手机展示：**Lan 2026-10-12 报告已在 iPhone 真机完成实际验收，并正常使用、体验了一整天，确认符合当前预期（用户真机验收通过；用户报告，无新增测试结果或验收细节）**，覆盖本行及下文夜间交接中此前“仍待 Lan”的描述。已有自动化证据不变。无 Web Locks 多标签页丢更新风险沿用已接受处置，不重新升级。
+
+Memory M0–M2 仅完成依赖核对和[固定格式工单准备](memory-m0-m2-tickets.md)，未创建库或实现业务。M0/M1 的共同前置：S11 已验收关闭（见文末「S11 关闭」，PR #150 合并后生效）、Presence 前置**已满足**（Lan 2026-10-12 真机验收）；剩余门禁只有 Lan 当次明确授权。M2 另依赖 M0 基础；旧备份不兼容决策已确定。M0–M2 仍只是已准备的工单，**不代表已授权开工**，当前不得自动开工。最终证据、PR 与人工操作见[夜间交接](night-handoff-2026-10-12.md)。
+
+## S11 关闭（2026-10-12）
+
+**结论：S11 用户验收通过，正式关闭。** Lan 2026-10-12 决定关闭；本节覆盖上文各节中「整体验收待定 / 不宣布关闭」的较早文字，那些文字保留为历史。
+
+核对基线 main `db050777624b07cf3ac589442837ba2b0d333bf4`（Claude 独立定向复核，2026-10-12）。#142–#149 均已合并到 main：#142 空文档判定与未知库拒绝，#143 图片故障注入补齐，#144 图片字节摘要，#145 Presence 备份往返证据，#146 夜间交接，#147 废弃测试库 `veil-chat-v1` 清理与错误提示，#148 F3 中断后旧标签页写入门禁，#149 恢复成功后清除设备 API 密钥。
+
+验收依据：
+
+1. 普通导出、导入、覆盖恢复、Reload：iPhone 真机通过（Lan 报告）。
+2. 聊天、图片及相关配置恢复：此前真机验收通过（Lan 报告，见上文 2026-10-11 状态）。
+3. N1 历史测试库清理：iPhone 真机通过（Lan 报告）。
+4. API 密钥在成功恢复后清除：iPhone 真机通过（Lan 报告）。
+5. 恢复中断、继续、回滚及跨标签页写入保护：确定性自动化故障注入通过（模拟 Web Locks、fake-indexeddb、jsdom）。
+
+独立复核（证据等级：源码阅读 + 自动化测试，不是真机）：
+
+- #148：`lib/backup/persistence-write-gate.ts` 在取得共享租约后读取 `veil.restore-journal.v1`，日志存在（含损坏）时以 `restore-in-progress` 拒绝，读取失败以 `restore-state-unavailable` 拒绝，无 Web Locks 时同样检查；恢复执行器仍用独占锁内的直通写入（`lib/backup/restore.ts` `createUnitWriters`）。另用临时脚本独立确认：无日志放行、损坏日志拒绝、读取异常拒绝、清除后放行。
+- #149：`lib/backup/restore.ts` 中 `applyUnits` 在设备 API 配置仍含 `apiKey` 字段时，即使元数据摘要相同也写入无密钥配置，最终校验要求密钥字段不存在；回滚用 `sameApiCredentials` 按安全副本还原原密钥并验证，验证不通过则保留日志（`rollback-failed`）。密钥不进入摘要、日志或普通备份。
+- 备份相关测试（`tests/backup-*.test.ts` 与 `tests/presence-backup-roundtrip.test.ts`）：267/267 通过，零跳过；本地 Node v22.22.0（仓库要求 24.x）。未运行全量测试、lint、typecheck、build。
+
+接受的残余风险（作为已知边界归档，不阻止关闭）：
+
+- iPhone Safari 上未直接触发真实的恢复中断；当前数据量小、恢复过快，无法稳定人工中断。本项目接受确定性自动化故障注入作为该场景的主要验收证据；模拟 Web Locks、fake-indexeddb 和 jsdom 不得写成真实 iPhone 中断验证。
+- 跨标签页保护只覆盖同 origin、遵守当前写入协议的标签页；不覆盖未升级的旧版标签页或外部脚本。
+- 原备份收尾审计中未改动的非阻塞项：F2 新设备走「替换全部」（#142 记录的 Lan 产品决策，已接受）；F4 恢复后手动 Reload（Lan 确认保留的流程）；F7 导出文件名使用 UTC 时间（仅外观，未处理，只登记）。
+
+S11 关闭不等于 Memory / Context 开工授权；Memory 仍按其工单与 Lan 授权执行。
+
+## Memory M5b 第二刀（新增，2026-10-13）
+
+唯一施工基线 `main 9fe2a5e324b40a1f6cf45b894a7d6b8f4c6db739`，已通过 GitHub 核实 #160 合并；不改历史 F/S 定义。Lan 授权本刀最小生产接线、测试、文档和独立 PR，未授权实际启用、付费调用、合并或部署。状态：已修待验（施工完成、默认关闭，待 PR 审查和后续启用验收）。
+
+- 已实现：消息资格/epoch、持久活动五分钟最早门槛、root 页面生命周期、M5a owner 与请求前原子 `in-flight`、维护绑定复核、第一刀候选/严格操作、唯一自动提交；聊天回来旧批次继续，新消息下一批。Memory/进度同事务；manual、suppression、五条 Undo 和 lineage 保护沿用，不改 M4.1 算法。
+- 自动化证据：fake IndexedDB/Web Locks/stub 的定向 645/645、零跳过；typecheck、改动路径 lint、webpack build（24 页）通过。含新聊天竞态基线 Red/Green、费用防重、恢复门禁和挂载默认关闭测试。30 次暖演练独占 hold p95 1.643 ms，runner p95 13.363 ms；不是 iPhone/实际网络保证。详见 [施工记录](memory-m5b2-construction.md) 与 [任务状态](work-status/2026-10-13-codex-memory-m5b2.md)。
+- 未验证：当前 PR head 的 CI/预览/审查以 GitHub 实际结果为准；真实模型提取质量、Token/费用、iPhone 前后台/锁屏/强制关闭/多标签页及大 History 性能待另行授权。未启用生产 tracking/维护，未产生真实维护模型调用；字符护栏不是精确 Token 预算。
+- 保留边界：uncertain 不自动重发，失败/too-large/安全 claim 耗尽保留状态，不静默跨水位；无维护状态或重试 UI。旧版/不遵守写入协议的 tab 仍不在锁保护承诺内。M3 iPhone 基础操作和 M4 Pickles 正向观察保留，不当 M5 验收。Memory Bank UI 拥挤单独后移；不进入 M6–M8。
+
+## Memory M5b 决策规则与来源修复（新增，2026-10-12）
+
+基线 `main 68f003320b59b2fba85e2e0ca68f6dfc8485d4c4`。状态：已修待验（PR #164 已由 Lan 合并，合并后 main `81ef9ebcad200cbbd3c66109b1f77ee81e3cf668`；未部署由 Claude 触发）。
+
+- 已修：UPDATE 新条目继承旧来源并登记单元素 `mergedFrom`（来源删除时整体撤销、旧版恢复），SUPERSEDE 不变；决策提示词重排（先状态变化再 IGNORE）；候选预算只统计发给模型的 active 候选。不迁移旧 UPDATE 记录，不清理现有 Memory。
+- 自动化证据：fake IndexedDB/Web Locks/stub，memory-* 与 backup-validation 定向 310/310；新测试在旧代码上失败 6 项；typecheck、改动文件 lint 通过。详见 [施工记录](memory-m5b-decision-fix.md) 与 [任务状态](work-status/2026-10-13-claude-m5b-decision-fix.md)。
+- 未验证：真实模型是否照新提示词决策（待另批的小规模付费评估）；iPhone 真机。Memory Maintenance 开关：Lan 2026-10-12 19:50Z 报告手机上已关闭（用户报告，Claude 无法独立核实）。
+
+## Memory M8 Journal（新增，2026-10-12）
+
+基线 `main 21369721e77a031aad4410b53d55767dd48396ae`。状态：已修待验（独立 PR 待 Lan 审查；未合并、未部署）。
+
+- 已实现：用户自写、关键词触发、按 Character 隔离的 Journal；复用 `memories`（`origin: "journal"` + 可选 `keywords`），不升级数据库版本、不改备份格式版本，仅备份校验器认识新 origin/字段。每次请求至多注入一条，扫描本轮新用户消息与紧邻其前的 Character 消息，自有配额；自动维护不能创建/改/删（守卫改为 `origin !== "auto"`）。
+- 自动化证据：fake IndexedDB / JSDOM / stub provider 的定向测试，memory-*、backup-*、chat-* 756/756；typecheck、改动文件 lint 通过。详见 [施工记录](memory-m8-journal.md) 与 [任务状态](work-status/2026-10-13-claude-m8-journal.md)。
+- 未验证：真实模型反应、iPhone 真机；`npm run build`、全量测试未跑。
+
+## Memory M6 P1：State / Background 数据基础（2026-10-13）
+
+核对远端 main `ae5c8999e6feff21b68551e9cf42322b25d6838e`。Lan 授权 P1 数据基础及后续独立 PR 发布、CI/CodeRabbit 闭环与该 PR 的 Preview；未授权 P2–P5、Production、合并、真实调用或数据操作。状态：**已修待验（P1 施工完成，发布审查中，未合并）**。不更改其他 F/S/M 命名空间。
+
+- 已实现：Memory schema 追加 backgrounds/states 两表，版本 2；原四表行不重写。D1 以显式 compatible/conflict review 及 pending 构成暂停数据合同；D2 删除贡献来源时物理撤销相关 State 正文，恢复有独立依据的前驱，混合正文按隐私优先整体撤销。没有生产 State writer、Foundation 保存/Prompt/展示接线或 Presence 重算。
+- 完整覆盖：角色隔离、角色删除、清理意图、同库事务、六表备份/预览/覆盖恢复/继续/回滚、严格来源与图校验。主备份格式仍 v2，Memory 域升为 2；仅显式支持旧 Memory-domain v1 四表导入为空 State、旧本地 schema v1 四表的无重写追加升级。其他未知形状拒绝。
+- 自动化证据：Node 24.19.0，受影响 Memory/Backup/Presence/Character 删除回归 **704/704、零跳过**，含 **25 项 P1 新测试**；测试编译、typecheck、改动文件 lint、最终 webpack build 通过。证据为 fake IndexedDB、模拟 Web Locks、stub、构建，不是真机/真实模型。
+- 发布证据：[PR #167](https://github.com/yecays-ai/veil/pull/167) 已创建，未合并；`e19d3d2b96dee9dd73d18cf99dfeaee7f98c54de` 的 GitHub CI（typecheck/lint/test/build）与 Vercel Preview 已通过。CodeRabbit 首轮完整审查仅指出本条发布状态过期，已在本次文档修正中处理；修正后的最新 head 检查以 GitHub 实时结果为准，不沿用旧 head 成功。
+- 未验证/未施工：iPhone、真实模型。P2 开放 State 写入前还须完成 Background 保存、可靠冲突复核、单条消息删除/编辑/重生成来源失效包装和现有 owner/ticket/hash/restore incarnation 的唯一提交接线；P1 不宣称这些业务已实现。
+- 发布门禁：Vercel Git 关联正确；Lan 只读确认 Production Branch 为 main、新分支仅 Preview；已读当前唯一 CI 工作流、仓库 scripts/部署配置，未发现非 main 的 Production/提升动作。发布仅更新独立分支，禁止 automerge、Production 和生产配置变更。当前 PR 与检查见[唯一任务记录](work-status/2026-10-13-codex-memory-m6-p1.md)，数据合同见[模块合同](memory-m6-p1-foundation.md)。
+- 当前合并事实补记：#165 已合并为 `21369721e77a031aad4410b53d55767dd48396ae`，#166 已合并为上述 main；本页 M8 原“未合并”属于历史施工快照，不能作为重复施工依据。M8 产品行为未改动，本单仅更新测试夹具满足六表合同。
+
+## Memory M6 P3 Ongoing 复查（新增，2026-10-13）
+
+基线 `main 8a0f79044c6b291906a518bc07a5d717924a348a`。状态：已修待验（独立 PR 待 Lan 审查；未合并、未部署）。
+
+- 已实现：自动 ongoing 记忆的可选 `ongoing {reviewAt, ended}`（严格校验、含备份校验器）；模型给相对天数 `reviewInDays`，本地换算；到期候选在既有维护请求内带 `due:true` 并优先保留；新操作 EXTEND；ARCHIVE 对 ongoing 须标 `explicit`/`presumed`（推定只限到期）；无定时器、无额外请求；手动记忆不带复查数据。
+- 自动化证据：fake IndexedDB / stub，memory-*、backup-*、chat-* 定向测试通过；typecheck、改动文件 lint 通过。详见 [模块记录](memory-m6-p3-ongoing.md) 与 [任务状态](work-status/2026-10-13-claude-memory-m6-p3.md)。
+- 未验证：真实模型行为（天数是否合理、是否保守对待沉默）、iPhone；`npm run build`、全量测试未跑。
+
+## Memory M6 P5：开发环境只读 Context Inspector（新增，2026-10-13）
+
+基线 `main 8a0f79044c6b291906a518bc07a5d717924a348a`。Lan 2026-10-13T08:11Z 授权 P5。状态：**已修待验（独立 PR 待 Lan 审查；未合并、未部署）**。
+
+- 已实现：开发环境复用 `request-diagnostics` 已有的真实请求脱敏摘要，按 requestId 合并进仅内存、白名单字段、最多 20 条的 Inspector；`?veilInspector=1` 打开只读浮动面板。不存正文/关键词/密钥，不持久化，不改 Prompt 或模型调用次数；生产不采集、不渲染入口。
+- 自动化证据：JSDOM/stub fetch 定向测试，见[任务状态](work-status/2026-10-13-claude-memory-m6-p5.md)。
+- 未验证：真实开发服务器面板交互、iPhone/Safari。
+
+## Character Background 按需检索（Memory 原需求遗漏补齐，2026-10-14）
+
+基线 `main a8c2b5be6164cae46c5138b6bb79846aaf48a8bb`。这是 Memory 设计阶段已讨论、但在开发交接中遗漏的需求，不是新功能；Lan 2026-10-14 批准方案 D1–D5 与超长段规则。状态：独立 PR（见[任务状态](work-status/2026-10-14-claude-background-retrieval.md)）。
+
+- 已实现：聊天 Prompt 不再每轮整包注入 Backstory。纯函数按空行切段（不改存储、编辑框、备份）：第一段（不足 80 字的标题行并入下一段）与 `[常驻]`/`[Core]` 段常驻 Character 段；其余段落仅在本轮输入或最近两轮命中时，作为 History 之后的独立 `[background]` system 块注入（最多 3 段/1500 字，整段保留不截断，无命中则省略）。`关键词：`/`Keywords:` 行只用于匹配、不注入；ASCII 关键词按词边界、CJK 按子串；正文复用 Memory 的本地分词。≤600 字、单段、空值的旧 Backstory 原样常驻。超过预算的段按句子边界切成约 700 字块（保持原序、不改原文）；关键词只让开头块兜底，同段最多 2 块；单句超预算无法注入时在诊断中记 `background-skipped-oversize`。`STATE_AUTHORITY` 改为说明常驻核心、`[background]` 节选与“未显示部分仍有效”；State 维护/校验仍读取完整 Backstory，未改动。Profile 字段、Personality、Speaking Style、State、Memory、Journal、WorldBook、滚动摘要均不变；engine.ts 未改，无新增模型请求、后台任务或存储。
+- 自动化证据（Node 本地，fake/stub，非真机）：`tests/character-background-retrieval.test.ts` 13 项以真实 `assembleChatPrompt` 输出断言：闲聊无节选、事件命中、别称/中英混用、无关键词的连续话题、无关段不入、State 权威、Preset 关闭/非 system、多角色隔离、旧数据兼容、关键词行解析、预算、超长切块、超长单句诊断；另跑 33 个相关测试文件 312 项通过；typecheck、改动文件 lint 通过。
+- 已知限制：纯语义关联（无共享词也没写关键词）无法命中；单个中文双字词只有在位于词串首尾时才算命中，其余依赖关键词行；跨语言别称（如“蜘蛛侠”对 Spider-Man）只能靠关键词行；不内置同义词表。
+- 未验证：真实模型是否利用 `[background]` 节选及人格稳定性变化、命中率（只有本地构造数据）、iPhone/Safari、`npm run build`、全量测试、Vercel Preview。

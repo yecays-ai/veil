@@ -61,21 +61,24 @@ export async function reconcileInertReferences(foundation: FoundationRead, deps:
 export type Leftovers = {
   conversations: { sessionId: string; characterId: string; messages: number }[];
   contacts: { characterId: string }[];
+  /** Characters that no longer exist but still own Memory rows (possibly with no conversation or contact). */
+  memories: { characterId: string }[];
 };
-export const hasLeftovers = (leftovers: Leftovers) => leftovers.conversations.length + leftovers.contacts.length > 0;
+export const hasLeftovers = (leftovers: Leftovers) => leftovers.conversations.length + leftovers.contacts.length + leftovers.memories.length > 0;
 
 /** Read-only: user content whose Character no longer exists. Nothing here is removed automatically. */
 export async function findLeftovers(foundation: FoundationRead, deps: CleanupDeps): Promise<Leftovers> {
-  const empty: Leftovers = { conversations: [], contacts: [] };
+  const empty: Leftovers = { conversations: [], contacts: [], memories: [] };
   let document: FoundationDocument;
   try { document = await foundation.load(); } catch { return empty; }
   if (!document.characters.length) return empty;
   const alive = new Set(document.characters.map((c) => c.characterId));
-  const [sessions, contacts] = await Promise.all([deps.chat.listSessions(), deps.contacts.load()]);
+  const [sessions, contacts, memoryOwners] = await Promise.all([deps.chat.listSessions(), deps.contacts.load(), deps.memory.listCharacterIds()]);
   const orphans = sessions.filter((s) => s.type !== "group" && s.characterId && !alive.has(s.characterId));
   return {
     conversations: await Promise.all(orphans.map(async (s) => ({ sessionId: s.id, characterId: s.characterId, messages: await deps.chat.countMessages(s.id) }))),
     contacts: contacts.contacts.filter((c) => !alive.has(c.characterId)).map((c) => ({ characterId: c.characterId })),
+    memories: memoryOwners.filter((characterId) => !alive.has(characterId)).map((characterId) => ({ characterId })),
   };
 }
 
@@ -86,16 +89,27 @@ export async function removeLeftovers(leftovers: Leftovers, foundation: Foundati
     const alive = await aliveIds(foundation);
     return alive !== null && !alive.has(characterId);
   };
+  const failedIds = new Set<string>(), represented = new Set<string>();
   for (const item of leftovers.conversations) {
     if (!await stillMissing(item.characterId)) { result.skipped++; continue; }
+    represented.add(item.characterId);
     try { await deps.chat.deleteSession(item.sessionId); result.removed++; }
     catch (reason) {
-      if (reason instanceof Error && reason.message === "Conversation not found.") result.removed++; else result.failed++;
+      if (reason instanceof Error && reason.message === "Conversation not found.") result.removed++; else { result.failed++; failedIds.add(item.characterId); }
     }
   }
   for (const item of leftovers.contacts) {
     if (!await stillMissing(item.characterId)) { result.skipped++; continue; }
+    represented.add(item.characterId);
     try { await deps.contacts.update((contacts) => removeContact(contacts, item.characterId)); result.removed++; }
+    catch { result.failed++; failedIds.add(item.characterId); }
+  }
+  // Memory of a confirmed-gone Character goes last, once per Character. It is only counted on its own when no
+  // conversation or contact item already stood for that Character.
+  const memoryIds = new Set([...represented, ...leftovers.memories.map((item) => item.characterId)]);
+  for (const characterId of memoryIds) {
+    if (failedIds.has(characterId) || !await stillMissing(characterId)) { if (!represented.has(characterId)) result.skipped++; continue; }
+    try { await deps.memory.deleteCharacter(characterId); if (!represented.has(characterId)) result.removed++; }
     catch { result.failed++; }
   }
   return result;

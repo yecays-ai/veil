@@ -8,6 +8,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { PersistenceWriteScope } from "../lib/backup/persistence-write-gate";
+import { runQueuedWrite } from "../lib/backup/write-queue";
 import { browserFoundationStorage } from "../lib/foundation-storage";
 import { CharacterConflictError } from "../lib/foundation";
 import {
@@ -21,6 +23,7 @@ type Context = {
   ready: boolean;
   commit: (
     update: (document: FoundationDocument) => FoundationDocument,
+    scope?: PersistenceWriteScope,
   ) => Promise<FoundationDocument>;
 };
 const FoundationContext = createContext<Context | null>(null);
@@ -88,34 +91,37 @@ export function FoundationProvider({ children }: { children: ReactNode }) {
   }, []);
   async function commit(
     update: (document: FoundationDocument) => FoundationDocument,
+    scope?: PersistenceWriteScope,
   ) {
     if (!ready && !failure.current) throw new Error("Profile data is still loading.");
     const owner = lifecycle.current;
     // Serialize this provider's writes and their publication; a delayed earlier
     // transaction result cannot replace a later successful snapshot.
-    const operation = queue.current.then(async () => {
+    return runQueuedWrite(queue, async (owned) => {
       // After a failed read, re-read once before writing; if it still fails nothing is written.
       if (failure.current || !loaded.current) {
-        await refreshNow.current?.();
+        try {
+          const latest = await browserFoundationStorage.load(owned);
+          loaded.current = true; failure.current = null;
+          if (owner === lifecycle.current) { setDocument(latest); setReady(true); setError(""); }
+        } catch (reason) { failure.current = reason instanceof Error ? reason.message : "Could not load profile data."; }
         if (failure.current || !loaded.current)
           throw new Error(failure.current ?? "Profile data could not be loaded. Nothing was changed.");
       }
       try {
-        const next = await browserFoundationStorage.transact(update);
+        const next = await browserFoundationStorage.transact(update, owned);
         if (owner === lifecycle.current) { setDocument(next); setError(""); }
         return next;
       } catch (reason) {
         if (reason instanceof CharacterConflictError) {
           try {
-            const latest = await browserFoundationStorage.load();
+            const latest = await browserFoundationStorage.load(owned);
             if (owner === lifecycle.current) setDocument(latest);
           } catch { /* Retain the last good snapshot and the original conflict. */ }
         }
         throw reason;
       }
-    });
-    queue.current = operation.catch(() => {});
-    return operation;
+    }, scope, undefined, typeof window !== "undefined" && !!window.navigator?.locks);
   }
   return (
     <FoundationContext.Provider value={{ document, ready, commit }}>

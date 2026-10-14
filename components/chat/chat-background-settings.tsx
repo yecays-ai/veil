@@ -4,7 +4,6 @@ import { ChevronLeft, Image as ImageIcon } from "lucide-react";
 import {
   getChatImageFromIndexedDB,
   resolveChatBackgroundImage,
-  saveChatImageToIndexedDB,
 } from "../../lib/chat/background";
 import { affectsChatBackground, chatStorage } from "../../lib/chat/storage";
 import { readImage } from "../../lib/theme-storage";
@@ -93,13 +92,10 @@ export function ChatBackgroundSettings({ screenRef, session, onBack }: {
   async function saveCrop(value: string) {
     setBusy(true);
     setError("");
-    let id: string | undefined;
     try {
-      id = await saveChatImageToIndexedDB(await (await fetch(value)).blob());
-      await chatStorage.updateSessionSettings(session.id, { backgroundImage: id });
+      await chatStorage.setSessionBackgroundImage(session.id, await (await fetch(value)).blob());
       setCrop(null);
     } catch (reason) {
-      if (id) await chatStorage.deleteChatImageIfUnused(id);
       setError(reason instanceof Error ? reason.message : "Chat background could not be saved.");
       throw reason;
     } finally {

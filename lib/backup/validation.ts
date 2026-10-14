@@ -1,3 +1,7 @@
+import { SUMMARY_CHARACTERS } from "../chat/summary";
+import { memorySourceHash } from "../memory/source-hash";
+import { sourceInvalidationValid } from "../memory/source-hash";
+import { backgroundSnapshotValid, characterStateVersionValid, stateFoundationValid } from "../memory/state-foundation";
 import { normalizeFoundation } from "../foundation-types";
 import { normalizeDocument, themeImageAssetIds } from "../theme-types";
 import { normalizeBindings } from "../bindings";
@@ -6,8 +10,16 @@ import { validateRegexDocument } from "../regex";
 import { validateWorldBookDocument } from "../worldbook";
 import { normalizeContacts } from "../contact-storage";
 import { normalizePresenceDocument } from "../presence/storage";
-import { isValidBubbleTimingDelay } from "../chat/types";
+import { isValidBubbleTimingDelay, MEMORY_REF_LIMIT } from "../chat/types";
 import { APP_IDS } from "../app-registry";
+import { memoryFingerprint } from "../memory/fingerprint";
+import { journalRowProblem } from "../memory/journal";
+import { ongoingProblem } from "../memory/ongoing";
+import { MEMORY_OPERATION_LIMIT } from "../memory/types";
+import { memoryMessageEligible } from "../memory/sequence";
+import { memoryBatchActive, validMemoryProgress } from "../memory/progress-types";
+import type { ChatMessage } from "../chat/types";
+import { isMessageReactions } from "../chat/reactions";
 import { parseBackupJson } from "./json";
 import {
   BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, BackupValidationError,
@@ -28,12 +40,18 @@ const digest = (v: unknown): v is string => typeof v === "string" && /^[a-f0-9]{
 const safePath = (v: unknown): v is string => typeof v === "string" && v.length <= 240
   && /^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_.-]+)+$/.test(v)
   && v.split("/").every((part) => part !== "." && part !== "..");
-function check(condition: unknown, path: string, code = "invalid-data"): asserts condition {
-  if (!condition) throw new BackupValidationError(code, path);
+function check(condition: unknown, path: string, code = "invalid-data", detail?: string): asserts condition {
+  if (!condition) throw new BackupValidationError(code, path, detail);
 }
+/** Field names come from stored rows; only plain identifiers are echoed, anything else is hidden. */
+const fieldNames = (names: string[]) => names.slice(0, 5).map((name) => /^[A-Za-z][A-Za-z0-9_]{0,39}$/.test(name) ? name : "?").join(",");
 function keys(row: unknown, allowed: string[], required: string[], path: string): asserts row is Row {
-  check(record(row) && Object.keys(row).every((key) => allowed.includes(key))
-    && required.every((key) => Object.hasOwn(row, key)), path);
+  check(record(row), path, "invalid-data", "not-an-object");
+  // `generation` goes first so the five-name cap can never hide an unfinished reply.
+  const extra = Object.keys(row).filter((key) => !allowed.includes(key)).sort((a, b) => Number(b === "generation") - Number(a === "generation"));
+  check(!extra.length, path, "invalid-data", `unexpected-field:${fieldNames(extra)}`);
+  const missing = required.filter((key) => !Object.hasOwn(row, key));
+  check(!missing.length, path, "invalid-data", `missing-field:${fieldNames(missing)}`);
 }
 function unique(rows: unknown, field: string, path: string): asserts rows is Row[] {
   check(Array.isArray(rows), path);
@@ -86,7 +104,8 @@ export function parseBackupManifest(text: string): BackupManifest {
     keys(section, ["domain", "version", "path", "bytes", "sha256", "records"], ["domain", "version", "path", "bytes", "sha256", "records"], path);
     check(typeof section.domain === "string" && Object.hasOwn(BACKUP_DOMAIN_VERSIONS, section.domain), path, "unsupported-domain");
     check(!domains.has(section.domain), path, "duplicate-domain"); domains.add(section.domain);
-    check(section.version === BACKUP_DOMAIN_VERSIONS[section.domain as BackupDomain], path, "unsupported-domain-version");
+    check((section.version === BACKUP_DOMAIN_VERSIONS[section.domain as BackupDomain]
+      || (section.domain === "memory" && section.version === 1)), path, "unsupported-domain-version");
     check(integer(section.records), path);
     file(section, path);
     check((section.bytes as number) <= MAX_JSON_BYTES, path, "size-limit");
@@ -113,25 +132,47 @@ function validateChat(value: unknown) {
   const sessions = new Map(value.sessions.map((row) => [row.id, row])), direct = new Set<string>();
   value.sessions.forEach((row, index) => {
     const path = `chat.sessions[${index}]`;
-    keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder"],
+    keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder", "memorySequence", "summary", "proactiveAttempts", "unreadCount"],
       ["id", "characterId", "updatedAt", "autoReplyOnKeyboardDismiss", "nextOrder"], path);
-    check(typeof row.characterId === "string" && integer(row.updatedAt) && integer(row.nextOrder) && (row.nextOrder as number) >= 1
-      && typeof row.autoReplyOnKeyboardDismiss === "boolean", path);
-    check(row.type === undefined || ["direct", "group"].includes(String(row.type)), path);
-    for (const key of ["pinned", "streamOnline"]) check(row[key] === undefined || typeof row[key] === "boolean", path);
-    for (const key of ["title", "lastMessagePreview", "customCSS"]) check(row[key] === undefined || typeof row[key] === "string", path);
-    for (const key of ["lastMessageId", "backgroundImage"]) check(row[key] === undefined || id(row[key]), path);
-    check(row.backgroundBlur === undefined || (number(row.backgroundBlur) && (row.backgroundBlur as number) >= 0 && (row.backgroundBlur as number) <= 20), path);
+    check(typeof row.characterId === "string", path, "invalid-data", "characterId-not-string");
+    check(integer(row.updatedAt), path, "invalid-data", "updatedAt-not-integer");
+    check(integer(row.nextOrder) && (row.nextOrder as number) >= 1, path, "invalid-data", "nextOrder-invalid");
+    check(typeof row.autoReplyOnKeyboardDismiss === "boolean", path, "invalid-data", "autoReplyOnKeyboardDismiss-not-boolean");
+    check(row.type === undefined || ["direct", "group"].includes(String(row.type)), path, "invalid-data", "type-invalid");
+    if (row.memorySequence !== undefined) {
+      keys(row.memorySequence, ["epoch", "nextSeq"], ["epoch", "nextSeq"], path);
+      check(row.type !== "group" && id(row.memorySequence.epoch) && integer(row.memorySequence.nextSeq) && (row.memorySequence.nextSeq as number) >= 1, path);
+    }
+    if (row.summary !== undefined) {
+      keys(row.summary, ["text", "throughOrder", "digest", "updatedAt"], ["text", "throughOrder", "digest", "updatedAt"], path);
+      check(row.type !== "group" && typeof row.summary.text === "string" && row.summary.text.trim().length > 0 && row.summary.text.length <= SUMMARY_CHARACTERS
+        && integer(row.summary.throughOrder) && (row.summary.throughOrder as number) >= 1 && (row.summary.throughOrder as number) < (row.nextOrder as number)
+        && typeof row.summary.digest === "string" && /^\d+:[0-9a-f]{1,14}$/.test(row.summary.digest) && integer(row.summary.updatedAt),
+        path, "invalid-data", "summary-invalid");
+    }
+    if (row.proactiveAttempts !== undefined)
+      check(row.type !== "group" && Array.isArray(row.proactiveAttempts) && row.proactiveAttempts.length >= 1
+        && row.proactiveAttempts.length <= 10 && row.proactiveAttempts.every(integer), path, "invalid-data", "proactiveAttempts-invalid");
+    if (row.unreadCount !== undefined)
+      check(row.type !== "group" && integer(row.unreadCount) && (row.unreadCount as number) >= 1, path, "invalid-data", "unreadCount-invalid");
+    for (const key of ["pinned", "streamOnline"]) check(row[key] === undefined || typeof row[key] === "boolean", path, "invalid-data", `${key}-not-boolean`);
+    for (const key of ["title", "lastMessagePreview", "customCSS"]) check(row[key] === undefined || typeof row[key] === "string", path, "invalid-data", `${key}-not-string`);
+    for (const key of ["lastMessageId", "backgroundImage"]) check(row[key] === undefined || id(row[key]), path, "invalid-data", `${key}-invalid-id`);
+    check(row.backgroundBlur === undefined || (number(row.backgroundBlur) && (row.backgroundBlur as number) >= 0 && (row.backgroundBlur as number) <= 20),
+      path, "invalid-data", "backgroundBlur-out-of-range");
     if (row.type === "group") {
       check(Array.isArray(row.participantIds) && row.participantIds.every(id)
-        && new Set(row.participantIds).size === row.participantIds.length
-        && (row.participantIds.length ? row.participantIds.includes(row.characterId) : row.characterId === ""), path);
+        && new Set(row.participantIds).size === row.participantIds.length, path, "invalid-data", "participantIds-invalid");
+      check(row.participantIds.length ? row.participantIds.includes(row.characterId) : row.characterId === "",
+        path, "invalid-data", "group-characterId-mismatch");
     } else {
-      check(id(row.characterId) && row.participantIds === undefined && row.title === undefined, path);
+      check(id(row.characterId), path, "invalid-data", "direct-characterId-invalid");
+      check(row.participantIds === undefined, path, "invalid-data", "direct-has-participantIds");
+      check(row.title === undefined, path, "invalid-data", "direct-has-title");
       check(!direct.has(row.characterId), path, "duplicate-direct-chat"); direct.add(row.characterId);
     }
   });
-  const messages = new Map(value.messages.map((row) => [row.id, row])), orders = new Set<string>();
+  const messages = new Map(value.messages.map((row) => [row.id, row])), orders = new Set<string>(), memorySeqs = new Set<string>();
   // Multi-bubble turn IDs may survive deletion of their first bubble. Ownership still matters.
   const turns = new Map<unknown, unknown>(), attempts = new Map<unknown, unknown>();
   value.messages.forEach((row, index) => {
@@ -145,7 +186,7 @@ function validateChat(value: unknown) {
   });
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -157,6 +198,26 @@ function validateChat(value: unknown) {
     for (const key of ["requestedBy", "turnId", "attemptId", "attemptFor"]) check(row[key] === undefined || id(row[key]), path);
     for (const key of ["error", "finishReason"]) check(row[key] === undefined || typeof row[key] === "string", path);
     check(row.confirmed === undefined || typeof row.confirmed === "boolean", path);
+    if (row.memoryRefs !== undefined) {
+      // Ids and content hashes only: a backup never carries injected memory text inside a chat message.
+      check(Array.isArray(row.memoryRefs) && row.memoryRefs.length <= MEMORY_REF_LIMIT && row.role === "assistant", path);
+      for (const ref of row.memoryRefs as unknown[]) {
+        keys(ref, ["id", "hash", "journal"], ["id", "hash"], path);
+        check(id(ref.id) && typeof ref.hash === "string" && /^[0-9a-f]{16}$/.test(ref.hash) && (ref.journal === undefined || ref.journal === true), path);
+      }
+    }
+    check(row.reactions === undefined || (isMessageReactions(row.reactions) && (row.role === "user" || row.role === "assistant")), path);
+    if (row.memorySequence !== undefined) {
+      keys(row.memorySequence, ["epoch", "seq"], ["epoch"], path);
+      const session = sessions.get(row.sessionId)!, tracking = session.memorySequence as { epoch?: string; nextSeq?: number } | undefined;
+      check(id(row.memorySequence.epoch) && row.memorySequence.epoch === tracking?.epoch, path);
+      if (row.memorySequence.seq !== undefined) {
+        check(integer(row.memorySequence.seq) && (row.memorySequence.seq as number) >= 1 && (row.memorySequence.seq as number) < tracking!.nextSeq!
+          && memoryMessageEligible(row as unknown as ChatMessage), path);
+        const seqKey = `${row.sessionId}\u0000${row.memorySequence.epoch}\u0000${row.memorySequence.seq}`;
+        check(!memorySeqs.has(seqKey), path, "duplicate-memory-sequence"); memorySeqs.add(seqKey);
+      }
+    }
     check(row.attemptMode === undefined || ["regenerate", "continue"].includes(String(row.attemptMode)), path);
     check(row.outcome === undefined || ["success", "stopped", "failed", "truncated", "interrupted"].includes(String(row.outcome)), path);
     check(row.failureStage === undefined || ["preparing", "provider", "finalizing"].includes(String(row.failureStage)), path);
@@ -204,11 +265,119 @@ function validateChat(value: unknown) {
   });
 }
 
-function validateDomain(domain: BackupDomain, value: unknown): number {
+const MEMORY_SOURCE_FIELDS = ["sessionId", "messageId"];
+function memorySources(value: unknown, path: string): asserts value is Row[] {
+  check(Array.isArray(value), path, "invalid-data", "sources-not-array");
+  const seen = new Set<string>();
+  value.forEach((source, index) => {
+    keys(source, MEMORY_SOURCE_FIELDS, MEMORY_SOURCE_FIELDS, `${path}[${index}]`);
+    check(id(source.sessionId) && id(source.messageId), `${path}[${index}]`, "invalid-data", "source-id-invalid");
+    const key = `${source.sessionId}\u0000${source.messageId}`;
+    check(!seen.has(key), `${path}[${index}]`, "duplicate-id"); seen.add(key);
+  });
+}
+function memoryRow(row: unknown, path: string): asserts row is Row {
+  const fields = ["id", "characterId", "kind", "text", "subject", "status", "origin", "sources", "lineage", "fingerprint", "createdAt", "updatedAt"];
+  // `keywords` exists on Journal rows only (absent otherwise); no DB or manifest version change is needed for it.
+  keys(row, [...fields, ...((row as Row | null)?.origin === "journal" ? ["keywords"] : []), ...((row as Row | null)?.kind === "ongoing" ? ["ongoing"] : [])], fields, path);
+  check(id(row.id) && id(row.characterId), path, "invalid-data", "id-invalid");
+  check(typeof row.kind === "string" && typeof row.text === "string" && typeof row.subject === "string", path, "invalid-data", "text-field-not-string");
+  check(["active", "superseded", "archived", "flagged"].includes(String(row.status)), path, "invalid-data", "status-invalid");
+  check(["manual", "auto", "journal"].includes(String(row.origin)), path, "invalid-data", "origin-invalid");
+  memorySources(row.sources, `${path}.sources`);
+  keys(row.lineage, ["mergedFrom", "supersededBy", "previousStatus"], [], `${path}.lineage`);
+  check(row.lineage.previousStatus === undefined || (["active", "archived", "flagged"].includes(String(row.lineage.previousStatus)) && row.lineage.supersededBy !== undefined), path);
+  check(row.lineage.mergedFrom === undefined || (Array.isArray(row.lineage.mergedFrom) && row.lineage.mergedFrom.every(id)
+    && new Set(row.lineage.mergedFrom).size === row.lineage.mergedFrom.length && !row.lineage.mergedFrom.includes(row.id)),
+    path, "invalid-data", "mergedFrom-invalid");
+  check(row.lineage.supersededBy === undefined || (id(row.lineage.supersededBy) && row.lineage.supersededBy !== row.id), path, "invalid-data", "supersededBy-invalid");
+  // The fingerprint is always derived from the text; a stored value that disagrees is a damaged or edited file.
+  check(typeof row.fingerprint === "string" && !!row.fingerprint && row.fingerprint === memoryFingerprint(row.text as string), path, "invalid-data", "fingerprint-mismatch");
+  check(integer(row.createdAt) && integer(row.updatedAt), path, "invalid-data", "timestamp-invalid");
+  check(ongoingProblem(row as never) === null, path, "invalid-data", "ongoing-invalid");
+  if (row.origin === "journal") check(journalRowProblem(row as never) === null, path, "invalid-data", "journal-invalid");
+}
+function suppressionRow(row: unknown, path: string): asserts row is Row {
+  const fields = ["id", "characterId", "fingerprint", "reason", "sources", "createdAt"];
+  keys(row, fields, fields, path);
+  check(id(row.id) && id(row.characterId) && typeof row.fingerprint === "string" && !!row.fingerprint, path, "invalid-data", "id-invalid");
+  check(["corrected", "deleted"].includes(String(row.reason)) && integer(row.createdAt), path, "invalid-data", "field-invalid");
+  memorySources(row.sources, `${path}.sources`);
+}
+
+/** Structure only; references to Characters and chat are checked in `references` once every domain is parsed. */
+function validateMemory(value: unknown, version: number) {
+  const stores = ["memories", "suppressions", "operations", "cursors", ...(version === 1 ? [] : ["backgrounds", "states"])];
+  keys(value, stores, stores, "memory");
+  for (const name of stores) unique(value[name], "id", `memory.${name}`);
+  if (version !== 1) {
+    const state = value as unknown as BackupData["memory"];
+    state.backgrounds.forEach((row, index) => check(backgroundSnapshotValid(row), `memory.backgrounds[${index}]`, "invalid-data", "background-invalid"));
+    state.states.forEach((row, index) => check(characterStateVersionValid(row), `memory.states[${index}]`, "invalid-data", "state-invalid"));
+    check(stateFoundationValid(state), "memory.states", "invalid-data", "state-graph-invalid");
+  }
+  const { memories, suppressions, operations, cursors } = value as Record<string, Row[]>;
+  memories.forEach((row, index) => memoryRow(row, `memory.memories[${index}]`));
+  suppressions.forEach((row, index) => suppressionRow(row, `memory.suppressions[${index}]`));
+  const perCharacter = new Map<string, Set<number>>();
+  operations.forEach((row, index) => {
+    const path = `memory.operations[${index}]`;
+    keys(row, ["id", "characterId", "seq", "label", "createdAt", "changes", "suppressionChanges"], ["id", "characterId", "seq", "label", "createdAt", "changes"], path);
+    check(id(row.characterId) && integer(row.seq) && (row.seq as number) >= 1 && row.id === `${row.characterId}\u0000${row.seq}`, path, "invalid-data", "id-invalid");
+    check(typeof row.label === "string" && integer(row.createdAt) && Array.isArray(row.changes), path, "invalid-data", "field-invalid");
+    const seqs = perCharacter.get(row.characterId as string) ?? new Set<number>();
+    seqs.add(row.seq as number); perCharacter.set(row.characterId as string, seqs);
+    check(seqs.size <= MEMORY_OPERATION_LIMIT, path, "invalid-data", "operation-limit");
+    const owned = (item: Row, at: string) => check(item.characterId === row.characterId, at, "cross-character-reference");
+    (row.changes as unknown[]).forEach((change, at) => {
+      const where = `${path}.changes[${at}]`;
+      keys(change, ["before", "after"], ["before", "after"], where);
+      check(change.before !== null || change.after !== null, where, "invalid-data", "empty-change");
+      for (const side of ["before", "after"] as const)
+        if (change[side] !== null) { memoryRow(change[side], `${where}.${side}`); owned(change[side] as Row, where); }
+    });
+    if (row.suppressionChanges !== undefined) {
+      check(Array.isArray(row.suppressionChanges), path, "invalid-data", "suppressionChanges-not-array");
+      (row.suppressionChanges as unknown[]).forEach((change, at) => {
+        const where = `${path}.suppressionChanges[${at}]`;
+        keys(change, ["before", "after"], ["before", "after"], where);
+        suppressionRow(change.after, `${where}.after`); owned(change.after as Row, where);
+        if (change.before !== null) { suppressionRow(change.before, `${where}.before`); owned(change.before as Row, where); }
+      });
+    }
+  });
+  const cursorKeys = new Set<string>();
+  cursors.forEach((row, index) => {
+    const path = `memory.cursors[${index}]`;
+    keys(row, ["id", "characterId", "sessionId", "processedMessageId", "extraction", "failureCount", "failureReason", "clearRequestedAt", "clearToken", "clearMessageIds", "clearLineageIds", "sourceInvalidation", "updatedAt"],
+      ["id", "characterId", "sessionId", "failureCount", "updatedAt"], path);
+    check(id(row.characterId) && id(row.sessionId) && row.id === `${row.characterId}\u0000${row.sessionId}`, path, "invalid-data", "id-invalid");
+    check(row.processedMessageId === undefined || id(row.processedMessageId), path, "invalid-data", "processedMessageId-invalid");
+    if (row.extraction !== undefined) {
+      check(validMemoryProgress(row.extraction), path, "invalid-memory-progress");
+      check(!row.extraction.batches.some(memoryBatchActive), path, "memory-batch-active");
+    }
+    check(integer(row.failureCount) && integer(row.updatedAt) && (row.failureReason === undefined || typeof row.failureReason === "string")
+      && (row.clearRequestedAt === undefined || integer(row.clearRequestedAt)), path, "invalid-data", "field-invalid");
+    check(row.clearMessageIds === undefined || (row.clearRequestedAt !== undefined && Array.isArray(row.clearMessageIds)
+      && row.clearMessageIds.every(id) && new Set(row.clearMessageIds).size === row.clearMessageIds.length), path, "invalid-data", "clearMessageIds-invalid");
+    check(row.clearLineageIds === undefined || (row.clearRequestedAt !== undefined && Array.isArray(row.clearLineageIds)
+      && row.clearLineageIds.every(id) && new Set(row.clearLineageIds).size === row.clearLineageIds.length), path, "invalid-data", "clearLineageIds-invalid");
+    check(row.sourceInvalidation === undefined || (row.clearRequestedAt !== undefined && Array.isArray(row.clearMessageIds) && sourceInvalidationValid(row.sourceInvalidation, row.clearMessageIds as string[])), path, "invalid-data", "sourceInvalidation-invalid");
+    check(row.clearToken === undefined || (row.clearRequestedAt !== undefined && id(row.clearToken)), path, "invalid-data", "clearToken-invalid");
+    check(!cursorKeys.has(row.id as string), path, "duplicate-id"); cursorKeys.add(row.id as string);
+  });
+}
+
+function validateDomain(domain: BackupDomain, value: unknown, version: number): number {
   if (domain === "chat") {
     validateChat(value);
     const chat = value as BackupData["chat"];
     return chat.sessions.length + chat.messages.length + chat.chatSettings.length + chat.worldBookStates.length;
+  }
+  if (domain === "memory") {
+    validateMemory(value, version);
+    return Object.values(value as BackupData["memory"]).reduce((count, rows) => count + rows.length, 0);
   }
   if (domain === "apiConfigs") {
     unique(value, "id", domain);
@@ -273,11 +442,75 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
   data.chat.messages.forEach((row, index) => {
     if (row.quote && !messages.has(row.quote.messageId)) warnings.push({ code: "missing-quote", path: `chat.messages[${index}]` });
   });
+  // Memory keeps pointers, not chat text. A message may have been deleted since, so a missing message is allowed;
+  // a session must still exist unless a cleanup intent for it is pending. Nothing is invented to satisfy this.
+  const sessionsById = new Map(data.chat.sessions.map((row) => [row.id, row]));
+  const messagesById = new Map(data.chat.messages.map((row) => [row.id, row]));
+  const pendingClears = new Set(data.memory.cursors.filter((row) => row.clearRequestedAt !== undefined).map((row) => `${row.characterId}\u0000${row.sessionId}`));
+  const memoryPointer = (owner: string, sessionId: string, messageId: string | undefined, path: string) => {
+    const session = sessionsById.get(sessionId);
+    if (!session) { check(pendingClears.has(`${owner}\u0000${sessionId}`), path, "missing-session"); return; }
+    check(session.type === "group" ? !!session.participantIds?.includes(owner) : session.characterId === owner, path, "cross-character-reference");
+    const message = messageId === undefined ? undefined : messagesById.get(messageId);
+    check(!message || message.sessionId === sessionId, path, "cross-session-reference");
+  };
+  const memoryRows = (row: { characterId: string; sources: { sessionId: string; messageId: string }[] }, path: string) => {
+    character(row.characterId, path);
+    row.sources.forEach((source, at) => memoryPointer(row.characterId, source.sessionId, source.messageId, `${path}.sources[${at}]`));
+  };
+  data.memory.backgrounds.forEach((row, index) => character(row.characterId, `memory.backgrounds[${index}]`));
+  data.memory.states.forEach((row, index) => {
+    const path = `memory.states[${index}]`; memoryRows(row, path);
+    row.sources.forEach((source) => {
+      // Unlike old Memory pointers, State prose requires extant private-chat evidence.
+      // Refuse an export pending deletion rather than carry deleted content into a backup.
+      const message = messagesById.get(source.messageId);
+      check(!!message, path, "missing-message");
+      const session = sessionsById.get(source.sessionId);
+      check(session?.type !== "group" && session?.characterId === row.characterId, path, "cross-character-reference");
+      check(!data.memory.cursors.some((cursor) => cursor.characterId === row.characterId && cursor.sessionId === source.sessionId
+        && cursor.clearRequestedAt !== undefined && (!cursor.clearMessageIds || cursor.clearMessageIds.includes(source.messageId))), path, "invalid-data", "state-source-cleanup-pending");
+    });
+  });
+  const memoriesById = new Map(data.memory.memories.map((row) => [row.id, row]));
+  data.memory.memories.forEach((row, index) => {
+    const path = `memory.memories[${index}]`;
+    memoryRows(row, path);
+    for (const other of [...(row.lineage.mergedFrom ?? []), ...(row.lineage.supersededBy ? [row.lineage.supersededBy] : [])]) {
+      const target = memoriesById.get(other);
+      check(!target || target.characterId === row.characterId, path, "cross-character-reference");
+    }
+  });
+  data.memory.suppressions.forEach((row, index) => memoryRows(row, `memory.suppressions[${index}]`));
+  data.memory.operations.forEach((row, index) => character(row.characterId, `memory.operations[${index}]`));
+  data.memory.cursors.forEach((row, index) => {
+    const path = `memory.cursors[${index}]`;
+    character(row.characterId, path);
+    if (row.clearRequestedAt === undefined || sessionsById.has(row.sessionId)) memoryPointer(row.characterId, row.sessionId, row.processedMessageId, path);
+    if (row.extraction) {
+      const session = sessionsById.get(row.sessionId), tracking = session?.memorySequence;
+      if (row.clearRequestedAt === undefined) {
+        check(session?.type !== "group" && tracking?.epoch === row.extraction.epoch && row.extraction.throughSeq < tracking.nextSeq, path, "invalid-memory-progress");
+        check([...row.extraction.completed, ...row.extraction.batches.map((b) => [b.fromSeq, b.toSeq])].every((range) => range[1] < tracking.nextSeq), path, "invalid-memory-progress");
+      }
+      for (const batch of row.extraction.batches) {
+        for (const source of batch.sources) {
+          memoryPointer(row.characterId, row.sessionId, source.messageId, path);
+          const message = messagesById.get(source.messageId);
+          check(!message || (message.memorySequence?.epoch === row.extraction.epoch && message.memorySequence.seq === source.seq), path, "invalid-memory-progress");
+        }
+        for (const candidate of batch.candidates) {
+          const memory = memoriesById.get(candidate.id);
+          check(!memory || memory.characterId === row.characterId, path, "cross-character-reference");
+        }
+      }
+    }
+  });
   const apis = new Set(data.apiConfigs.map((row) => row.id)), presets = new Set(data.presets?.presets.map((row) => row.id));
   if (!data.presets) presets.add(BUILTIN_PRESET_ID); // Absent library uses the app's official default.
   const books = new Set(data.worldbooks?.books.map((row) => row.id)), regex = new Set(data.regex?.groups.map((row) => row.id));
   const slot = (value: NonNullable<BackupData["bindings"]>["global"], path: string) => {
-    for (const [field, catalog] of [["apiConfigId", apis], ["presetId", presets]] as const)
+    for (const [field, catalog] of [["memoryApiConfigId", apis], ["apiConfigId", apis], ["presetId", presets]] as const)
       if (typeof value[field] === "string") check(catalog.has(value[field]), path, "missing-binding-resource");
     for (const resource of value.worldBookIds ?? []) check(books.has(resource), path, "missing-binding-resource");
     for (const resource of value.regexIds ?? []) check(regex.has(resource), path, "missing-binding-resource");
@@ -316,10 +549,19 @@ export async function validateBackupPackage(manifestJson: string, files: Readonl
       try { text = new TextDecoder("utf-8", { fatal: true }).decode(snapshot); }
       catch { throw new BackupValidationError("invalid-utf8", path); }
       const value = json(text, entry.domain);
-      check(validateDomain(entry.domain, value) === entry.records, entry.domain, "record-count");
+      check(validateDomain(entry.domain, value, entry.version) === entry.records, entry.domain, "record-count");
+      // Legacy Memory-domain v1 has no State; normalize only the imported copy, never local rows.
+      if (entry.domain === "memory" && entry.version === 1) Object.assign(value as object, { backgrounds: [], states: [] });
       Object.assign(data, { [entry.domain]: value });
     }
   }
   const validated = data as BackupData;
-  return { manifest, data: validated, warnings: references(validated, manifest) };
+  const warnings = references(validated, manifest);
+  const messages = new Map(validated.chat.messages.map((m) => [m.id, m]));
+  for (const row of validated.memory.states) for (const source of row.sourceHashes ?? []) {
+    const message = messages.get(source.messageId);
+    check(!!message && message.sessionId === source.sessionId && await memorySourceHash(message) === source.hash,
+      "memory.states", "invalid-data", "state-source-replaced");
+  }
+  return { manifest, data: validated, warnings };
 }

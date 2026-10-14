@@ -23,7 +23,7 @@ test("full simulated package preserves identities, ordering, remarks, Presence a
 
 test("empty environment retains absent documents instead of materializing defaults", async () => {
   const data: BackupData = { foundation: null, appearance: null, bindings: null, presets: null, regex: null,
-    worldbooks: null, contacts: null, presence: null, apiConfigs: [], chat: { sessions: [], messages: [], chatSettings: [], worldBookStates: [] } };
+    worldbooks: null, contacts: null, presence: null, apiConfigs: [], memory: { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] }, chat: { sessions: [], messages: [], chatSettings: [], worldBookStates: [] } };
   const result = await validate(await packageFixture(data));
   assert.deepEqual(result.data, data); assert.deepEqual(result.warnings, []);
 });
@@ -32,9 +32,10 @@ test("manifest rejects missing/duplicate/unknown domains, future versions and cr
   for (const [change, code] of [
     [(f: Fixture) => { f.manifest.domains.pop(); }, "domain-coverage"],
     [(f: Fixture) => { f.manifest.domains[1] = { ...f.manifest.domains[0] }; }, "duplicate-domain"],
-    [(f: Fixture) => { Object.assign(f.manifest.domains[0], { domain: "memory" }); }, "unsupported-domain"],
+    [(f: Fixture) => { Object.assign(f.manifest.domains[0], { domain: "journal" }); }, "unsupported-domain"],
     [(f: Fixture) => { f.manifest.domains[0].version++; }, "unsupported-domain-version"],
-    [(f: Fixture) => { Object.assign(f.manifest, { version: 2 }); }, "unsupported-format"],
+    [(f: Fixture) => { Object.assign(f.manifest, { version: 3 }); }, "unsupported-format"],
+    [(f: Fixture) => { Object.assign(f.manifest, { version: 1 }); }, "unsupported-format"],
     [(f: Fixture) => { Object.assign(f.manifest, { credentials: "encrypted" }); }, "credentials-not-supported"],
     [(f: Fixture) => { Object.assign(f.manifest, { futureField: true }); }, "invalid-data"],
   ] as const) {
@@ -79,6 +80,22 @@ test("strict JSON rejects duplicate escaped members, unsafe keys, nonfinite valu
   const fixture = await packageFixture();
   await replacePayload(fixture, "bindings", '{"global":{},"global":{},"characters":{}}');
   await assert.rejects(validate(fixture), failure("invalid-json"));
+});
+
+test("foundation relation kind round-trips strictly and rejects unknown or missing values", async () => {
+  const withRelation = (kind?: unknown) => {
+    const data = backupData();
+    Object.assign(data.foundation!.universe, { relations: [{ id: "relation-kind", characterAId: "peter", characterBId: "pep",
+      label: "Friends", aToBContext: null, bToAContext: null, sharedHistory: null, ...(kind === undefined ? {} : { kind }) }] });
+    return data;
+  };
+  for (const kind of [null, "friend", "other"]) {
+    const result = await validate(await packageFixture(withRelation(kind)));
+    assert.equal(result.data.foundation!.universe.relations[0].kind, kind);
+  }
+  for (const kind of [undefined, "bogus"]) {
+    await assert.rejects(validate(await packageFixture(withRelation(kind))), failure("lossy-data"), String(kind));
+  }
 });
 
 test("unknown, truncated or normalized-away fields are rejected instead of repaired", async () => {
@@ -229,4 +246,58 @@ test("validation never accesses browser storage, credentials, network or model A
       else Reflect.deleteProperty(globalThis, key);
     }
   }
+});
+
+test("a chat.sessions failure names its row and rule, never the stored values", async () => {
+  type Mutate = (row: Record<string, unknown>) => void;
+  const cases: [string, Mutate, string][] = [
+    ["stale generation marker", (row) => { row.generation = { id: "x", stage: "provider" }; }, "unexpected-field:generation"],
+    ["unknown field", (row) => { row.archived = true; }, "unexpected-field:archived"],
+    ["field with an unprintable name", (row) => { row["secret key"] = 1; }, "unexpected-field:?"],
+    ["missing required field", (row) => { delete row.nextOrder; }, "missing-field:nextOrder"],
+    ["characterId type", (row) => { row.characterId = 7; }, "characterId-not-string"],
+    ["updatedAt", (row) => { row.updatedAt = 1.5; }, "updatedAt-not-integer"],
+    ["nextOrder", (row) => { row.nextOrder = 0; }, "nextOrder-invalid"],
+    ["autoReply", (row) => { row.autoReplyOnKeyboardDismiss = "no"; }, "autoReplyOnKeyboardDismiss-not-boolean"],
+    ["type", (row) => { row.type = "channel"; }, "type-invalid"],
+    ["pinned", (row) => { row.pinned = "yes"; }, "pinned-not-boolean"],
+    ["lastMessagePreview", (row) => { row.lastMessagePreview = 3; }, "lastMessagePreview-not-string"],
+    ["backgroundImage", (row) => { row.backgroundImage = " bad id "; }, "backgroundImage-invalid-id"],
+    ["backgroundBlur", (row) => { row.backgroundBlur = 40; }, "backgroundBlur-out-of-range"],
+    ["direct chat with a title", (row) => { row.title = "PRIVATE-TITLE-TEXT"; }, "direct-has-title"],
+    ["direct chat with participants", (row) => { row.participantIds = ["a"]; }, "direct-has-participantIds"],
+  ];
+  for (const [name, mutate, detail] of cases) {
+    const data = backupData();
+    const index = data.chat.sessions.findIndex((row) => row.type !== "group");
+    mutate(data.chat.sessions[index] as unknown as Record<string, unknown>);
+    await assert.rejects(validate(await packageFixture(data)), (error: unknown) => {
+      assert.ok(error instanceof BackupValidationError, name);
+      assert.equal(error.code, "invalid-data", name);
+      assert.equal(error.path, `chat.sessions[${index}]`, name);
+      assert.equal(error.detail, detail, name);
+      assert.doesNotMatch(error.message, /PRIVATE-TITLE-TEXT|secret key/, name);
+      return true;
+    });
+  }
+});
+
+test("group session rules report their own detail", async () => {
+  const data = backupData();
+  const index = data.chat.sessions.findIndex((row) => row.type === "group");
+  const row = data.chat.sessions[index] as unknown as Record<string, unknown>;
+  row.participantIds = ["a", "a"];
+  await assert.rejects(validate(await packageFixture(data)), (e: unknown) => e instanceof BackupValidationError && e.detail === "participantIds-invalid");
+  row.participantIds = ["a", "b"]; row.characterId = "zzz";
+  await assert.rejects(validate(await packageFixture(data)), (e: unknown) => e instanceof BackupValidationError && e.detail === "group-characterId-mismatch");
+});
+
+test("generation is always listed first among unexpected fields, even past the five-name cap", async () => {
+  const data = backupData();
+  const index = data.chat.sessions.findIndex((row) => row.type !== "group");
+  const row = data.chat.sessions[index] as unknown as Record<string, unknown>;
+  for (const key of ["a1", "a2", "a3", "a4", "a5", "a6"]) row[key] = 1;
+  row.generation = { id: "x", stage: "provider" };
+  await assert.rejects(validate(await packageFixture(data)), (e: unknown) =>
+    e instanceof BackupValidationError && e.detail === "unexpected-field:generation,a1,a2,a3,a4");
 });

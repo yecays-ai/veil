@@ -8,7 +8,7 @@ import {
   ChevronRight,
   CircleCheck,
   Copy,
-  Heart,
+  Brain,
   Pencil,
   Plus,
   Quote,
@@ -23,11 +23,18 @@ import {
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { chatStorage } from "../../lib/chat/storage";
+import { MessageMemory } from "./message-memory";
+import { withMemoryClear } from "../../lib/memory/browser";
 import { DEFAULT_BUBBLE_TIMING, type ChatMessage, type ChatSession } from "../../lib/chat/types";
 import {
+  MESSAGE_MENU_GAP_PX,
   messageMenuPosition,
+  messageStackShift,
+  reactionBarLeft,
   selectMessageRange,
 } from "../../lib/chat/message-actions";
+import { canReactTo, reactionBadges } from "../../lib/chat/reactions";
+import { ReactionBar, ReactionPickerSheet } from "./reaction-bar";
 import { ChatAvatar } from "./avatar";
 import { ChatHeader } from "./chat-header";
 import { useCharacterPresence } from "../use-character-presence";
@@ -91,7 +98,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
   const contact = contacts.document.contacts.find((item) => item.characterId === characterId);
   const contactName = character ? contactDisplayName(contact, character.name) : "";
-  const presence = useCharacterPresence(character, { lastSeen: true });
+  const presence = useCharacterPresence(character);
   const [regexReadState, setRegexReadState] = useState<{
     owner: string; groups: RegexGroup[]; ready: boolean;
   }>({ owner: "", groups: [], ready: false });
@@ -180,11 +187,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }
   useEffect(() => () => feedbackController.cancel(), [feedbackController]);
   const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+  const reactionBar = useRef<HTMLDivElement>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [multiSelect, setMultiSelect] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionStartId, setSelectionStartId] = useState<string | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const [memoryMessage, setMemoryMessage] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
@@ -253,6 +263,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const closeActions = useCallback(() => {
     setActiveMessage(null);
     setMenuAnchor(null);
+    setReactionPickerOpen(false);
   }, []);
   const overlayKind = confirmDelete ? "confirm-delete" : confirmClear ? "confirm-clear" :
     chatInfoOpen ? "chat-info" : activeMessage ? "message-actions" : null;
@@ -340,24 +351,53 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }, [overlayKind, closeActions]);
   useLayoutEffect(() => {
     if (!activeMessage || !menuAnchor || !actionMenu.current || !shell.current) return;
-    const menu = actionMenu.current;
-    const position = () => {
-      if (!menu.isConnected || !menuAnchor.isConnected || !shell.current) return;
+    const menu = actionMenu.current, bar = reactionBar.current, scroller = history.current, root = shell.current;
+    const measure = () => {
+      const viewportRect = root.getBoundingClientRect();
+      const scaleX = viewportRect.width / root.clientWidth || 1;
+      const scaleY = viewportRect.height / root.clientHeight || 1;
       const rect = menuAnchor.getBoundingClientRect();
-      const viewportRect = shell.current.getBoundingClientRect();
-      const scaleX = viewportRect.width / shell.current.clientWidth || 1;
-      const scaleY = viewportRect.height / shell.current.clientHeight || 1;
-      menu.style.maxWidth = `${Math.max(0, shell.current.clientWidth - 16)}px`;
-      const naturalHeight = menu.scrollHeight + menu.offsetHeight - menu.clientHeight;
-      const result = messageMenuPosition({
-        left: (rect.left - viewportRect.left) / scaleX,
-        right: (rect.right - viewportRect.left) / scaleX,
-        top: (rect.top - viewportRect.top) / scaleY,
-        bottom: (rect.bottom - viewportRect.top) / scaleY,
-      }, { width: menu.offsetWidth, height: naturalHeight }, {
-        width: shell.current.clientWidth,
-        height: shell.current.clientHeight,
-      });
+      return {
+        bubble: { left: (rect.left - viewportRect.left) / scaleX, right: (rect.right - viewportRect.left) / scaleX,
+          top: (rect.top - viewportRect.top) / scaleY, bottom: (rect.bottom - viewportRect.top) / scaleY },
+        viewport: { width: root.clientWidth, height: root.clientHeight },
+      };
+    };
+    const menuHeight = () => menu.scrollHeight + menu.offsetHeight - menu.clientHeight;
+    // With a reaction bar the bar, bubble and menu are one stack. If it does not fit, the bubble moves (the history
+    // scrolls, with temporary bottom room if it is already at the end) so the bar stays above and the menu below.
+    const wasNearBottom = nearBottom.current.value;
+    let restoreScroll = () => {};
+    if (bar && scroller) {
+      const { bubble, viewport } = measure();
+      const shift = messageStackShift(bubble, { height: bar.offsetHeight }, { height: menuHeight() },
+        { height: viewport.height, safeTop: parseFloat(getComputedStyle(scroller).paddingTop) || 0 });
+      if (shift) {
+        const wanted = scroller.scrollTop - shift;
+        const room = wanted - (scroller.scrollHeight - scroller.clientHeight);
+        if (room > 0) scroller.style.paddingBottom = `${(parseFloat(getComputedStyle(scroller).paddingBottom) || 0) + room}px`;
+        scroller.scrollTop = wanted;
+        restoreScroll = () => {
+          scroller.style.paddingBottom = "";
+          if (wasNearBottom) scroller.scrollTop = scroller.scrollHeight;
+        };
+      }
+    }
+    const position = () => {
+      if (!menu.isConnected || !menuAnchor.isConnected) return;
+      const { bubble, viewport } = measure();
+      menu.style.maxWidth = `${Math.max(0, viewport.width - 16)}px`;
+      const size = { width: menu.offsetWidth, height: menuHeight() };
+      if (bar) {
+        const menuTop = Math.min(bubble.bottom + MESSAGE_MENU_GAP_PX, Math.max(viewport.height - 8 - size.height, 8));
+        Object.assign(bar.style, {
+          left: `${reactionBarLeft(bubble, bar.offsetWidth, viewport.width, activeMessage.role)}px`,
+          top: `${bubble.top - MESSAGE_MENU_GAP_PX - bar.offsetHeight}px`, visibility: "visible" });
+        Object.assign(menu.style, { left: `${messageMenuPosition(bubble, size, viewport).left}px`, top: `${menuTop}px`,
+          maxHeight: `${Math.max(0, viewport.height - 8 - menuTop)}px`, visibility: "visible" });
+        return;
+      }
+      const result = messageMenuPosition(bubble, size, viewport);
       Object.assign(menu.style, { left: `${result.left}px`, top: `${result.top}px`,
         maxHeight: `${result.maxHeight}px`, visibility: "visible" });
     };
@@ -379,6 +419,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       window.removeEventListener("scroll", position, true);
       window.visualViewport?.removeEventListener("resize", position);
       window.visualViewport?.removeEventListener("scroll", position);
+      restoreScroll();
     };
   }, [activeMessage, menuAnchor]);
 
@@ -390,6 +431,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setActiveMessage(message);
     setMenuAnchor(e.currentTarget);
     setChatInfoOpen(false);
+  }
+  async function react(message: ChatMessage, emoji: string | null) {
+    closeActions();
+    try { await chatStorage.setReaction(message.id, "user", emoji); }
+    catch (e) { setError(e instanceof Error ? e.message : "Reaction could not be saved."); }
   }
   async function copyMessage() {
     if (!activeMessage) return;
@@ -699,7 +745,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       data-chat-background-entry={framePublished && chatBackground.url && chatBackground.late ? "fade" : undefined}
       data-context-menu-open={activeMessage ? "" : undefined}>
       {framePublished && session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
-      <ChatHeader key="header" settingsTrigger={settingsTrigger} status={presence.text}
+      <ChatHeader key="header" settingsTrigger={settingsTrigger} presence={presence.ready ? presence.status : undefined} generating={generationActive}
         contact={framePublished ? { characterId: character.characterId, name: contactName, profile: character } : null}
         onOpenSettings={() => {
           overlayFocusOrigin.current.set("chat-info",
@@ -775,6 +821,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
                 onPointerDown={() => { nativeSelectionActive.current = false; }}
                 onContextMenu={() => { nativeSelectionActive.current = true; }}
                 onClick={(e) => openActions(e, message)}>
+                {reactionBadges(message).map((emoji, index) => <span key={index} className="chat-reaction-badge"
+                  data-emoji={emoji} data-side={index === 0 && message.reactions?.character ? "character" : "user"} role="img" aria-label={`Reaction ${emoji}`} />)}
                 {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                   author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
                 {message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
@@ -909,6 +957,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       />}
       {activeMessage && <>
         <button className="chat-context-backdrop" aria-label="Close message actions" onClick={closeActions} />
+        {canReactTo(activeMessage) && <ReactionBar barRef={reactionBar} current={activeMessage.reactions?.user}
+          onPick={(emoji) => void react(activeMessage, emoji)} onMore={() => setReactionPickerOpen(true)} />}
+        {reactionPickerOpen && <ReactionPickerSheet onPick={(emoji) => void react(activeMessage, emoji)} />}
         <div ref={actionMenu} tabIndex={-1} className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
@@ -918,7 +969,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => {
               setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
             }} />
-            <Action label="React" icon={Heart} disabled />
+            <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={() => { setMemoryMessage(activeMessage); closeActions(); }} />
             <Action label="Select" icon={CircleCheck} onClick={() => { const id = activeMessage.id;
               setMultiSelect(true); setSelectionStartId(id); setSelectedIds(new Set([id])); closeActions(); }} />
             <Action label="Favorite" icon={Bookmark} disabled />
@@ -938,6 +989,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </div>
         </div>
       </>}
+      {memoryMessage && <MessageMemory key={memoryMessage.id} message={memoryMessage} characterId={characterId} onClose={() => setMemoryMessage(null)} />}
       {editingMessage && <div className="chat-dialog-backdrop">
         <form className="chat-dialog" onSubmit={async (e) => { e.preventDefault();
           try { await chatStorage.editMessage(editingMessage.id, editText); setEditingMessage(null); showFeedback("Saved"); }
@@ -955,7 +1007,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         text={`Delete all ${messages.length} messages from this conversation? The conversation itself will remain.`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
           if (!session) return;
-          try { await chatStorage.clearSession(session.id); revealQueue.cancel(); setConfirmClear(false); showFeedback("Conversation cleared"); }
+          try {
+            const { cleanupIncomplete } = await withMemoryClear(session, (scope) => chatStorage.clearSession(session.id, scope));
+            revealQueue.cancel(); setConfirmClear(false);
+            showFeedback(cleanupIncomplete ? "Conversation cleared. Memory cleanup is pending." : "Conversation cleared");
+          }
           catch (reason) { setError(reason instanceof Error ? reason.message : "Conversation could not be cleared."); }
         }} />}
     </div>

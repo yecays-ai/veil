@@ -1,7 +1,7 @@
 import { BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, BackupValidationError,
   type BackupManifest, type BackupData, type BackupDomain, type BackupWarning } from "./format";
 import { validateBackupPackage } from "./validation";
-import { readStaticBackupSource, type StaticBackupSource } from "./static-source";
+import { readStaticBackupSource, type StaticBackupSnapshot, type StaticBackupSource } from "./static-source";
 
 export type StaticBackupMetadata = Pick<BackupManifest, "backupId" | "createdAt" | "sourceCommit">;
 export type StaticBackupPackage = { manifestJson: string; files: ReadonlyMap<string, Uint8Array>; warnings: BackupWarning[] };
@@ -41,11 +41,26 @@ function encodeJson(value: unknown, path: string): Uint8Array {
   }
 }
 
+/**
+ * Early builds stored an always-null `remark` on every conversation row; Contact now owns the name. Only that provably
+ * empty legacy value is left out of the copy being exported. A non-null value is kept so validation still refuses
+ * rather than silently losing a name. The stored row is never touched.
+ */
+function withoutEmptyLegacyRemark(sessions: unknown[]): unknown[] {
+  return sessions.map((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row) || (row as Record<string, unknown>).remark !== null) return row;
+    const rest = { ...(row as Record<string, unknown>) };
+    delete rest.remark;
+    return rest;
+  });
+}
+
 /** Count top-level persisted records using the v1 contract, without initializing absent documents. */
-function recordCount(domain: BackupDomain, value: unknown): number {
+export function recordCount(domain: BackupDomain, value: unknown): number {
   if (value === null) return 0;
   if (domain === "apiConfigs") return (value as unknown[]).length;
-  if (domain === "chat") return Object.values(value as BackupData["chat"]).reduce((count, rows) => count + rows.length, 0);
+  if (domain === "chat" || domain === "memory")
+    return Object.values(value as BackupData["chat"] | BackupData["memory"]).reduce((count, rows) => count + rows.length, 0);
   const arrayFields: Partial<Record<BackupDomain, string>> = {
     presets: "presets", regex: "groups", worldbooks: "books", contacts: "contacts", presence: "characters",
   };
@@ -56,9 +71,12 @@ function recordCount(domain: BackupDomain, value: unknown): number {
   return rows.length;
 }
 
-/** Internal static export only: not wired to the app, download UI, recovery, or a consistency lock. */
-export async function exportStaticBackup(source: StaticBackupSource, metadata: StaticBackupMetadata): Promise<StaticBackupPackage> {
+/** Internal static export only: not wired to the app, download UI or recovery. Call it through `exportStaticBackupSnapshot` for a consistent capture. */
+export async function exportStaticBackup(source: StaticBackupSource, metadata: StaticBackupMetadata,
+  options: { inspect?: (snapshot: StaticBackupSnapshot) => Promise<void> } = {}): Promise<StaticBackupPackage> {
   const snapshot = await readStaticBackupSource(source);
+  // The caller may refuse here, after the read and before any package byte is produced.
+  await options.inspect?.(snapshot);
   const apiConfigs = snapshot.apiConfigs.map((item, index) => {
     const path = `apiConfigs[${index}]`;
     if (!item || typeof item !== "object" || Array.isArray(item)) fail("invalid-source-data", path);
@@ -71,8 +89,8 @@ export async function exportStaticBackup(source: StaticBackupSource, metadata: S
     foundation: snapshot.documents.foundation, appearance: snapshot.documents.appearance,
     bindings: snapshot.documents.bindings, presets: snapshot.documents.presets, regex: snapshot.documents.regex,
     worldbooks: snapshot.documents.worldbooks, contacts: snapshot.documents.contacts, presence: snapshot.documents.presence,
-    chat: { sessions: snapshot.chat.sessions, messages: snapshot.chat.messages,
-      chatSettings: snapshot.chat.chatSettings, worldBookStates: snapshot.chat.worldBookStates }, apiConfigs,
+    chat: { sessions: withoutEmptyLegacyRemark(snapshot.chat.sessions), messages: snapshot.chat.messages,
+      chatSettings: snapshot.chat.chatSettings, worldBookStates: snapshot.chat.worldBookStates }, memory: snapshot.memory, apiConfigs,
   };
   const manifest: BackupManifest = { schema: BACKUP_SCHEMA, version: BACKUP_VERSION, ...metadata,
     credentials: "excluded", domains: [], assets: [] };

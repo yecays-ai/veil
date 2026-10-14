@@ -49,3 +49,6 @@
 .contact-delete-dialog > div { display: flex; gap: 10px; margin-top: 20px; }
 .contact-delete-dialog button { flex: 1; min-height: 42px; border: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent); border-radius: 12px; padding: 8px 10px; background: color-mix(in srgb, var(--theme-background) 58%, var(--theme-surface)); font: inherit; font-size: 13px; color: inherit; }
 .contact-delete-dialog .contact-delete { border-color: color-mix(in srgb, #c9363c 16%, transparent); background: color-mix(in srgb, #c9363c 9%, var(--theme-surface)); }
+.contact-card-link { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; color: inherit; text-decoration: none; }
+.contact-card-lines { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.contact-card-link[aria-disabled="true"] { opacity: 0.6; }

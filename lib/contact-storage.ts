@@ -1,5 +1,5 @@
 import type { StringStorage } from "./storage-types";
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 
 export const CONTACT_STORAGE_KEY = "veil.contacts.v1";
 export type ContactRemarkChange = { type: "remark-changed"; fromRemark: string | null; toRemark: string | null; createdAt: number };
@@ -105,16 +105,19 @@ export function createContactStorage(getStorage: () => StringStorage,
     }
     throw new Error("Contacts changed in another tab. Nothing was saved; try again.");
   };
-  const transact = (update: (current: ContactDocument) => ContactDocument) => {
-    const run = () => writeGate.withWrite(async () => {
-      const locks = getLocks();
-      return locks ? await locks.request(CONTACT_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
-        : commit(update);
-    });
-    const operation = queue.then(run, run);
-    queue = operation.then(() => {}, () => {});
-    return operation;
-  };
+  // Backup lease first, then the instance queue: a write waiting in the queue must never be the one a
+  // queued snapshot is waiting for (same order as Binding and Presence).
+  const transact = (update: (current: ContactDocument) => ContactDocument, scope?: PersistenceWriteScope) =>
+    runPersistenceWrite(writeGate, async () => {
+      const run = async () => {
+        const locks = getLocks();
+        return locks ? await locks.request(CONTACT_STORAGE_KEY, { mode: "exclusive" }, async () => commit(update))
+          : commit(update);
+      };
+      const operation = queue.then(run, run);
+      queue = operation.then(() => {}, () => {});
+      return operation;
+    }, scope);
   const exportPortable = async () => JSON.stringify(await load());
   const restorePortable = async (serialized: string) => {
     const raw: unknown = JSON.parse(serialized);

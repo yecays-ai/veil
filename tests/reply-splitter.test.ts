@@ -14,9 +14,22 @@ test("assistant reply parts are trimmed, empty parts dropped, and one segment st
   assert.deepEqual(splitAssistantReply(" \n\n\n "), []);
 });
 
-test("repeated literal Blank separators between paragraphs are treated as formatting", () => {
+test("standalone Blank line placeholders with case, punctuation and whitespace variants are discarded", () => {
+  const placeholders = ["Blank", "Blank line", "Blank line...", " blank line ... ",
+    "BLANK LINE!!!", "Blank\u00a0line…", "Blank\u200b line ..", "Blank."];
+  for (const placeholder of placeholders)
+    assert.deepEqual(splitAssistantReply(`First paragraph\n\n${placeholder}\n\nSecond paragraph`),
+      ["First paragraph", "Second paragraph"], placeholder);
   assert.deepEqual(splitAssistantReply(
-    "First paragraph\n\nBlank\n\nSecond paragraph\n\nBlank\n\nThird paragraph"),
+    "First paragraph\n\nBlank\n\nSecond paragraph\n\nBlank line...\n\nThird paragraph"),
   ["First paragraph", "Second paragraph", "Third paragraph"]);
-  assert.deepEqual(splitAssistantReply("A\n\nBlank\n\nB"), ["A", "Blank", "B"]);
+});
+
+test("ordinary prose, one-line text and legitimate multi-bubble replies remain intact", () => {
+  assert.deepEqual(splitAssistantReply("The phrase Blank line... appeared in the log."),
+    ["The phrase Blank line... appeared in the log."]);
+  assert.deepEqual(splitAssistantReply("A blank line separates these thoughts."),
+    ["A blank line separates these thoughts."]);
+  assert.deepEqual(splitAssistantReply("First\n\nA real message about blank lines\n\nThird"),
+    ["First", "A real message about blank lines", "Third"]);
 });

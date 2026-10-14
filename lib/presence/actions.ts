@@ -82,11 +82,17 @@ export type ActionAllowance = { situation: boolean; signature: boolean; note: bo
 const ownChangeAt = (mark: { changedAt: number; source: string | null } | null | undefined) =>
   mark?.source?.startsWith(CHARACTER_SOURCE_PREFIX) ? mark.changedAt : -Infinity;
 
+/** Uses the same own-change timestamp and clock as the note action's eligibility check. */
+export function noteCooldownRemaining(record: PresenceRecord | undefined, now: number): number {
+  const elapsed = now - ownChangeAt(record?.userNote);
+  return elapsed < NOTE_COOLDOWN_MS ? NOTE_COOLDOWN_MS - elapsed : 0;
+}
+
 /** Whether the Character may change each thing now. Only its own earlier changes count (including ending or cancelling a situation). */
 export function actionAllowance(record: PresenceRecord | undefined, now: number): ActionAllowance {
   return { situation: !(now - ownChangeAt(record?.situationChange) < SITUATION_COOLDOWN_MS),
     signature: !(now - ownChangeAt(record?.signature) < SIGNATURE_COOLDOWN_MS),
-    note: !(now - ownChangeAt(record?.userNote) < NOTE_COOLDOWN_MS) };
+    note: noteCooldownRemaining(record, now) === 0 };
 }
 
 /** Applies the situation part to Presence. Never writes the past: a start before `now` is moved to `now`. */

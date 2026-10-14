@@ -1,0 +1,339 @@
+import { ApiConfigStorage } from "../api-config-storage";
+import { AppearanceImageStorage, type ImageAsset } from "../appearance-image-storage";
+import { IndexedDBDocumentStorage } from "../core-document-storage";
+import { ChatStorage } from "../chat/storage";
+import { MemoryStorage, MEMORY_STORES } from "../memory/storage";
+import { FOUNDATION_STORAGE_KEY } from "../foundation-storage";
+import { BackupCoordinator, type BackupLockManager, type BackupLockOptions } from "./coordination";
+import { type BackupDomain, type ValidatedBackup } from "./format";
+import { parseBackupJson } from "./json";
+import { previewValidatedBackup, restorePreviewChanged, type RestorePreview } from "./restore-preview";
+import { BACKUP_LOCAL_KEYS, readStaticBackupSource, type StaticBackupSnapshot } from "./static-source";
+import { validateBackupPackage } from "./validation";
+import { createSafetyCopyStore, type SafetyCopyStore } from "./safety-copy";
+import { digestImageRows } from "./image-digest";
+import type { MemoryCursor } from "../memory/types";
+
+import { RESTORE_JOURNAL_KEY } from "./restore-journal";
+export { RESTORE_JOURNAL_KEY } from "./restore-journal";
+/** Write order. Chat rows and chat images are one atomic transaction; the foundation document goes last. */
+export const RESTORE_UNITS = ["chat", "memory", "appearanceAssets", "apiConfigs", "appearance", "bindings", "presets", "regex",
+  "worldbooks", "contacts", "presence", "foundation"] as const;
+export type RestoreUnit = typeof RESTORE_UNITS[number];
+const EMPTY = "empty";
+const emptyMemory = (): StaticBackupSnapshot["memory"] => ({ memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] });
+const CHAT_STORES = ["sessions", "messages", "chatSettings", "assets", "worldBookStates"] as const;
+
+export type RestoreJournal = {
+  version: 1; kind: "empty-restore" | "replace"; restoreId: string; backupId: string; startedAt: number;
+  /** New journals hash image bytes. Absent only on already-interrupted journals from earlier builds. */
+  imageHashes?: true;
+  /** Per unit: the digest the device must hold when the unit is done, or "empty" if the backup has nothing for it. */
+  expected: Record<RestoreUnit, string>;
+  /** Per unit: the digest the device held before the restore. All "empty" for an empty-environment restore. */
+  previous: Record<RestoreUnit, string>;
+};
+
+/** `code` says what failed; `unit` names the step. `journal` tells the caller whether recovery is still owed. */
+export class RestoreError extends Error {
+  constructor(readonly code: "restore-in-progress" | "not-empty-restore" | "preview-changed" | "restore-failed-rolled-back"
+    | "rollback-failed" | "verify-failed-rolled-back" | "journal-write-failed" | "no-journal" | "journal-invalid"
+    | "package-mismatch" | "safety-copy-failed" | "safety-copy-missing" | "replace-not-confirmed" | "target-changed" | "resume-failed" | "journal-clear-failed",
+    readonly journal: "none" | "kept" | "unknown", readonly unit?: RestoreUnit, readonly preview?: RestorePreview) {
+    super(`Restore failed (${code})${unit ? ` at ${unit}` : ""}.`);
+    this.name = "RestoreError";
+  }
+}
+
+export type RestoreDevice = {
+  indexedDB: IDBFactory;
+  localStorage: Pick<Storage, "getItem" | "setItem" | "removeItem">;
+};
+/** Each writer replaces one unit completely; `clear` empties it. Tests wrap these to inject faults. */
+export type UnitWriters = Record<RestoreUnit, { write(snapshot: StaticBackupSnapshot): Promise<void>; clear(): Promise<void> }>;
+
+/** Restore storages use a passthrough gate: the caller already holds the exclusive snapshot lock. */
+export function createUnitWriters(device: RestoreDevice): UnitWriters {
+  const passthrough = { withWrite: <T,>(operation: () => Promise<T>) => operation() };
+  const factory = () => device.indexedDB;
+  const core = new IndexedDBDocumentStorage(factory, passthrough);
+  const chat = new ChatStorage(factory, () => undefined, passthrough);
+  const appearance = new AppearanceImageStorage(factory, Date.now, passthrough);
+  const memory = new MemoryStorage(factory, Date.now, passthrough);
+  const api = new ApiConfigStorage(factory, passthrough);
+  const none = { sessions: [], messages: [], chatSettings: [], assets: [], worldBookStates: [] };
+  const local = (domain: keyof typeof BACKUP_LOCAL_KEYS) => ({
+    write: async (snapshot: StaticBackupSnapshot) => {
+      const value = snapshot.documents[domain];
+      if (value === null || value === undefined) device.localStorage.removeItem(BACKUP_LOCAL_KEYS[domain]);
+      else device.localStorage.setItem(BACKUP_LOCAL_KEYS[domain], JSON.stringify(value));
+    },
+    clear: async () => device.localStorage.removeItem(BACKUP_LOCAL_KEYS[domain]),
+  });
+  return {
+    chat: { write: (s) => chat.replaceAllRows(s.chat as typeof none), clear: () => chat.replaceAllRows(none) },
+    memory: { write: (s) => memory.replaceAllRows(s.memory), clear: () => memory.replaceAllRows(emptyMemory()) },
+    appearanceAssets: { write: (s) => appearance.replaceAllAssets(s.appearanceAssets as ImageAsset[]), clear: () => appearance.replaceAllAssets([]) },
+    apiConfigs: { write: (s) => api.replaceAllConfigs(s.apiConfigs as never[]), clear: () => api.replaceAllConfigs([]) },
+    appearance: local("appearance"), bindings: local("bindings"), presets: local("presets"), regex: local("regex"),
+    worldbooks: local("worldbooks"), contacts: local("contacts"), presence: local("presence"),
+    foundation: {
+      write: async (s) => core.replaceAllDocuments(s.documents.foundation == null ? []
+        : [{ key: FOUNDATION_STORAGE_KEY, value: JSON.stringify(s.documents.foundation), updatedAt: Date.now() }]),
+      clear: () => core.replaceAllDocuments([]),
+    },
+  };
+}
+
+async function sha256(text: string): Promise<string> {
+  const hash = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** IndexedDB returns rows in key order; a backup lists them in export order. Compare by id. */
+const byId = <T,>(rows: readonly T[]): T[] => [...rows].sort((a, b) => {
+  const x = String((a as { id?: unknown }).id), y = String((b as { id?: unknown }).id);
+  return x < y ? -1 : x > y ? 1 : 0;
+});
+
+/** Credentials stay outside backup/journal digests, but must be removed on success and preserved on rollback. */
+const hasApiKeys = (snapshot: StaticBackupSnapshot) => snapshot.apiConfigs.some((row) => Object.hasOwn(row as object, "apiKey"));
+function sameApiCredentials(a: StaticBackupSnapshot, b: StaticBackupSnapshot): boolean {
+  const left = byId(a.apiConfigs) as Record<string, unknown>[], right = byId(b.apiConfigs) as Record<string, unknown>[];
+  return left.length === right.length && left.every((row, index) => row.id === right[index].id
+    && Object.hasOwn(row, "apiKey") === Object.hasOwn(right[index], "apiKey") && row.apiKey === right[index].apiKey);
+}
+
+/** One digest per unit, computed identically for backup and device, including image byte hashes but excluding credentials. */
+export async function digestUnits(snapshot: StaticBackupSnapshot, imageHashes = true): Promise<Record<RestoreUnit, string>> {
+  const chat = snapshot.chat;
+  const chatAssets = await digestImageRows(chat.assets, imageHashes);
+  const appearanceAssets = await digestImageRows(snapshot.appearanceAssets, imageHashes);
+  const values: Record<RestoreUnit, unknown | null> = {
+    chat: Object.values(chat).every((rows) => rows.length === 0) ? null : Object.fromEntries(CHAT_STORES.map((name) => [name, byId(name === "assets" ? chatAssets : chat[name] ?? [])])),
+    // Empty added stores do not change the digest of an already-interrupted legacy restore.
+    // Nonempty State/Background stores always participate in verification.
+    memory: Object.values(snapshot.memory).every((rows) => rows.length === 0) ? null : Object.fromEntries(MEMORY_STORES
+      .filter((name) => !["backgrounds", "states"].includes(name) || (snapshot.memory[name]?.length ?? 0) > 0)
+      .map((name) => [name, byId(snapshot.memory[name] ?? []).map((row) => {
+      // A restore rotates this local capability nonce. Logical progress/content still require exact verification.
+      const cursor = row as MemoryCursor;
+      if (name !== "cursors") return row;
+      const { clearToken: _token, ...logical } = cursor;
+      void _token;
+      if (!cursor.extraction) return logical;
+      const { incarnation: _nonce, ...extraction } = cursor.extraction;
+      void _nonce;
+      return { ...logical, extraction };
+    })])),
+    appearanceAssets: appearanceAssets.length ? byId(appearanceAssets) : null,
+    apiConfigs: snapshot.apiConfigs.length ? byId(snapshot.apiConfigs).map((row) => { const { apiKey: _key, ...rest } = row as { apiKey?: unknown }; void _key; return rest; }) : null,
+    appearance: snapshot.documents.appearance ?? null, bindings: snapshot.documents.bindings ?? null,
+    presets: snapshot.documents.presets ?? null, regex: snapshot.documents.regex ?? null,
+    worldbooks: snapshot.documents.worldbooks ?? null, contacts: snapshot.documents.contacts ?? null,
+    presence: snapshot.documents.presence ?? null, foundation: snapshot.documents.foundation ?? null,
+  };
+  const out = {} as Record<RestoreUnit, string>;
+  for (const unit of RESTORE_UNITS) out[unit] = values[unit] === null ? EMPTY : await sha256(JSON.stringify(values[unit]));
+  return out;
+}
+
+/** The rows a clean device would hold after the backup is restored. */
+export function snapshotFromBackup(validated: ValidatedBackup, files: ReadonlyMap<string, Uint8Array>): StaticBackupSnapshot {
+  const bytes = (path: string) => files.get(path) ?? new Uint8Array();
+  const assets = (domain: "appearance" | "chat") => validated.manifest.assets.filter((asset) => asset.domain === domain);
+  const { sessions, messages, chatSettings, worldBookStates } = validated.data.chat;
+  const documents: StaticBackupSnapshot["documents"] = {};
+  for (const domain of ["foundation", "appearance", "bindings", "presets", "regex", "worldbooks", "contacts", "presence"] as BackupDomain[])
+    documents[domain] = validated.data[domain];
+  return {
+    documents,
+    memory: validated.data.memory,
+    chat: { sessions, messages, chatSettings, worldBookStates,
+      assets: assets("chat").map((a) => ({ id: a.id, blob: new Blob([bytes(a.path)] as BlobPart[], { type: a.mime }), createdAt: a.createdAt })) },
+    appearanceAssets: assets("appearance").map((a) => ({ id: a.id, blob: new Blob([bytes(a.path)] as BlobPart[], { type: a.mime }), type: a.mime, createdAt: a.createdAt })),
+    apiConfigs: validated.data.apiConfigs,
+  };
+}
+
+export type RestoreOptions = BackupLockOptions & {
+  now?: () => number;
+  /** A preview shown to the user; the restore compares it with a fresh one and refuses if the device changed. */
+  confirmed?: RestorePreview;
+  writers?: UnitWriters;
+  safety?: SafetyCopyStore;
+  newId?: () => string;
+};
+
+type Run = { device: RestoreDevice; writers: UnitWriters; safety: SafetyCopyStore };
+
+const blankSnapshot = (): StaticBackupSnapshot => ({ documents: {}, memory: emptyMemory(), appearanceAssets: [], apiConfigs: [],
+  chat: { sessions: [], messages: [], chatSettings: [], assets: [], worldBookStates: [] } });
+const before = (journal: RestoreJournal, unit: RestoreUnit) => journal.kind === "replace" ? journal.previous[unit] : EMPTY;
+
+function readJournal(device: RestoreDevice): RestoreJournal | null {
+  let text: string | null;
+  try { text = device.localStorage.getItem(RESTORE_JOURNAL_KEY); } catch { throw new RestoreError("journal-invalid", "unknown"); }
+  if (text === null) return null;
+  try {
+    const value = parseBackupJson(text) as Partial<RestoreJournal> | null;
+    const expected = value?.expected as Record<string, unknown> | undefined;
+    if (!value || value.version !== 1 || (value.kind !== "empty-restore" && value.kind !== "replace") || typeof value.restoreId !== "string"
+      || (value.imageHashes !== undefined && value.imageHashes !== true)
+      || (value.kind === "replace" && !value.previous) || typeof value.backupId !== "string" || typeof value.startedAt !== "number" || !expected
+      || RESTORE_UNITS.some((unit) => typeof expected[unit] !== "string"
+        || (value.kind === "replace" && typeof (value.previous as Record<string, unknown>)[unit] !== "string"))) throw new Error("shape");
+    return value as RestoreJournal;
+  } catch { throw new RestoreError("journal-invalid", "kept"); }
+}
+
+/** The state the device must return to on rollback: empty, or the safety copy taken before a replace. */
+async function rollbackTarget(run: Run, journal: RestoreJournal): Promise<StaticBackupSnapshot> {
+  if (journal.kind !== "replace") return blankSnapshot();
+  let copy: StaticBackupSnapshot | null;
+  try { copy = await run.safety.load(journal.restoreId); } catch { throw new RestoreError("safety-copy-failed", "kept"); }
+  if (!copy) throw new RestoreError("safety-copy-missing", "kept");
+  const digests = await digestUnits(copy, journal.imageHashes === true);
+  if (RESTORE_UNITS.some((unit) => digests[unit] !== journal.previous[unit])) throw new RestoreError("safety-copy-missing", "kept");
+  return copy;
+}
+
+/**
+ * Puts every unit back to its pre-restore state. A unit that holds neither that state nor what this restore wrote
+ * stops the rollback (`target-changed`): it is never overwritten.
+ */
+async function rollback(run: Run, journal: RestoreJournal, written: ReadonlySet<RestoreUnit> = new Set()): Promise<void> {
+  const target = await rollbackTarget(run, journal);
+  let state: Record<RestoreUnit, string>;
+  let current: StaticBackupSnapshot;
+  try { current = await readStaticBackupSource(run.device); state = await digestUnits(current, journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
+  for (const unit of [...RESTORE_UNITS].reverse())
+    // A unit this very run wrote is ours to undo even if it stored something other than expected (failed verification).
+    if (state[unit] !== before(journal, unit) && state[unit] !== journal.expected[unit] && !written.has(unit)) throw new RestoreError("target-changed", "kept", unit);
+  for (const unit of [...RESTORE_UNITS].reverse()) if (state[unit] !== before(journal, unit)
+    || (unit === "memory" && current.memory.cursors.some((row) => !!(row as MemoryCursor).extraction || (row as MemoryCursor).clearRequestedAt !== undefined))
+    || (unit === "apiConfigs" && !sameApiCredentials(current, target))) {
+    try { await (journal.kind === "replace" ? run.writers[unit].write(target) : run.writers[unit].clear()); }
+    catch { throw new RestoreError("rollback-failed", "kept", unit); }
+  }
+  let after: Record<RestoreUnit, string>;
+  let restored: StaticBackupSnapshot;
+  try { restored = await readStaticBackupSource(run.device); after = await digestUnits(restored, journal.imageHashes === true); } catch { throw new RestoreError("rollback-failed", "kept"); }
+  const left = RESTORE_UNITS.find((unit) => after[unit] !== before(journal, unit));
+  if (left || !sameApiCredentials(restored, target)) throw new RestoreError("rollback-failed", "kept", left ?? "apiConfigs");
+  await finish(run, journal);
+}
+
+function clearJournal(device: RestoreDevice): void {
+  try { device.localStorage.removeItem(RESTORE_JOURNAL_KEY); if (device.localStorage.getItem(RESTORE_JOURNAL_KEY) !== null) throw new Error("kept"); }
+  catch { throw new RestoreError("journal-clear-failed", "kept"); }
+}
+
+/** The journal goes first; a leftover safety copy is only wasted space and is removed best-effort. */
+async function finish(run: Run, journal: RestoreJournal): Promise<void> {
+  clearJournal(run.device);
+  if (journal.kind === "replace") { try { await run.safety.remove(journal.restoreId); } catch { /* orphan copy: harmless */ } }
+}
+
+/** Writes units still in their old state, skips units already equal to the backup, refuses anything else; then verifies. */
+async function applyUnits(run: Run, journal: RestoreJournal, snapshot: StaticBackupSnapshot): Promise<{ failedUnit?: RestoreUnit; verified: boolean; written: Set<RestoreUnit> }> {
+  const written = new Set<RestoreUnit>();
+  for (const unit of RESTORE_UNITS) {
+    const current = await readStaticBackupSource(run.device);
+    const state = (await digestUnits(current, journal.imageHashes === true))[unit];
+    if (state === journal.expected[unit] && !(unit === "apiConfigs" && hasApiKeys(current))
+      && !(unit === "memory" && current.memory.cursors.some((row) => !!(row as MemoryCursor).extraction || (row as MemoryCursor).clearRequestedAt !== undefined))) continue;
+    if (state !== before(journal, unit) && state !== journal.expected[unit]) throw new RestoreError("target-changed", "kept", unit);
+    written.add(unit);
+    try { await run.writers[unit].write(snapshot); } catch { return { failedUnit: unit, verified: false, written }; }
+  }
+  const restored = await readStaticBackupSource(run.device);
+  const after = await digestUnits(restored, journal.imageHashes === true);
+  return { verified: RESTORE_UNITS.every((unit) => after[unit] === journal.expected[unit]) && !hasApiKeys(restored), written };
+}
+
+async function runRestore(kind: RestoreJournal["kind"], manifestJson: string, files: ReadonlyMap<string, Uint8Array>,
+  device: RestoreDevice, locks: BackupLockManager | undefined, options: RestoreOptions): Promise<{ restoreId: string; backupId: string }> {
+  const { now = Date.now, confirmed, writers = createUnitWriters(device), newId = () => globalThis.crypto.randomUUID(),
+    safety = createSafetyCopyStore(device.indexedDB), ...lockOptions } = options;
+  if (kind === "replace" && !confirmed) throw new RestoreError("replace-not-confirmed", "none");
+  const validated = await validateBackupPackage(manifestJson, files);
+  return new BackupCoordinator(locks).withSnapshot(async () => {
+    if (readJournal(device)) throw new RestoreError("restore-in-progress", "kept");
+    const blank: RestorePreview = { capturedAt: now(), backupId: validated.manifest.backupId, mode: "blocked", target: "unknown",
+      targetDigest: null, domains: {}, assets: null, warnings: validated.warnings, blockers: [] };
+    const fresh = await previewValidatedBackup(blank, validated, device, locks!);
+    if (fresh.mode !== (kind === "replace" ? "replace-required" : "empty-restore")) throw new RestoreError("not-empty-restore", "none", undefined, fresh);
+    if (confirmed && restorePreviewChanged(confirmed, fresh)) throw new RestoreError("preview-changed", "none", undefined, fresh);
+    const snapshot = snapshotFromBackup(validated, files);
+    const current = kind === "replace" ? await readStaticBackupSource(device) : blankSnapshot();
+    const restoreId = newId();
+    // Hash before saving the copy: a read/hash failure here must leave no orphan copy or journal.
+    const expected = await digestUnits(snapshot), previous = await digestUnits(current);
+    if (kind === "replace") {
+      // The copy must exist before the journal that depends on it, and before the first overwrite.
+      try { await safety.save(restoreId, current, now()); } catch { throw new RestoreError("safety-copy-failed", "none"); }
+    }
+    const journal: RestoreJournal = { version: 1, kind, imageHashes: true, restoreId, backupId: validated.manifest.backupId, startedAt: now(),
+      expected, previous };
+    const run: Run = { device, writers, safety };
+    try { device.localStorage.setItem(RESTORE_JOURNAL_KEY, JSON.stringify(journal)); }
+    catch {
+      if (kind === "replace") { try { await safety.remove(restoreId); } catch { /* orphan copy: harmless */ } }
+      throw new RestoreError("journal-write-failed", "unknown");
+    }
+    let result: Awaited<ReturnType<typeof applyUnits>>;
+    try { result = await applyUnits(run, journal, snapshot); }
+    catch (error) { throw error instanceof RestoreError ? error : new RestoreError("resume-failed", "kept"); }
+    if (result.failedUnit || !result.verified) {
+      await rollback(run, journal, result.written);
+      throw new RestoreError(result.failedUnit ? "restore-failed-rolled-back" : "verify-failed-rolled-back", "none", result.failedUnit);
+    }
+    await finish(run, journal);
+    return { restoreId, backupId: journal.backupId };
+  }, lockOptions);
+}
+
+/**
+ * Restore into a verified-empty device. Everything runs under the exclusive snapshot lock. The journal is written
+ * first; a failed or unverifiable restore is rolled back. If rollback cannot finish, the journal stays so that
+ * `recoverRestore` can finish or undo it. Nothing is merged: any non-empty target is refused.
+ */
+export function restoreIntoEmpty(manifestJson: string, files: ReadonlyMap<string, Uint8Array>, device: RestoreDevice,
+  locks: BackupLockManager | undefined, options: RestoreOptions = {}) {
+  return runRestore("empty-restore", manifestJson, files, device, locks, options);
+}
+
+/**
+ * Explicitly replace everything on a device that holds data with the backup. `options.confirmed` (the preview the
+ * user saw) is required and re-checked against the device. A full copy of the current data is saved first; any
+ * failure puts the device back from it. Not a merge: every unit is replaced as a whole.
+ */
+export function replaceWithBackup(manifestJson: string, files: ReadonlyMap<string, Uint8Array>, device: RestoreDevice,
+  locks: BackupLockManager | undefined, options: RestoreOptions & { confirmed: RestorePreview }) {
+  return runRestore("replace", manifestJson, files, device, locks, options);
+}
+
+/**
+ * Finish or undo an interrupted restore or replace. `resume` needs the same package again (checked against the
+ * journal); `rollback` needs no package (a replace uses its safety copy). Either refuses if a unit holds anything
+ * other than its old or its new state.
+ */
+export async function recoverRestore(action: "resume" | "rollback", device: RestoreDevice, locks: BackupLockManager | undefined,
+  pack: { manifestJson: string; files: ReadonlyMap<string, Uint8Array> } | null, options: RestoreOptions = {}): Promise<void> {
+  const { writers = createUnitWriters(device), safety = createSafetyCopyStore(device.indexedDB), ...lockOptions } = options;
+  return new BackupCoordinator(locks).withSnapshot(async () => {
+    const journal = readJournal(device);
+    if (!journal) throw new RestoreError("no-journal", "none");
+    const run: Run = { device, writers, safety };
+    if (action === "rollback") { await rollback(run, journal); return; }
+    if (!pack) throw new RestoreError("package-mismatch", "kept");
+    const validated = await validateBackupPackage(pack.manifestJson, pack.files);
+    const snapshot = snapshotFromBackup(validated, pack.files);
+    if (validated.manifest.backupId !== journal.backupId
+      || JSON.stringify(await digestUnits(snapshot, journal.imageHashes === true)) !== JSON.stringify(journal.expected)) throw new RestoreError("package-mismatch", "kept");
+    const result = await applyUnits(run, journal, snapshot);
+    if (result.failedUnit || !result.verified) throw new RestoreError("resume-failed", "kept", result.failedUnit);
+    await finish(run, journal);
+  }, lockOptions);
+}

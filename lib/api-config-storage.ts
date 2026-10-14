@@ -1,5 +1,5 @@
 import { normalizeApiConfig, type ApiConfig, type NamedApiConfig } from "./api-config";
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 
 export const API_CONFIG_DATABASE_NAME = "veil-api-config-v1";
 export const API_CONFIG_DATABASE_VERSION = 1;
@@ -29,21 +29,31 @@ export class ApiConfigStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
-  private open(): Promise<IDBDatabase> {
+  private open(scope?: PersistenceWriteScope): Promise<IDBDatabase> {
+    if (this.database) return this.database;
+    return runPersistenceWrite(this.writeGate, () => this.openDatabase(), scope);
+  }
+
+  private openDatabase(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
         const request = this.factory().open(API_CONFIG_DATABASE_NAME, API_CONFIG_DATABASE_VERSION);
-        request.onupgradeneeded = () => request.result.createObjectStore(STORE, { keyPath: "id" });
+        let rejected = false;
+        request.onupgradeneeded = () => {
+          if (rejected) { request.transaction?.abort(); return; }
+          request.result.createObjectStore(STORE, { keyPath: "id" });
+        };
         request.onsuccess = () => {
           const db = request.result;
+          if (rejected) { db.close(); return; }
           db.onversionchange = () => {
             db.close();
             if (this.database === opening) this.database = undefined;
           };
           resolve(db);
         };
-        request.onerror = () => reject(new Error("Text API storage is unavailable."));
-        request.onblocked = () => reject(new Error("Close other VEIL tabs to open Text API storage."));
+        request.onerror = () => { rejected = true; reject(new Error("Text API storage is unavailable.")); };
+        request.onblocked = () => { rejected = true; reject(new Error("Close other VEIL tabs to open Text API storage.")); };
       });
       this.database = opening;
       void opening.catch(() => { if (this.database === opening) this.database = undefined; });
@@ -51,13 +61,18 @@ export class ApiConfigStorage {
     return this.database;
   }
 
-  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    const operation = () => this.performTransaction(mode, run);
-    return mode === "readwrite" ? this.writeGate.withWrite(operation) : operation();
+  // A caller that already owns a write scope passes it so this work joins that lease instead of requesting its own.
+  // A readonly call only needs it when the first open would otherwise request a second shared lease.
+  private async transaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>,
+    outer?: PersistenceWriteScope): Promise<T> {
+    if (mode !== "readwrite") return this.performTransaction(mode, run, outer);
+    return outer
+      ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, outer), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope));
   }
 
-  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    const db = await this.open();
+  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
+    const db = await this.open(scope);
     const tx = db.transaction(STORE, mode);
     const done = new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => resolve();
@@ -74,11 +89,19 @@ export class ApiConfigStorage {
     }
   }
 
-  getApiConfig(id: string): Promise<NamedApiConfig | undefined> {
+  /** Restore only: replaces every stored config in one transaction. Rows carry no credential. */
+  replaceAllConfigs(rows: readonly Omit<NamedApiConfig, "apiKey">[], scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (store) => {
+      await request(store.clear());
+      for (const row of rows) await request(store.put(row));
+    }, scope);
+  }
+
+  getApiConfig(id: string, scope?: PersistenceWriteScope): Promise<NamedApiConfig | undefined> {
     return this.transaction("readonly", async (store) => {
       const config = await request<ApiConfig | undefined>(store.get(id));
       return config ? normalizeApiConfig(config) : undefined;
-    });
+    }, scope);
   }
 
   listApiConfigs(): Promise<NamedApiConfig[]> {
@@ -102,19 +125,19 @@ export class ApiConfigStorage {
     });
   }
 
-  deleteApiConfig(id: string, expected?: NamedApiConfig): Promise<void> {
+  deleteApiConfig(id: string, expected?: NamedApiConfig, scope?: PersistenceWriteScope): Promise<void> {
     return this.transaction("readwrite", async (store) => {
       checkExpected(await request<ApiConfig | undefined>(store.get(id)), expected);
       await request(store.delete(id));
-    });
+    }, scope);
   }
 
-  restoreApiConfigIfAbsent(config: NamedApiConfig): Promise<boolean> {
+  restoreApiConfigIfAbsent(config: NamedApiConfig, scope?: PersistenceWriteScope): Promise<boolean> {
     return this.transaction("readwrite", async (store) => {
       if (await request(store.get(config.id))) return false;
       await request(store.put(normalizeApiConfig(config)));
       return true;
-    });
+    }, scope);
   }
 }
 

@@ -1,11 +1,12 @@
-import { browserPersistenceWriteGate, type PersistenceWriteGate } from "./backup/persistence-write-gate";
+import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
+import { readExistingMemorySource } from "./memory/source-read";
 
 export type StoredDocument = { key: string; value: string; updatedAt: number };
 
 export interface DocumentStorage {
-  read(key: string): Promise<string | null>;
+  read(key: string, scope?: PersistenceWriteScope): Promise<string | null>;
   putIfAbsent(key: string, value: string): Promise<string>;
-  replaceIfCurrent(key: string, expected: string | null, value: string): Promise<boolean>;
+  replaceIfCurrent(key: string, expected: string | null, value: string, scope?: PersistenceWriteScope): Promise<boolean>;
   rollbackIfCurrent(key: string, expected: string, previous: string | null): Promise<boolean>;
 }
 
@@ -30,11 +31,22 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate) {}
 
-  private open(): Promise<IDBDatabase> {
+  private open(scope?: PersistenceWriteScope, identify?: (cached: Promise<IDBDatabase>) => void): Promise<IDBDatabase> {
+    const open = () => {
+      const cached = this.openDatabase();
+      // The gate returns a wrapper; recovery must identify the actual cached open.
+      identify?.(cached);
+      return cached;
+    };
+    if (this.database) return open();
+    return runPersistenceWrite(this.writeGate, open, scope);
+  }
+
+  private openDatabase(): Promise<IDBDatabase> {
     if (!this.database) {
       const opening = new Promise<IDBDatabase>((resolve, reject) => {
         let operation: IDBOpenDBRequest;
-        let blocked = false;
+        let rejected = false;
         try {
           operation = this.factory().open(CORE_DATABASE_NAME, CORE_DATABASE_VERSION);
         } catch {
@@ -42,12 +54,13 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
           return;
         }
         operation.onupgradeneeded = () => {
+          if (rejected) { operation.transaction?.abort(); return; }
           if (!operation.result.objectStoreNames.contains(DOCUMENT_STORE))
             operation.result.createObjectStore(DOCUMENT_STORE, { keyPath: "key" });
         };
         operation.onsuccess = () => {
           const database = operation.result;
-          if (blocked) {
+          if (rejected) {
             database.close();
             return;
           }
@@ -60,10 +73,12 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
           };
           resolve(database);
         };
-        operation.onerror = () =>
+        operation.onerror = () => {
+          rejected = true;
           reject(new Error("Core storage is unavailable. Existing data has not been changed."));
+        };
         operation.onblocked = () => {
-          blocked = true;
+          rejected = true;
           reject(new Error("Close other VEIL tabs to upgrade core storage."));
         };
       });
@@ -78,22 +93,25 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
   private async transaction<T>(
     mode: IDBTransactionMode,
     run: (store: IDBObjectStore) => Promise<T>,
+    outer?: PersistenceWriteScope,
   ): Promise<T> {
-    const operation = () => this.performTransaction(mode, run);
-    return mode === "readwrite" ? this.writeGate.withWrite(operation) : operation();
+    if (mode !== "readwrite") return this.performTransaction(mode, run, outer);
+    return outer
+      ? runPersistenceWrite(this.writeGate, () => this.performTransaction(mode, run, outer), outer)
+      : withPersistenceWriteScope(this.writeGate, (scope) => this.performTransaction(mode, run, scope));
   }
 
-  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>): Promise<T> {
-    const opening = this.open();
-    const database = await opening;
+  private async performTransaction<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => Promise<T>, scope?: PersistenceWriteScope): Promise<T> {
+    let opening!: Promise<IDBDatabase>;
+    const database = await this.open(scope, (cached) => { opening = cached; });
     let transaction: IDBTransaction;
     try {
       transaction = database.transaction(DOCUMENT_STORE, mode);
     } catch (error) {
       if (!isInvalidStateError(error)) throw error;
       if (this.database === opening) this.database = undefined;
-      const recoveredOpening = this.open();
-      const recoveredDatabase = await recoveredOpening;
+      let recoveredOpening!: Promise<IDBDatabase>;
+      const recoveredDatabase = await this.open(scope, (cached) => { recoveredOpening = cached; });
       try {
         transaction = recoveredDatabase.transaction(DOCUMENT_STORE, mode);
       } catch (retryError) {
@@ -104,7 +122,7 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     }
     const done = new Promise<void>((resolve, reject) => {
       transaction.oncomplete = () => resolve();
-      transaction.onabort = transaction.onerror = () =>
+      transaction.onabort = () =>
         reject(new Error("Core storage transaction failed. Existing data has not been changed."));
     });
     try {
@@ -122,10 +140,27 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     }
   }
 
-  read(key: string): Promise<string | null> {
+  /** Restore only: replaces every stored document in one transaction. Callers hold the exclusive backup lock. */
+  replaceAllDocuments(rows: readonly StoredDocument[], scope?: PersistenceWriteScope): Promise<void> {
+    return this.transaction("readwrite", async (store) => {
+      await request(store.clear());
+      for (const row of rows) await request(store.put(row));
+    }, scope);
+  }
+
+  read(key: string, scope?: PersistenceWriteScope): Promise<string | null> {
     return this.transaction("readonly", async (store) => {
       const saved = await request<StoredDocument | undefined>(store.get(key));
       return saved?.value ?? null;
+    }, scope);
+  }
+
+  /** Raw saved authority only: missing storage stays missing. */
+  async readExisting(key: string, scope?: PersistenceWriteScope): Promise<string | null> {
+    if (scope) assertExclusivePersistenceScope(this.writeGate, scope);
+    return readExistingMemorySource(this.factory(), CORE_DATABASE_NAME, CORE_DATABASE_VERSION, [DOCUMENT_STORE], async (tx) => {
+      const row = await request<StoredDocument | undefined>(tx.objectStore(DOCUMENT_STORE).get(key));
+      return row?.value ?? null;
     });
   }
 
@@ -138,13 +173,13 @@ export class IndexedDBDocumentStorage implements DocumentStorage {
     });
   }
 
-  replaceIfCurrent(key: string, expected: string | null, value: string): Promise<boolean> {
+  replaceIfCurrent(key: string, expected: string | null, value: string, scope?: PersistenceWriteScope): Promise<boolean> {
     return this.transaction("readwrite", async (store) => {
       const saved = await request<StoredDocument | undefined>(store.get(key));
       if ((saved?.value ?? null) !== expected) return false;
       await request(store.put({ key, value, updatedAt: Date.now() } satisfies StoredDocument));
       return true;
-    });
+    }, scope);
   }
 
   rollbackIfCurrent(

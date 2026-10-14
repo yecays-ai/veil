@@ -29,10 +29,25 @@ export type Character = ProfileBasics & {
 };
 export type CharacterInput = Omit<Character, "characterId">;
 export type NodePosition = { x: number; y: number };
+export const RELATION_KINDS = [
+  "friend",
+  "family",
+  "romantic",
+  "acquaintance",
+  "colleague",
+  "hostile",
+  "other",
+] as const;
+export type RelationKind = (typeof RELATION_KINDS)[number];
+/** Missing or unknown values mean no kind; a kind is never guessed from the label. */
+export function normalizeRelationKind(value: unknown): RelationKind | null {
+  return RELATION_KINDS.find((kind) => kind === value) ?? null;
+}
 export type CharacterRelation = {
   id: string;
   characterAId: string;
   characterBId: string;
+  kind: RelationKind | null;
   label: string;
   aToBContext: string | null;
   bToAContext: string | null;
@@ -227,6 +242,7 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
       relations.push({
         id,
         label,
+        kind: normalizeRelationKind(r.kind),
         characterAId: r.characterAId,
         characterBId: r.characterBId,
         aToBContext: optionalText(r.aToBContext),

@@ -32,6 +32,9 @@ export function useChatSession(characterId: string, enabled: boolean) {
   // The initial seed is a pure render snapshot; its revision is checked before route ownership and again on effect replay.
   }, [characterId]);
   useEffect(() => { lifecycle.current?.setEnabled(enabled); }, [characterId, enabled]);
+  const viewedId = enabled && state.characterId === characterId ? state.session?.id : undefined;
+  // While this page shows the conversation, new bubbles are read as they arrive; entering it clears the unread count.
+  useEffect(() => viewedId ? chatStorage.viewSession(viewedId) : undefined, [viewedId]);
   const switchedSeed = state.characterId === characterId ? null : prefetchedChatSessionEntry(characterId, chatStorage);
   const current = enabled && (state.characterId === characterId || !!switchedSeed);
   return {

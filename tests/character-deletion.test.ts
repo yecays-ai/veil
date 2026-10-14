@@ -22,6 +22,7 @@ const fails = (deps: CleanupDeps, step: CleanupStep): CleanupDeps => {
     case "bindings": return { ...deps, bindings: { ...deps.bindings, update: boom } };
     case "presence": return { ...deps, presence: { ...deps.presence, update: boom } };
     case "groups": return { ...deps, chat: Object.assign(Object.create(deps.chat as object), { removeGroupMembers: boom }) };
+    case "memory": return { ...deps, memory: { ...deps.memory, deleteCharacter: boom } };
     case "conversation": return { ...deps, chat: Object.assign(Object.create(deps.chat as object), { deleteSession: boom }) };
   }
 };
@@ -118,7 +119,7 @@ test("each cleanup step can fail on its own; the report names it, the rest finis
     const world = await buildWorld();
     const report = await deleteCharacterWithData({ characterId: A, commitFoundation: world.commitFoundation, deps: fails(world.deps, step) });
     assert.deepEqual(report.failed.map((f) => f.step), [step], step);
-    assert.equal(report.completed.length, 5, step);
+    assert.equal(report.completed.length, 6, step);
     assert.equal((await world.foundation.load()).characters.some((c) => c.characterId === A), false, "Foundation delete is already committed");
     const retried = await cleanupCharacterData(A, world.deps);
     assert.deepEqual(retried.failed, [], step);
@@ -217,7 +218,7 @@ test("an empty Foundation catalogue never turns every conversation and contact i
   const before = await world.snapshot();
   const empty = { load: async () => ({ ...(await world.foundation.load()), characters: [] }) };
   assert.equal(hasLeftovers(await findLeftovers(empty, world.deps)), false);
-  const stale = { conversations: [{ sessionId: world.ids.sessionA.id, characterId: A, messages: 3 }], contacts: [{ characterId: A }] };
+  const stale = { conversations: [{ sessionId: world.ids.sessionA.id, characterId: A, messages: 3 }], contacts: [{ characterId: A }], memories: [] };
   assert.deepEqual(await removeLeftovers(stale, empty, world.deps), { removed: 0, skipped: 2, failed: 0 });
   assert.deepEqual(await world.snapshot(), before);
 });

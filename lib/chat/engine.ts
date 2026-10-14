@@ -8,8 +8,13 @@ import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
-import { assembleChatPrompt } from "./prompt";
+import { assembleChatPrompt, hasSystemCharacterSlot, hasSystemMemorySlot, journalTriggerTexts, memoryConversation } from "./prompt";
+import { browserMemoryStorage } from "../memory/browser";
+import { emptyMemoryContext, memoryEntryHash, selectMemoryContext } from "../memory/context";
+import { journalEntry, selectJournal } from "../memory/journal";
+import type { Memory } from "../memory/types";
 import { selfState, type SelfState } from "./self-context";
+import { isSilence, maybeSilence, PROACTIVE_INSTRUCTION } from "./proactive";
 import { browserContactStorage } from "../contact-storage";
 import {
   openAITextProvider,
@@ -17,7 +22,7 @@ import {
   type TextProvider,
 } from "./provider";
 import { ChatStorage, chatStorage } from "./storage";
-import type { ChatMessage } from "./types";
+import type { ChatMessage, ChatSession, MemoryRef } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
 import { characterActionApplier, splitActions, type ActionApplier } from "../presence/actions";
@@ -63,6 +68,12 @@ const applyActionsToStores: ActionApplier = (characterId, actions, now, messageI
       } })(characterId, actions, now, messageId);
 
 type WeatherLoader = (target: { label: string | null; coordinates: Coordinates | null }) => Promise<WeatherState>;
+type StateLoader = (character: Character) => Promise<import("../memory/state-runtime").StateView | undefined>;
+const loadCharacterState: StateLoader = (character) => typeof window === "undefined" ? Promise.resolve(undefined)
+  : import("../memory/state-browser").then((module) => module.readBrowserCharacterState(character));
+type MemoryLoader = (characterId: string) => Promise<readonly Memory[]>;
+const loadMemory: MemoryLoader = (characterId) => typeof window === "undefined"
+  ? Promise.resolve([]) : browserMemoryStorage.listMemories(characterId);
 
 async function safeWeather(loader: WeatherLoader, location: FoundationDocument["user"]["location"]) {
   if (!location) return { status: "not-configured" } as const;
@@ -90,6 +101,8 @@ export function createChatEngine(
   recordSent: SentRecorder = recordSentToPresence,
   self: SelfLoader = loadSelfState,
   applyActions: ActionApplier = applyActionsToStores,
+  memories: MemoryLoader = loadMemory,
+  states: StateLoader = loadCharacterState,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   let stopSequence = 0;
@@ -146,14 +159,18 @@ export function createChatEngine(
     let rawContent = "", finishReason: string | undefined;
     let iterator: AsyncIterator<string> | undefined;
     let draftSaved = false;
+    let before: Pick<ChatSession, "updatedAt" | "lastMessageId" | "lastMessagePreview"> | undefined;
+    const proactive = source === "proactive";
     const recordPersistence = startGenerationPersistence(source);
     let persisted: GenerationPersistenceOutcome = "nothing-persisted";
     try {
       // Validate prerequisites before any ownership or pending-message claim; failures here
       // leave no attempt, claim or failed assistant behind.
       const { session: target } = await awaited(storage.readSession(sessionId), controller.signal);
+      before = { updatedAt: target.updatedAt, lastMessageId: target.lastMessageId, lastMessagePreview: target.lastMessagePreview };
       const prepared = await prepareGeneration(target.characterId, controller.signal);
-      attempt.id = await storage.claimGeneration(sessionId, regenerateId, source === "continue" ? "continue" : "regenerate");
+      attempt.id = await storage.claimGeneration(sessionId, regenerateId,
+        source === "continue" ? "continue" : proactive ? "initiate" : "regenerate");
       controller.signal.throwIfAborted();
       unsubscribe = storage.subscribe((change) => {
         if (change.domain === "messages" && change.generationChanged && change.sessionId === sessionId)
@@ -168,7 +185,8 @@ export function createChatEngine(
         }), controller.signal);
         controller.signal.throwIfAborted();
       }
-      const batch = await storage.beginReply(sessionId, regenerateId, attempt.id, source === "continue" ? "continue" : "regenerate");
+      const batch = await storage.beginReply(sessionId, regenerateId, attempt.id,
+        source === "continue" ? "continue" : proactive ? "initiate" : "regenerate");
       if (!batch) return null;
       assistant = batch.assistant;
       controller.signal.throwIfAborted();
@@ -176,6 +194,24 @@ export function createChatEngine(
       const regexGroups = resolveRegexGroups(await awaited(regex(), controller.signal), binding.regexIds);
       // An explicit Binding selection decides book order; only Default All uses library order.
       const books = selectBoundWorldBooks((await awaited(worldBooks(), controller.signal)).books, binding.worldBookIds);
+      // Overlap the local read with existing weather/self preparation; no retries or Memory writes.
+      const memoryRead = hasSystemMemorySlot(preset)
+        ? Promise.resolve().then(() => memories(character.characterId)).then(
+          (rows) => {
+            const runtime = { foundation: document, character, currentMessages: batch.messages, pending: batch.pending,
+              memory: { entries: [] }, regexGroups };
+            const context = selectMemoryContext(character.characterId, rows, memoryConversation(runtime, preset));
+            // Journal has its own single-entry quota beside Memory's; no match adds nothing.
+            const journal = selectJournal(character.characterId, rows, journalTriggerTexts(runtime, preset));
+            const used = journal ? { ...context, slot: { ...context.slot, entries: [...context.slot.entries, journalEntry(journal)] },
+              ids: [...context.ids, journal.id], outcome: "selected" as const } : context;
+            // Remember which exact entries went into this request, for the reply's Memory panel.
+            return Promise.all(used.ids.map(async (id): Promise<MemoryRef> => {
+              const row = rows.find((candidate) => candidate.id === id)!;
+              return { id, hash: await memoryEntryHash(row), ...(row.origin === "journal" ? { journal: true as const } : {}) };
+            })).then((refs) => ({ ...used, refs }));
+          }).catch(() => ({ ...emptyMemoryContext("unavailable"), refs: undefined as MemoryRef[] | undefined }))
+        : Promise.resolve({ ...emptyMemoryContext("preset-disabled"), refs: [] as MemoryRef[] });
       const activation = evaluateWorldBooks(books, batch.messages,
         await awaited(storage.readWorldBookState(sessionId), controller.signal));
       const weather = document.runtime?.timeAware === false ? undefined : await awaited(Promise.all([
@@ -188,18 +224,28 @@ export function createChatEngine(
           character: { location: character.location.label, temperatureC: characterWeather.temperatureC, summary: characterWeather.summary },
         } : {}),
       })), controller.signal);
-      const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, undefined, preset,
-        now(), activation, regexGroups, weather,
-        await awaited(self(character, now().getTime(), { announceChange: source !== "continue",
+      const ownState = await awaited(self(character, now().getTime(), { announceChange: source !== "continue",
           allowActions: source !== "continue",
           lastReplyAt: batch.messages.reduce<number | null>((latest, message) =>
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
-              ? message.createdAt : latest, null) }), controller.signal));
+              ? message.createdAt : latest, null) }), controller.signal);
+      const memory = await awaited(memoryRead, controller.signal);
+      await storage.generationStage(sessionId, attempt.id, "provider");
+      if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
+      controller.signal.throwIfAborted();
+      // Last local authority read before provider dispatch; no second model call, retry or stored context.
+      const characterState = hasSystemCharacterSlot(preset)
+        ? await awaited(Promise.resolve().then(() => states(character)).catch(() => undefined), controller.signal) : undefined;
+      controller.signal.throwIfAborted();
+      const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, memory.slot, preset,
+        now(), activation, regexGroups, weather, ownState, characterState, batch.session.summary);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
+      if (proactive) prompt.messages.push({ role: "system", content: PROACTIVE_INSTRUCTION });
       const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };
-      logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages);
-      await storage.generationStage(sessionId, attempt.id, "provider");
+      logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages, {
+        ids: memory.ids, characterLength: memory.characterLength, outcome: memory.outcome,
+      });
       controller.signal.throwIfAborted();
       iterator = provider(config, prompt.messages, controller.signal, preset.generation, request,
         (reason) => { finishReason = reason; })[Symbol.asyncIterator]();
@@ -208,16 +254,24 @@ export function createChatEngine(
         if (chunk.done) break;
         rawContent += chunk.value;
         controller.signal.throwIfAborted();
-        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(splitActions(rawContent).text, true), status: "streaming" },
+        const visible = splitActions(rawContent).text;
+        // The silence tag is held back, so a Character that stays quiet never flashes text.
+        if (proactive && maybeSilence(visible)) continue;
+        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(visible, true), status: "streaming" },
           undefined, attempt.id, controller.signal);
       }
       controller.signal.throwIfAborted();
       await storage.generationStage(sessionId, attempt.id, "finalizing");
       controller.signal.throwIfAborted();
       const { text: replyText, actions } = splitActions(rawContent);
+      if (proactive && isSilence(replyText)) {
+        // The attempt stays counted; nothing is left in the conversation and nothing is retried.
+        await storage.discardReply(sessionId, attempt.id, assistant.id, before!);
+        return null;
+      }
       const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(replyText), activation.nextState,
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
-        attempt.id, finishReason, controller.signal);
+        attempt.id, finishReason, controller.signal, undefined, memory.refs);
       persisted = "committed";
       // Last Seen only: a failure here can neither undo the committed reply nor delay it.
       void Promise.resolve().then(() => recordSent(target.characterId, now().getTime()))
@@ -232,6 +286,11 @@ export function createChatEngine(
         // Stopped before any claim: nothing was persisted, so there is nothing to report either.
         if (controller.signal.aborted) return null;
         throw error;
+      }
+      // A Character-initiated attempt that failed or was stopped before writing anything leaves no marker: no one asked for it.
+      if (proactive) {
+        if (assistant && await storage.discardReply(sessionId, attempt.id, assistant.id, before!).catch(() => false)) return null;
+        if (!assistant) { if (controller.signal.aborted) return null; throw error; }
       }
       // Stopped before the draft reached storage: there is no user turn to answer, and a stopped reply here
       // would be an empty bubble whose Retry asks the model to answer nothing. Genuine failures stay recorded.
@@ -274,6 +333,8 @@ export function createChatEngine(
   return {
     send: (sessionId: string, content: string, quoteMessageId?: string) => sendMessage(sessionId, content, quoteMessageId),
     isGenerating: (sessionId: string) => active.has(sessionId),
+    /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
+    initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),
     // Lifecycle cleanup only aborts a local attempt; persisting a Stop is an explicit user action.
     stop: (sessionId: string, options?: { persist?: boolean }) => {
       lastStop.set(sessionId, ++stopSequence);

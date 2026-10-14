@@ -1,0 +1,164 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { JSDOM } from "jsdom";
+import { act, createElement, StrictMode } from "react";
+import { createMaintenanceScheduler } from "../lib/memory/maintenance-scheduler";
+import { MAINTENANCE_CONSENT_KEY, MAINTENANCE_CONFIG_EVENT, maintenanceEnabled, maintenanceReleaseApproved, setMaintenanceConsent } from "../lib/memory/maintenance-config";
+import type { ChatSession } from "../lib/chat/types";
+
+test("release, preview/CI and per-device consent gates default fail closed; no consent is restored from backup", () => {
+  const keys = ["NODE_ENV", "NEXT_PUBLIC_MEMORY_MAINTENANCE_APPROVED", "NEXT_PUBLIC_VERCEL_ENV", "CI"];
+  const env: Record<string, string | undefined> = process.env;
+  const previous = keys.map((key) => env[key]), win = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const values = new Map<string, string>(); let events = 0;
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { localStorage: { getItem: (k: string) => values.get(k) ?? null,
+    setItem: (k: string, v: string) => values.set(k, v), removeItem: (k: string) => values.delete(k) }, dispatchEvent: () => { events++; } } });
+  try {
+    env.NODE_ENV = "production"; delete process.env.CI; delete process.env.NEXT_PUBLIC_VERCEL_ENV;
+    delete process.env.NEXT_PUBLIC_MEMORY_MAINTENANCE_APPROVED;
+    values.set(MAINTENANCE_CONSENT_KEY, "enabled"); assert.equal(maintenanceEnabled(), false);
+    process.env.NEXT_PUBLIC_MEMORY_MAINTENANCE_APPROVED = "true"; assert.equal(maintenanceEnabled(), false, "unknown release environment fails closed");
+    process.env.NEXT_PUBLIC_VERCEL_ENV = "production"; values.clear(); assert.equal(maintenanceEnabled(), false);
+    setMaintenanceConsent(true); assert.equal(maintenanceEnabled(), true); assert.equal(events, 1);
+    process.env.NEXT_PUBLIC_VERCEL_ENV = "preview"; assert.equal(maintenanceEnabled(), false); assert.throws(() => setMaintenanceConsent(true));
+    process.env.NEXT_PUBLIC_VERCEL_ENV = "production"; process.env.CI = "true"; assert.equal(maintenanceReleaseApproved(), false);
+    delete process.env.CI; setMaintenanceConsent(false); assert.equal(maintenanceEnabled(), false);
+    env.NODE_ENV = "development"; assert.equal(maintenanceReleaseApproved(), false);
+  } finally {
+    keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i]; });
+    if (win) Object.defineProperty(globalThis, "window", win); else Reflect.deleteProperty(globalThis, "window");
+  }
+});
+
+test("mounted default-off gate stays inert across StrictMode, rerender, restore-style remount, focus and pageshow", async () => {
+  const dom = new JSDOM('<div id="root"></div>', { url: "https://example.test", pretendToBeVisual: true });
+  const saved = new Map<string, PropertyDescriptor | undefined>();
+  const install = (key: string, value: unknown) => { saved.set(key, Object.getOwnPropertyDescriptor(globalThis, key)); Object.defineProperty(globalThis, key, { configurable: true, writable: true, value }); };
+  for (const key of ["window", "document", "navigator", "Event", "HTMLElement"] as const) install(key, dom.window[key]);
+  install("IS_REACT_ACT_ENVIRONMENT", true);
+  let network = 0, opens = 0; install("fetch", async () => { network++; throw new Error("no network authorized"); });
+  Object.defineProperty(dom.window, "indexedDB", { value: { open: () => { opens++; throw new Error("no maintenance storage authorized"); } } });
+  const { createRoot } = await import("react-dom/client");
+  const { MemoryMaintenanceGate } = await import("../components/memory-maintenance-gate");
+  const root = createRoot(dom.window.document.getElementById("root")!);
+  try {
+    await act(async () => { root.render(createElement(StrictMode, null, createElement(MemoryMaintenanceGate))); });
+    await act(async () => {
+      root.render(createElement(MemoryMaintenanceGate));
+      for (const name of ["focus", "pageshow", MAINTENANCE_CONFIG_EVENT]) dom.window.dispatchEvent(new dom.window.Event(name));
+      dom.window.document.dispatchEvent(new dom.window.Event("visibilitychange"));
+    });
+    assert.equal(network, 0); assert.equal(opens, 0); assert.equal(dom.window.document.getElementById("root")!.textContent, "");
+  } finally {
+    await act(async () => root.unmount()); dom.window.close();
+    for (const [key, descriptor] of saved) { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); }
+  }
+});
+
+const row = (id = "c"): ChatSession => ({ id, characterId: id, updatedAt: 1000, autoReplyOnKeyboardDismiss: false, nextOrder: 2,
+  memorySequence: { epoch: id, nextSeq: 2 } });
+test("session read failure retries locally, rechecks the capacity trigger and dispatches only once", async () => {
+  let reads = 0, calls = 0, next = 0;
+  const timers = new Map<number, { cb: () => void; delay: number }>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
+    sessions: async () => { if (++reads === 1) throw new Error("temporary read"); return [row()]; },
+    run: async () => { calls++; return false; }, setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; },
+    clearTimer: (id) => { timers.delete(id as number); } });
+  await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
+  const fire = async () => { const [id, timer] = [...timers][0]; timers.delete(id); timer.cb(); await new Promise((r) => setTimeout(r, 0)); };
+  assert.equal([...timers.values()][0].delay, 5000); await fire();
+  assert.equal(calls, 0); assert.equal([...timers.values()][0].delay, 0, "capacity reached: starts without an idle wait");
+  await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
+});
+test("persistent session read failure has finite retries; cleared and stopped retry callbacks are inert", async () => {
+  let reads = 0, next = 0, enabled = true, calls = 0;
+  const timers = new Map<number, () => void>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => enabled, runnable: () => true, cursors: async () => [], triggerSequences: 1,
+    sessions: async () => { reads++; throw new Error("temporary read"); }, run: async () => { calls++; return false; },
+    setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
+  await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
+  const stale = [...timers.values()][0]; enabled = false; await scheduler.wake(); enabled = true; stale();
+  await new Promise((r) => setTimeout(r, 0)); assert.equal(reads, 1); assert.equal(timers.size, 0);
+  enabled = true; await scheduler.wake().catch(() => undefined);
+  let fired = 0;
+  while (timers.size && fired < 10) {
+    const [id, cb] = [...timers][0]; timers.delete(id); cb(); fired++; await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.ok(fired > 0 && fired <= 2); assert.equal(timers.size, 0); assert.equal(calls, 0);
+  scheduler.stop(); stale(); await new Promise((r) => setTimeout(r, 0)); assert.equal(timers.size, 0);
+});
+test("stop clears an outstanding read retry and a late rejection cannot create one", async () => {
+  let next = 0, calls = 0, reads = 0, reject!: (error: Error) => void;
+  const timers = new Map<number, () => void>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
+    sessions: () => { reads++; return Promise.reject(new Error("temporary read")); },
+    run: async () => { calls++; return false; }, setTimer: (cb) => { timers.set(++next, cb); return next; },
+    clearTimer: (id) => { timers.delete(id as number); } });
+  await scheduler.wake().catch(() => undefined); assert.equal(timers.size, 1);
+  const stale = [...timers.values()][0]; scheduler.stop(); assert.equal(timers.size, 0); stale();
+  await new Promise((r) => setTimeout(r, 0)); assert.equal(reads, 1); assert.equal(calls, 0);
+  const late = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
+    sessions: () => new Promise((_resolve, fail) => { reject = fail; }), run: async () => false,
+    setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
+  const waking = late.wake(); late.stop(); reject(new Error("late read")); await waking.catch(() => undefined);
+  assert.equal(timers.size, 0);
+});
+test("a wake received during the last failed read is preserved after automatic retries are exhausted", async () => {
+  let reads = 0, next = 0, calls = 0, reject!: (error: Error) => void;
+  const timers = new Map<number, () => void>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1,
+    sessions: async () => {
+      reads++;
+      if (reads < 3) throw new Error("temporary read");
+      if (reads === 3) return new Promise((_resolve, fail) => { reject = fail; });
+      return [row()];
+    }, run: async () => { calls++; return false; },
+    setTimer: (cb) => { timers.set(++next, cb); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
+  const fire = async () => { const [id, cb] = [...timers][0]; timers.delete(id); cb(); await new Promise((r) => setTimeout(r, 0)); };
+  await scheduler.wake(); await fire(); await fire(); assert.equal(reads, 3);
+  await scheduler.wake(); reject(new Error("late read")); await new Promise((r) => setTimeout(r, 0));
+  assert.equal(reads, 4); assert.equal(timers.size, 1); assert.equal(calls, 0);
+  await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
+});
+test("owner contention rechecks after bounded delay without treating it as model retry; repeated wake does not duplicate timers", async () => {
+  let calls = 0, next = 0;
+  const timers = new Map<number, { cb: () => void; delay: number }>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1, sessions: async () => [row()],
+    run: async () => { calls++; return calls === 1 ? "busy" : false; },
+    setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; }, clearTimer: (id) => { timers.delete(id as number); } });
+  await scheduler.wake(); await scheduler.wake(); assert.equal(timers.size, 1);
+  const fire = () => { const [id, timer] = [...timers][0]; timers.delete(id); timer.cb(); };
+  fire(); await new Promise((r) => setTimeout(r, 0)); assert.equal(calls, 1); assert.equal([...timers.values()][0].delay, 5000);
+  fire(); await new Promise((r) => setTimeout(r, 0));
+  fire(); await new Promise((r) => setTimeout(r, 0)); assert.equal(calls, 2); assert.equal(timers.size, 0);
+  scheduler.stop();
+});
+
+test("stop cancels page ownership and late session reads cannot create a timer or provider", async () => {
+  let release!: (rows: ChatSession[]) => void, scheduled = 0, calls = 0;
+  const sessions = new Promise<ChatSession[]>((done) => { release = done; });
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, cursors: async () => [], triggerSequences: 1, sessions: () => sessions,
+    run: async () => { calls++; return false; }, setTimer: () => { scheduled++; return 1; }, clearTimer: () => {} });
+  const waking = scheduler.wake(); scheduler.stop(); release([row()]); await waking;
+  assert.equal(scheduled, 0); assert.equal(calls, 0);
+});
+
+test("a cursor read failure gets a bounded local retry and then dispatches once; persistent failures stop after two retries", async () => {
+  let reads = 0, calls = 0, next = 0;
+  const timers = new Map<number, { cb: () => void; delay: number }>();
+  const scheduler = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, triggerSequences: 1, sessions: async () => [row()],
+    cursors: async () => { if (++reads === 1) throw new Error("temporary cursor read"); return []; },
+    run: async () => { calls++; return false; }, setTimer: (cb, delay) => { timers.set(++next, { cb, delay }); return next; },
+    clearTimer: (id) => { timers.delete(id as number); } });
+  const fire = async () => { const [id, timer] = [...timers][0]; timers.delete(id); timer.cb(); await new Promise((r) => setTimeout(r, 0)); };
+  await scheduler.wake(); assert.equal(timers.size, 1); assert.equal([...timers.values()][0].delay, 5000); assert.equal(calls, 0);
+  await fire(); assert.equal([...timers.values()][0].delay, 0); await fire(); assert.equal(calls, 1); assert.equal(timers.size, 0); scheduler.stop();
+
+  let failing = 0, retried = 0, n2 = 0; const t2 = new Map<number, () => void>();
+  const stubborn = createMaintenanceScheduler({ enabled: () => true, runnable: () => true, triggerSequences: 1, sessions: async () => [row()],
+    cursors: async () => { failing++; throw new Error("cursor read"); }, run: async () => false,
+    setTimer: (cb) => { retried++; t2.set(++n2, cb); return n2; }, clearTimer: (id) => { t2.delete(id as number); } });
+  await stubborn.wake();
+  for (let i = 0; i < 4 && t2.size; i++) { const [id, cb] = [...t2][0]; t2.delete(id); cb(); await new Promise((r) => setTimeout(r, 0)); }
+  assert.equal(retried, 2, "two retries per failure streak"); assert.equal(failing, 3); assert.equal(t2.size, 0); stubborn.stop();
+});
