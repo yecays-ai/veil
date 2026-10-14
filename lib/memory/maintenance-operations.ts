@@ -18,6 +18,7 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
   const candidates = new Map(snapshot.candidates.map((r) => [r.id, r]));
   const manual = new Set(snapshot.manual.map((r) => r.id)), changed = new Set<string>(), newFingerprints = new Set<string>();
   const put: MemoryDraft[] = []; let discarded = 0;
+  const createdLifecycleItems = new Set<string>();
   const blocked = (text: string, sources: MemorySource[]) => sensitiveMemoryText(text)
     || snapshot.manual.some((r) => r.fingerprint === memoryFingerprint(text))
     || snapshot.suppressions.some((s) => s.fingerprint === memoryFingerprint(text)
@@ -38,6 +39,20 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
     if (Object.hasOwn(value, "reviewInDays") && (!Number.isSafeInteger(days) || (days as number) < 1 || (days as number) > ONGOING_REVIEW.maxDays)) return invalid();
     if (!Array.isArray(value.messageIds) || !value.messageIds.length || value.messageIds.some((id) => !str(id)
       || !snapshot.messages.some((m) => m.id === id)) || new Set(value.messageIds).size !== value.messageIds.length) return invalid();
+    const cited = snapshot.messages.filter((message) => (value.messageIds as string[]).includes(message.id));
+    for (const message of cited) {
+      const parentId = message.transferEvent?.transferId ?? message.giftEvent?.giftId;
+      const parent = parentId ? snapshot.messages.find((candidate) => candidate.id === parentId
+        && (candidate.transfer || candidate.gift)) : undefined;
+      if (parent && !(value.messageIds as string[]).includes(parent.id)) return invalid();
+    }
+    const lifecycleIds = new Set(cited.flatMap((message) => message.transfer ? [`transfer:${message.id}`]
+      : message.transferEvent ? [`transfer:${message.transferEvent.transferId}`]
+        : message.gift ? [`gift:${message.id}`] : message.giftEvent ? [`gift:${message.giftEvent.giftId}`] : []));
+    if (op === "CREATE") {
+      if ([...lifecycleIds].some((id) => createdLifecycleItems.has(id))) return invalid();
+      for (const id of lifecycleIds) createdLifecycleItems.add(id);
+    }
     const sources = (value.messageIds as string[]).map((messageId) => ({ sessionId: snapshot.sessionId, messageId }));
     const ids: unknown[] = op === "CREATE" ? [] : op === "MERGE" ? Array.isArray(value.targetIds) ? value.targetIds : invalid() : [value.targetId];
     if ((op === "MERGE" && ids.length < 2) || new Set(ids).size !== ids.length || ids.some((id) => !str(id))) return invalid();

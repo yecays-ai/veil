@@ -6,7 +6,7 @@ import type { TextProvider } from "../chat/provider";
 import { historyTimestamp } from "../chat/time-context";
 import { createCompletionRequestContext } from "../chat/request-diagnostics";
 import { maintenanceDue, maintenanceSettled, MAINTENANCE_MAX_SAFE_CLAIMS, MAINTENANCE_TRIGGER_SEQUENCES } from "./maintenance-capacity";
-import { MAINTENANCE_LIMITS, MaintenanceInputTooLarge, planMaintenanceInput, selectMaintenanceCandidates, type MaintenancePlan, type MaintenanceStats } from "./maintenance-input";
+import { MAINTENANCE_LIMITS, MaintenanceInputTooLarge, maintenanceCandidateText, planMaintenanceInput, selectMaintenanceCandidates, type MaintenancePlan, type MaintenanceStats } from "./maintenance-input";
 import { parseMaintenanceOperations } from "./maintenance-operations";
 import { createMaintenanceDiagnostics } from "./maintenance-diagnostics";
 import type { MemoryBatchTicket, MemoryProgressProtocol } from "./progress";
@@ -144,7 +144,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     };
     let room = 0;
     if (!await guard(() => { room = planMaintenanceInput(snapshot, character, undefined, clock).candidateRoom; return undefined; })) return false;
-    const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), snapshot.messages.map((m) => m.content).join("\n"), room, clock);
+    const selected = selectMaintenanceCandidates(characterId, await deps.memory.listMemories(characterId), maintenanceCandidateText(snapshot.messages), room, clock);
     ticket = await deps.protocol.refresh(ticket, selected.ids);
     snapshot = await deps.protocol.readInput(ticket);
     if (!await guard(() => planMaintenanceInput(snapshot, character, undefined, clock)) || !plan) return false;
