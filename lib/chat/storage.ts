@@ -1253,7 +1253,7 @@ export class ChatStorage {
       await this.recoverGeneration(view.session.id);
       return this.sourceMemory.withExclusive(async (owned) => {
         const snapshot = await this.readSession(view.session.id);
-        const previous = snapshot.messages.filter((item) => item.id === id);
+        const previous = snapshot.messages.filter((item) => item.id === id || item.transferEvent?.transferId === id);
         return invalidateChatSources(this.sourceMemory!, snapshot.session, previous,
           () => this.actOnTransfer(id, actor, action, owned), owned);
       });
@@ -1322,7 +1322,7 @@ export class ChatStorage {
       await this.recoverGeneration(view.session.id);
       return this.sourceMemory.withExclusive(async (owned) => {
         const snapshot = await this.readSession(view.session.id);
-        return invalidateChatSources(this.sourceMemory!, snapshot.session, snapshot.messages.filter((item) => item.id === id),
+        return invalidateChatSources(this.sourceMemory!, snapshot.session, snapshot.messages.filter((item) => item.id === id || item.giftEvent?.giftId === id),
           () => this.actOnGift(id, actor, action, owned), owned);
       });
     }

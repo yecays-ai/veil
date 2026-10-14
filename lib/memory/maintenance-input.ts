@@ -1,7 +1,7 @@
 import { STATE_MAINTENANCE_RULES } from "./state-maintenance";
 import { effectiveCharacterStates } from "./state-foundation";
 import { ongoingDue } from "./ongoing";
-import type { PromptTurn } from "../chat/types";
+import type { ChatMessage, PromptTurn } from "../chat/types";
 import { explicitMemoryRequest } from "./explicit-request";
 import { historyTimestamp } from "../chat/time-context";
 import type { MemoryProgressProtocol } from "./progress";
@@ -20,6 +20,13 @@ export const MAINTENANCE_LIMITS = { inputCharacters: 32_000, candidateCharacters
   outputCharacters: 12_000, operations: 20, entryCharacters: MEMORY_TEXT_CHARACTERS, maxOutputTokens: 2_000 } as const;
 export class MaintenanceInputTooLarge extends Error {
   constructor() { super("Memory maintenance input exceeds its temporary character guard."); }
+}
+/** Keep operation result rows as evidence, but do not present them twice in the candidate-retrieval query when their card is present. */
+export function maintenanceCandidateText(messages: readonly ChatMessage[]): string {
+  const transferIds = new Set(messages.flatMap((message) => message.transfer ? [message.id] : []));
+  const giftIds = new Set(messages.flatMap((message) => message.gift ? [message.id] : []));
+  return messages.filter((message) => !(message.transferEvent && transferIds.has(message.transferEvent.transferId))
+    && !(message.giftEvent && giftIds.has(message.giftEvent.giftId))).map((message) => message.content).join("\n");
 }
 // Conservative local filter, not a promise to identify every possible secret.
 export function sensitiveMemoryText(text: string): boolean {
@@ -108,6 +115,7 @@ const MAINTENANCE_SYSTEM_PROMPT = [
     "Teasing, running jokes, small talk, routine plans and changes that a later message undoes are not memories. Information another part of the app already keeps, such as contact names and remarks, nicknames, profile or Character settings and relation labels, is not a memory either, even when the conversation was about changing it. " +
     "Record one thing once, in the single most fitting kind, and compare candidates of every kind before creating.",
   "A relationship memory tells the relationship's story in order: how it began, the turning points with their dates, why the Character's attitude changed and where it stands now. Add a new turning point into the existing relationship memory with UPDATE; do not SUPERSEDE it with a one-line conclusion. Near the length limit, shorten older detail but keep the turning points and their reasons.",
+  "VEIL virtual transfers and gift cards are in-chat gestures, not real money, purchases or delivered inventory. A result event with a transferId or giftId is a state change for that same original card, never a second transfer or gift. Group card and result events by their stable ID, count each item once and prefer its latest status. A declined gift or declined/returned transfer is not a successful gift or payment to remember. When status changes, revise or remove earlier memory for that same ID using the current status.",
   "5. FLAG a candidate only when the messages contradict it or show it was recorded wrongly; never to avoid deciding.",
   "6. IGNORE when nothing above applies: small talk, transient moods or states, one-off routine details, hypotheticals, hyperbole and jokes taken as facts.",
   "For UPDATE, every messageId you cite must state or confirm the correction or added detail; for other operations, every messageId you cite must itself state or confirm the memory. Do not cite surrounding messages. " +
