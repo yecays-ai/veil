@@ -86,3 +86,17 @@ test("the timeline only shows a repeated settled moment once without changing st
     "display deduplication must not rewrite persisted settled activity");
 });
 
+test("duplicate upcoming moments keep the newer detail and preserve timeline order", () => {
+  const repeated = "Spilled a little water and cleaned it up before anyone noticed.";
+  const older = lunch({ id: "upcoming-older", occurrenceKey: "upcoming-older", startsAt: 2 * HOUR,
+    endsAt: 3 * HOUR, moment: repeated });
+  const newer = lunch({ id: "upcoming-newer", occurrenceKey: "upcoming-newer", startsAt: 4 * HOUR,
+    endsAt: 5 * HOUR, moment: repeated });
+  const state = reconcileLifeActivities(undefined, [older, newer], HOUR);
+
+  const timeline = lifeTimeline(state, HOUR);
+  assert.deepEqual(timeline.upcoming.map((item) => item.id), ["upcoming-older", "upcoming-newer"]);
+  assert.equal(timeline.upcoming[0].moment, undefined);
+  assert.equal(timeline.upcoming[1].moment, repeated);
+});
+

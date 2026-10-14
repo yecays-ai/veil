@@ -114,7 +114,7 @@ export function lifeTimeline(state: LifeState | undefined, now: number, recent =
   });
   const uniqueCurrent = current ? withoutRepeatedMoments([current])[0] : null;
   const uniqueCompleted = withoutRepeatedMoments(completed);
-  const uniqueUpcoming = withoutRepeatedMoments(upcoming);
+  const uniqueUpcoming = withoutRepeatedMoments([...upcoming].reverse()).reverse();
   return { current: uniqueCurrent, completed: uniqueCompleted, upcoming: uniqueUpcoming };
 }
 
