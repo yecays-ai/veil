@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-message-memory-sheet
 
 更新人：Codex
-更新时间：2026-10-14T16:39:36+08:00
+更新时间：2026-10-14T16:44:00+08:00
 发现范围：本任务开工与发布前通过 GitHub API 核对 main `83088ec3769fc8fbe862e4c70e8a4f8a7035c3b2`；开工时检查开放 PR、远程分支和相关 T4/T5 状态，未发现开放 PR 冲突；未检查他人未发布工作。本地使用逐 blob 校验的独立副本，不改同步 sources。以 `docs/AUDIT_LEDGER.md` 为既有验收状态依据，不变更原 F 编号或状态。
 
 ## 当前任务
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `codex/message-memory-sheet-20261014`；PR 尚未创建。涉及：`app/layout.tsx`、`app/messages/chat.css`、`app/settings/settings.css`、`components/chat/{chat-room,message-memory}.tsx`、`components/settings/ui/modal.{tsx,css}`、`components/profile-pages.tsx`、`tests/{contact-info,message-memory-ui}.test.ts`。
+Codex；分支 `codex/message-memory-sheet-20261014`；PR https://github.com/yecays-ai/veil/pull/187。涉及：`app/layout.tsx`、`app/messages/chat.css`、`app/settings/settings.css`、`components/chat/{chat-room,message-memory}.tsx`、`components/settings/ui/modal.{tsx,css}`、`components/profile-pages.tsx`、`tests/{contact-info,message-memory-ui}.test.ts`。
 
 ## 已完成
 
@@ -24,12 +24,12 @@ Codex；分支 `codex/message-memory-sheet-20261014`；PR 尚未创建。涉及�
 
 ## 尚未验证
 
-- GitHub CI 与审查：PR 创建后查询，不能把本地验证当作 CI 结果。
+- 首次代码 head `391e3b2`：Vercel Preview 成功，GitHub verify 与 CodeRabbit 尚在执行（2026-10-14T08:44Z 查询）；此记录更新后的最终 head 以 PR 实时检查为准，不能把本地验证或旧 head 结果当作最终 CI。
 - iPhone Safari/Standalone：实际键盘与安全区、长记忆滚动、触摸关闭/位置保持、不同主题待 Lan 验收。
 - 共用模态 CSS 移为全局加载，已跑关联 Settings/背景设置回归；生产主题组合及 Settings/ImageCrop 真机视觉仍待验收。
 - 首次 build 沙箱 EPERM，放宽本机验证权限后成功；未部署。
 
 ## 下一步
 
-创建本单独立 PR，查询 CI，交由 Lan 审查及手动合并；真机验收另记。
+本单独立 PR 已提交，交由 Lan 审查及手动合并；继续查询最终 head 检查，真机验收另记。不自动合并。
 
