@@ -21,7 +21,7 @@ Codex；分支 `codex/message-recall-20261015`；PR #201；base `origin/main` `0
 - Message operation control now lives in `components/chat/message-actions/use-message-actions.ts`: open/close, selection guard, menu positioning, Reaction, copy, recall, delete confirmation and persistence. ChatRoom retains overlay focus trapping, delete side effects (reveal queue and multi-select cleanup), and coordinates edit/quote/Memory/regenerate and registered actions.
 - Review fixes: hide Recall during generation; Character target selection skips error/cancelled messages; a failed Character recall no longer blocks signature updates.
 - Targeted tests pass: `message-recall` (5), `presence-actions` (15), mounted `chat-message-actions` (1), and `presence-self-context` (8).
-- The first PR CI found the stale `canRecall` expectation; corrected here. Local tests compilation/typecheck cannot resolve the pre-existing absent `emoji-picker-react`; CI provides the clean dependency check. Targeted ESLint passes for the Hook and changed tests; whole ChatRoom lint reports existing project-wide React hook/ref diagnostics when invoked standalone.
+- The first PR CI found the stale `canRecall` expectation; corrected here. Local test compilation/typecheck cannot resolve the pre-existing absent `emoji-picker-react`; CI provides the clean dependency check. A follow-up CI run then surfaced existing ChatRoom state/ref patterns under the current React Hooks lint rules, so narrow line-level suppressions now document and retain those established behaviors; changed production and test files have 0 lint errors and 2 existing ChatRoom dependency warnings.
 
 ## 尚未验证
 

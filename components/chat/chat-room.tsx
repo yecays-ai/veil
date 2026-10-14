@@ -136,6 +136,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [publishedSessionId, setPublishedSessionId] = useState<string | null>(null);
   const frameReady = !!loadError || (!!session && chatBackground.readyForFrame && regexReady);
   useEffect(() => {
+    // Keep the existing frame publication boundary after readiness.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (session && frameReady && publishedSessionId !== session.id) setPublishedSessionId(session.id);
   }, [session, frameReady, publishedSessionId]);
   const framePublished = !!loadError || (!!session && publishedSessionId === session.id);
@@ -144,7 +146,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const draftEditVersion = useRef(0);
   const savedDraftAwaitingSession = useRef<{ sessionId: string; content: string; editVersion: number } | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
-  useEffect(() => { setQuotingMessage(null); }, [characterId]);
+  useEffect(() => {
+    // A character switch must clear the quote before the next send can use it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuotingMessage(null);
+  }, [characterId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const generationActive = generating || !!session?.generation;
@@ -157,6 +163,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const sendingLock = useRef(false);
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
+  // Keep the session identity current for async reply guards.
+  // eslint-disable-next-line react-hooks/refs
   currentSessionId.current = session?.characterId === characterId ? session.id : undefined;
   useEffect(() => {
     const saved = savedDraftAwaitingSession.current;
@@ -167,10 +175,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }, [session?.id, characterId]);
   useEffect(() => {
     replyLock.current = false; sendingLock.current = false;
+    // Reset transient reply state when the selected Character changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setGenerating(false); setSending(false); setError("");
     setFailedDraft(null);
   }, [characterId]);
+  // This ref tracks the active session for the reveal queue's async callbacks.
   const { queue: revealQueue, state: revealState } = useBubbleReveal(
+    // eslint-disable-next-line react-hooks/refs
     currentSessionId.current, messages, session?.streamOnline === true, !!loadError,
   );
   function showFeedback(text: string) {
@@ -213,11 +225,12 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const overlayFocusOrigin = useRef(new Map<string, HTMLElement | null>());
   const previousOverlay = useRef<string | null>(null);
   const nativeSelectionActive = useRef(false);
-  const messageActions = useMessageActions({ shell, history, session: session?.characterId === characterId ? session : null,
+  const { activeMessage, reactionPickerOpen, reactionBar, actionMenu, positionMenu, closeActions, openActions,
+    confirmDelete, cancelDelete, deleteConfirmed, onPointerDownMessage, onContextMenuMessage,
+    react: reactToMessage, copyMessage, recallActiveMessage, requestDelete, setReactionPickerOpen } = useMessageActions({
+    shell, history, session: session?.characterId === characterId ? session : null,
     multiSelect, nativeSelectionActive, nearBottom, onCloseChatInfo: () => setChatInfoOpen(false), onError: setError,
     onFeedback: showFeedback, onDeleted: (ids) => { revealQueue.discard(ids); setMultiSelect(false); setSelectedIds(new Set()); } });
-  const { activeMessage, reactionPickerOpen, reactionBar, actionMenu, positionMenu, closeActions, openActions,
-    confirmDelete, cancelDelete, deleteConfirmed } = messageActions;
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -250,6 +263,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     return () => observer.disconnect();
   }, []);
   const panelOpen = useRef(false);
+  // Synchronize the panel visibility ref used by the composer resize observer.
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => { panelOpen.current = panel !== null; }, [panel]);
   const overlayKind = confirmDelete ? "confirm-delete" : confirmClear ? "confirm-clear" :
     chatInfoOpen ? "chat-info" : activeMessage ? "message-actions" : null;
@@ -333,7 +348,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         if (!wasInert) element.removeAttribute("inert");
       }
     };
-  }, [overlayKind, closeActions]);
+  }, [overlayKind, closeActions, actionMenu, cancelDelete]);
   useLayoutEffect(() => {
     if (!framePublished || !session || initialPositionedSession.current === session.id) return;
     initialPositionedSession.current = session.id;
@@ -695,13 +710,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; })}
           onClearHighlight={() => setHighlightedMessageId(null)}
           onRegenerate={(message, continuation) => void regenerate(message, continuation)}
-          onPointerDownMessage={messageActions.onPointerDownMessage}
-          onContextMenuMessage={messageActions.onContextMenuMessage}
+          onPointerDownMessage={onPointerDownMessage}
+          onContextMenuMessage={onContextMenuMessage}
         />}
       </div>
       {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
           {error || loadError}
+          {/* Keep retries scoped to the session that produced the saved draft. */}
+          {/* eslint-disable-next-line react-hooks/refs */}
           {failedDraft?.sessionId === currentSessionId.current && failedDraft && <button type="button"
             aria-label="Retry draft" disabled={generationActive || sending || !!loadError}
             onClick={() => void reply("manual-reply", failedDraft)}>Retry</button>}
@@ -712,7 +729,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onSelectAll={() => setSelectedIds(new Set(selectable.map((m) => m.id)))}
         onSelectFromHere={() => selectionStartId &&
           setSelectedIds(new Set(selectMessageRange(selectable.map((m) => m.id), selectionStartId)))}
-        onDelete={() => messageActions.requestDelete([...selectedIds])}
+        onDelete={() => requestDelete([...selectedIds])}
         onCancel={() => { setMultiSelect(false); setSelectedIds(new Set()); }} />}
       {panel && <button type="button" className="chat-tray-backdrop" aria-label="Close panel" onClick={() => setPanel(null)} />}
       {stickerManagerOpen && <StickerManager
@@ -813,14 +830,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       <MessageActionsOverlay activeMessage={activeMessage} messages={messages} generationActive={generationActive}
         revealPending={!!revealState?.pending} actionMenuRef={actionMenu} reactionBarRef={reactionBar}
         reactionPickerOpen={reactionPickerOpen} onClose={closeActions}
-        onPickReaction={(emoji) => { void messageActions.react(emoji); }}
-        onOpenReactionPicker={() => messageActions.setReactionPickerOpen(true)} onCopy={() => void messageActions.copyMessage()}
+        onPickReaction={(emoji) => { void reactToMessage(emoji); }}
+        onOpenReactionPicker={() => setReactionPickerOpen(true)} onCopy={() => void copyMessage()}
         onEdit={() => { if (!activeMessage) return; setEditingMessage(activeMessage); setEditText(activeMessage.content); closeActions(); }}
         onQuote={() => { if (!activeMessage) return; setQuotingMessage(activeMessage); closeActions(); composer.current?.focus(); }}
         onMemory={() => { if (!activeMessage) return; setMemoryMessage(activeMessage); closeActions(); }}
         onSelect={() => { if (!activeMessage) return; setMultiSelect(true); setSelectionStartId(activeMessage.id); setSelectedIds(new Set([activeMessage.id])); closeActions(); }}
-        onDelete={() => { if (!activeMessage) return; messageActions.requestDelete([activeMessage.id], true); }}
-        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }} onRecall={() => void messageActions.recallActiveMessage()}
+        onDelete={() => { if (!activeMessage) return; requestDelete([activeMessage.id], true); }}
+        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }} onRecall={() => void recallActiveMessage()}
         onRunRegisteredAction={(id) => {
           if (!activeMessage) return;
           const message = activeMessage;
