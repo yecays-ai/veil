@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-life-moment-dedup
 
 更新人：Codex
-更新时间：2026-10-14T23:47:00+08:00
+更新时间：2026-10-14T23:50:00+08:00
 发现范围：2026-10-14 GitHub API 核对 `main`、全部开放 PR 和可见分支；最新 `main` 为 `93765df91f4f22b0c3baf1ad9d581ef3207016fc`，开放 PR 为空。目标模块未见并行开放改动。
 
 ## 当前任务
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；独立分支 `fix/life-moment-dedup-20261014`；[PR #198](https://github.com/yecays-ai/veil/pull/198)。基于 `main 93765df91f4f22b0c3baf1ad9d581ef3207016fc`，head `fd1605ecc961b3bdb44b1bcec3a7326c3cfec5c0`。仅修改 `lib/life/activity.ts`、`lib/life/plan.ts`、`tests/life-activity-core.test.ts`、`tests/life-daily-plan.test.ts` 和本记录。
+Codex；独立分支 `fix/life-moment-dedup-20261014`；[PR #198](https://github.com/yecays-ai/veil/pull/198)。基于 `main 93765df91f4f22b0c3baf1ad9d581ef3207016fc`。仅修改 `lib/life/activity.ts`、`lib/life/plan.ts`、`tests/life-activity-core.test.ts`、`tests/life-daily-plan.test.ts` 和本记录。最新提交 SHA 以 GitHub PR #198 head 为准。
 
 ## 已完成
 
@@ -22,7 +22,7 @@ Codex；独立分支 `fix/life-moment-dedup-20261014`；[PR #198](https://github
 
 ## 尚未验证
 
-- 真机/浏览器页面视觉验收；未创建 PR，因此最新 CI、CodeRabbit 和 Preview 尚无结果。
+- 真机/浏览器页面视觉验收；当前 head 的 CI、CodeRabbit 与 Preview 尚在运行。
 - 全项目 typecheck 需要在正常 Playwright 类型依赖环境下重试。
 
 ## 下一步
