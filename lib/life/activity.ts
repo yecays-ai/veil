@@ -105,16 +105,5 @@ export function lifeTimeline(state: LifeState | undefined, now: number, recent =
   const limit = Math.max(0, recent);
   const completed = limit ? activities.filter((item) => item.endsAt <= now).slice(-limit).reverse() : [];
   const upcoming = activities.filter((item) => item.startsAt > now).slice(0, 3);
-  const shownMoments = new Set<string>();
-  const withoutRepeatedMoments = (items: readonly LifeActivity[]) => items.map((item) => {
-    if (!item.moment) return item;
-    if (shownMoments.has(item.moment)) return { ...item, moment: undefined };
-    shownMoments.add(item.moment);
-    return item;
-  });
-  const uniqueCurrent = current ? withoutRepeatedMoments([current])[0] : null;
-  const uniqueCompleted = withoutRepeatedMoments(completed);
-  const uniqueUpcoming = withoutRepeatedMoments(upcoming);
-  return { current: uniqueCurrent, completed: uniqueCompleted, upcoming: uniqueUpcoming };
+  return { current, completed, upcoming };
 }
-

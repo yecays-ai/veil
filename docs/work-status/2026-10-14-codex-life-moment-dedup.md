@@ -1,16 +1,16 @@
 # STATUS — 2026-10-14-codex-life-moment-dedup
 
 更新人：Codex
-更新时间：2026-10-14T23:45:00+08:00
+更新时间：2026-10-14T23:47:00+08:00
 发现范围：2026-10-14 GitHub API 核对 `main`、全部开放 PR 和可见分支；最新 `main` 为 `93765df91f4f22b0c3baf1ad9d581ef3207016fc`，开放 PR 为空。目标模块未见并行开放改动。
 
 ## 当前任务
 
-已修待审：避免 Life 时间线在多天内反复展示相同的小插曲，同时保留已结算生活记录。
+已修待审：避免 Life 时间线在多天内反复展示相同的小插曲，同时保留已结算生活记录；PR #198 已创建，未合并。
 
 ## 谁在改哪里
 
-Codex；独立分支 `fix/life-moment-dedup-20261014`；PR 待创建。基于 `main 93765df91f4f22b0c3baf1ad9d581ef3207016fc`。仅修改 `lib/life/activity.ts`、`lib/life/plan.ts`、`tests/life-activity-core.test.ts`、`tests/life-daily-plan.test.ts` 和本记录。
+Codex；独立分支 `fix/life-moment-dedup-20261014`；[PR #198](https://github.com/yecays-ai/veil/pull/198)。基于 `main 93765df91f4f22b0c3baf1ad9d581ef3207016fc`，head `fd1605ecc961b3bdb44b1bcec3a7326c3cfec5c0`。仅修改 `lib/life/activity.ts`、`lib/life/plan.ts`、`tests/life-activity-core.test.ts`、`tests/life-daily-plan.test.ts` 和本记录。
 
 ## 已完成
 
@@ -27,5 +27,5 @@ Codex；独立分支 `fix/life-moment-dedup-20261014`；PR 待创建。基于 `m
 
 ## 下一步
 
-推送此独立分支并创建 PR，保留 Lan 手动审核与合并。
+查看 PR #198 的 CI、CodeRabbit 与 Preview；等待 Lan 手动审核与合并。
 
