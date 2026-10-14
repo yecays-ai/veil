@@ -99,7 +99,7 @@ test("backup accepts reactions, rejects malformed ones, and treats absence as th
   }
 });
 
-const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+const actionHook = readFileSync("components/chat/message-actions/use-message-actions.ts", "utf8");
 const actions = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
 const bar = readFileSync("components/chat/reaction-bar.tsx", "utf8");
 const picker = readFileSync("components/chat/reaction-picker.tsx", "utf8");
@@ -107,10 +107,10 @@ const picker = readFileSync("components/chat/reaction-picker.tsx", "utf8");
 test("the reaction bar rides the tap-opened message layer and does not create messages or requests", () => {
   assert.match(actions, /<ReactionBar barRef=\{reactionBarRef\}/);
   assert.match(actions, /canReactTo\(activeMessage\)/);
-  assert.match(room, /chatStorage\.setReaction\(message\.id, "user", emoji\)/);
-  const react = room.slice(room.indexOf("async function react("), room.indexOf("async function copyMessage("));
+  assert.match(actionHook, /chatStorage\.setReaction\(message\.id, "user", emoji\)/);
+  const react = actionHook.slice(actionHook.indexOf("const react = useCallback"), actionHook.indexOf("const copyMessage = useCallback"));
   assert.doesNotMatch(react, /send\(|beginReply|engine\./);
-  assert.match(room, /messageStackShift\(/);
+  assert.match(actionHook, /messageStackShift\(/);
   assert.match(actions, /emoji === activeMessage\.reactions\?\.user \? null : emoji/, "the full picker also clears the chosen emoji");
 });
 
