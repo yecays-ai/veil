@@ -58,6 +58,17 @@ test("the planner covers yesterday through tomorrow without inventing a model ca
   assert.ok(activities.every((item) => !item.moment || item.kind !== "sleep"));
 });
 
+test("planned anecdotes are unique within the projection and avoid recent settled wording", () => {
+  const avoid = "Found something unexpectedly funny.";
+  const first = projectDailyLife(presence(), mondayNoon, [avoid]);
+  const second = projectDailyLife(presence(), mondayNoon, [avoid]);
+  const details = first.flatMap((item) => item.moment ? [item.moment] : []);
+
+  assert.deepEqual(second, first);
+  assert.equal(details.includes(avoid), false);
+  assert.equal(new Set(details).size, details.length);
+});
+
 test("local-day windows remain non-overlapping across a daylight-saving transition", () => {
   const now = Date.UTC(2026, 2, 8, 12);
   const activities = projectDailyLife(presence({ timezone: "America/New_York" }), now);
@@ -72,3 +83,4 @@ test("a later Routine edit does not rewrite an already projected stretch", () =>
   assert.deepEqual(next.activities.filter((item) => item.startsAt < mondayNoon + DAY),
     original.activities.filter((item) => item.startsAt < mondayNoon + DAY));
 });
+
