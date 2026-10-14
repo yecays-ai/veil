@@ -258,6 +258,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     observer.observe(bar);
     return () => observer.disconnect();
   }, []);
+  // The panel grows the composer and the history above it shrinks; keep the latest message in view when it was.
+  useEffect(() => {
+    if (panel === null) return;
+    const frame = requestAnimationFrame(() => {
+      const list = history.current;
+      if (list && nearBottom.current.value) list.scrollTo({ top: list.scrollHeight });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [panel]);
   useEffect(() => {
     const trackSelection = () => {
       const selection = window.getSelection();
@@ -896,9 +905,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onDelete={() => setConfirmDelete([...selectedIds])}
         onCancel={() => { setMultiSelect(false); setSelectedIds(new Set()); }} />}
       {panel && <button type="button" className="chat-tray-backdrop" aria-label="Close panel" onClick={() => setPanel(null)} />}
-      {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} />}
-      {panel === "stickers" && <StickerPanel onSend={(sticker) => void sendSticker(sticker)}
-        onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       {stickerManagerOpen && <StickerManager
         characters={document.characters.map((item) => ({ characterId: item.characterId, name: item.name }))}
         current={{ characterId: character.characterId, name: character.name }}
@@ -919,7 +925,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </div>}
         <button type="button" className="chat-composer-icon chat-composer-plus"
           aria-label="More message options" title="More message options" aria-expanded={panel !== null}
-          onPointerDown={(e) => e.preventDefault()} onClick={() => setPanel((current) => current === null ? "plus" : null)}>
+          onClick={() => { composer.current?.blur(); setPanel((current) => current === null ? "plus" : null); }}>
           <Plus aria-hidden="true" />
         </button>
         <div className="chat-input-shell">
@@ -970,6 +976,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <SendHorizontal aria-hidden="true" />
           </button>
         </div>
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} />}
+        {panel === "stickers" && <StickerPanel onSend={(sticker) => void sendSticker(sticker)}
+          onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
       {chatInfoOpen && <ChatInfoScreen
         screenRef={chatInfoScreen}

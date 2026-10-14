@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-q6qbh8`；PR 创建后补链接。
+Claude；分支 `claude/project-thread-q6qbh8`；PR：https://github.com/yecays-ai/veil/pull/199 。
 新增：`lib/chat/sticker-import.ts`、`sticker-storage.ts`、`sticker-message.ts`，`components/chat/chat-plus-panel.tsx`、`sticker-panel.tsx`、`sticker-manager.tsx`、`sticker-image.tsx`、`use-sticker-library.ts`，三个测试文件。
 修改：`chat-room.tsx`（接线）、`chat.css`、`lib/chat/types.ts`、`storage.ts`、`engine.ts`、`prompt.ts`、`quote.ts`、`self-context.ts`、`lib/presence/actions.ts`、`lib/backup/validation.ts`。未触碰 `lib/memory/*`。
 

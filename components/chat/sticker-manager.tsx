@@ -37,10 +37,15 @@ function PasteImport({ label, onImport }: { label: string; onImport: (rows: Stic
   </div>;
 }
 
+/** A field that follows the saved value until the user types; saving or leaving it hands control back, so another tab's edit is never overwritten by a stale draft. */
+function useDraft(saved: string) {
+  const [draft, setDraft] = useState<string | null>(null);
+  return { value: draft ?? saved, edit: (next: string) => setDraft(next), done: () => setDraft(null), changed: draft !== null && draft !== saved };
+}
+
 function PackDetail({ pack, characters, onBack }: { pack: StickerPack; characters: ManagerCharacter[]; onBack: () => void }) {
   const [message, setMessage] = useState("");
-  const [name, setName] = useState(pack.name);
-  const [note, setNote] = useState(pack.note ?? "");
+  const name = useDraft(pack.name), note = useDraft(pack.note ?? "");
   const [picked, setPicked] = useState<string | null>(null);
   const [rename, setRename] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -53,12 +58,14 @@ function PackDetail({ pack, characters, onBack }: { pack: StickerPack; character
     <button type="button" className="sticker-back" onClick={onBack}><ChevronLeft aria-hidden="true" />图集</button>
     {message && <p className="sticker-note sticker-error" role="alert">{message}</p>}
     <label className="sticker-field"><span>图集名（角色会看到「图集名｜表情名」）</span>
-      <input value={name} maxLength={PACK_NAME_MAX} onChange={(e) => setName(e.target.value)}
-        onBlur={() => name.trim() && name !== pack.name ? void run(() => browserStickerStorage.transact((d) => updatePackInfo(d, pack.id, { name }))) : setName(pack.name)} />
+      <input value={name.value} maxLength={PACK_NAME_MAX} onChange={(e) => name.edit(e.target.value)}
+        onBlur={() => { const next = name.value; name.done();
+          if (name.changed && next.trim()) void run(() => browserStickerStorage.transact((d) => updatePackInfo(d, pack.id, { name: next }))); }} />
     </label>
     <label className="sticker-field"><span>备注（只给你自己看）</span>
-      <textarea value={note} rows={2} maxLength={PACK_NOTE_MAX} onChange={(e) => setNote(e.target.value)}
-        onBlur={() => note !== (pack.note ?? "") && void run(() => browserStickerStorage.transact((d) => updatePackInfo(d, pack.id, { note })))} />
+      <textarea value={note.value} rows={2} maxLength={PACK_NOTE_MAX} onChange={(e) => note.edit(e.target.value)}
+        onBlur={() => { const next = note.value; note.done();
+          if (note.changed) void run(() => browserStickerStorage.transact((d) => updatePackInfo(d, pack.id, { note: next }))); }} />
     </label>
 
     <h3>可以使用这个图集的角色</h3>
