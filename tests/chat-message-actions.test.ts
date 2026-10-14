@@ -157,8 +157,26 @@ regressionContract("chat.message-actions-bubble-only", "render-lifecycle",
       assert.equal(menu() === null, true, "a streaming message cannot open a menu");
       await click(firstBubble);
       assert.equal(item("Edit").disabled, true, "existing generation-time action restrictions remain");
+      assert.equal([...menu()!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
+        .some((button) => button.textContent === "Recall"), false, "Recall is unavailable during generation");
       await closeMenu();
       await act(async () => { await chatStorage.updateReply(streamingId, { content: "Finished reply", status: "complete" }); });
+
+      const recallDescriptor = Object.getOwnPropertyDescriptor(chatStorage, "recallMessage");
+      Object.defineProperty(chatStorage, "recallMessage", { configurable: true, writable: true,
+        value: async () => { throw new Error("Recall failed in test"); } });
+      try {
+        await click(firstBubble);
+        await press(item("Recall"), "Enter");
+        await waitFor(() => container.querySelector('[role="alert"]')?.textContent?.includes("Recall failed in test") === true);
+      } finally {
+        if (recallDescriptor) Object.defineProperty(chatStorage, "recallMessage", recallDescriptor);
+        else Reflect.deleteProperty(chatStorage, "recallMessage");
+      }
+      await click(firstBubble);
+      await press(item("Recall"), "Enter");
+      await waitFor(() => row(first.id).textContent?.includes("Message recalled") === true);
+      assert.equal(row(first.id).textContent?.includes(first.content), false, "successful Recall removes the original text");
 
       await click(row(second.id).querySelector<HTMLElement>(".chat-bubble")!);
       assert.ok(menu(), "the menu opens again once the reply finished");

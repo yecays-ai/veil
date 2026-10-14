@@ -47,6 +47,21 @@ test("recall is sender-only and Character action targets only its own previous r
   assert.equal(splitActions('<veil-action>{"recallPrevious":true}</veil-action>').actions?.recallPrevious, true);
 });
 
+test("Character recall skips failed replies when selecting its previous completed reply", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("recall-status");
+  await storage.send(session.id, "Question");
+  const first = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "Completed reply"))[0];
+  await storage.send(session.id, "Follow-up");
+  const failedId = (await storage.beginReply(session.id))!.assistant.id;
+  await storage.updateReply(failedId, { content: "Failed reply", status: "error", error: "provider failed" });
+  await storage.send(session.id, "Another follow-up");
+  const current = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "Current reply"))[0];
+  const recalled = await storage.recallPreviousAssistantMessage(current.id);
+  assert.equal(recalled?.id, first.id);
+  assert.equal((await storage.readSession(session.id)).messages.find((message) => message.id === failedId)?.content, "Failed reply");
+});
+
 test("ChatRoom exposes recall only through the extracted message action overlay", () => {
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
   const actions = readFileSync("components/chat/message-actions/use-message-actions.ts", "utf8");

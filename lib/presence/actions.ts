@@ -152,7 +152,10 @@ export const characterActionApplier = (deps: ActionDeps) =>
     const source = `${CHARACTER_SOURCE_PREFIX}${messageId}`;
     await deps.presence.transact((document) => applySituationActions(document, { characterId }, actions, now, source));
     if (actions.userNote !== undefined) await applyUserNote(deps, characterId, actions.userNote, now, source);
-    if (actions.recallPrevious) await deps.recallPreviousMessage?.(messageId);
+    if (actions.recallPrevious) {
+      try { await deps.recallPreviousMessage?.(messageId); }
+      catch { console.warn("[Presence] the previous message could not be recalled"); }
+    }
     if (actions.signature === undefined) return;
     const allowed = actionAllowance(presenceRecord(await deps.presence.load(), characterId), now).signature;
     if (!allowed) return;

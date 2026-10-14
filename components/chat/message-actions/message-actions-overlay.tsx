@@ -48,7 +48,7 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
         <Action label="Favorite" icon={Bookmark} disabled />
         <Action label="Delete" icon={Trash2} danger onClick={onDelete} />
         <Action label="Regenerate" icon={RotateCcw} disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || revealPending} onClick={onRegenerate} />
-        {activeMessage.role === "user" && activeMessage.status === "sent" && !activeMessage.recalled &&
+        {activeMessage.role === "user" && activeMessage.status === "sent" && !activeMessage.recalled && !generationActive &&
           <Action label="Recall" icon={Undo2} onClick={onRecall} />}
         {getMessageActions(activeMessage).map((action) => <Action key={action.id} label={action.label} icon={Plus} onClick={() => onRunRegisteredAction(action.id)} />)}
       </div>

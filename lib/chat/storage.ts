@@ -1028,7 +1028,8 @@ export class ChatStorage {
     const reply = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyId)));
     if (!reply || reply.role !== "assistant") return null;
     const { messages } = await this.readSession(reply.sessionId);
-    const target = messages.filter((message) => message.role === "assistant" && !message.recalled && message.order < reply.order)
+    const target = messages.filter((message) => message.role === "assistant" && message.status === "complete" &&
+      !message.recalled && message.order < reply.order)
       .sort((a, b) => b.order - a.order)[0];
     if (!target) return null;
     return this.recallMessage(target.id, "assistant");
