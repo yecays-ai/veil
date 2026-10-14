@@ -100,20 +100,22 @@ test("backup accepts reactions, rejects malformed ones, and treats absence as th
 });
 
 const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+const actions = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
 const bar = readFileSync("components/chat/reaction-bar.tsx", "utf8");
 const picker = readFileSync("components/chat/reaction-picker.tsx", "utf8");
 
 test("the reaction bar rides the tap-opened message layer and does not create messages or requests", () => {
-  assert.match(room, /<ReactionBar barRef=\{reactionBar\}/);
-  assert.match(room, /canReactTo\(activeMessage\)/);
+  assert.match(actions, /<ReactionBar barRef=\{reactionBarRef\}/);
+  assert.match(actions, /canReactTo\(activeMessage\)/);
   assert.match(room, /chatStorage\.setReaction\(message\.id, "user", emoji\)/);
-  assert.doesNotMatch(room.match(/async function react\([\s\S]*?\n  }\n/)![0], /send\(|beginReply|engine\./);
+  const react = room.slice(room.indexOf("async function react("), room.indexOf("async function copyMessage("));
+  assert.doesNotMatch(react, /send\(|beginReply|engine\./);
   assert.match(room, /messageStackShift\(/);
-  assert.match(room, /emoji === activeMessage\.reactions\?\.user \? null : emoji/, "the full picker also clears the chosen emoji");
+  assert.match(actions, /emoji === activeMessage\.reactions\?\.user \? null : emoji/, "the full picker also clears the chosen emoji");
 });
 
 test("every part of the message layer stays out of the inert set", () => {
-  assert.equal((room.match(/data-message-overlay=""/g) || []).length, 2);
+  assert.equal((actions.match(/data-message-overlay=""/g) || []).length, 2);
   assert.match(bar, /data-message-overlay=""[^>]*className="chat-reaction-bar"/);
   assert.match(bar, /className="chat-reaction-picker" data-message-overlay=""/);
   assert.match(room, /child\.hasAttribute\("data-message-overlay"\)/);

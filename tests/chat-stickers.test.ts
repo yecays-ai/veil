@@ -161,6 +161,8 @@ test("backup accepts a sticker on user and assistant messages, and rejects malfo
 
 import { readFileSync } from "node:fs";
 const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+const timeline = readFileSync("components/chat/messages/message-list.tsx", "utf8");
+const actions = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
 const plus = readFileSync("components/chat/chat-plus-panel.tsx", "utf8");
 const image = readFileSync("components/chat/sticker-image.tsx", "utf8");
 
@@ -173,11 +175,13 @@ test("the + button opens the panel: stickers work, the other four only hold thei
 });
 
 test("a sticker message draws only the picture, is saved without a reply request, and cannot be edited or copied as text", () => {
-  assert.match(room, /message\.sticker && <StickerImage/);
-  assert.match(room, /message\.sticker \? null : message\.status === "error"/);
-  assert.match(room.match(/async function sendSticker\([\s\S]*?\n  }\n/)![0], /chatEngine\.sendSticker\(/);
-  assert.doesNotMatch(room.match(/async function sendSticker\([\s\S]*?\n  }\n/)![0], /requestReply|beginReply/);
-  assert.match(room, /label="Edit" icon=\{Pencil\} disabled=\{activeMessage\.role === "system" \|\| !!activeMessage\.sticker/);
+  assert.match(timeline, /message\.sticker && <StickerImage/);
+  assert.match(timeline, /message\.sticker \? null : message\.status === "error"/);
+  const sendStickerStart = room.indexOf("async function sendSticker(");
+  const sendSticker = room.slice(sendStickerStart, room.indexOf("\n  async function reply", sendStickerStart));
+  assert.match(sendSticker, /chatEngine\.sendSticker\(/);
+  assert.doesNotMatch(sendSticker, /requestReply|beginReply/);
+  assert.match(actions, /label="Edit" icon=\{Pencil\} disabled=\{activeMessage\.role === "system" \|\| !!activeMessage\.sticker/);
   assert.match(image, /referrerPolicy="no-referrer"/);
 });
 
