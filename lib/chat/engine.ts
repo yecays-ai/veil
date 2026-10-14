@@ -13,7 +13,7 @@ import { browserMemoryStorage } from "../memory/browser";
 import { emptyMemoryContext, memoryEntryHash, selectMemoryContext } from "../memory/context";
 import { journalEntry, selectJournal } from "../memory/journal";
 import type { Memory } from "../memory/types";
-import { selfState, type SelfState } from "./self-context";
+import { selfState, type ReactionState, type SelfState } from "./self-context";
 import { isSilence, maybeSilence, PROACTIVE_INSTRUCTION } from "./proactive";
 import { browserContactStorage } from "../contact-storage";
 import {
@@ -26,6 +26,7 @@ import type { ChatMessage, ChatSession, MemoryRef } from "./types";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
 import { characterActionApplier, splitActions, type ActionApplier } from "../presence/actions";
+import { characterMayReact, reactionTarget, userReactionNotes } from "./reactions";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
 import { evaluateWorldBooks } from "../worldbook-activation";
@@ -45,14 +46,14 @@ const recordSentToPresence: SentRecorder = (characterId, sentAt) =>
   typeof window === "undefined" ? Promise.resolve() : sentRecorder(browserPresenceStorage)(characterId, sentAt);
 
 /** What this Character knows about itself right now: the user's remark, its status, situation and signature. */
-type SelfLoader = (character: Character, now: number, reply: { lastReplyAt: number | null; announceChange: boolean; allowActions: boolean }) =>
+type SelfLoader = (character: Character, now: number, reply: { lastReplyAt: number | null; announceChange: boolean; allowActions: boolean; reactions?: ReactionState }) =>
   Promise<SelfState | undefined>;
 const loadSelfState: SelfLoader = async (character, now, reply) => {
   if (typeof window === "undefined") return undefined;
   try {
     const [contacts, presence] = await Promise.all([browserContactStorage.load(), browserPresenceStorage.load()]);
     return selfState(character, contacts.contacts.find((item) => item.characterId === character.characterId),
-      presenceRecord(presence, character.characterId), now, reply.lastReplyAt, reply.announceChange, reply.allowActions);
+      presenceRecord(presence, character.characterId), now, reply.lastReplyAt, reply.announceChange, reply.allowActions, reply.reactions);
   } catch {
     console.warn("[Presence] own state was not added to the reply context");
     return undefined;
@@ -224,8 +225,11 @@ export function createChatEngine(
           character: { location: character.location.label, temperatureC: characterWeather.temperatureC, summary: characterWeather.summary },
         } : {}),
       })), controller.signal);
+      // Only a reply to the user may react to the user's message; Continue and Character-initiated turns have none.
+      const reaction = proactive || source === "continue" ? null : reactionTarget(batch.messages, batch.assistant.order);
+      const reactions: ReactionState = { canReact: !!reaction && characterMayReact(batch.messages, reaction), notes: userReactionNotes(batch.messages) };
       const ownState = await awaited(self(character, now().getTime(), { announceChange: source !== "continue",
-          allowActions: source !== "continue",
+          allowActions: source !== "continue", reactions,
           lastReplyAt: batch.messages.reduce<number | null>((latest, message) =>
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
               ? message.createdAt : latest, null) }), controller.signal);
@@ -277,8 +281,14 @@ export function createChatEngine(
       void Promise.resolve().then(() => recordSent(target.characterId, now().getTime()))
         .catch(() => { console.warn("[Presence] last message time was not saved"); });
       // The Character's own changes: after the commit, once, and never for Continue, which only extends a reply.
-      if (actions && source !== "continue") void Promise.resolve().then(() => applyActions(target.characterId, actions, now().getTime(), completed[0].id))
+      const { reactToUser, ...ownChanges } = actions ?? {};
+      if (Object.keys(ownChanges).length && source !== "continue") void Promise.resolve().then(() => applyActions(target.characterId, ownChanges, now().getTime(), completed[0].id))
         .catch(() => { console.warn("[Presence] the Character's own change was not saved"); });
+      // The reaction is chat data: checked again against what is stored now, and a failure never undoes the reply.
+      if (reactToUser && reaction && reactions.canReact) void storage.readSession(sessionId).then(({ messages }) => {
+        const current = messages.find((message) => message.id === reaction.id);
+        return current && characterMayReact(messages, current) ? storage.setReaction(current.id, "character", reactToUser) : undefined;
+      }).catch(() => { console.warn("[Chat] the Character's reaction was not saved"); });
       try { onFinalized?.(completed); } catch { /* Presentation cannot undo a committed turn. */ }
       return completed[0];
     } catch (error) {
