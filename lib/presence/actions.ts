@@ -1,6 +1,7 @@
 import { PRESENCE_VALUES, type Character, type FoundationDocument } from "../foundation-types";
 import { normalizeSituation } from "./compute";
 import { isReactionEmoji } from "../chat/reactions";
+import { normalizeTransferAmount, normalizeTransferNote, type TransferAction } from "../chat/transfer";
 import {
   addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord, setUserNote,
   type PresenceDocument, type PresenceRecord,
@@ -20,6 +21,8 @@ export type CharacterActions = {
   sticker?: string;
   /** Withdraw your immediately previous completed message after this reply is committed. */
   recallPrevious?: true;
+  transfer?: { amount: number; note: string };
+  transferAction?: { messageId: string; action: TransferAction };
 };
 export const ACTION_TAG = "veil-action";
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
@@ -85,6 +88,13 @@ function parseActions(json: string): CharacterActions | null {
   if (isReactionEmoji(value.reactToUser)) actions.reactToUser = value.reactToUser;
   if (typeof value.sticker === "string" && /^S\d{2,3}$/i.test(value.sticker.trim())) actions.sticker = value.sticker.trim().toUpperCase();
   if (value.recallPrevious === true) actions.recallPrevious = true;
+  if (isRecord(value.transfer) && value.transfer.recipient === "user" && typeof value.transfer.amount === "number" && Number.isFinite(value.transfer.amount)) {
+    try { actions.transfer = { amount: normalizeTransferAmount(value.transfer.amount), note: normalizeTransferNote(typeof value.transfer.note === "string" ? value.transfer.note : "") }; }
+    catch { /* Invalid requested transfer is ignored; other reply actions remain usable. */ }
+  }
+  if (isRecord(value.transferAction) && typeof value.transferAction.messageId === "string" &&
+      /^[\w-]{8,80}$/.test(value.transferAction.messageId) && ["receive", "decline", "return"].includes(String(value.transferAction.action)))
+    actions.transferAction = { messageId: value.transferAction.messageId, action: value.transferAction.action as TransferAction };
   return Object.keys(actions).length ? actions : null;
 }
 
@@ -130,6 +140,8 @@ export type ActionDeps = {
   /** Tells the chat the Character changed its note on the user (null = removed); a failure never undoes the change. */
   noteChanged?: (characterId: string, note: string | null, at: number) => Promise<void>;
   recallPreviousMessage?: (replyMessageId: string) => Promise<void>;
+  sendTransfer?: (replyMessageId: string, amount: number, note: string) => Promise<void>;
+  actOnTransfer?: (characterId: string, messageId: string, action: TransferAction) => Promise<void>;
 };
 /** The note is Presence data alone, so check and write happen in one transaction; the chat event follows only a real change. */
 async function applyUserNote(deps: ActionDeps, characterId: string, note: string | null, now: number, source: string) {
@@ -155,6 +167,14 @@ export const characterActionApplier = (deps: ActionDeps) =>
     if (actions.recallPrevious) {
       try { await deps.recallPreviousMessage?.(messageId); }
       catch { console.warn("[Presence] the previous message could not be recalled"); }
+    }
+    if (actions.transfer) {
+      try { await deps.sendTransfer?.(messageId, actions.transfer.amount, actions.transfer.note); }
+      catch { console.warn("[Presence] the virtual transfer could not be saved"); }
+    }
+    if (actions.transferAction) {
+      try { await deps.actOnTransfer?.(characterId, actions.transferAction.messageId, actions.transferAction.action); }
+      catch { console.warn("[Presence] the virtual transfer action could not be saved"); }
     }
     if (actions.signature === undefined) return;
     const allowed = actionAllowance(presenceRecord(await deps.presence.load(), characterId), now).signature;

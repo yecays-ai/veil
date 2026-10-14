@@ -187,7 +187,7 @@ function validateChat(value: unknown) {
   });
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "recalled"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "transfer", "transferEvent", "recalled"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -214,6 +214,26 @@ function validateChat(value: unknown) {
     }
     check(row.reactions === undefined || (isMessageReactions(row.reactions) && (row.role === "user" || row.role === "assistant")), path);
     check(row.sticker === undefined || (isMessageSticker(row.sticker) && (row.role === "user" || row.role === "assistant")), path);
+    if (row.transfer !== undefined) {
+      keys(row.transfer, ["amount", "note", "sender", "recipient", "status"], ["amount", "note", "sender", "recipient", "status"], path);
+      const transfer = row.transfer;
+      check(number(transfer.amount) && (transfer.amount as number) > 0 && (transfer.amount as number) <= 1_000_000_000_000
+        && typeof transfer.note === "string" && transfer.note.length <= 240
+        && ["user", "assistant"].includes(String(transfer.sender))
+        && ["user", "assistant"].includes(String(transfer.recipient)) && transfer.sender !== transfer.recipient
+        && ["pending", "received", "declined", "returned"].includes(String(transfer.status))
+        && row.role === transfer.sender && row.transferEvent === undefined && row.recalled === undefined, path);
+    }
+    if (row.transferEvent !== undefined) {
+      keys(row.transferEvent, ["transferId", "action", "actor", "amount", "note"], ["transferId", "action", "actor", "amount", "note"], path);
+      const event = row.transferEvent, source = messages.get(String(event.transferId));
+      const sourceTransfer = source && record(source.transfer) ? source.transfer : null;
+      check(id(event.transferId) && !!sourceTransfer && source?.sessionId === row.sessionId
+        && ["receive", "decline", "return"].includes(String(event.action))
+        && ["user", "assistant"].includes(String(event.actor)) && row.role === event.actor
+        && number(event.amount) && event.amount === sourceTransfer.amount
+        && typeof event.note === "string" && event.note.length <= 240 && row.transfer === undefined, path);
+    }
     if (row.memorySequence !== undefined) {
       keys(row.memorySequence, ["epoch", "seq"], ["epoch"], path);
       const session = sessions.get(row.sessionId)!, tracking = session.memorySequence as { epoch?: string; nextSeq?: number } | undefined;

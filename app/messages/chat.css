@@ -451,6 +451,34 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.chat-transfer-card {
+  width: min(260px, 100%);
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--theme-accent) 28%, color-mix(in srgb, var(--theme-text) 18%, transparent));
+  border-radius: 20px;
+  background: var(--theme-surface);
+  color: var(--theme-text);
+  box-shadow: 0 4px 18px color-mix(in srgb, var(--theme-text) 8%, transparent);
+}
+.chat-turn-user .chat-transfer-card { background: color-mix(in srgb, var(--theme-accent) 12%, var(--theme-background)); }
+.chat-transfer-heading { display: flex; align-items: center; gap: 9px; font-size: .82em; }
+.chat-transfer-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--theme-accent) 14%, transparent); }
+.chat-transfer-icon svg { width: 20px; height: 20px; }
+.chat-transfer-amount { display: block; margin-top: 12px; font-size: 2em; line-height: 1.15; }
+.chat-transfer-caption { font-size: .78em; opacity: .7; }
+.chat-transfer-note { min-height: 1.4em; margin: 12px 0; font-size: .9em; overflow-wrap: anywhere; }
+.chat-transfer-status { padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--theme-text) 12%, transparent); font-size: .82em; }
+.chat-transfer-actions { display: flex; gap: 8px; margin-top: 10px; }
+.chat-transfer-actions button, .chat-transfer-composer-actions button { flex: 1; min-height: 38px; border: 1px solid color-mix(in srgb, var(--theme-text) 18%, transparent); border-radius: 12px; background: var(--theme-surface); color: inherit; }
+.chat-transfer-result { width: fit-content; max-width: min(260px, 100%); padding: 8px 12px; border-radius: 16px; background: color-mix(in srgb, var(--theme-text) 7%, var(--theme-background)); font-size: .78em; overflow-wrap: anywhere; }
+.chat-transfer-modal-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(0 0 0 / 42%); }
+.chat-transfer-composer { display: grid; gap: 14px; width: min(420px, 100%); padding: 22px; border: 1px solid color-mix(in srgb, var(--theme-text) 18%, transparent); border-radius: 22px; background: var(--theme-background); color: var(--theme-text); }
+.chat-transfer-composer h2 { margin: 0; font-size: 1.15em; }
+.chat-transfer-composer label { display: grid; gap: 6px; font-size: .88em; }
+.chat-transfer-composer input, .chat-transfer-composer textarea { width: 100%; padding: 11px 12px; border: 1px solid color-mix(in srgb, var(--theme-text) 18%, transparent); border-radius: 12px; background: var(--theme-surface); color: inherit; font: inherit; }
+.chat-transfer-preview { margin: 0; font-size: .82em; opacity: .75; }
+.chat-transfer-composer-actions { display: flex; gap: 10px; }
+.chat-transfer-composer-actions button[type="submit"] { background: var(--theme-accent); color: var(--theme-background); }
 .chat-turn-user .chat-bubble {
   background: color-mix(
     in srgb,
