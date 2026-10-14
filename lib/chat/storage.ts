@@ -156,7 +156,7 @@ async function resetConversationHistory(tx: IDBTransaction, session: ChatSession
   for (const message of messages) await request(table.delete(message.id));
   await request(tx.objectStore("worldBookStates").delete(session.id));
   // The rolling summary is made of this history's text, so it goes with it.
-  const resetSession: ChatSession = { ...session, generation: undefined, summary: undefined, updatedAt: Date.now(), nextOrder: 1,
+  const resetSession: ChatSession = { ...session, generation: undefined, summary: undefined, unreadCount: undefined, updatedAt: Date.now(), nextOrder: 1,
     ...(session.memorySequence ? { memorySequence: { epoch: crypto.randomUUID(), nextSeq: 1 } } : {}),
     lastMessageId: undefined, lastMessagePreview: "" };
   await request(tx.objectStore("sessions").put(resetSession));
@@ -179,6 +179,8 @@ export class ChatStorage {
   private listeners = new Set<(change: ChatStorageChange) => void>();
   private channel?: BroadcastChannel;
   private generationLocks = new Map<string, () => Promise<void>>();
+  /** Conversations a chat page is showing right now (a count, so a replayed effect cannot unmark an open page). */
+  private viewing = new Map<string, number>();
   constructor(private factory: () => IDBFactory = () => window.indexedDB,
     private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
@@ -1245,6 +1247,26 @@ export class ChatStorage {
       return true;
     }, STORES, (discarded) => discarded ? { domain: "messages", sessionId, generationChanged: true } : null);
   }
+  /** A chat page shows this conversation until the returned release runs; entering it also clears what was unread. */
+  viewSession(sessionId: string): () => void {
+    this.viewing.set(sessionId, (this.viewing.get(sessionId) ?? 0) + 1);
+    void this.markRead(sessionId).catch(() => { /* The count stays until the next visit; no message is touched. */ });
+    let released = false;
+    return () => {
+      if (released) return; released = true;
+      const left = (this.viewing.get(sessionId) ?? 1) - 1;
+      if (left > 0) this.viewing.set(sessionId, left); else this.viewing.delete(sessionId);
+    };
+  }
+  markRead(sessionId: string): Promise<boolean> {
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session?.unreadCount) return false;
+      await request(sessions.put({ ...session, unreadCount: undefined }));
+      return true;
+    }, ["sessions"], (changed) => changed ? { domain: "session", sessionId } : null);
+  }
   generationStage(sessionId: string, id: string, stage: NonNullable<ChatSession["generation"]>["stage"]) {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
@@ -1379,8 +1401,12 @@ export class ChatStorage {
         message.order = index + 1;
       }
       const last = ordered.findLast((message) => message.role !== "system") ?? ordered.at(-1)!;
+      // Bubbles that land while no chat page shows this conversation are unread; a regenerated turn only replaces ones already seen.
+      const unreadCount = replacing || this.viewing.has(draft.sessionId) ? session.unreadCount
+        : (session.unreadCount ?? 0) + generated.length;
       await request(sessions.put({ ...session, generation: undefined, nextOrder: ordered.length + 1,
-        updatedAt: Date.now(), lastMessageId: last.id, lastMessagePreview: last.content.slice(0, 120) }));
+        updatedAt: Date.now(), lastMessageId: last.id, lastMessagePreview: last.content.slice(0, 120),
+        ...(unreadCount ? { unreadCount } : {}) }));
       if (worldBookState) await commitWorldBookState(tx, draft.sessionId, worldBookState);
       return generated;
     }, STORES, (messages) => [{ domain: "messages", sessionId: messages[0].sessionId, generationChanged: true },
