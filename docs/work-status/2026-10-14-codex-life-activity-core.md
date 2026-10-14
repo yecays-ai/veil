@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `feat/life-activity-core-20261014`；PR 待创建。新增 `lib/life/activity.ts`、`tests/life-activity-core.test.ts`，仅在 `lib/presence/storage.ts` 增加可选 Life 状态和受现有写入协调保护的 setter。后续独立小步接入生活计划和 Chat Info 只读 Life 页面。未修改 `lib/memory/*` 或现有主动消息预算、调度与回复规则。
+Codex；分支 `feat/life-activity-core-20261014`；PR https://github.com/yecays-ai/veil/pull/195。新增 `lib/life/activity.ts`、`tests/life-activity-core.test.ts`，仅在 `lib/presence/storage.ts` 增加可选 Life 状态和受现有写入协调保护的 setter。后续独立小步接入生活计划和 Chat Info 只读 Life 页面。未修改 `lib/memory/*` 或现有主动消息预算、调度与回复规则。
 
 ## 已完成
 
