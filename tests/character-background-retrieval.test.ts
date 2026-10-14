@@ -101,6 +101,9 @@ test("Characters are isolated: another Character's Background never appears", ()
 test("Backstory compatibility: short, single-block, title-first, empty and CRLF text are preserved as core", () => {
   const short = "A quiet librarian.\n\nShe loves tea.";
   assert.deepEqual(splitBackground(short), { core: short, retrievable: [] });
+  // A short Backstory is otherwise untouched, but a keyword line (never sent) is removed.
+  assert.equal(splitBackground("Quiet librarian.\nKeywords: reader, 书虫\n\nLoves tea.").core, "Quiet librarian.\n\nLoves tea.");
+  assert.doesNotMatch(prompt("hello", { backstory: "Quiet librarian.\n关键词：书虫" }).text, /关键词|书虫/);
   const single = "x".repeat(900);
   assert.deepEqual(splitBackground(single), { core: single, retrievable: [] });
   assert.equal(splitBackground(null).core, null); assert.equal(splitBackground("").core, "");

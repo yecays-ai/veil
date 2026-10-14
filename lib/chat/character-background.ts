@@ -52,7 +52,11 @@ function parseParagraph(raw: string) {
 export function splitBackground(backstory: string | null): BackgroundSplit {
   if (!backstory) return { core: backstory, retrievable: [] };
   const raw = backstory.replace(/\r\n?/gu, "\n").split(/\n[ \t]*\n+/u).map((part) => part.trim()).filter(Boolean);
-  if (backstory.length <= BACKGROUND_LIMITS.shortText || raw.length <= 1) return { core: backstory, retrievable: [] };
+  if (backstory.length <= BACKGROUND_LIMITS.shortText || raw.length <= 1) {
+    // Always core, unchanged, except that recognised keyword lines (which are never sent) are removed.
+    const stripped = KEYWORD_LINE.test(backstory) ? backstory.replace(KEYWORD_LINES, "").replace(/\n{3,}/gu, "\n\n").trim() : backstory;
+    return { core: stripped, retrievable: [] };
+  }
   const core: string[] = [];
   let start = 0, head = "";
   // The first paragraph is core; a bare title line also takes the next paragraph so identity text is not left out.

@@ -10,7 +10,7 @@ Character Background 按需检索（Memory 原需求遗漏补齐）：待审查/
 
 ## 谁在改哪里
 
-Claude；分支 `claude/background-on-demand-yq8x5n`；PR 见 GitHub。涉及：`lib/chat/character-background.ts`（新）、`lib/chat/prompt.ts`（character 分支与末尾）、`lib/memory/context.ts`（新增 `textMatcher` 导出）、`lib/memory/state-runtime.ts`（仅 `STATE_AUTHORITY` 文案）、`components/profile-form.tsx`（写法说明）、测试与 ledger。与 Memory 重设计（#173–#182）在 `prompt.ts` 相邻但不重叠；未改 `engine.ts`。
+Claude；分支 `claude/background-on-demand-yq8x5n`；PR [#183](https://github.com/yecays-ai/veil/pull/183)。涉及：`lib/chat/character-background.ts`（新）、`lib/chat/prompt.ts`（character 分支与末尾）、`lib/memory/context.ts`（新增 `textMatcher` 导出）、`lib/memory/state-runtime.ts`（仅 `STATE_AUTHORITY` 文案）、`components/profile-form.tsx`（写法说明）、测试与 ledger。与 Memory 重设计（#173–#182）在 `prompt.ts` 相邻但不重叠；未改 `engine.ts`。
 
 ## 已完成
 

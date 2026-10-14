@@ -199,6 +199,7 @@ export function ProfileForm({
               id={`profile-${key}`}
               rows={4}
               maxLength={12000}
+              aria-describedby={kind === "character" && key === "backstory" ? "profile-backstory-hint" : undefined}
               value={
                 (draft as unknown as Record<string, string | null>)[key] ?? ""
               }
