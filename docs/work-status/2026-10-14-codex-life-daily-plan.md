@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `feat/life-daily-plan-20261014`；PR 待创建。新增 `lib/life/plan.ts`、`tests/life-daily-plan.test.ts`，并在 `lib/presence/compute.ts` 开放本地日界与只读分段两个纯计算接口。不会修改 `lib/memory/*`、聊天生成、主动消息预算或通知。
+Codex；分支 `feat/life-daily-plan-20261014`；PR https://github.com/yecays-ai/veil/pull/196。新增 `lib/life/plan.ts`、`tests/life-daily-plan.test.ts`，并在 `lib/presence/compute.ts` 开放本地日界与只读分段两个纯计算接口。不会修改 `lib/memory/*`、聊天生成、主动消息预算或通知。
 
 ## 已完成
 
