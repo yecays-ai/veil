@@ -1,24 +1,15 @@
 "use client";
 import { useBindings } from "../use-bindings";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
   type CSSProperties } from "react";
 import {
-  Bookmark,
   ChevronLeft,
   ChevronRight,
-  CircleCheck,
-  Copy,
-  Brain,
-  Pencil,
   Plus,
-  Quote,
-  RotateCcw,
   SendHorizontal,
   Search,
   Sparkles,
   Square,
-  Trash2,
-  type LucideIcon,
 } from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
@@ -34,12 +25,9 @@ import {
   reactionBarLeft,
   selectMessageRange,
 } from "../../lib/chat/message-actions";
-import { canReactTo, reactionBadges } from "../../lib/chat/reactions";
-import { ReactionBar, ReactionPickerSheet } from "./reaction-bar";
 import { ChatPlusPanel } from "./chat-plus-panel";
 import { StickerPanel } from "./sticker-panel";
 import { StickerManager } from "./sticker-manager";
-import { StickerImage } from "./sticker-image";
 import type { MessageSticker } from "../../lib/chat/sticker-message";
 import { ChatAvatar } from "./avatar";
 import { ChatHeader } from "./chat-header";
@@ -47,10 +35,8 @@ import { useCharacterPresence } from "../use-character-presence";
 import { ChatMultiSelectBar } from "./chat-multi-select-bar";
 import { useChatSession } from "./use-chat-session";
 import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
-import { createTransientFeedback, hasPendingUserContent, visibleReplyText } from "../../lib/chat/usability";
-import { canContinueTurn, canRegenerateTurn } from "../../lib/chat/turns";
+import { createTransientFeedback, hasPendingUserContent } from "../../lib/chat/usability";
 import { groupVisibleMessages, hiddenForReveal } from "../../lib/chat/bubble-pacing";
-import { resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../lib/chat/delivery";
 import { useBubbleReveal } from "./use-bubble-reveal";
 import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
@@ -58,14 +44,12 @@ import { CustomCSSSettings } from "./custom-css-settings";
 import { Switch } from "../settings/ui/switch";
 import { SessionCustomCSS } from "./session-custom-css";
 import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
-import { getMessageActions, messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
-import { MessageFooter } from "./message-footer";
-import { parseQuotedReply, quoteMessage } from "../../lib/chat/quote";
+import { messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
+import { quoteMessage } from "../../lib/chat/quote";
 import { QuoteBubble } from "./quote-bubble";
 import { resolveBindings } from "../../lib/bindings";
 import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
-import { applyRegex } from "../../lib/regex-engine";
 import { createRegexReadGuard } from "../../lib/chat/regex-read-guard";
 import { chatScrollIntentMatchesSession, shouldPositionChatHistoryAtBottom } from "../../lib/chat/initial-scroll";
 import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/search";
@@ -73,6 +57,8 @@ import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
 import { chatLoadingNotice } from "../../lib/chat/loading-notice";
 import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
+import { MessageList } from "./messages/message-list";
+import { MessageActionsOverlay } from "./message-actions/message-actions-overlay";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -808,89 +794,30 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       >
         {!framePublished && loadingNotice && <p className="chat-notice" role="status">{loadingNotice}</p>}
         {empty && <p className="chat-empty-state">No messages yet</p>}
-        {framePublished && groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
-          const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
-          // Middle of a same-sender group: neither end keeps a full radius.
-          const groupClass = `${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${isGroupStart || isGroupEnd ? "" : " chat-group-middle"}`;
-          const visibleText = visibleReplyText(message, session?.streamOnline === true);
-          const parsed = message.role === "assistant" ? parseQuotedReply(visibleText)
-            : { content: visibleText, preview: null };
-          const quotePreview = message.quote?.preview ?? parsed.preview;
-          return (
-          <Fragment key={message.id}>
-            {typingBeforeId === message.id && typingIndicator}
-            {showTimestamp && <div className="chat-time-separator chat-sys-msg">
-              <time dateTime={new Date(message.createdAt).toISOString()}>
-                {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </time>
-            </div>}
-          {message.role === "system" ? <div className={`chat-turn chat-system-event${selectedIds.has(message.id) ? " chat-turn-selected" : ""}${highlightedMessageId === message.id ? " chat-turn-search-highlight" : ""}`}
-            data-message-id={message.id} data-active={activeMessage?.id === message.id ? "" : undefined}
-            onClick={() => {
-              if (!multiSelect) return;
-              setSelectedIds((current) => { const next = new Set(current);
-                if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; });
-            }}>
-            {multiSelect && <span className="chat-selection-control" aria-hidden="true">
-              {selectedIds.has(message.id) ? "✓" : ""}
-            </span>}
-            <p className="chat-system-pill" onClick={(e) => openActions(e, message)}>{message.content}</p>
-          </div> : <div
-            className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${groupClass}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}${highlightedMessageId === message.id ? " chat-turn-search-highlight" : ""}`}
-            data-message-id={message.id}
-            data-consecutive={!isGroupStart ? "" : undefined}
-            data-active={activeMessage?.id === message.id ? "" : undefined}
-            onClick={() => {
-              if (!multiSelect || message.status === "streaming") return;
-              setSelectedIds((current) => { const next = new Set(current);
-                if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; });
-            }}
-          >
-            {multiSelect && <span className="chat-selection-control" aria-hidden="true">
-              {selectedIds.has(message.id) ? "✓" : ""}
-            </span>}
-            {message.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">
-              {isGroupStart && <ChatAvatar profile={character} />}
-            </div>}
-            <div className="chat-message">
-              <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
-                onAnimationEnd={() => { if (highlightedMessageId === message.id) setHighlightedMessageId(null); }}
-                onPointerDown={() => { nativeSelectionActive.current = false; }}
-                onContextMenu={() => { nativeSelectionActive.current = true; }}
-                onClick={(e) => openActions(e, message)}>
-                {reactionBadges(message).map((emoji, index) => <span key={index} className="chat-reaction-badge"
-                  data-emoji={emoji} data-side={index === 0 && message.reactions?.character ? "character" : "user"} role="img" aria-label={`Reaction ${emoji}`} />)}
-                {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
-                  author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
-                {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
-                {message.sticker ? null : message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
-                  ? applyRegex(parsed.content, regexGroups, message.role, "display",
-                    { character: character.name, user: document.user.name }) : parsed.content) ||
-                  (message.status === "streaming" && generationActive ? "…" : "")}
-              </p>
-              <MessageFooter messageId={message.id} />
-              <span className="chat-message-meta">
-                {message.status === "streaming" && !generationActive && (
-                  <span>Interrupted reply</span>
-                )}
-                {message.status === "cancelled" && <span>Reply stopped</span>}
-                {message.status === "error" && (
-                  <span role="alert">{message.error || "Reply failed."}</span>
-                )}
-                {!generationActive && message.role === "assistant" && canRegenerateTurn(messages, message.id) &&
-                  (message.status === "error" || message.status === "cancelled") &&
-                  <button type="button" onClick={() => void regenerate(message, message.attemptMode === "continue")}>Retry</button>}
-                {!generationActive && canContinueTurn(messages, message.id) &&
-                  <button type="button" onClick={() => void regenerate(message, true)}>Continue conversation</button>}
-                {delivery && !typing && message.id === lastVisibleMessageId && <span className="chat-delivery-status">
-                  {userMessageDeliveryLabel(delivery)}
-                </span>}
-              </span>
-            </div>
-          </div>}
-          </Fragment>
-        );})}
-        {framePublished && !typingBeforeId && typingIndicator}
+        {framePublished && <MessageList
+          groupedMessages={groupedMessages}
+          messages={messages}
+          selectedIds={selectedIds}
+          activeMessageId={activeMessage?.id}
+          highlightedMessageId={highlightedMessageId}
+          multiSelect={multiSelect}
+          typing={typing}
+          typingBeforeId={typingBeforeId}
+          typingIndicator={typingIndicator}
+          character={character}
+          userName={document.user.name}
+          streamOnline={session?.streamOnline === true}
+          generationActive={generationActive}
+          regexGroups={regexGroups}
+          lastVisibleMessageId={lastVisibleMessageId}
+          onOpenActions={openActions}
+          onToggleSelected={(message) => setSelectedIds((current) => { const next = new Set(current);
+            if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; })}
+          onClearHighlight={() => setHighlightedMessageId(null)}
+          onRegenerate={(message, continuation) => void regenerate(message, continuation)}
+          onPointerDownMessage={() => { nativeSelectionActive.current = false; }}
+          onContextMenuMessage={() => { nativeSelectionActive.current = true; }}
+        />}
       </div>
       {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
@@ -1003,40 +930,25 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onUpdate={updateSetting}
         onClear={() => setConfirmClear(true)}
       />}
-      {activeMessage && <>
-        <button className="chat-context-backdrop" data-message-overlay="" aria-label="Close message actions" onClick={closeActions} />
-        {canReactTo(activeMessage) && <ReactionBar barRef={reactionBar} current={activeMessage.reactions?.user}
-          onPick={(emoji) => void react(activeMessage, emoji)} onMore={() => setReactionPickerOpen(true)} />}
-        {reactionPickerOpen && <ReactionPickerSheet onPick={(emoji) => void react(activeMessage, emoji === activeMessage.reactions?.user ? null : emoji)} />}
-        <div ref={actionMenu} tabIndex={-1} data-message-overlay="" className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
-          style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
-          <div className="chat-message-actions-grid">
-            <Action label="Copy" icon={Copy} disabled={!!activeMessage.sticker} onClick={() => void copyMessage()} />
-            <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || !!activeMessage.sticker || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => { setEditingMessage(activeMessage);
-              setEditText(activeMessage.content); closeActions(); }} />
-            <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => {
-              setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
-            }} />
-            <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={() => { setMemoryMessage(activeMessage); closeActions(); }} />
-            <Action label="Select" icon={CircleCheck} onClick={() => { const id = activeMessage.id;
-              setMultiSelect(true); setSelectionStartId(id); setSelectedIds(new Set([id])); closeActions(); }} />
-            <Action label="Favorite" icon={Bookmark} disabled />
-            <Action label="Delete" icon={Trash2} danger onClick={() => { setConfirmDelete([activeMessage.id]); closeActions(); }} />
-            <Action label="Regenerate" icon={RotateCcw}
-              disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || !!revealState?.pending}
-              onClick={() => void regenerate(activeMessage)} />
-            {getMessageActions(activeMessage).map((action) => <Action key={action.id}
-              label={action.label} icon={Plus} onClick={() => {
-                const message = activeMessage;
-                closeActions();
-                void runMessageAction(action.id, message, {
-                  updateMessage: (patch) => chatStorage.editMessage(message.id, patch.content),
-                  toast: showFeedback,
-                }).catch((reason) => setError(reason instanceof Error ? reason.message : "Message action failed."));
-              }} />)}
-          </div>
-        </div>
-      </>}
+      <MessageActionsOverlay activeMessage={activeMessage} messages={messages} generationActive={generationActive}
+        revealPending={!!revealState?.pending} actionMenuRef={actionMenu} reactionBarRef={reactionBar}
+        reactionPickerOpen={reactionPickerOpen} onClose={closeActions}
+        onPickReaction={(emoji) => { if (activeMessage) void react(activeMessage, emoji); }}
+        onOpenReactionPicker={() => setReactionPickerOpen(true)} onCopy={() => void copyMessage()}
+        onEdit={() => { if (!activeMessage) return; setEditingMessage(activeMessage); setEditText(activeMessage.content); closeActions(); }}
+        onQuote={() => { if (!activeMessage) return; setQuotingMessage(activeMessage); closeActions(); composer.current?.focus(); }}
+        onMemory={() => { if (!activeMessage) return; setMemoryMessage(activeMessage); closeActions(); }}
+        onSelect={() => { if (!activeMessage) return; setMultiSelect(true); setSelectionStartId(activeMessage.id); setSelectedIds(new Set([activeMessage.id])); closeActions(); }}
+        onDelete={() => { if (!activeMessage) return; setConfirmDelete([activeMessage.id]); closeActions(); }}
+        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }}
+        onRunRegisteredAction={(id) => {
+          if (!activeMessage) return;
+          const message = activeMessage;
+          closeActions();
+          void runMessageAction(id, message, {
+            updateMessage: (patch) => chatStorage.editMessage(message.id, patch.content), toast: showFeedback,
+          }).catch((reason) => setError(reason instanceof Error ? reason.message : "Message action failed."));
+        }} />
       {memoryMessage && <MessageMemory key={memoryMessage.id} message={memoryMessage} characterId={characterId} onClose={() => setMemoryMessage(null)} />}
       {editingMessage && <div className="chat-dialog-backdrop">
         <form className="chat-dialog" onSubmit={async (e) => { e.preventDefault();
@@ -1232,15 +1144,6 @@ function ChatHistorySearchPage({ screenRef, sessionId, messages, characterName, 
           </div>}
     </div>
   </section>;
-}
-
-function Action({ label, icon, disabled, danger, onClick }: {
-  label: string; icon: LucideIcon; disabled?: boolean; danger?: boolean; onClick?: () => void;
-}) {
-  const Icon = icon;
-  return <button type="button" role="menuitem" disabled={disabled} onClick={onClick}
-    className={`ctx-menu-btn${danger ? " ctx-menu-btn-danger chat-danger" : ""}`}><Icon size={25} strokeWidth={1.75}
-      aria-hidden="true" /><small>{label}</small></button>;
 }
 
 function ConfirmDialog({ dialogRef, title, text, onCancel, onConfirm }: {

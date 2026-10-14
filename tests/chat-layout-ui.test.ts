@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+const timeline = readFileSync("components/chat/messages/message-list.tsx", "utf8");
 const life = readFileSync("components/chat/life-timeline.tsx", "utf8");
 const css = readFileSync("app/messages/chat.css", "utf8");
 const globalCss = readFileSync("app/globals.css", "utf8");
@@ -35,22 +36,22 @@ test("chat header is a glass overlay with the requested lightweight controls", (
 });
 
 test("assistant groups retain one avatar and a shared gutter while delivery stays on the last visible message", () => {
-  assert.match(room, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
-  assert.match(room, /message\.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">\s*\{isGroupStart && <ChatAvatar/);
+  assert.match(timeline, /groupedMessages\.map\(\(\{ message, showTimestamp, isGroupStart, isGroupEnd \}\)/);
+  assert.match(timeline, /message\.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">\{isGroupStart && <ChatAvatar/);
   assert.match(css, /--chat-avatar-size:\s*40px;/);
   assert.match(css, /--chat-avatar-gap:\s*8px;/);
   assert.match(css, /\.chat-avatar-column\s*\{[^}]*flex:\s*0 0 var\(--chat-avatar-size\)/);
   assert.match(css, /\.chat-turn-assistant::after\s*\{[^}]*content:\s*"";[^}]*flex:\s*0 0 var\(--chat-avatar-size\)/);
   assert.match(css, /\.chat-turn-assistant \.chat-avatar\s*\{[^}]*width:\s*var\(--chat-avatar-size\);[^}]*height:\s*var\(--chat-avatar-size\);[^}]*border-radius:\s*20px;/);
   assert.match(css, /\.chat-turn-assistant \.chat-message\s*\{[^}]*max-width:\s*calc\(100% - var\(--chat-avatar-size\) - var\(--chat-avatar-size\) - var\(--chat-avatar-gap\) - var\(--chat-avatar-gap\)\)/);
-  assert.doesNotMatch(room, /chat-user-gutter/);
+  assert.doesNotMatch(timeline, /chat-user-gutter/);
   assert.doesNotMatch(css, /chat-user-gutter/);
   assert.doesNotMatch(css, /\.chat-turn-assistant:not\(\.chat-group-start\)/);
-  assert.doesNotMatch(room, /message\.role === "user" &&[^\n]*<(?:ChatAvatar|div className="chat-avatar-column")/);
-  assert.match(room, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);
+  assert.doesNotMatch(timeline, /message\.role === "user" &&[^\n]*<(?:ChatAvatar|div className="chat-avatar-column")/);
+  assert.match(timeline, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);
   assert.match(room, /const lastVisibleMessageId = groupedMessages\.findLast\(\(\{ message \}\) => message\.role !== "system"\)\?\.message\.id/);
-  assert.match(room, /delivery && !typing && message\.id === lastVisibleMessageId && <span className="chat-delivery-status">/);
-  assert.match(room, /isGroupEnd \? " chat-group-end"/);
+  assert.match(timeline, /delivery && !typing && message\.id === lastVisibleMessageId && <span className="chat-delivery-status">/);
+  assert.match(timeline, /isGroupEnd \? " chat-group-end"/);
   assert.doesNotMatch(css, /\.chat-bubble::(?:before|after)/);
   assert.match(css, /\.chat-turn-user\s*\{\s*justify-content:\s*flex-end;\s*\}/);
 });
@@ -84,7 +85,7 @@ test("same-sender bubbles group by corners without merging or tapering the outer
   assert.doesNotMatch(userLast, /border-bottom-right-radius|border-radius:/);
   // A standalone bubble carries both group classes, so every corner stays round.
   assert.match(room, /className="chat-turn chat-turn-assistant chat-msg-wrapper" role="status" aria-label="Typing"/);
-  assert.match(room, /isGroupStart \|\| isGroupEnd \? "" : " chat-group-middle"/);
+  assert.match(timeline, /isGroupStart \|\| isGroupEnd \? "" : " chat-group-middle"/);
   // Corner rules never leak onto the typing indicator turn (no group class).
   assert.doesNotMatch(css, /^\.chat-turn-(?:assistant|user):not\(\.chat-group-start\) \.chat-bubble/m);
   assert.doesNotMatch(css, /^\.chat-turn-(?:assistant|user):not\(\.chat-group-end\) \.chat-bubble/m);
@@ -145,7 +146,7 @@ test("More opens a full-screen scrollable Chat Info view instead of a popover", 
   assert.match(room, /<CustomCSSSettings screenRef=\{screenRef\} session=\{session\}/);
   assert.match(room, /session\?\.customCSS && <SessionCustomCSS css=\{session\.customCSS\}/);
   assert.match(room, /className="chat-app chat-room chat-room-wrapper"/);
-  assert.match(room, /chat-bubble-role-\$\{message\.role\}/);
+  assert.match(timeline, /chat-bubble-role-\$\{message\.role\}/);
   for (const hook of ["chat-bubble-role-assistant", "chat-msg-wrapper", "chat-msg-avatar",
     "chat-scroll-anchored", "chat-input-bar", "chat-input-textarea", "chat-input-actions"])
     assert.match(room, new RegExp(hook));
@@ -157,7 +158,7 @@ test("Chat history search returns through Chat Info and jumps by message ID with
   assert.match(room, /element\.dataset\.messageId === pendingSearchJumpId/);
   assert.match(room, /container\.scrollTo\(\{ top: container\.scrollTop \+ centeredOffset, behavior: "smooth" \}\)/);
   assert.match(room, /setHighlightedMessageId\(pendingSearchJumpId\)/);
-  assert.match(room, /onAnimationEnd=\{\(\) => \{ if \(highlightedMessageId === message\.id\) setHighlightedMessageId\(null\); \}\}/);
+  assert.match(timeline, /onAnimationEnd=\{\(\) => \{ if \(highlighted\) onClearHighlight\(message\.id\); \}\}/);
   assert.match(room, /function ChatHistorySearchPage/);
   assert.match(room, /searchConversationMessages\(messages, sessionId, trimmed, controller\.signal\)/);
   assert.match(room, /message\.role === "user" \? "Me" : characterName/);

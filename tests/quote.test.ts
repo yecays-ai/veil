@@ -55,12 +55,13 @@ test("legacy assistant quote protocol parses text without rich media or rewritin
 
 test("core Quote opens cancellable Composer preview and bubble renders quote above body", () => {
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+  const timeline = readFileSync("components/chat/messages/message-list.tsx", "utf8");
   const bubble = readFileSync("components/chat/quote-bubble.tsx", "utf8");
   assert.match(room, /setQuotingMessage\(activeMessage\); closeActions\(\)/);
   assert.match(room, /quotingMessage && <div className="chat-quote-bar"/);
   assert.match(room, /aria-label="Cancel Quote" onClick=\{\(\) => setQuotingMessage\(null\)\}/);
   assert.match(room, /chatEngine\.send\(sessionId, content, quote\?\.id\)/);
-  assert.match(room, /<QuoteBubble preview=\{quotePreview\}[\s\S]*applyRegex\(parsed\.content, regexGroups/);
+  assert.match(timeline, /<QuoteBubble preview=\{quotePreview\}[\s\S]*applyRegex\(parsed\.content, regexGroups/);
   assert.match(bubble, /className="chat-quote-preview"/);
   assert.match(bubble, /<span>\{preview\}<\/span>/);
 });
