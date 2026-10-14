@@ -292,11 +292,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       (element.tabIndex >= 0 || element.matches("button, input, textarea, select, a[href], [contenteditable=true]"));
     const inerted: Array<{ element: HTMLElement; wasInert: boolean }> = [];
     if (overlayKind && root && shell.current) {
-      const allowed = overlayKind === "message-actions"
-        ? new Set([root, root.previousElementSibling])
-        : new Set([overlayKind === "chat-info" ? root : root.parentElement]);
+      const allowed = new Set<Element | null>([overlayKind === "chat-info" ? root : root.parentElement]);
       for (const child of [...shell.current.children]) {
-        if (allowed.has(child)) continue;
+        // The message layer is several siblings (backdrop, reaction bar, picker, menu); none of them may be inert.
+        if (overlayKind === "message-actions" ? child.hasAttribute("data-message-overlay") : allowed.has(child)) continue;
         const element = child as HTMLElement;
         inerted.push({ element, wasInert: element.hasAttribute("inert") });
         element.setAttribute("inert", "");
@@ -956,11 +955,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onClear={() => setConfirmClear(true)}
       />}
       {activeMessage && <>
-        <button className="chat-context-backdrop" aria-label="Close message actions" onClick={closeActions} />
+        <button className="chat-context-backdrop" data-message-overlay="" aria-label="Close message actions" onClick={closeActions} />
         {canReactTo(activeMessage) && <ReactionBar barRef={reactionBar} current={activeMessage.reactions?.user}
           onPick={(emoji) => void react(activeMessage, emoji)} onMore={() => setReactionPickerOpen(true)} />}
-        {reactionPickerOpen && <ReactionPickerSheet onPick={(emoji) => void react(activeMessage, emoji)} />}
-        <div ref={actionMenu} tabIndex={-1} className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
+        {reactionPickerOpen && <ReactionPickerSheet onPick={(emoji) => void react(activeMessage, emoji === activeMessage.reactions?.user ? null : emoji)} />}
+        <div ref={actionMenu} tabIndex={-1} data-message-overlay="" className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
           style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
           <div className="chat-message-actions-grid">
             <Action label="Copy" icon={Copy} onClick={() => void copyMessage()} />
