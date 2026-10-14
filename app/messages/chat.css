@@ -122,6 +122,13 @@
   height: 100%;
   object-fit: cover;
 }
+.chat-avatar-presence { position: relative; display: inline-flex; flex: none; }
+.chat-avatar-presence > .presence-badge {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
 .conversation-summary {
   flex: 1;
   min-width: 0;
@@ -296,32 +303,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 0.94em;
-}
-/* Name over a one-line status: about 30px beside the 40px avatar, so the 56px summary row does not grow. */
-.chat-contact-text {
-  min-width: 0;
-  max-width: 58%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  line-height: 1.2;
-}
-.chat-contact-text strong { max-width: 100%; }
-.chat-contact-status {
-  max-width: 100%;
-  min-height: 1.2em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  opacity: .62;
-}
-.chat-contact-summary > svg {
-  width: 15px;
-  height: 15px;
-  flex: none;
-  opacity: .46;
-  stroke-width: 1.7;
 }
 .chat-history {
   position: absolute;

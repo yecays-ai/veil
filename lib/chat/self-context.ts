@@ -4,7 +4,7 @@ import { normalizeContactRemark } from "../contact-storage";
 import { effectivePresence } from "../presence/compute";
 import { presenceLabel } from "../presence/view";
 import type { PresenceRecord } from "../presence/storage";
-import { ACTION_TAG, actionAllowance, type ActionAllowance } from "../presence/actions";
+import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
 
 /** What the Character knows about itself for one reply: read once per request, never stored or sent as history. */
 export type SelfState = {
@@ -20,6 +20,7 @@ export type SelfState = {
   userNote: string | null;
   /** What the Character may change in this reply (its own cooldowns applied); null when it may change nothing (Continue). */
   canChange: ActionAllowance | null;
+  noteCooldownMinutes?: number;
 };
 
 /**
@@ -35,9 +36,11 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
   const change = contact?.lastRemarkChange;
   const remarkChange = announceChange && change && (lastReplyAt === null || change.createdAt > lastReplyAt)
     ? { from: change.fromRemark, to: change.toRemark } : null;
+  const noteCooldownMinutes = allowActions ? Math.ceil(noteCooldownRemaining(record, now) / 60_000) : 0;
   return { remark: normalizeContactRemark(contact?.remark), remarkChange, status: known ? effective.status : null,
     situation: effective.situation?.reason ?? null, signature: character.statusMessage?.trim() || null,
-    userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null };
+    userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null,
+    ...(noteCooldownMinutes > 0 ? { noteCooldownMinutes } : {}) };
 }
 
 const quoted = (value: string) => JSON.stringify(value);
@@ -73,6 +76,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.status ? `Your current status: ${presenceLabel(state.status)}${state.situation ? ` (${state.situation})` : ""}.` : null,
     state.signature ? `Your signature: ${quoted(state.signature)}.` : null,
     state.userNote ? `Your own note on the user, what you call them: ${quoted(state.userNote)}. Use it only when it fits naturally.` : null,
+    state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
     ...actionLines(state.canChange),
   ].filter((line): line is string => line !== null);
