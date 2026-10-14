@@ -20,11 +20,13 @@ Codex；分支 `feat/life-timeline-ui-20261014`；PR https://github.com/yecays-a
 - 页面挂载时在 Presence 现有事务/Web Lock 内执行一次确定性结算；没有 Routine、Situation 或旧 Life 时不创建空记录。活动边界只刷新本地显示，不调用模型。
 - 读取或结算失败保留已有内容并显示错误；无内容显示空状态。返回只回到 Chat Info，不改变聊天滚动位置。
 - 测试编译通过；Chat UI 13/13、Life plan 6/6、Activity Core 8/8，共 27/27；改动文件 ESLint 无新增错误（`chat-room.tsx` 两条既有 hook warning）；`git diff --check` 通过；Next.js 16.3.8 生产构建及其 TypeScript 检查通过（26 个静态页面）。
+- 针对 PR #197 的 CodeRabbit 意见，新增两个真实挂载 `LifeTimelineScreen` 的调用层持久化测试：Routine 存在时验证该角色投影活动已保存；Routine、Situations 和旧 Life 都缺失时验证 ready 效果运行且 Presence 存储原文不变。定向测试 2/2 通过，测试 TypeScript 编译通过。
 
 ## 尚未验证
 
-- 自动化覆盖源码 UI 合同与纯逻辑行为；尚未做真实浏览器点击或 iPhone 安全区/滚动验收。
+- 自动化还覆盖实际 `LifeTimelineScreen` 挂载后的事务及持久化行为；尚未做真实浏览器点击或 iPhone 安全区/滚动验收。
 
 ## 下一步
 
-提交、推送并开独立 PR，等待 Lan 手动合并；不在本单继续忙时延迟回复。
+提交并推送 PR #197 的评审补充；等待 Lan 手动合并；不在本单继续忙时延迟回复。
+
