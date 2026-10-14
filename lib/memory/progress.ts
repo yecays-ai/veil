@@ -11,7 +11,8 @@ import { memoryFingerprint } from "./fingerprint";
 import { memoryMessageEligible } from "./sequence";
 import { finishMemoryRange, validMemoryProgress, type MemoryBatch, type MemoryProgress } from "./progress-types";
 import { cursorId, MemoryConflictError, MemoryProtectedError, normalizeSources, request, type MemoryStorage, type MemoryTx } from "./storage";
-import { MEMORY_TEXT_CHARACTERS, type Memory, type MemoryCursor, type MemoryDraft, type Suppression } from "./types";
+import { pruneMemoryHistory } from "./lineage";
+import { MEMORY_HISTORY_LIMIT, MEMORY_TEXT_CHARACTERS, type Memory, type MemoryCursor, type MemoryDraft, type Suppression } from "./types";
 
 export type MemorySourceAuthority = {
   /** Raw saved Foundation authority; null/malformed/deleted Character must fail closed. */
@@ -479,5 +480,9 @@ async function applyAutomaticPlan(tx: MemoryTx, characterId: string, sessionId: 
     visiting.delete(id); visited.add(id);
   };
   for (const id of plan.keys()) visit(id);
+  // Keep only the most recent hidden versions of each new head, in this same transaction, without leaving a dangling pointer.
+  const pruned = pruneMemoryHistory([...all.values()], [...plan.values()].filter((r) => r.status !== "superseded").map((r) => r.id), MEMORY_HISTORY_LIMIT, now);
+  for (const row of pruned.rows) plan.set(row.id, row);
+  for (const id of pruned.deleted) { plan.delete(id); await request(store.delete(id)); }
   for (const row of plan.values()) await request(store.put(row));
 }

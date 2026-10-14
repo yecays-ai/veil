@@ -65,7 +65,7 @@ export function cancelClearIntent(storage: MemoryStorage, characterId: string, s
  * With `targets` (message ids recorded when the clear was requested), only sources pointing at those messages are
  * removed; sources of messages added afterwards are kept. Without it, every source of the session goes.
  */
-export function completeClear(storage: MemoryStorage, characterId: string, sessionId: string, targets?: ReadonlySet<string>, scope?: PersistenceWriteScope): Promise<void> {
+export function completeClear(storage: MemoryStorage, characterId: string, sessionId: string, targets?: ReadonlySet<string>, scope?: PersistenceWriteScope): Promise<{ isolated: number }> {
   const hit = (item: MemorySource) => item.sessionId === sessionId && (!targets || targets.has(item.messageId));
   const touches = (sources: readonly MemorySource[]) => sources.some(hit);
   const withoutTargets = (sources: readonly MemorySource[]) => sources.filter((item) => !hit(item));
@@ -102,7 +102,9 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
         || row.suppressionChanges?.some((c) => touches(c.before?.sources ?? []) || touches(c.after.sources)))
         await request(operations.delete(row.id));
 
-    if (!cleaned.incomplete && targets && cursor?.sourceInvalidation && cursor.extraction) {
+    // A damaged chain is flagged for the user and the cleanup still finishes: a retained intent would block every
+    // edit, delete and regeneration in this chat for good, and the flagged rows already carry no source of this clear.
+    if (targets && cursor?.sourceInvalidation && cursor.extraction) {
       const { clearRequestedAt: _requested, clearToken: _token, clearMessageIds: _ids,
         clearLineageIds: _lineage, sourceInvalidation: _source, ...keptCursor } = cursor;
       void [_requested, _token, _ids, _lineage, _source];
@@ -113,11 +115,9 @@ export function completeClear(storage: MemoryStorage, characterId: string, sessi
         else if (batch.state === "claimed") { batch.state = "ready"; delete batch.ownerId; delete batch.attemptId; }
       }
       await request(tx.store("cursors").put({ ...keptCursor, updatedAt: storage.now() }));
-    } else if (!cleaned.incomplete) await request(tx.store("cursors").delete(cursorId(characterId, sessionId)));
-    else await request(tx.store("cursors").put({ failureCount: 0, ...cursor, id: cursorId(characterId, sessionId), characterId, sessionId,
-      clearRequestedAt: cursor?.clearRequestedAt ?? storage.now(), clearToken: cursor?.clearToken ?? crypto.randomUUID(), clearLineageIds: cleaned.isolated, updatedAt: storage.now() } satisfies MemoryCursor));
-    return cleaned.incomplete;
-  }, scope).then((incomplete) => { notifyCharacterStateChanged(characterId); if (incomplete) throw new Error("Memory lineage cleanup deferred: damaged chain."); });
+    } else await request(tx.store("cursors").delete(cursorId(characterId, sessionId)));
+    return cleaned.isolated.length;
+  }, scope).then((isolated) => { notifyCharacterStateChanged(characterId); return { isolated }; });
 }
 
 export async function clearSession(storage: MemoryStorage, characterId: string, sessionId: string): Promise<void> {
