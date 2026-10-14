@@ -1,7 +1,7 @@
 # STATUS — 2026-10-14-codex-message-memory-sheet
 
 更新人：Codex
-更新时间：2026-10-14T16:44:00+08:00
+更新时间：2026-10-14T16:48:00+08:00
 发现范围：本任务开工与发布前通过 GitHub API 核对 main `83088ec3769fc8fbe862e4c70e8a4f8a7035c3b2`；开工时检查开放 PR、远程分支和相关 T4/T5 状态，未发现开放 PR 冲突；未检查他人未发布工作。本地使用逐 blob 校验的独立副本，不改同步 sources。以 `docs/AUDIT_LEDGER.md` 为既有验收状态依据，不变更原 F 编号或状态。
 
 ## 当前任务
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `codex/message-memory-sheet-20261014`；PR https://github.com/yecays-ai/veil/pull/187。涉及：`app/layout.tsx`、`app/messages/chat.css`、`app/settings/settings.css`、`components/chat/{chat-room,message-memory}.tsx`、`components/settings/ui/modal.{tsx,css}`、`components/profile-pages.tsx`、`tests/{contact-info,message-memory-ui}.test.ts`。
+Codex；分支 `codex/message-memory-sheet-20261014`；PR https://github.com/yecays-ai/veil/pull/187。涉及：`app/layout.tsx`、`app/messages/chat.css`、`app/settings/settings.css`、`components/chat/{chat-room,message-memory}.tsx`、`components/settings/ui/modal.{tsx,css}`、`components/profile-pages.tsx`、`tests/{contact-info,message-memory-ui,memory-bank-ui}.test.ts`。
 
 ## 已完成
 
@@ -19,8 +19,10 @@ Codex；分支 `codex/message-memory-sheet-20261014`；PR https://github.com/yec
 - 沿用原 memoryRefs 与 resolveInjected，只读对应消息实际注入版本；两个标签各自空状态；旧无 refs 回复明确未记录细节；不调用模型，不改 Memory/Journal 算法、存储、确认、删除。
 - ×、遮罩、Escape 关闭；内部点击不关闭；复用焦点陷阱，恢复焦点 preventScroll；message key 防止换消息沿用标签/异步结果。
 - 准确移除用户图三的 Character Background 底部 Memory / What … remembers 卡片；Memory App、Contact Info 新入口、数据与 Journal 保留。
-- 新增 3 个挂载测试在旧代码上失败（旧标题/无 tabpanel），修复后通过。Node 24.19.0：typecheck 通过；全仓 lint 0 错误、3 条 main 既有警告；webpack 生产 build 通过；8 个定向测试文件共 41/41（含 Sheet 空/有数据、无 refs、焦点/关闭，既有 Memory context、消息动作、Settings 和背景设置回归）。
+- 新增 3 个挂载测试在旧代码上失败（旧标题/无 tabpanel），修复后通过。Node 24.19.0：typecheck 通过；全仓 lint 0 错误、3 条 main 既有警告；webpack 生产 build 通过；9 个定向测试文件共 48/48（含 Sheet 空/有数据、无 refs、焦点/关闭，既有 Memory context、消息动作、Settings 和背景设置回归）。
 - 本机 Chrome 390×844 触摸屏条件：从真实消息动作 Memory 打开，CSS 定位/底部 Sheet、两个标签实际 IndexedDB 关联数据和空态、内部点击、×/遮罩/Escape、关闭无残留且 scrollTop 不变、Character 旧入口消失均通过，无 pageerror；隔离测试数据，无真实模型。
+
+- CI 初次完整套件在旧的 Character→Memory 卡片存在断言失败；本单授权删除该卡片，已将该挂载断言更新为背景内容保留、旧入口不存在，其余 Memory Bank/Journal 增删撤销测试未改且 7/7 通过。最终 CI 重新执行。
 
 ## 尚未验证
 
