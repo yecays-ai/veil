@@ -134,7 +134,7 @@ regressionContract("chat.scoped-subscription-cleanup", "subscription-hygiene",
   assert.equal(counts.reads, 2);
   assert.equal(publications, beforeUnmount);
   assert.equal(counts.active, 0);
-  assert.deepEqual(stopped, [session.id]);
+  assert.deepEqual(stopped, [], "leaving the page does not stop a reply the engine owns");
 });
 
 regressionContract("chat.obsolete-hydration-suppressed", "async-race-safety",
