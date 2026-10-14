@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 `feat/life-timeline-ui-20261014`；PR 待创建。新增 `components/chat/life-timeline.tsx`，仅接入 `components/chat/chat-room.tsx`、`app/messages/chat.css` 和定向 UI 合同测试。
+Codex；分支 `feat/life-timeline-ui-20261014`；PR https://github.com/yecays-ai/veil/pull/197。新增 `components/chat/life-timeline.tsx`，仅接入 `components/chat/chat-room.tsx`、`app/messages/chat.css` 和定向 UI 合同测试。
 
 ## 已完成
 
