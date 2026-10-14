@@ -941,7 +941,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           </div>
         </div>
       </>}
-      {memoryMessage && <MessageMemory message={memoryMessage} characterId={characterId} onClose={() => setMemoryMessage(null)} />}
+      {memoryMessage && <MessageMemory key={memoryMessage.id} message={memoryMessage} characterId={characterId} onClose={() => setMemoryMessage(null)} />}
       {editingMessage && <div className="chat-dialog-backdrop">
         <form className="chat-dialog" onSubmit={async (e) => { e.preventDefault();
           try { await chatStorage.editMessage(editingMessage.id, editText); setEditingMessage(null); showFeedback("Saved"); }

@@ -145,5 +145,5 @@ test("the social profile no longer shows Character State; it lives in Contact In
   const social = readFileSync("components/character-social-profile.tsx", "utf8");
   assert.doesNotMatch(social, /CharacterStatePanel|character-state-panel/);
   const pages = readFileSync("components/profile-pages.tsx", "utf8");
-  assert.match(pages, /\/memory\/\$\{encodeURIComponent\(characterId!\)\}/);
+  assert.doesNotMatch(pages, /What \{character!\.name\} remembers|\/memory\/\$\{encodeURIComponent\(characterId!\)\}/, "the obsolete Background footer entry is gone");
 });

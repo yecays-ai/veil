@@ -11,6 +11,7 @@ function Modal({
   sheet = false,
   suspended = false,
   headerAction,
+  className = "",
 }: {
   title: string;
   children: ReactNode;
@@ -18,6 +19,7 @@ function Modal({
   sheet?: boolean;
   suspended?: boolean;
   headerAction?: ReactNode;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const closeRef = useRef(onClose);
@@ -69,12 +71,12 @@ function Modal({
     document.addEventListener("keydown", keydown);
     return () => {
       document.removeEventListener("keydown", keydown);
-      if (previous?.isConnected) previous.focus();
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
     };
   }, [suspended]);
   return (
     <div
-      className={`settings-modal-overlay ${sheet ? "settings-modal-bottom" : ""}`}
+      className={`settings-modal-overlay ${sheet ? "settings-modal-bottom" : ""} ${className}`}
       inert={suspended}
       aria-hidden={suspended || undefined}
       onClick={(event) => {

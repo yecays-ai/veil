@@ -15,6 +15,7 @@ import "./desktop.css";
 import "./foundation.css";
 import "./mobile-foundation.css";
 import "./page-shell.css";
+import "../components/settings/ui/modal.css";
 
 export const metadata: Metadata = {
   title: "VEIL",

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { MEMORY_KIND_LABEL } from "../../lib/memory/bank";
 import { resolveInjected, type InjectedMemory } from "../../lib/memory/injected";
 import { browserMemoryStorage } from "../../lib/memory/instance";
@@ -8,11 +8,13 @@ import { BottomSheet } from "../settings/ui/modal";
 
 type Tab = "memories" | "journal";
 type Load = { state: "loading" } | { state: "failed" } | { state: "ready"; items: InjectedMemory[] };
+const TABS: [Tab, string][] = [["memories", "Long Term Memories"], ["journal", "Journal"]];
 
 /** What this reply was actually given from Memory. Read-only: it changes nothing and makes no request. */
 export function MessageMemory({ message, characterId, onClose }: { message: ChatMessage; characterId: string; onClose: () => void }) {
   const [tab, setTab] = useState<Tab>("memories");
   const [load, setLoad] = useState<Load>({ state: "loading" });
+  const tabId = useId();
   const refs = message.memoryRefs;
 
   useEffect(() => {
@@ -27,15 +29,21 @@ export function MessageMemory({ message, characterId, onClose }: { message: Chat
 
   const view: Load = refs?.length ? load : { state: "ready", items: [] };
   const items = view.state === "ready" ? view.items.filter((item) => !!item.ref.journal === (tab === "journal")) : [];
-  return <BottomSheet title="Memory" onClose={onClose}>
+  return <BottomSheet title="Long Term Memory" className="chat-memory-sheet" onClose={onClose}>
     <div className="chat-memory-tabs" role="tablist" aria-label="Memory used for this reply">
-      <button role="tab" aria-selected={tab === "memories"} onClick={() => setTab("memories")}>Long Term Memories</button>
-      <button role="tab" aria-selected={tab === "journal"} onClick={() => setTab("journal")}>Journal</button>
+      {TABS.map(([id, label], index) => <button key={id} type="button" role="tab" id={`${tabId}-${id}`} aria-controls={`${tabId}-panel`}
+        aria-selected={tab === id} tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)} onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
+          setTab(TABS[next][0]); document.getElementById(`${tabId}-${TABS[next][0]}`)?.focus();
+        }}>{label}</button>)}
     </div>
-    {refs === undefined ? <p className="subtle">Nothing was recorded for this reply. It was written before this feature existed, or Memory could not be read at the time.</p>
-      : view.state === "loading" ? <p className="subtle">Loading…</p>
+    <section role="tabpanel" id={`${tabId}-panel`} aria-labelledby={`${tabId}-${tab}`} tabIndex={0}>
+    {refs === undefined && <p className="subtle chat-memory-provenance">This reply did not record recalled memory details.</p>}
+    {view.state === "loading" ? <p className="subtle">Loading…</p>
       : view.state === "failed" ? <p role="alert">Memory could not be read. Close this and try again.</p>
-      : !items.length ? <p className="subtle">{tab === "journal" ? "No Journal entry was used for this reply." : "No long term memory was used for this reply."}</p>
+      : !items.length ? <p className="subtle chat-memory-empty">No recalled memories yet.</p>
       : <ul className="chat-memory-list">{items.map((item) => <li key={item.ref.id} className="chat-memory-item">
         {item.state === "deleted" ? <p className="subtle">This memory has been deleted.</p>
           : item.state === "unavailable" ? <p className="subtle">This version is no longer available.</p>
@@ -47,5 +55,6 @@ export function MessageMemory({ message, characterId, onClose }: { message: Chat
             </small>
           </>}
       </li>)}</ul>}
+    </section>
   </BottomSheet>;
 }

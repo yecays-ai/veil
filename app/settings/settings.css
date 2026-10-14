@@ -317,54 +317,6 @@
   font-size: 26px !important;
   font-weight: 400 !important;
 }
-.settings-modal-overlay {
-  position: absolute;
-  inset: 0 0 var(--app-keyboard-inset, 0px);
-  z-index: 5;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding-top: max(12px, var(--app-safe-top));
-  background: rgb(0 0 0 / 28%);
-}
-.settings-modal-bottom {
-  align-items: flex-end;
-}
-.settings-modal-sheet {
-  width: 100%;
-  max-height: 100%;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  border-radius: 22px 22px 0 0;
-  background: var(--theme-background);
-  box-shadow: 0 -4px 24px rgb(0 0 0 / 10%);
-}
-.settings-modal-header {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr) 64px;
-  align-items: center;
-  flex: none;
-  min-height: 56px;
-  padding: 0 12px;
-  border-bottom: 1px solid var(--settings-border);
-}
-.settings-modal-header > div {
-  text-align: right;
-}
-.settings-app .settings-modal-header h2 {
-  margin: 0;
-  font-size: 16px;
-  text-align: center;
-  letter-spacing: 0;
-}
-.settings-modal-body {
-  padding: 20px max(18px, var(--app-safe-right))
-    max(24px, var(--app-safe-bottom)) max(18px, var(--app-safe-left));
-  min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-}
 .settings-editor {
   display: grid;
   gap: 16px;
@@ -455,25 +407,6 @@
   .profile-chat-settings .global-timing-row > span:first-child { font-size: 13px; }
   .profile-chat-settings .global-timing-value { gap: 4px; }
   .profile-chat-settings .global-timing-row input { width: 58px; }
-}
-.settings-modal-dialog {
-  width: calc(100% - 32px);
-  max-width: 340px;
-  max-height: 90%;
-  display: flex;
-  flex-direction: column;
-  border-radius: 18px;
-  overflow: hidden;
-  background: var(--theme-background);
-  box-shadow: 0 12px 36px rgb(0 0 0 / 20%);
-}
-.settings-modal-dialog .settings-modal-header {
-  grid-template-columns: 44px minmax(0, 1fr) 44px;
-}
-.settings-modal-dialog p {
-  margin: 0 0 20px;
-  font-size: 14px;
-  line-height: 1.5;
 }
 
 .settings-backup-result {
