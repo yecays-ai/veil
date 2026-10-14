@@ -24,6 +24,7 @@ import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { chatStorage } from "../../lib/chat/storage";
 import { MessageMemory } from "./message-memory";
+import { LifeTimelineScreen } from "./life-timeline";
 import { withMemoryClear } from "../../lib/memory/browser";
 import { DEFAULT_BUBBLE_TIMING, type ChatMessage, type ChatSession } from "../../lib/chat/types";
 import {
@@ -940,6 +941,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         session={session}
         messages={messages}
         characterName={contactName}
+        character={character}
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
         pinned={session?.pinned === true}
@@ -1017,12 +1019,13 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
 }
 
-function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnline, autoReplyOnKeyboardDismiss, pinned,
+function ChatInfoScreen({ screenRef, session, messages, characterName, character, streamOnline, autoReplyOnKeyboardDismiss, pinned,
   canClear, onBack, onJumpToMessage, onUpdate, onClear }: {
   screenRef: React.Ref<HTMLElement>;
   session: ChatSession | null;
   messages: ChatMessage[];
   characterName: string;
+  character: { characterId: string; name: string; timezone: string | null } | undefined;
   streamOnline: boolean;
   autoReplyOnKeyboardDismiss: boolean;
   pinned: boolean;
@@ -1039,6 +1042,7 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnl
   const [backgroundOpen, setBackgroundOpen] = useState(false);
   const [customCSSOpen, setCustomCSSOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [lifeOpen, setLifeOpen] = useState(false);
   const [settingsError, setSettingsError] = useState("");
   const settingsScreenMounted = useRef(false);
   const settingsUpdateRevision = useRef(0);
@@ -1064,13 +1068,14 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnl
     const screen = typeof screenRef === "function" ? null : screenRef?.current;
     screen?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled), textarea:not(:disabled)")
       ?.focus({ preventScroll: true });
-  }, [backgroundOpen, customCSSOpen, searchOpen, screenRef]);
+  }, [backgroundOpen, customCSSOpen, searchOpen, lifeOpen, screenRef]);
   if (backgroundOpen && session)
     return <ChatBackgroundSettings screenRef={screenRef} session={session} onBack={() => setBackgroundOpen(false)} />;
   if (customCSSOpen && session)
     return <CustomCSSSettings screenRef={screenRef} session={session} onBack={() => setCustomCSSOpen(false)} />;
   if (searchOpen) return <ChatHistorySearchPage screenRef={screenRef} sessionId={session?.id ?? ""} messages={messages}
     characterName={characterName} onBack={() => setSearchOpen(false)} onJumpToMessage={onJumpToMessage} />;
+  if (lifeOpen && character) return <LifeTimelineScreen screenRef={screenRef} character={character} onBack={() => setLifeOpen(false)} />;
   return <section ref={screenRef} className="chat-info-screen" role="dialog" aria-modal="true" aria-label="Chat Info">
     <header className="chat-info-header">
       <button type="button" className="chat-info-back" aria-label="Back to conversation" onClick={onBack}>
@@ -1085,6 +1090,12 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, streamOnl
         <button type="button" className="chat-session-setting chat-info-row"
           onClick={() => setSearchOpen(true)}>
           <span>Search Chat History</span><ChevronRight aria-hidden="true" />
+        </button>
+      </section>
+      <section className="chat-info-group" aria-label="Character life">
+        <button type="button" className="chat-session-setting chat-info-row" disabled={!character}
+          onClick={() => setLifeOpen(true)}>
+          <span>Life<small>See what {characterName || "this Character"} has been doing.</small></span><ChevronRight aria-hidden="true" />
         </button>
       </section>
       <section className="chat-info-group" aria-label="Conversation settings">
