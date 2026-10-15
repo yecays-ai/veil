@@ -6,6 +6,7 @@ import { presenceLabel } from "../presence/view";
 import type { PresenceRecord } from "../presence/storage";
 import type { UserReactionNote } from "./reactions";
 import type { StickerChoice } from "./sticker-storage";
+import { lifeTimeline } from "../life/activity";
 import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
 
 /** What the Character knows about itself for one reply: read once per request, never stored or sent as history. */
@@ -18,6 +19,8 @@ export type SelfState = {
   status: Presence | null;
   situation: string | null;
   signature: string | null;
+  /** What its own day has it doing right now, and the small thing that has already happened during it; absent when a situation overrides the day or nothing is under way. */
+  activity?: { title: string; moment?: string };
   /** What the Character itself calls the user (its own note on them); null when none. */
   userNote: string | null;
   /** What the Character may change in this reply (its own cooldowns applied); null when it may change nothing (Continue). */
@@ -49,9 +52,11 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
   const change = contact?.lastRemarkChange;
   const remarkChange = announceChange && change && (lastReplyAt === null || change.createdAt > lastReplyAt)
     ? { from: change.fromRemark, to: change.toRemark } : null;
+  const current = effective.source === "situation" ? null : lifeTimeline(record?.life, now, 0).current;
   const noteCooldownMinutes = allowActions ? Math.ceil(noteCooldownRemaining(record, now) / 60_000) : 0;
   return { remark: normalizeContactRemark(contact?.remark), remarkChange, status: known ? effective.status : null,
     situation: effective.situation?.reason ?? null, signature: character.statusMessage?.trim() || null,
+    ...(current ? { activity: { title: current.title, ...(current.moment ? { moment: current.moment } : {}) } } : {}),
     userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null,
     ...(noteCooldownMinutes > 0 ? { noteCooldownMinutes } : {}),
     ...(allowActions && reactions?.canReact ? { canReact: true as const } : {}),
@@ -106,6 +111,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
   const lines = [
     state.status ? `Your current status: ${presenceLabel(state.status)}${state.situation ? ` (${state.situation})` : ""}.` : null,
     state.signature ? `Your signature: ${quoted(state.signature)}.` : null,
+    state.activity ? `What your day has you doing right now: ${quoted(state.activity.title)}.${state.activity.moment ? ` Something small already happened during it: ${quoted(state.activity.moment)}.` : ""} Background, needs no response: mention it only when it fits naturally, and never invent plans for later in the day.` : null,
     state.userNote ? `Your own note on the user, what you call them: ${quoted(state.userNote)}. Use it only when it fits naturally.` : null,
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
