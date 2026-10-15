@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-iwht8v`；PR：创建后补链接。涉及 `lib/chat/proactive.ts`、`tests/proactive-contact.test.ts`。不改调度、预算、状态规则或 `lib/memory/*`。
+Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-ai/veil/pull/209。涉及 `lib/chat/proactive.ts`、`tests/proactive-contact.test.ts`。不改调度、预算、状态规则或 `lib/memory/*`。
 
 ## 已完成
 
