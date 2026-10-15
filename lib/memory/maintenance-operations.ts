@@ -4,13 +4,17 @@ import { MAINTENANCE_LIMITS, sensitiveMemoryText, type MaintenanceSnapshot } fro
 import { ONGOING_REVIEW, ongoingDue, reviewAtFrom } from "./ongoing";
 import type { MemoryDraft, MemoryOngoing, MemorySource } from "./types";
 
-const invalid = (): never => { throw new Error("Invalid Memory maintenance operations."); };
+/** `json`: the response was not parseable JSON. `format`: it parsed but broke the operation contract. */
+export class MaintenanceParseError extends Error {
+  constructor(readonly stage: "json" | "format") { super("Invalid Memory maintenance operations."); }
+}
+const invalid = (): never => { throw new MaintenanceParseError("format"); };
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 /** No eval, repair request, ID supplied by the model, or trust in prompt-only permissions. */
 export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSnapshot, createId: () => string = () => crypto.randomUUID(), now: number = Date.now()) {
   if (raw.length > MAINTENANCE_LIMITS.outputCharacters) return invalid();
-  let parsed: unknown; try { parsed = JSON.parse(raw); } catch { return invalid(); }
+  let parsed: unknown; try { parsed = JSON.parse(raw); } catch { throw new MaintenanceParseError("json"); }
   if (!obj(parsed) || Object.keys(parsed).some((key) => key !== "operations") || !Array.isArray(parsed.operations)
     || parsed.operations.length > MAINTENANCE_LIMITS.operations) return invalid();
   const stateOperations = parseStateOperations(parsed.operations.filter((value) => obj(value) && String(value.op).startsWith("STATE_")),
@@ -18,6 +22,8 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
   const candidates = new Map(snapshot.candidates.map((r) => [r.id, r]));
   const manual = new Set(snapshot.manual.map((r) => r.id)), changed = new Set<string>(), newFingerprints = new Set<string>();
   const put: MemoryDraft[] = []; let discarded = 0;
+  // Counts only. `created` is CREATE; `updated` is every other operation that survives the local checks.
+  const counts = { ignored: 0, created: 0, updated: 0, droppedManual: 0, droppedTooLong: 0, droppedProtected: 0, droppedDuplicate: 0 };
   const createdLifecycleItems = new Set<string>();
   const blocked = (text: string, sources: MemorySource[]) => sensitiveMemoryText(text)
     || snapshot.manual.some((r) => r.fingerprint === memoryFingerprint(text))
@@ -27,7 +33,7 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
     if (obj(value) && String(value.op).startsWith("STATE_")) continue;
     if (!obj(value) || !str(value.op)) return invalid();
     const op = value.op;
-    if (op === "IGNORE") { if (Object.keys(value).length !== 1) return invalid(); continue; }
+    if (op === "IGNORE") { if (Object.keys(value).length !== 1) return invalid(); counts.ignored++; continue; }
     if (!["CREATE", "REINFORCE", "UPDATE", "SUPERSEDE", "MERGE", "ARCHIVE", "FLAG", "EXTEND"].includes(op)) return invalid();
     const creates = ["CREATE", "UPDATE", "SUPERSEDE", "MERGE"].includes(op);
     const fields = ["op", "messageIds", ...(creates ? ["text", "kind", "subject"] : []),
@@ -56,7 +62,7 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
     const sources = (value.messageIds as string[]).map((messageId) => ({ sessionId: snapshot.sessionId, messageId }));
     const ids: unknown[] = op === "CREATE" ? [] : op === "MERGE" ? Array.isArray(value.targetIds) ? value.targetIds : invalid() : [value.targetId];
     if ((op === "MERGE" && ids.length < 2) || new Set(ids).size !== ids.length || ids.some((id) => !str(id))) return invalid();
-    if (ids.some((id) => manual.has(id as string))) { discarded++; continue; }
+    if (ids.some((id) => manual.has(id as string))) { discarded++; counts.droppedManual++; continue; }
     const targets = ids.map((id) => candidates.get(id as string) ?? invalid());
     if (targets.some((r) => r.characterId !== snapshot.characterId || r.origin !== "auto" || r.status !== "active")
       || targets.some((r) => changed.has(r.id))) return invalid();
@@ -64,7 +70,7 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
       || !["fact", "event", "ongoing", "relationship", "continuity"].includes(String(value.kind))
       || !["character", "user", "other"].includes(String(value.subject)))) return invalid();
     // An over-long entry is dropped on its own: rejecting the batch would only repeat the paid request.
-    if (creates && (value.text as string).trim().length > MAINTENANCE_LIMITS.entryCharacters) { discarded++; continue; }
+    if (creates && (value.text as string).trim().length > MAINTENANCE_LIMITS.entryCharacters) { discarded++; counts.droppedTooLong++; continue; }
     if (creates && Object.hasOwn(value, "reviewInDays") && value.kind !== "ongoing") return invalid();
     if (op === "EXTEND" && targets.some((r) => r.kind !== "ongoing")) return invalid();
     if (op === "ARCHIVE") {
@@ -74,9 +80,10 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
     }
     const combined = [...new Map([...targets.flatMap((r) => r.sources), ...sources].map((s) => [`${s.sessionId}\0${s.messageId}`, s])).values()];
     if (blocked(creates ? value.text as string : targets[0].text, combined)
-      || targets.some((r) => blocked(r.text, r.sources))) { discarded++; continue; }
+      || targets.some((r) => blocked(r.text, r.sources))) { discarded++; counts.droppedProtected++; continue; }
     if (!creates) {
       const target = targets[0];
+      counts.updated++;
       changed.add(target.id);
       const { id, characterId, text, kind, subject, origin, status, lineage } = target;
       let ongoing: MemoryOngoing | undefined = target.ongoing;
@@ -88,8 +95,9 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
     }
     const text = (value.text as string).trim(), fingerprint = memoryFingerprint(text);
     // Exact duplicate CREATE is discarded locally, never converted to an unauthorized target.
-    if (!fingerprint || newFingerprints.has(fingerprint) || snapshot.candidates.some((r) => r.fingerprint === fingerprint)) { discarded++; continue; }
+    if (!fingerprint || newFingerprints.has(fingerprint) || snapshot.candidates.some((r) => r.fingerprint === fingerprint)) { discarded++; counts.droppedDuplicate++; continue; }
     newFingerprints.add(fingerprint);
+    if (op === "CREATE") counts.created++; else counts.updated++;
     const id = createId();
     if (!str(id) || put.some((r) => r.id === id) || candidates.has(id) || manual.has(id)) return invalid();
     for (const target of targets) {
@@ -106,5 +114,5 @@ export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSna
       // A new or rewritten ongoing matter only has a review time when the model gave one; no old time is carried over.
       ...(value.kind === "ongoing" && Object.hasOwn(value, "reviewInDays") ? { ongoing: { reviewAt: reviewAtFrom(now, value.reviewInDays as number) } } : {}) });
   }
-  return { put, stateOperations, discarded, operationCount: parsed.operations.length };
+  return { put, stateOperations, discarded, operationCount: parsed.operations.length, counts: { ...counts, state: stateOperations.length } };
 }

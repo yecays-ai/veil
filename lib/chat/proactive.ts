@@ -34,7 +34,7 @@ export function maybeSilence(text: string): boolean {
 }
 
 export const PROACTIVE_INSTRUCTION = [
-  "The user has not written to you. Decide, as this Character, whether you would message them right now for a reason that fits your own life, the time, and your history together.",
+  "The user has not written to you. Decide, as this Character, whether you would message them right now for a reason that fits your own life, the time, and your history together. Something small that has already happened in your day can be that reason, but it is never required.",
   `If you would not, reply with exactly ${SILENCE_TAG} and nothing else.`,
   "If you would, write the message itself in your own voice. Do not mention that you were asked or prompted, and do not repeat what you already said.",
 ].join(" ");

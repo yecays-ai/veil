@@ -61,6 +61,8 @@ import { useTransferActions } from "./transfers/use-transfer-actions";
 import { GiftComposer } from "./gifts/gift-composer";
 import { useGiftActions } from "./gifts/use-gift-actions";
 
+const LIFE_MODE_NOTICE = "Life Mode is on: they answer in their own time. Turn it off in Chat Info to get an answer now.";
+
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
   useLayoutEffect(() => {
@@ -520,6 +522,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   async function reply(source: "manual-reply" | "keyboard-auto-reply" = "manual-reply", retry?: NonNullable<typeof failedDraft>) {
+    // Life Mode: the Character answers in its own time, so no button or setting asks for a reply right now.
+    if (session?.lifeMode === true && session.characterId === characterId) { showFeedback(LIFE_MODE_NOTICE); return; }
     if (!session || session.characterId !== characterId || replyLock.current || sendingLock.current ||
       generationActive || chatEngine.isGenerating(session.id) || loadError) return;
     const sessionId = session.id;
@@ -606,6 +610,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   async function updateSetting(patch: {
     streamOnline?: boolean;
     autoReplyOnKeyboardDismiss?: boolean;
+    lifeMode?: boolean;
     pinned?: boolean;
     backgroundImage?: string | null;
     backgroundBlur?: number | null;
@@ -789,14 +794,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               }}>
               <Square aria-hidden="true" />
             </button>
-          ) : session?.autoReplyOnKeyboardDismiss !== true ? (
+          ) : session?.autoReplyOnKeyboardDismiss !== true || session.lifeMode === true ? (
             <button
               type="button"
               className="chat-composer-icon chat-request-reply"
               aria-label="Request Reply"
               title="Request Reply"
               onPointerDown={(e) => e.preventDefault()}
-              disabled={!session || (!pending && !draft.trim()) || sending || !!loadError}
+              disabled={!session || (session.lifeMode !== true && !pending && !draft.trim()) || sending || !!loadError}
               onClick={() => void reply()}
             >
               <Sparkles aria-hidden="true" />
@@ -830,6 +835,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         character={character}
         streamOnline={session?.streamOnline === true}
         autoReplyOnKeyboardDismiss={session?.autoReplyOnKeyboardDismiss === true}
+        lifeMode={session?.lifeMode === true}
         pinned={session?.pinned === true}
         canClear={messages.length > 0 && !generationActive}
         onBack={() => setChatInfoOpen(false)}
@@ -890,7 +896,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   );
 }
 
-function ChatInfoScreen({ screenRef, session, messages, characterName, character, streamOnline, autoReplyOnKeyboardDismiss, pinned,
+function ChatInfoScreen({ screenRef, session, messages, characterName, character, streamOnline, autoReplyOnKeyboardDismiss, lifeMode, pinned,
   canClear, onBack, onJumpToMessage, onUpdate, onClear }: {
   screenRef: React.Ref<HTMLElement>;
   session: ChatSession | null;
@@ -899,6 +905,7 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, character
   character: { characterId: string; name: string; timezone: string | null } | undefined;
   streamOnline: boolean;
   autoReplyOnKeyboardDismiss: boolean;
+  lifeMode: boolean;
   pinned: boolean;
   canClear: boolean;
   onBack: () => void;
@@ -906,6 +913,7 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, character
   onUpdate: (patch: {
     streamOnline?: boolean;
     autoReplyOnKeyboardDismiss?: boolean;
+    lifeMode?: boolean;
     pinned?: boolean;
   }) => Promise<void>;
   onClear: () => void;
@@ -924,6 +932,7 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, character
   async function updateSettings(patch: {
     streamOnline?: boolean;
     autoReplyOnKeyboardDismiss?: boolean;
+    lifeMode?: boolean;
     pinned?: boolean;
   }) {
     const revision = ++settingsUpdateRevision.current;
@@ -991,8 +1000,14 @@ function ChatInfoScreen({ screenRef, session, messages, characterName, character
           <small>Show replies as they are generated.</small></span>
           <Switch checked={streamOnline} disabled={!session}
             onChange={(checked) => void updateSettings({ streamOnline: checked })} /></label>
-        <label className="chat-session-setting chat-info-toggle"><span>Reply When Keyboard Closes</span>
-          <Switch checked={autoReplyOnKeyboardDismiss} disabled={!session}
+        <label className="chat-session-setting chat-info-toggle"><span>Life Mode
+          <small>{lifeMode ? "Just send. They answer in their own time; if they are away too long, your message waits. Turn off, then Request Reply, to get an answer now."
+            : "Just send messages; they reply on their own rhythm instead of at once."}</small></span>
+          <Switch checked={lifeMode} disabled={!session || session.type === "group"}
+            onChange={(checked) => void updateSettings({ lifeMode: checked })} /></label>
+        <label className="chat-session-setting chat-info-toggle"><span>Reply When Keyboard Closes
+          {lifeMode && <small>Not used while Life Mode is on.</small>}</span>
+          <Switch checked={autoReplyOnKeyboardDismiss} disabled={!session || lifeMode}
             onChange={(checked) => void updateSettings({ autoReplyOnKeyboardDismiss: checked })} /></label>
       </section>
       <section className="chat-info-group chat-info-danger-group" aria-label="Danger">

@@ -1,10 +1,11 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { browserApiConfigStorage } from "../../lib/api-config-storage";
 import { browserBindingStorage } from "../../lib/binding-storage";
 import { chatStorage } from "../../lib/chat/storage";
 import { readUsageBaseline, type UsageBaselineRecord } from "../../lib/chat/usage-baseline";
 import { browserMemoryStorage } from "../../lib/memory/browser";
+import { browserMaintenanceDiagnosticStore, createMaintenanceDiagnostics, describeMaintenanceResult, MAINTENANCE_RESULTS_EVENT, pairMaintenanceResults, type MaintenanceDiagnostic } from "../../lib/memory/maintenance-diagnostics";
 import {
   MAINTENANCE_CONFIG_EVENT, MAINTENANCE_CONSENT_KEY, maintenanceConsentStored, maintenanceReleaseApproved,
   maintenanceReleaseChecks, setMaintenanceConsent,
@@ -60,6 +61,12 @@ export function MemoryMaintenanceSettings() {
   const [release, setRelease] = useState<Release | null>(null);
   const [rows, setRows] = useState<CharacterRow[] | null>(null);
   const [requests, setRequests] = useState<UsageBaselineRecord[]>([]);
+  const [results, setResults] = useState<MaintenanceDiagnostic[]>([]);
+  // Pair against every stored request so only the newest few are shown, never a wrongly matched older one.
+  const paired = useMemo(() => {
+    const all = pairMaintenanceResults(requests, results);
+    return { pairs: all.pairs, unpaired: all.unpaired.filter((d) => d.stage === "too-large" || d.stage === "preflight" || d.stage === "all-redacted") };
+  }, [requests, results]);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
@@ -69,8 +76,12 @@ export function MemoryMaintenanceSettings() {
     const storage = (event: StorageEvent) => { if (event.key === MAINTENANCE_CONSENT_KEY) sync(); };
     sync();
     window.addEventListener(MAINTENANCE_CONFIG_EVENT, sync); window.addEventListener("storage", storage);
-    return () => { window.removeEventListener(MAINTENANCE_CONFIG_EVENT, sync); window.removeEventListener("storage", storage); };
-  }, []);
+    window.addEventListener(MAINTENANCE_RESULTS_EVENT, refresh);
+    return () => {
+      window.removeEventListener(MAINTENANCE_CONFIG_EVENT, sync); window.removeEventListener("storage", storage);
+      window.removeEventListener(MAINTENANCE_RESULTS_EVENT, refresh);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     if (!ready || !release) return;
@@ -91,7 +102,8 @@ export function MemoryMaintenanceSettings() {
       })));
       if (!current) return;
       setRows(next); setError("");
-      setRequests(readUsageBaseline().filter((row) => row.source === "memory-maintenance").slice(-5).reverse());
+      setRequests(readUsageBaseline().filter((row) => row.source === "memory-maintenance").reverse());
+      setResults(createMaintenanceDiagnostics(true, browserMaintenanceDiagnosticStore).read());
     })().catch(() => { if (current) setError("Status could not be read. Try Refresh."); });
     return () => { current = false; };
   }, [ready, release, document.characters, revision]);
@@ -134,11 +146,17 @@ export function MemoryMaintenanceSettings() {
     <div className="settings-card settings-memory-status">
       <strong>Recent maintenance requests</strong>
       {!requests.length ? <span>None on this device yet.</span> : <ul>
-        {requests.map((row) => <li key={`${row.at}-${row.durationMs}`}>
+        {requests.slice(0, 5).map((row) => <li key={`${row.at}-${row.durationMs}`}>
           <span>{time(row.at)} · {row.outcome} · {row.totalTokens === null ? "tokens unknown" : `${row.totalTokens} tokens`} · {(row.durationMs / 1000).toFixed(1)} s</span>
+          <span>{paired.pairs.has(row) ? describeMaintenanceResult(paired.pairs.get(row)!) : "Result not recorded (earlier than this diagnostic)"}</span>
         </li>)}
       </ul>}
     </div>
+    {paired.unpaired.length > 0 && <div className="settings-card settings-memory-status">
+      <strong>Batches that sent no request</strong>
+      <ul>{paired.unpaired.slice(-5).reverse().map((d) => <li key={`${d.at}-${d.durationMs}`}>
+        <span>{time(d.at!)} · messages {d.fromSeq ?? "?"}–{d.toSeq ?? "?"}</span><span>{describeMaintenanceResult(d)}</span></li>)}</ul>
+    </div>}
     <button className="settings-card settings-backup-action settings-memory-refresh" type="button" onClick={refresh}>
       <span className="settings-card-copy"><strong>Refresh</strong></span>
     </button>

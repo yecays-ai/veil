@@ -1,11 +1,12 @@
 import type { Character, Presence } from "../foundation-types";
 import type { Contact } from "../contact-storage";
 import { normalizeContactRemark } from "../contact-storage";
-import { effectivePresence } from "../presence/compute";
+import { effectivePresence, nextPresenceChange, type PresenceInputs } from "../presence/compute";
 import { presenceLabel } from "../presence/view";
 import type { PresenceRecord } from "../presence/storage";
 import type { UserReactionNote } from "./reactions";
 import type { StickerChoice } from "./sticker-storage";
+import { lifeTimeline } from "../life/activity";
 import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
 
 /** What the Character knows about itself for one reply: read once per request, never stored or sent as history. */
@@ -18,10 +19,14 @@ export type SelfState = {
   status: Presence | null;
   situation: string | null;
   signature: string | null;
+  /** What its own day has it doing right now, and the small thing that has already happened during it; absent when a situation overrides the day or nothing is under way. */
+  activity?: { title: string; moment?: string };
   /** What the Character itself calls the user (its own note on them); null when none. */
   userNote: string | null;
   /** What the Character may change in this reply (its own cooldowns applied); null when it may change nothing (Continue). */
   canChange: ActionAllowance | null;
+  /** Life Mode only: busy time is about to start ("soon") or just started ("now"), so a chat under way may end naturally. */
+  leaving?: "soon" | "now";
   noteCooldownMinutes?: number;
   /** The Character may react to the user's message this reply answers. */
   canReact?: true;
@@ -42,16 +47,21 @@ export type ReactionState = { canReact: boolean; notes: UserReactionNote[] };
  */
 export function selfState(character: Pick<Character, "characterId" | "timezone" | "statusMessage">,
   contact: Pick<Contact, "remark" | "lastRemarkChange"> | undefined, record: PresenceRecord | undefined, now: number,
-  lastReplyAt: number | null = null, announceChange = true, allowActions = true, reactions?: ReactionState): SelfState {
-  const effective = effectivePresence({ characterId: character.characterId, timezone: character.timezone,
-    routine: record?.routine?.routine ?? null, situations: record?.situations ?? [] }, now);
+  lastReplyAt: number | null = null, announceChange = true, allowActions = true, reactions?: ReactionState, lifeMode = false): SelfState {
+  const inputs: PresenceInputs = { characterId: character.characterId, timezone: character.timezone,
+    routine: record?.routine?.routine ?? null, situations: record?.situations ?? [] };
+  const effective = effectivePresence(inputs, now);
   const known = effective.source === "situation" || !!record?.routine;
   const change = contact?.lastRemarkChange;
   const remarkChange = announceChange && change && (lastReplyAt === null || change.createdAt > lastReplyAt)
     ? { from: change.fromRemark, to: change.toRemark } : null;
+  const current = effective.source === "situation" ? null : lifeTimeline(record?.life, now, 0).current;
+  const leaving = lifeMode && allowActions && known ? leavingBusy(inputs, effective.status, now) : undefined;
   const noteCooldownMinutes = allowActions ? Math.ceil(noteCooldownRemaining(record, now) / 60_000) : 0;
   return { remark: normalizeContactRemark(contact?.remark), remarkChange, status: known ? effective.status : null,
     situation: effective.situation?.reason ?? null, signature: character.statusMessage?.trim() || null,
+    ...(leaving ? { leaving } : {}),
+    ...(current ? { activity: { title: current.title, ...(current.moment ? { moment: current.moment } : {}) } } : {}),
     userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null,
     ...(noteCooldownMinutes > 0 ? { noteCooldownMinutes } : {}),
     ...(allowActions && reactions?.canReact ? { canReact: true as const } : {}),
@@ -59,6 +69,14 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     ...(allowActions ? { canTransfer: true as const } : {}),
     ...(allowActions ? { canGift: true as const } : {}),
     ...(reactions?.notes.length ? { userReactions: reactions.notes } : {}) };
+}
+
+const LEAVING_WINDOW_MS = 10 * 60_000;
+/** Busy starts within ten minutes ("soon") or began within the last ten ("now"); nothing otherwise. Plain Presence arithmetic, no model call. */
+function leavingBusy(inputs: PresenceInputs, status: Presence, now: number): "soon" | "now" | undefined {
+  if (status === "busy") return effectivePresence(inputs, now - LEAVING_WINDOW_MS).status !== "busy" ? "now" : undefined;
+  const change = nextPresenceChange(inputs, now, LEAVING_WINDOW_MS);
+  return change !== null && effectivePresence(inputs, change).status === "busy" ? "soon" : undefined;
 }
 
 const quoted = (value: string) => JSON.stringify(value);
@@ -106,6 +124,8 @@ export function selfStateContent(state: SelfState | undefined): string | null {
   const lines = [
     state.status ? `Your current status: ${presenceLabel(state.status)}${state.situation ? ` (${state.situation})` : ""}.` : null,
     state.signature ? `Your signature: ${quoted(state.signature)}.` : null,
+    state.activity ? `What your day has you doing right now: ${quoted(state.activity.title)}.${state.activity.moment ? ` Something small already happened during it: ${quoted(state.activity.moment)}.` : ""} Background, needs no response: mention it only when it fits naturally, and never invent plans for later in the day.` : null,
+    state.leaving ? `${state.leaving === "soon" ? "Your busy time is about to start." : "Your busy time has just started."} If you are in the middle of a chat, you may say naturally that you have to go and will reply later, only when it fits; most replies need no goodbye, and you never have to explain.` : null,
     state.userNote ? `Your own note on the user, what you call them: ${quoted(state.userNote)}. Use it only when it fits naturally.` : null,
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
