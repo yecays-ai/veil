@@ -60,7 +60,7 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     ? { from: change.fromRemark, to: change.toRemark } : null;
   const current = effective.source === "situation" ? null : lifeTimeline(record?.life, now, 0).current;
   const recent = recentLife(record?.life, inputs.situations, now).map((item) => ({
-    when: `${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}`,
+    when: `${localDay(item.startsAt, now, character.timezone)}${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}`,
     title: item.title, ...(item.moment ? { moment: item.moment } : {}) }));
   const leaving = lifeMode && allowActions && known ? leavingBusy(inputs, effective.status, now) : undefined;
   const noteCooldownMinutes = allowActions ? Math.ceil(noteCooldownRemaining(record, now) / 60_000) : 0;
@@ -81,6 +81,13 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
 function localClock(instant: number, timezone: string | null) {
   const format = (zone: string | undefined) => new Intl.DateTimeFormat("en-GB", { timeZone: zone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(instant);
   try { return format(timezone ?? "UTC"); } catch { return format("UTC"); }
+}
+
+/** "yesterday " for a time on an earlier local calendar day than `now`, otherwise nothing. */
+function localDay(instant: number, now: number, timezone: string | null) {
+  const day = (value: number, zone: string) => new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(value);
+  try { return day(instant, timezone ?? "UTC") === day(now, timezone ?? "UTC") ? "" : "yesterday "; }
+  catch { return day(instant, "UTC") === day(now, "UTC") ? "" : "yesterday "; }
 }
 
 const LEAVING_WINDOW_MS = 10 * 60_000;
@@ -137,7 +144,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.status ? `Your current status: ${presenceLabel(state.status)}${state.situation ? ` (${state.situation})` : ""}.` : null,
     state.signature ? `Your signature: ${quoted(state.signature)}.` : null,
     state.activity ? `What your day has you doing right now: ${quoted(state.activity.title)}.${state.activity.moment ? ` Something small already happened during it: ${quoted(state.activity.moment)}.` : ""} Background, needs no response: mention it only when it fits naturally, and never invent plans for later in the day.` : null,
-    state.recent ? `Earlier today, from VEIL's rough record of your day (an outline of your rhythm, not verified events; times are your local time): ${state.recent.map((item) => `${item.when} ${quoted(item.title)}${item.moment ? ` (a small thing happened: ${quoted(item.moment)})` : ""}`).join("; ")}. Background, needs no response: you may draw on it naturally when the user asks about your day or it truly fits. Do not recite it, do not bring it up every time, do not invent details beyond it, and do not assume the user already knows about it.` : null,
+    state.recent ? `From VEIL's rough record of your last hours (an outline of your rhythm, not verified events; times are your local time): ${state.recent.map((item) => `${item.when} ${quoted(item.title)}${item.moment ? ` (a small thing happened: ${quoted(item.moment)})` : ""}`).join("; ")}. Background, needs no response: you may draw on it naturally when the user asks about your day or it truly fits. Do not recite it, do not bring it up every time, do not invent details beyond it, and do not assume the user already knows about it.` : null,
     state.leaving ? `${state.leaving === "soon" ? "Your busy time is about to start." : "Your busy time has just started."} If you are in the middle of a chat, you may say naturally that you have to go and will reply later, only when it fits; most replies need no goodbye, and you never have to explain.` : null,
     state.userNote ? `Your own note on the user, what you call them: ${quoted(state.userNote)}. Use it only when it fits naturally.` : null,
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,

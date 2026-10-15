@@ -22,18 +22,19 @@ function subtract(activity: LifeActivity, covers: readonly [number, number][]): 
 /**
  * What the Character's own day has already finished in the last hours, for its reply context. A situation is the
  * Character's own word and wins over the projected day: Life time it covers is cut away, and only the leftover time
- * stays. Only finished time is returned; the running activity and anything planned ahead are not here, and a Moment
+ * stays. Everything is clipped to the window. Only finished time is returned; the running activity and anything planned ahead are not here, and a Moment
  * appears only when its reveal time has passed inside the kept stretch.
  */
 export function recentLife(life: LifeState | undefined, situations: readonly PresenceSituation[], now: number,
   limit = LIFE_RECENT_LIMIT, windowMs = LIFE_RECENT_WINDOW_MS): LifeRecentEntry[] {
   const covers = situations.filter((item) => item.startsAt < now).map((item): [number, number] => [item.startsAt, Math.min(item.endsAt, now)]);
+  const since = now - windowMs;
   const pieces: Piece[] = [
-    ...(life?.activities ?? []).filter((item) => item.endsAt <= now && item.endsAt > now - windowMs).flatMap((item) => subtract(item, covers)),
+    ...(life?.activities ?? []).filter((item) => item.endsAt <= now && item.endsAt > since).flatMap((item) => subtract(item, [...covers, [-Infinity, since]])),
     ...situations.flatMap((item): Piece[] => {
       const reason = item.reason?.trim();
-      return reason && item.endsAt <= now && item.endsAt > now - windowMs && item.endsAt - item.startsAt >= MIN_PIECE_MS
-        ? [{ kind: "situation", title: reason.slice(0, 80), startsAt: item.startsAt, endsAt: item.endsAt }] : [];
+      return reason && item.endsAt <= now && item.endsAt > now - windowMs && item.endsAt - Math.max(item.startsAt, since) >= MIN_PIECE_MS
+        ? [{ kind: "situation", title: reason.slice(0, 80), startsAt: Math.max(item.startsAt, since), endsAt: item.endsAt }] : [];
     }),
   ].sort((a, b) => a.startsAt - b.startsAt || a.endsAt - b.endsAt);
   const merged: Piece[] = [];
