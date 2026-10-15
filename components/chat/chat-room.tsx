@@ -539,7 +539,6 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     sendingLock.current = true;
     setSending(true);
     setError("");
-    setPanel(null);
     try {
       nearBottom.current = { characterId, sessionId, value: true };
       await chatEngine.sendSticker(sessionId, sticker, quote?.id, { interject });
@@ -704,6 +703,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       } as CSSProperties : undefined}
       data-chat-background={framePublished && chatBackground.url ? "custom" : "default"}
       data-chat-background-entry={framePublished && chatBackground.url && chatBackground.late ? "fade" : undefined}
+      data-chat-ready={framePublished ? "" : undefined}
       data-context-menu-open={activeMessage ? "" : undefined}>
       {framePublished && session?.customCSS && <SessionCustomCSS css={session.customCSS} />}
       <ChatHeader key="header" settingsTrigger={settingsTrigger} presence={presence.ready ? presence.status : undefined} generating={generationActive}
@@ -812,6 +812,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             value={draft}
             disabled={!session || !!loadError}
             placeholder="Message…"
+            onFocus={() => setPanel(null)}
             onChange={(e) => { draftEditVersion.current += 1; setDraft(e.target.value); }}
           />
           <span className="chat-voice-slot" aria-hidden="true" />

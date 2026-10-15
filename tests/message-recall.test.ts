@@ -29,25 +29,27 @@ test("recall clears message text, replaces quoted previews and excludes it from 
   foundation.characters = [character];
   const prompt = assembleChatPrompt(foundation, character, messages, [], emptyMemorySlot());
   assert.doesNotMatch(prompt.messages.map((message) => message.content).join("\n"), /private sentence/);
+  assert.match(prompt.messages.map((message) => message.content).join("\n"), /\[User recalled a message\]/);
   assert.match(prompt.messages.map((message) => message.content).join("\n"), /This message has been recalled\./);
 });
 
-test("recall is sender-only and Character action targets only its own previous reply", async () => {
+test("recall is sender-only and Character Action can target any eligible own message by ID", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("recall");
   const user = await storage.send(session.id, "user line");
   const firstReply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "first reply"))[0];
   await storage.send(session.id, "second user line");
   const secondReply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "second reply"))[0];
-  await assert.rejects(storage.recallMessage(user.id, "assistant"), /own sent message/);
-  await assert.rejects(storage.recallMessage(firstReply.id, "user"), /own sent message/);
-  const recalled = await storage.recallPreviousAssistantMessage(secondReply.id);
-  assert.equal(recalled?.id, firstReply.id);
+  await assert.rejects(storage.recallMessage(user.id, "assistant"), /own message sent/);
+  await assert.rejects(storage.recallMessage(firstReply.id, "user"), /own message sent/);
+  assert.equal(await storage.recallAssistantMessageForReply(secondReply.id, firstReply.id), true);
+  const recalled = (await storage.readSession(session.id)).messages.find((message) => message.id === firstReply.id);
+  assert.equal(recalled?.recalled?.by, "assistant");
   assert.equal((await storage.readSession(session.id)).messages.find((message) => message.id === user.id)?.content, "user line");
-  assert.equal(splitActions('<veil-action>{"recallPrevious":true}</veil-action>').actions?.recallPrevious, true);
+  assert.deepEqual(splitActions('<veil-action>{"recallMessageId":"message-12345678"}</veil-action>').actions, { recallMessageId: "message-12345678" });
 });
 
-test("Character recall skips failed replies when selecting its previous completed reply", async () => {
+test("Character recall rejects failed or incomplete targets but accepts any completed own target", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("recall-status");
   await storage.send(session.id, "Question");
@@ -57,8 +59,10 @@ test("Character recall skips failed replies when selecting its previous complete
   await storage.updateReply(failedId, { content: "Failed reply", status: "error", error: "provider failed" });
   await storage.send(session.id, "Another follow-up");
   const current = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "Current reply"))[0];
-  const recalled = await storage.recallPreviousAssistantMessage(current.id);
-  assert.equal(recalled?.id, first.id);
+  await assert.rejects(storage.recallAssistantMessageForReply(current.id, failedId), /own message sent/);
+  await storage.recallAssistantMessageForReply(current.id, first.id);
+  const recalled = (await storage.readSession(session.id)).messages.find((message) => message.id === first.id);
+  assert.equal(recalled?.recalled?.by, "assistant");
   assert.equal((await storage.readSession(session.id)).messages.find((message) => message.id === failedId)?.content, "Failed reply");
 });
 
@@ -67,13 +71,13 @@ test("ChatRoom exposes recall only through the extracted message action overlay"
   const actions = readFileSync("components/chat/message-actions/use-message-actions.ts", "utf8");
   const overlay = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
   assert.match(room, /useMessageActions/);
-  assert.match(actions, /chatStorage\.recallMessage\(message\.id, "user"\)/);
+  assert.match(actions, /chatStorage\.recallMessage\(message\.id, "user", undefined, session\?\.id\)/);
   assert.match(actions, /chatStorage\.setReaction\(/);
   assert.match(actions, /chatStorage\.deleteMessages\(/);
   assert.match(actions, /navigator\.clipboard\.writeText/);
   assert.doesNotMatch(room, /chatStorage\.(?:recallMessage|setReaction|deleteMessages)\(/);
   assert.doesNotMatch(room, /navigator\.clipboard\.writeText/);
-  assert.match(overlay, /activeMessage\.role === "user"[\s\S]*?label="Recall"/);
+  assert.match(overlay, /canRecallMessage\(activeMessage, "user", recallNow\)/);
 });
 
 test("backup preserves a recalled message after its body has been cleared", async () => {

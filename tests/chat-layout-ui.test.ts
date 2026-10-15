@@ -10,6 +10,8 @@ const globalCss = readFileSync("app/globals.css", "utf8");
 const layout = readFileSync("app/layout.tsx", "utf8");
 const appearance = readFileSync("app/appearance.css", "utf8");
 const mobile = readFileSync("app/mobile-foundation.css", "utf8");
+const messagesLayout = readFileSync("app/messages/layout.tsx", "utf8");
+const routeTransition = readFileSync("app/messages/route-transition.tsx", "utf8");
 
 function rule(selector: string): string {
   const pattern = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -244,4 +246,36 @@ test("standalone diagnostics never render an Enable DIAG overlay", () => {
   assert.doesNotMatch(diagnostics, /Enable DIAG|StandaloneDiagnosticsOptIn/);
   assert.match(diagnostics, /get\("veilDiagnostics"\) === "1"/);
   assert.match(diagnostics, /<DiagnosticsPanel onDisable=\{onDisable\} \/>/);
+});
+
+test("Messages navigation transitions the full route page in both directions and respects reduced motion", () => {
+  assert.match(messagesLayout, /<MessagesRouteTransition>\{children\}<\/MessagesRouteTransition>/);
+  assert.match(routeTransition, /router\.push\(url\.pathname/);
+  assert.doesNotMatch(routeTransition, /addEventListener\("popstate"/);
+  assert.match(routeTransition, /url\.pathname === "\/messages" && PRIVATE_CHAT\.test\(currentPath\.current\) \? "back"/);
+  assert.match(routeTransition, /prefers-reduced-motion: reduce/);
+  assert.match(css, /\.messages-route-frame\s*\{[^}]*view-transition-name:\s*messages-route/);
+  assert.match(css, /\.messages-route-frame > \.chat-room\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*flex:\s*1 1 0/);
+  assert.match(css, /view-transition-new\(messages-route\)[^{]*\{[^}]*messages-route-forward-in/);
+  assert.match(css, /view-transition-old\(messages-route\)[^{]*\{[^}]*messages-route-back-out/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?view-transition-group\(messages-route\)/);
+});
+
+test("Messages navigation starts from Link onNavigate, so a row's swipe-suppressed click never navigates", () => {
+  const home = readFileSync("components/chat/messages-home.tsx", "utf8");
+  const header = readFileSync("components/chat/chat-header.tsx", "utf8");
+  assert.doesNotMatch(routeTransition, /addEventListener\("click"/);
+  assert.match(home, /onNavigate=\{onNavigate\(/);
+  assert.match(header, /onNavigate=\{onNavigate\("\/messages"\)\}/);
+});
+
+test("Messages navigation slides a complete, opaque chat page and keeps the leaving chat on top going back", () => {
+  const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+  assert.match(room, /data-chat-ready=\{framePublished \? "" : undefined\}/);
+  assert.match(routeTransition, /PRIVATE_CHAT\.test\(path\) \|\| !!frame\.querySelector\("\.chat-room\[data-chat-ready\]"\)/);
+  assert.match(routeTransition, /ARRIVAL_LIMIT_MS = 1500/);
+  assert.match(routeTransition, /window\.setTimeout\(finish, ARRIVAL_LIMIT_MS\)/);
+  assert.match(routeTransition, /attributeFilter: \["data-messages-route", "data-chat-ready"\]/);
+  assert.match(css, /\.messages-route-frame\s*\{[^}]*background:\s*var\(--theme-background\)/);
+  assert.match(css, /data-messages-nav="back"\]::view-transition-old\(messages-route\)\s*\{[^}]*z-index:\s*1/);
 });

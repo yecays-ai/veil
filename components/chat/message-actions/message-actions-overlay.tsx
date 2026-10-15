@@ -1,10 +1,11 @@
 "use client";
 
-import { Bookmark, Brain, CircleCheck, Copy, Pencil, Plus, Quote, RotateCcw, Trash2, Undo2, type LucideIcon } from "lucide-react";
-import type { RefObject } from "react";
+import { Brain, CircleCheck, Copy, Pencil, Plus, Quote, RotateCcw, Trash2, Undo2, type LucideIcon } from "lucide-react";
+import { useEffect, useState, type RefObject } from "react";
 import { canReactTo } from "../../../lib/chat/reactions";
 import { getMessageActions } from "../../../lib/chat/message-action-registry";
 import { canRegenerateTurn } from "../../../lib/chat/turns";
+import { canRecallMessage } from "../../../lib/chat/recall";
 import type { ChatMessage } from "../../../lib/chat/types";
 import { ReactionBar, ReactionPickerSheet } from "../reaction-bar";
 
@@ -31,7 +32,17 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
   onRecall: () => void;
   onRunRegisteredAction: (id: string) => void;
 }) {
+  const [recallNow, setRecallNow] = useState(activeMessage?.sentAt ?? 0);
+  const recallCandidate = activeMessage?.role === "user" && activeMessage.status === "sent" && !generationActive;
+  useEffect(() => {
+    if (!recallCandidate) return;
+    const refresh = () => setRecallNow(Date.now());
+    refresh();
+    const timer = window.setInterval(refresh, 250);
+    return () => window.clearInterval(timer);
+  }, [recallCandidate, activeMessage?.id, activeMessage?.sentAt]);
   if (!activeMessage) return null;
+  const recallAllowed = canRecallMessage(activeMessage, "user", recallNow) && !generationActive;
   return <>
     <button className="chat-context-backdrop" data-message-overlay="" aria-label="Close message actions" onClick={onClose} />
     {canReactTo(activeMessage) && <ReactionBar barRef={reactionBarRef} current={activeMessage.reactions?.user}
@@ -45,9 +56,7 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
         <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onQuote} />
         <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={onMemory} />
         <Action label="Select" icon={CircleCheck} onClick={onSelect} />
-        {activeMessage.role === "user" && activeMessage.status === "sent" && !activeMessage.recalled && !activeMessage.transfer && !activeMessage.transferEvent && !activeMessage.gift && !activeMessage.giftEvent && !generationActive
-          ? <Action label="Recall" icon={Undo2} onClick={onRecall} />
-          : <Action label="Favorite" icon={Bookmark} disabled />}
+        <Action label="Recall" icon={Undo2} disabled={!recallAllowed} onClick={onRecall} />
         <Action label="Delete" icon={Trash2} danger onClick={onDelete} />
         <Action label="Regenerate" icon={RotateCcw} disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || revealPending} onClick={onRegenerate} />
         {getMessageActions(activeMessage).map((action) => <Action key={action.id} label={action.label} icon={Plus} onClick={() => onRunRegisteredAction(action.id)} />)}

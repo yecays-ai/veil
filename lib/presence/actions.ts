@@ -20,8 +20,8 @@ export type CharacterActions = {
   reactToUser?: string;
   /** One of this reply's sticker codes (S01 …), sent as the Character's own last bubble. Checked and applied by the chat. */
   sticker?: string;
-  /** Withdraw your immediately previous completed message after this reply is committed. */
-  recallPrevious?: true;
+  /** The exact ID of one of the Character's own eligible messages to withdraw after this reply is committed. */
+  recallMessageId?: string;
   transfer?: { amount: number; note: string };
   transferAction?: { messageId: string; action: TransferAction };
   gift?: { icon: string; content: string };
@@ -90,7 +90,7 @@ function parseActions(json: string): CharacterActions | null {
   if (value.cancelUpcoming === true) actions.cancelUpcoming = true;
   if (isReactionEmoji(value.reactToUser)) actions.reactToUser = value.reactToUser;
   if (typeof value.sticker === "string" && /^S\d{2,3}$/i.test(value.sticker.trim())) actions.sticker = value.sticker.trim().toUpperCase();
-  if (value.recallPrevious === true) actions.recallPrevious = true;
+  if (typeof value.recallMessageId === "string" && /^[\w-]{8,80}$/.test(value.recallMessageId)) actions.recallMessageId = value.recallMessageId;
   if (isRecord(value.transfer) && value.transfer.recipient === "user" && typeof value.transfer.amount === "number" && Number.isFinite(value.transfer.amount)) {
     try { actions.transfer = { amount: normalizeTransferAmount(value.transfer.amount), note: normalizeTransferNote(typeof value.transfer.note === "string" ? value.transfer.note : "") }; }
     catch { /* Invalid requested transfer is ignored; other reply actions remain usable. */ }
@@ -149,7 +149,7 @@ export type ActionDeps = {
   foundation: { transact(update: (document: FoundationDocument) => FoundationDocument): Promise<FoundationDocument> };
   /** Tells the chat the Character changed its note on the user (null = removed); a failure never undoes the change. */
   noteChanged?: (characterId: string, note: string | null, at: number) => Promise<void>;
-  recallPreviousMessage?: (replyMessageId: string) => Promise<void>;
+  recallMessage?: (replyMessageId: string, targetMessageId: string) => Promise<boolean>;
   sendTransfer?: (replyMessageId: string, amount: number, note: string) => Promise<void>;
   actOnTransfer?: (characterId: string, messageId: string, action: TransferAction, replyMessageId: string) => Promise<void>;
   sendGift?: (replyMessageId: string, icon: string, content: string) => Promise<void>;
@@ -172,13 +172,14 @@ async function applyUserNote(deps: ActionDeps, characterId: string, note: string
 }
 /** Applies a committed reply's actions. Presence and Foundation are separate stores, so the signature goes first (the real data) and its mark second. */
 export const characterActionApplier = (deps: ActionDeps) =>
-  async (characterId: string, actions: CharacterActions, now: number, messageId: string): Promise<void> => {
+  async (characterId: string, actions: CharacterActions, now: number, messageId: string): Promise<void | { recalledMessageId: string }> => {
     const source = `${CHARACTER_SOURCE_PREFIX}${messageId}`;
+    let recalledMessageId: string | undefined;
     await deps.presence.transact((document) => applySituationActions(document, { characterId }, actions, now, source));
     if (actions.userNote !== undefined) await applyUserNote(deps, characterId, actions.userNote, now, source);
-    if (actions.recallPrevious) {
-      try { await deps.recallPreviousMessage?.(messageId); }
-      catch { console.warn("[Presence] the previous message could not be recalled"); }
+    if (actions.recallMessageId) {
+      try { if (await deps.recallMessage?.(messageId, actions.recallMessageId)) recalledMessageId = actions.recallMessageId; }
+      catch { console.warn("[Presence] the selected message could not be recalled"); }
     }
     if (actions.transfer) {
       try { await deps.sendTransfer?.(messageId, actions.transfer.amount, actions.transfer.note); }
@@ -196,9 +197,9 @@ export const characterActionApplier = (deps: ActionDeps) =>
       try { await deps.actOnGift?.(characterId, actions.giftAction.messageId, actions.giftAction.action, messageId); }
       catch { console.warn("[Presence] the gift action could not be saved"); }
     }
-    if (actions.signature === undefined) return;
+    if (actions.signature === undefined) return recalledMessageId ? { recalledMessageId } : undefined;
     const allowed = actionAllowance(presenceRecord(await deps.presence.load(), characterId), now).signature;
-    if (!allowed) return;
+    if (!allowed) return recalledMessageId ? { recalledMessageId } : undefined;
     let changed = false;
     await deps.foundation.transact((document) => {
       const current = document.characters.find((item) => item.characterId === characterId);
@@ -207,5 +208,6 @@ export const characterActionApplier = (deps: ActionDeps) =>
         item.characterId === characterId ? { ...item, statusMessage: actions.signature ?? null } : item) };
     });
     if (changed) await deps.presence.transact((document) => markSignatureChange(document, characterId, { changedAt: now, source }));
+    return recalledMessageId ? { recalledMessageId } : undefined;
   };
 export type ActionApplier = ReturnType<typeof characterActionApplier>;

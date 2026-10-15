@@ -20,6 +20,8 @@ test("the action tag is removed from what the user sees, whole or half-streamed,
   const whole = splitActions(`Sure, I'll hop on the call.\n${tag('{"signature":"on a call","situation":{"status":"busy","durationMinutes":30}}')}`);
   assert.equal(whole.text, "Sure, I'll hop on the call.");
   assert.deepEqual(whole.actions, { signature: "on a call", situation: { status: "busy", durationMinutes: 30 } });
+  assert.deepEqual(splitActions(tag('{"recallMessageId":"message-12345678"}')).actions, { recallMessageId: "message-12345678" });
+  assert.equal(splitActions(tag('{"recallPrevious":true}')).actions, null, "the previous-only action protocol is retired");
   for (const partial of ["Sure.\n<", "Sure.\n<veil-act", "Sure.\n<veil-action>", `Sure.\n<veil-action>{"signa`, "Sure.\n</veil-action"])
     assert.equal(splitActions(partial).text, partial.startsWith("Sure.\n</") ? partial : "Sure.", partial);
   assert.equal(splitActions("a < b and <b>bold</b>").text, "a < b and <b>bold</b>", "ordinary text is untouched");
@@ -37,12 +39,12 @@ test("a signature is cleaned: control and invisible characters out, spaces colla
 
 const character = () => ({ characterId: "a", ...normalizeCharacterInput({ name: "A", statusMessage: "old" }) });
 function stores(presence = emptyPresenceDocument(), foundation?: FoundationDocument,
-  recallPreviousMessage?: () => Promise<void>) {
+  recallMessage?: (replyMessageId: string, targetMessageId: string) => Promise<boolean>) {
   const state = { presence, foundation: foundation ?? { ...defaultFoundation(), characters: [character()] } };
   const deps = {
     presence: { load: async () => state.presence, transact: async (f: (d: PresenceDocument) => PresenceDocument) => (state.presence = f(state.presence)) },
     foundation: { transact: async (f: (d: FoundationDocument) => FoundationDocument) => (state.foundation = f(state.foundation)) },
-    recallPreviousMessage,
+    recallMessage,
   };
   return { state, apply: characterActionApplier(deps) };
 }
@@ -52,10 +54,10 @@ const active = (document: PresenceDocument, at: number) => {
 };
 
 test("a failed Character recall does not block the remaining committed actions", async () => {
-  const { state, apply } = stores(undefined, undefined, async () => { throw new Error("recall unavailable"); });
+  const { state, apply } = stores(undefined, undefined, async (_replyId, targetId) => { assert.equal(targetId, "message-id"); throw new Error("recall unavailable"); });
   const originalWarn = console.warn;
   console.warn = () => {};
-  try { await apply("a", { recallPrevious: true, signature: "still updated" }, T, "reply"); }
+  try { await apply("a", { recallMessageId: "message-id", signature: "still updated" }, T, "reply"); }
   finally { console.warn = originalWarn; }
   assert.equal(state.foundation.characters[0].statusMessage, "still updated");
 });
@@ -140,6 +142,16 @@ test("a signature action reaches Foundation, marks the change, honours its coold
   assert.equal(state.foundation.characters[0].statusMessage, null, "an empty signature clears it");
   const gone = stores(); await gone.apply("zzz", sig("x"), T, "m5");
   assert.equal(gone.state.foundation.characters[0].statusMessage, "old", "another Character is untouched");
+});
+
+test("the Character is offered explicit IDs and original text only for its eligible own messages", () => {
+  const c = character();
+  const state = selfState(c, undefined, undefined, T, null, true, true, undefined, false,
+    [{ id: "message-12345678", content: "my own text" }]);
+  const text = selfStateContent(state) ?? "";
+  assert.match(text, /"recallMessageId"/);
+  assert.match(text, /message-12345678 → "my own text"/);
+  assert.doesNotMatch(text, /recallPrevious/);
 });
 
 test("the Character is told how to change itself only for what it may change now", () => {

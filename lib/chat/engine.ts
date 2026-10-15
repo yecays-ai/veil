@@ -24,6 +24,7 @@ import {
 } from "./provider";
 import { ChatStorage, chatStorage } from "./storage";
 import type { ChatMessage, ChatSession, MemoryRef } from "./types";
+import { canRecallMessage } from "./recall";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
 import { characterActionApplier, splitActions, type ActionApplier } from "../presence/actions";
@@ -70,7 +71,7 @@ const loadSelfState: SelfLoader = async (character, now, reply) => {
 const applyActionsToStores: ActionApplier = (characterId, actions, now, messageId) =>
   typeof window === "undefined" ? Promise.resolve()
     : characterActionApplier({ presence: browserPresenceStorage, foundation: browserFoundationStorage,
-      recallPreviousMessage: async (replyId) => { await chatStorage.recallPreviousAssistantMessage(replyId); },
+      recallMessage: (replyId, targetId) => chatStorage.recallAssistantMessageForReply(replyId, targetId),
       sendTransfer: async (replyId, amount, note) => { await chatStorage.createTransferForReply(replyId, amount, note); },
       actOnTransfer: async (id, transferId, action, replyId) => { await chatStorage.actOnTransferForCharacter(id, transferId, action, replyId); },
       sendGift: async (replyId, icon, content) => { await chatStorage.createGiftForReply(replyId, icon, content); },
@@ -130,6 +131,7 @@ export function createChatEngine(
   stickerSource: StickerSource = browserStickerSource,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
+  const recentlyRecalledOwn = new Map<string, { messageId: string; content: string }>();
   let stopSequence = 0;
   const lastStop = new Map<string, number>();
   // Cancellation races the awaited stage, not its underlying service. A late
@@ -262,7 +264,9 @@ export function createChatEngine(
       const previousReply = batch.messages.findLast((message) => message.role === "assistant" && message.status === "complete");
       const choices = ownState && source !== "continue" && !previousReply?.sticker
         ? await awaited(stickerSource.menu(character.characterId).catch((): StickerChoice[] => []), controller.signal) : [];
-      const offered = ownState && choices.length ? { ...ownState, stickers: choices } : ownState;
+      const recallCandidates = ownState && source !== "continue" ? batch.messages.filter((message) => canRecallMessage(message, "assistant", now().getTime()))
+        .map(({ id, content }) => ({ id, content })) : [];
+      const offered = ownState ? { ...ownState, ...(choices.length ? { stickers: choices } : {}), ...(recallCandidates.length ? { recallCandidates } : {}) } : ownState;
       const memory = await awaited(memoryRead, controller.signal);
       await storage.generationStage(sessionId, attempt.id, "provider");
       if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
@@ -273,6 +277,10 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       const prompt = assembleChatPrompt(document, character, batch.messages, batch.pending, memory.slot, preset,
         now(), activation, regexGroups, weather, offered, characterState, batch.session.summary);
+      const recalledOwn = recentlyRecalledOwn.get(sessionId);
+      const recalledEvent = recalledOwn && batch.messages.find((message) => message.id === recalledOwn.messageId && message.recalled?.by === "assistant");
+      if (recalledOwn && recalledEvent) prompt.messages.push({ role: "system", content: `You withdrew this message yourself. You said ${JSON.stringify(recalledOwn.content)}. It is no longer visible to the user. You can remember it for continuity, but do not imply the user can still see it or quote it unless useful.` });
+      else if (recalledOwn) recentlyRecalledOwn.delete(sessionId);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
       if (proactive) prompt.messages.push({ role: "system", content: PROACTIVE_INSTRUCTION });
@@ -283,6 +291,7 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       iterator = provider(config, prompt.messages, controller.signal, preset.generation, request,
         (reason) => { finishReason = reason; })[Symbol.asyncIterator]();
+      if (recalledOwn && recalledEvent && recentlyRecalledOwn.get(sessionId) === recalledOwn) recentlyRecalledOwn.delete(sessionId);
       while (true) {
         const chunk = await awaited(iterator.next(), controller.signal);
         if (chunk.done) break;
@@ -315,9 +324,11 @@ export function createChatEngine(
         .catch(() => { console.warn("[Presence] last message time was not saved"); });
       // The Character's own changes: after the commit, once, and never for Continue, which only extends a reply.
       const { reactToUser, ...ownChanges } = actions ?? {};
+      const recallTarget = actions?.recallMessageId ? batch.messages.find((message) => message.id === actions.recallMessageId && message.role === "assistant") : undefined;
       delete ownChanges.sticker; // chat data, saved with the reply itself
       if (Object.keys(ownChanges).length && source !== "continue") await Promise.resolve()
         .then(() => applyActions(target.characterId, ownChanges, now().getTime(), completed[0].id))
+        .then((result) => { if (result && result.recalledMessageId && recallTarget?.content) recentlyRecalledOwn.set(sessionId, { messageId: result.recalledMessageId, content: recallTarget.content }); })
         .catch(() => { console.warn("[Presence] the Character's own change was not saved"); });
       // The reaction is chat data: checked again against what is stored now, and a failure never undoes the reply.
       if (reactToUser && reaction && reactions.canReact) void storage.readSession(sessionId).then(({ messages }) => {

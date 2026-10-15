@@ -4,6 +4,7 @@ import { ChevronLeft, Ellipsis } from "lucide-react";
 import type { Presence, ProfileBasics } from "../../lib/foundation-types";
 import { PresenceBadge, presenceLabel } from "../presence";
 import { ChatAvatar } from "./avatar";
+import { useMessagesNavigation } from "../../app/messages/route-transition";
 
 // Presentational only: ChatRoom owns the settings button ref, the focus-origin record and
 // every layout effect. Loading and loaded rooms render this same component with the same
@@ -19,9 +20,10 @@ export function ChatHeader({ contact, presence, generating = false, settingsTrig
   onOpenSettings?: () => void;
 }) {
   const displayedPresence = generating ? "online" : presence;
+  const onNavigate = useMessagesNavigation();
   return (
     <header className="chat-header page-header">
-      <Link href="/messages" className="chat-back page-back-btn" aria-label="Back to Messages">
+      <Link href="/messages" onNavigate={onNavigate("/messages")} className="chat-back page-back-btn" aria-label="Back to Messages">
         <ChevronLeft aria-hidden="true" />
       </Link>
       {contact ? <Link href={`/contacts/${encodeURIComponent(contact.characterId)}?from=direct`}

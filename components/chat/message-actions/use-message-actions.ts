@@ -142,9 +142,9 @@ export function useMessageActions({ shell, history, session, multiSelect, native
     if (!activeMessage || activeMessage.role !== "user") return;
     const message = activeMessage;
     closeActions();
-    try { await chatStorage.recallMessage(message.id, "user"); onFeedback("Message recalled"); }
+    try { await chatStorage.recallMessage(message.id, "user", undefined, session?.id); onFeedback("Message recalled"); }
     catch (reason) { onError(reason instanceof Error ? reason.message : "Message could not be recalled."); }
-  }, [activeMessage, closeActions, onError, onFeedback]);
+  }, [activeMessage, closeActions, onError, onFeedback, session?.id]);
 
   const requestDelete = useCallback((ids: readonly string[], closeMenu = false) => {
     if (!ids.length) return;
