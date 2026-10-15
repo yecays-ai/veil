@@ -1232,9 +1232,9 @@ export class ChatStorage {
     }, STORES, (message) => message ? { domain: "messages", sessionId: message.sessionId } : null);
   }
   /** A sticker from the user: saved like a sent message (no reply is requested); `content` is its semantic text. */
-  sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string): Promise<ChatMessage> {
+  sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
     if (!isMessageSticker(sticker)) return Promise.reject(new Error("这个表情包不可用。"));
-    return this.send(sessionId, stickerContent("user", sticker), quoteMessageId, undefined, sticker);
+    return this.send(sessionId, stickerContent("user", sticker), quoteMessageId, undefined, sticker, interject);
   }
   async createTransfer(sessionId: string, amountValue: number, noteValue: string, sender: TransferActor): Promise<ChatMessage> {
     const amount = normalizeTransferAmount(amountValue), note = normalizeTransferNote(noteValue), id = crypto.randomUUID();
@@ -1390,7 +1390,13 @@ export class ChatStorage {
       return { message: next, event: sequenced };
     }, STORES, { domain: "messages", sessionId: view.session.id }, undefined, scope);
   }
-  async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker): Promise<ChatMessage> {
+  /**
+   * `interject` (Life Mode only): a reply still being written is given up in the same transaction that saves the message.
+   * Its unfinished draft is removed and the messages it had claimed wait again, so the next reply answers all of them.
+   * A reply that already finished is never touched; then this is an ordinary send.
+   */
+  async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker,
+    interject = false): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
     if (content.length > 12000)
@@ -1398,13 +1404,18 @@ export class ChatStorage {
         new Error("Message is too long (maximum 12,000 characters)."),
       );
     if (!attemptId) await this.recoverGeneration(sessionId);
+    let superseded = false;
     return this.transaction("readwrite", async (tx) => {
-      const session: ChatSession | undefined = await request(
+      let session: ChatSession | undefined = await request(
         tx.objectStore("sessions").get(sessionId),
       );
       if (!session) throw new Error("Conversation not found.");
-      if (session.generation && session.generation.id !== attemptId)
-        throw new Error("A reply is already in progress.");
+      if (session.generation && session.generation.id !== attemptId) {
+        if (!interject || attemptId || session.lifeMode !== true || session.type === "group")
+          throw new Error("A reply is already in progress.");
+        session = await this.supersedeInTransaction(tx, session);
+        superseded = true;
+      }
       if (attemptId && session.generation?.id !== attemptId) throw new Error("Generation attempt is no longer active.");
       // Epoch creation, new message birth and allocation are one Chat transaction. No old-message backfill.
       if (typeof this.memoryTracking === "function" && this.tracking() && session.type !== "group" && !session.memorySequence)
@@ -1435,7 +1446,23 @@ export class ChatStorage {
       const sequenced = this.sequence(session, message);
       await this.append(tx, session, sequenced);
       return sequenced;
-    }, STORES, { domain: "messages", sessionId });
+    }, STORES, () => superseded ? { domain: "messages", sessionId, generationChanged: true } : { domain: "messages", sessionId });
+  }
+  /** Gives up the running reply inside a write transaction: no marker, no Retry, and claimed messages become unanswered again. */
+  private async supersedeInTransaction(tx: IDBTransaction, session: ChatSession): Promise<ChatSession> {
+    const draftId = session.generation?.draftId;
+    if (draftId) {
+      const table = tx.objectStore("messages");
+      const draft: ChatMessage | undefined = await request(table.get(draftId));
+      if (draft?.role === "assistant" && draft.status === "streaming") await request(table.delete(draftId));
+      const messages: ChatMessage[] = await request(table.index("sessionId").getAll(session.id));
+      for (const message of messages) if (message.role === "user" && message.requestedBy === draftId) {
+        const unclaimed: ChatMessage = { ...message };
+        delete unclaimed.requestedBy;
+        await request(table.put(unclaimed));
+      }
+    }
+    return { ...session, generation: undefined };
   }
 
   /**

@@ -488,14 +488,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     list.addEventListener("load", follow, true);
     return () => list.removeEventListener("load", follow, true);
   }, [ready]);
-  async function persistDraft(content: string, sessionId: string, focus: boolean) {
+  async function persistDraft(content: string, sessionId: string, focus: boolean, interject = false) {
     sendingLock.current = true;
     setSending(true);
     const editVersion = draftEditVersion.current;
     try {
       nearBottom.current = { characterId, sessionId, value: true };
       const quote = quotingMessage;
-      await chatEngine.send(sessionId, content, quote?.id);
+      await chatEngine.send(sessionId, content, quote?.id, { interject });
       if (mounted.current && currentSessionId.current === sessionId) {
         setQuotingMessage((current) => current?.id === quote?.id ? null : current);
         setDraft((current) => (current === content ? "" : current));
@@ -512,12 +512,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   async function send() {
-    if (!session || session.characterId !== characterId || generationActive || chatEngine.isGenerating(session.id) || sendingLock.current || !draft.trim() || loadError) return;
+    if (!session || session.characterId !== characterId || sendingLock.current || !draft.trim() || loadError) return;
+    // Life Mode: writing while the Character is still answering gives that unfinished answer up; it answers everything again.
+    const interject = session.lifeMode === true && (generationActive || chatEngine.isGenerating(session.id));
+    if (!interject && (generationActive || chatEngine.isGenerating(session.id))) return;
     const sessionId = session.id;
     setError("");
     setFailedDraft(null);
     try {
-      await persistDraft(draft, sessionId, true);
+      await persistDraft(draft, sessionId, true, interject);
     } catch (e) {
       if (mounted.current && currentSessionId.current === sessionId)
         setError(
@@ -526,7 +529,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   async function sendSticker(sticker: MessageSticker) {
-    if (!session || session.characterId !== characterId || generationActive || chatEngine.isGenerating(session.id) || sendingLock.current || loadError) return;
+    if (!session || session.characterId !== characterId || sendingLock.current || loadError) return;
+    const interject = session.lifeMode === true && (generationActive || chatEngine.isGenerating(session.id));
+    if (!interject && (generationActive || chatEngine.isGenerating(session.id))) return;
     const sessionId = session.id, quote = quotingMessage;
     sendingLock.current = true;
     setSending(true);
@@ -534,7 +539,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setPanel(null);
     try {
       nearBottom.current = { characterId, sessionId, value: true };
-      await chatEngine.sendSticker(sessionId, sticker, quote?.id);
+      await chatEngine.sendSticker(sessionId, sticker, quote?.id, { interject });
       if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === quote?.id ? null : current);
     } catch (e) {
       if (mounted.current && currentSessionId.current === sessionId) setError(e instanceof Error ? e.message : "表情包没有发出去。");
@@ -836,14 +841,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             aria-label="Send"
             title="Send"
             onPointerDown={(e) => e.preventDefault()}
-            disabled={!session || generationActive || sending || !draft.trim() || !!loadError}
+            disabled={!session || (generationActive && session.lifeMode !== true) || sending || !draft.trim() || !!loadError}
           >
             <SendHorizontal aria-hidden="true" />
           </button>
         </div>
         {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
           onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
-        {panel === "stickers" && <StickerPanel disabled={generationActive || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
+        {panel === "stickers" && <StickerPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
       {transfers.composerOpen && <TransferComposer disabled={transfers.working || generationActive || !!loadError}

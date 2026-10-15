@@ -156,7 +156,8 @@ export function createChatEngine(
     const preset = presetForBinding(await awaited(presets(), signal), binding.presetId);
     return { document, character, config, preset, binding };
   }
-  async function sendMessage(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, signal?: AbortSignal) {
+  async function sendMessage(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, signal?: AbortSignal,
+    interject = false) {
     const check = () => signal?.throwIfAborted();
     const wait = <T>(promise: Promise<T>) => signal ? awaited(promise, signal) : promise;
     const { session } = await wait(storage.readSession(sessionId));
@@ -166,7 +167,7 @@ export function createChatEngine(
     const character = document.characters.find((item) => item.characterId === session.characterId);
     check();
     return storage.send(sessionId, applyRegex(content, groups, "user", "stored",
-      { character: character?.name, user: document.user.name }), quoteMessageId, attemptId);
+      { character: character?.name, user: document.user.name }), quoteMessageId, attemptId, undefined, interject);
   }
   async function hasUnansweredUserTurn(sessionId: string) {
     try { return (await storage.readSession(sessionId)).messages.some((m) => m.role === "user" && !m.requestedBy); }
@@ -375,9 +376,16 @@ export function createChatEngine(
     }
   }
   return {
-    send: (sessionId: string, content: string, quoteMessageId?: string) => sendMessage(sessionId, content, quoteMessageId),
+    /**
+     * `interject` (Life Mode): sending while the Character is still writing gives that reply up silently; the attempt sees
+     * it no longer owns the conversation, stops, and leaves no marker. A real failure or the user's Stop is unaffected.
+     */
+    send: (sessionId: string, content: string, quoteMessageId?: string, options?: { interject?: boolean }) =>
+      sendMessage(sessionId, content, quoteMessageId, undefined, undefined, options?.interject === true),
     /** The user's sticker: saved as a sent message like Send; a reply is still requested separately. */
-    sendSticker: (sessionId: string, sticker: MessageSticker, quoteMessageId?: string) => storage.sendSticker(sessionId, sticker, quoteMessageId),
+    /** Like `send`, a Life Mode sticker may interject and give up the unfinished reply. */
+    sendSticker: (sessionId: string, sticker: MessageSticker, quoteMessageId?: string, options?: { interject?: boolean }) =>
+      storage.sendSticker(sessionId, sticker, quoteMessageId, options?.interject === true),
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
     initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),
