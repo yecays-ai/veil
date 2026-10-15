@@ -10,7 +10,7 @@ PR-A：Life Mode 在用户输入或有草稿时暂缓自动回复，并加 3 秒
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-reply-typing-defer`；PR 创建后补链接。
+Claude；分支 `claude/life-reply-typing-defer`；PR https://github.com/yecays-ai/veil/pull/215 。测试分支 claude/presence-routine-fix 已同步（a6d91ec）。
 - `lib/chat/composition.ts`（新增，内存草稿信号）
 - `lib/chat/life-reply-watcher.ts`（安静窗口、草稿暂缓）
 - `lib/chat/life-reply-browser.ts`（接线）
