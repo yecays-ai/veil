@@ -81,12 +81,17 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
           Math.min(wait, LIFE_REPLY_RECHECK_MS)));
         return;
       }
-      // A draft in the composer holds the reply back for as long as it exists; clearing or sending it calls touch again.
-      if (deps.composing(sessionId)) return;
       // One attempt per unanswered message: a failure never schedules another, and the reply path marks the message as asked.
-      // Life Mode may have been turned off while the status was being read.
+      // Life Mode may have been turned off, or a newer message stored, while the status was being read; a newer message
+      // restarts the quiet window, so it is looked at again from the start.
       const latest = await deps.session(sessionId);
       if (!live() || latest.session.lifeMode !== true) return;
+      const newer = latest.messages.some((item) => item.role === "user" && item.status === "sent" && !item.requestedBy
+        && item.order > newest.order);
+      if (newer) { api.touch(sessionId); return; }
+      // A draft in the composer holds the reply back for as long as it exists; clearing or sending it calls touch again.
+      // Checked last, right before the reply starts, so a draft begun during the reads above is respected.
+      if (deps.composing(sessionId)) return;
       attempted.set(sessionId, newest.id);
       await deps.reply(sessionId).catch(() => undefined);
     } catch {
