@@ -8,7 +8,7 @@ import type { ChatSession } from "../chat/types";
 import { openAITextProvider } from "../chat/provider";
 import { browserMemoryStorage } from "./browser";
 import { maintenanceEnabled } from "./maintenance-config";
-import { createMaintenanceDiagnostics } from "./maintenance-diagnostics";
+import { browserMaintenanceDiagnosticStore, createMaintenanceDiagnostics } from "./maintenance-diagnostics";
 import { resolveMaintenanceModel } from "./maintenance-binding";
 import { MemoryProgressProtocol } from "./progress";
 import { summaryPossiblyDue } from "../chat/summary";
@@ -28,7 +28,7 @@ export function startBrowserMaintenance(): () => void {
   const sessions = () => memory.withExclusive((scope) => chatStorage.listExistingSessions(scope));
   const deps = { protocol, memory, enabled: () => maintenanceEnabled() && document.visibilityState === "visible", now: Date.now, provider: openAITextProvider,
     readChat: (id: string, scope: Parameters<typeof chatStorage.listExistingSessions>[0]) => chatStorage.readMemorySources(id, scope),
-    diagnostics: createMaintenanceDiagnostics(),
+    diagnostics: createMaintenanceDiagnostics(true, browserMaintenanceDiagnosticStore),
     sessions: (scope?: Parameters<typeof chatStorage.listExistingSessions>[0]) => scope ? chatStorage.listExistingSessions(scope) : sessions(),
     model: async (characterId: string, scope?: Parameters<typeof chatStorage.listExistingSessions>[0]) => {
       const raw = await browserDocumentStorage.readExisting(FOUNDATION_STORAGE_KEY, scope);
