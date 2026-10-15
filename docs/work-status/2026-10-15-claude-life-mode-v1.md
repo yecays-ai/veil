@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-iwht8v`；PR：创建后补链接。涉及 `lib/chat/life-reply.ts`（回复时间，纯函数）、`lib/chat/life-reply-watcher.ts`（页面生命周期调度器）、`lib/chat/life-reply-browser.ts`（接线）、`components/proactive-contact-gate.tsx`（同一入口再启动一个）、`lib/chat/self-context.ts` 与 `lib/chat/engine.ts`（"要去忙了"背景行）、`lib/chat/storage.ts` / `types.ts` / `lib/backup/validation.ts`（`ChatSession.lifeMode`）、`components/chat/chat-room.tsx`（开关与旧入口提示）、`lib/chat/request-diagnostics.ts`（来源 `life-reply`）、`tests/life-reply.test.ts`。不碰 `lib/memory/*`、主动联系的调度与预算。
+Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-ai/veil/pull/210。涉及 `lib/chat/life-reply.ts`（回复时间，纯函数）、`lib/chat/life-reply-watcher.ts`（页面生命周期调度器）、`lib/chat/life-reply-browser.ts`（接线）、`components/proactive-contact-gate.tsx`（同一入口再启动一个）、`lib/chat/self-context.ts` 与 `lib/chat/engine.ts`（"要去忙了"背景行）、`lib/chat/storage.ts` / `types.ts` / `lib/backup/validation.ts`（`ChatSession.lifeMode`）、`components/chat/chat-room.tsx`（开关与旧入口提示）、`lib/chat/request-diagnostics.ts`（来源 `life-reply`）、`tests/life-reply.test.ts`。不碰 `lib/memory/*`、主动联系的调度与预算。
 
 ## 已完成
 
