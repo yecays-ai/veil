@@ -529,7 +529,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   async function sendSticker(sticker: MessageSticker) {
-    if (!session || session.characterId !== characterId || generationActive || chatEngine.isGenerating(session.id) || sendingLock.current || loadError) return;
+    if (!session || session.characterId !== characterId || sendingLock.current || loadError) return;
+    const interject = session.lifeMode === true && (generationActive || chatEngine.isGenerating(session.id));
+    if (!interject && (generationActive || chatEngine.isGenerating(session.id))) return;
     const sessionId = session.id, quote = quotingMessage;
     sendingLock.current = true;
     setSending(true);
@@ -537,7 +539,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setPanel(null);
     try {
       nearBottom.current = { characterId, sessionId, value: true };
-      await chatEngine.sendSticker(sessionId, sticker, quote?.id);
+      await chatEngine.sendSticker(sessionId, sticker, quote?.id, { interject });
       if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === quote?.id ? null : current);
     } catch (e) {
       if (mounted.current && currentSessionId.current === sessionId) setError(e instanceof Error ? e.message : "表情包没有发出去。");
@@ -846,7 +848,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         </div>
         {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
           onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
-        {panel === "stickers" && <StickerPanel disabled={generationActive || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
+        {panel === "stickers" && <StickerPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
       {transfers.composerOpen && <TransferComposer disabled={transfers.working || generationActive || !!loadError}

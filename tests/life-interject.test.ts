@@ -6,6 +6,7 @@ import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { memoryMessageEligible } from "../lib/memory/sequence";
 import { deferred, progressFixture } from "./memory-progress-fixture";
+import { addStickers, createPack, emptyStickerDocument, toMessageSticker } from "../lib/chat/sticker-storage";
 import type { ChatMessage } from "../lib/chat/types";
 
 const users = (messages: readonly ChatMessage[]) => messages.filter((m) => m.role === "user");
@@ -114,6 +115,42 @@ test("the engine stops the interrupted request without a marker, and its late te
   assert.equal(calls, 1, "no retry or extra model call");
 });
 
+test("a sticker interjects the same way: the unfinished reply goes, the sticker stays and waits for an answer", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  let pack = createPack(emptyStickerDocument(), "猫", "", "p1", 1);
+  pack = addStickers(pack, "p1", [{ name: "贴贴", url: "https://img.test/1.png" }], () => "s1").document;
+  const sticker = toMessageSticker(pack.packs[0], pack.packs[0].stickers[0]);
+  const document = defaultFoundation(); document.runtime.timeAware = false;
+  document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
+  const release = deferred(); let calls = 0;
+  const engine = createChatEngine(storage, async () => document,
+    async function* () { calls++; yield "Hello, I was just"; await release.promise; yield " about to say more"; },
+    undefined, undefined, undefined, undefined, undefined, undefined, undefined, async () => {}, async () => undefined);
+  const id = await lifeSession(storage);
+  await engine.send(id, "one");
+  const running = engine.requestReply(id, undefined, "life-reply");
+  for (let tries = 0; tries < 200; tries++) {
+    const { messages } = await storage.readSession(id);
+    if (messages.some((m) => m.role === "assistant" && m.content.startsWith("Hello"))) break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  const sent = await engine.sendSticker(id, sticker, undefined, { interject: true });
+  release.resolve();
+  assert.equal(await running, null);
+  const { messages, session } = await storage.readSession(id);
+  assert.equal(session.generation, undefined);
+  assert.deepEqual(messages.filter((m) => m.role === "assistant"), [], "no partial bubble and no Retry");
+  assert.deepEqual(users(messages).map((m) => [m.id, !!m.requestedBy]), [[messages[0].id, false], [sent.id, false]]);
+  assert.deepEqual(users(messages).at(-1)?.sticker, sticker);
+  assert.equal(calls, 1, "no retry or extra model call");
+  // Outside Life Mode, or without the flag, a sticker still waits for the reply as before.
+  const plain = await storage.openSession("b");
+  await storage.send(plain.id, "one"); assert(await storage.beginReply(plain.id));
+  await assert.rejects(storage.sendSticker(plain.id, sticker, undefined, true), /already in progress/);
+  await engine.send(id, "two"); assert(await storage.beginReply(id));
+  await assert.rejects(storage.sendSticker(id, sticker), /already in progress/);
+});
+
 test("the user's own Stop still leaves its retryable marker", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const document = defaultFoundation(); document.runtime.timeAware = false;
@@ -162,5 +199,10 @@ test("the chat page lets Send through during a reply only in Life Mode, and pass
   assert.match(room, /if \(!interject && \(generationActive \|\| chatEngine\.isGenerating\(session\.id\)\)\) return;/);
   assert.match(room, /chatEngine\.send\(sessionId, content, quote\?\.id, \{ interject \}\)/);
   assert.match(room, /disabled=\{!session \|\| \(generationActive && session\.lifeMode !== true\) \|\| sending/);
+  const sticker = room.slice(room.indexOf("async function sendSticker("), room.indexOf("\n  async function reply"));
+  assert.match(sticker, /const interject = session\.lifeMode === true && \(generationActive \|\| chatEngine\.isGenerating\(session\.id\)\);/);
+  assert.match(sticker, /if \(!interject && \(generationActive \|\| chatEngine\.isGenerating\(session\.id\)\)\) return;/);
+  assert.match(sticker, /chatEngine\.sendSticker\(sessionId, sticker, quote\?\.id, \{ interject \}\)/);
+  assert.match(room, /<StickerPanel disabled=\{\(generationActive && session\?\.lifeMode !== true\) \|\| sending \|\| !!loadError\}/);
   assert.match(room, /aria-label="Stop reply"[\s\S]{0,200}chatEngine\.stop\(session\.id, \{ persist: true \}\)/, "Stop is unchanged");
 });

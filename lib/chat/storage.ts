@@ -1232,9 +1232,9 @@ export class ChatStorage {
     }, STORES, (message) => message ? { domain: "messages", sessionId: message.sessionId } : null);
   }
   /** A sticker from the user: saved like a sent message (no reply is requested); `content` is its semantic text. */
-  sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string): Promise<ChatMessage> {
+  sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
     if (!isMessageSticker(sticker)) return Promise.reject(new Error("这个表情包不可用。"));
-    return this.send(sessionId, stickerContent("user", sticker), quoteMessageId, undefined, sticker);
+    return this.send(sessionId, stickerContent("user", sticker), quoteMessageId, undefined, sticker, interject);
   }
   async createTransfer(sessionId: string, amountValue: number, noteValue: string, sender: TransferActor): Promise<ChatMessage> {
     const amount = normalizeTransferAmount(amountValue), note = normalizeTransferNote(noteValue), id = crypto.randomUUID();
