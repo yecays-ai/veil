@@ -202,7 +202,7 @@ test("the panels are the composer's own expansion below the input row, four to a
 test("a reaction is only its emoji: no circle, fill, border or shadow", () => {
   const badge = css.match(/\.chat-reaction-badge \{[^}]*\}/)![0];
   assert.doesNotMatch(badge, /(?<![-\w])(?:background|border|box-shadow|width|height)/);
-  assert.match(badge, /position:\s*absolute/);
+  assert.match(css.match(/\.chat-reaction-stack \{[^}]*\}/)![0], /position:\s*absolute/);
 });
 
 test("opening a panel recomputes the chat area: the history follows the composer's new height when it was at the latest message", () => {
@@ -211,7 +211,7 @@ test("opening a panel recomputes the chat area: the history follows the composer
   assert.match(observer, /list\.scrollTo\(\{ top: list\.scrollHeight \}\)/);
   assert.match(observer, /--chat-composer-height/);
   assert.match(css, /\.chat-composer:has\(\.chat-tray\) \{[^}]*backdrop-filter: blur\(26px\)/);
-  assert.match(css.match(/\.chat-reaction-badge \{[^}]*\}/)![0], /bottom:\s*-1px/);
+  assert.match(css.match(/\.chat-bubble-shell-has-reactions \{[^}]*\}/)![0], /padding-top:\s*10px/);
 });
 
 test("stickers cannot be tapped while a reply is generating or a message is being saved", () => {
