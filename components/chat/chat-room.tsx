@@ -488,14 +488,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     list.addEventListener("load", follow, true);
     return () => list.removeEventListener("load", follow, true);
   }, [ready]);
-  async function persistDraft(content: string, sessionId: string, focus: boolean) {
+  async function persistDraft(content: string, sessionId: string, focus: boolean, interject = false) {
     sendingLock.current = true;
     setSending(true);
     const editVersion = draftEditVersion.current;
     try {
       nearBottom.current = { characterId, sessionId, value: true };
       const quote = quotingMessage;
-      await chatEngine.send(sessionId, content, quote?.id);
+      await chatEngine.send(sessionId, content, quote?.id, { interject });
       if (mounted.current && currentSessionId.current === sessionId) {
         setQuotingMessage((current) => current?.id === quote?.id ? null : current);
         setDraft((current) => (current === content ? "" : current));
@@ -512,12 +512,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     }
   }
   async function send() {
-    if (!session || session.characterId !== characterId || generationActive || chatEngine.isGenerating(session.id) || sendingLock.current || !draft.trim() || loadError) return;
+    if (!session || session.characterId !== characterId || sendingLock.current || !draft.trim() || loadError) return;
+    // Life Mode: writing while the Character is still answering gives that unfinished answer up; it answers everything again.
+    const interject = session.lifeMode === true && (generationActive || chatEngine.isGenerating(session.id));
+    if (!interject && (generationActive || chatEngine.isGenerating(session.id))) return;
     const sessionId = session.id;
     setError("");
     setFailedDraft(null);
     try {
-      await persistDraft(draft, sessionId, true);
+      await persistDraft(draft, sessionId, true, interject);
     } catch (e) {
       if (mounted.current && currentSessionId.current === sessionId)
         setError(
@@ -836,7 +839,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             aria-label="Send"
             title="Send"
             onPointerDown={(e) => e.preventDefault()}
-            disabled={!session || generationActive || sending || !draft.trim() || !!loadError}
+            disabled={!session || (generationActive && session.lifeMode !== true) || sending || !draft.trim() || !!loadError}
           >
             <SendHorizontal aria-hidden="true" />
           </button>
