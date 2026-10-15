@@ -383,7 +383,9 @@ export function createChatEngine(
     send: (sessionId: string, content: string, quoteMessageId?: string, options?: { interject?: boolean }) =>
       sendMessage(sessionId, content, quoteMessageId, undefined, undefined, options?.interject === true),
     /** The user's sticker: saved as a sent message like Send; a reply is still requested separately. */
-    sendSticker: (sessionId: string, sticker: MessageSticker, quoteMessageId?: string) => storage.sendSticker(sessionId, sticker, quoteMessageId),
+    /** Like `send`, a Life Mode sticker may interject and give up the unfinished reply. */
+    sendSticker: (sessionId: string, sticker: MessageSticker, quoteMessageId?: string, options?: { interject?: boolean }) =>
+      storage.sendSticker(sessionId, sticker, quoteMessageId, options?.interject === true),
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
     initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),

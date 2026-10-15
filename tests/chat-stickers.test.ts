@@ -214,7 +214,7 @@ test("opening a panel recomputes the chat area: the history follows the composer
   assert.match(css.match(/\.chat-bubble-shell-has-reactions \{[^}]*\}/)![0], /padding-top:\s*10px/);
 });
 
-test("stickers cannot be tapped while a reply is generating or a message is being saved", () => {
-  assert.match(room, /<StickerPanel disabled=\{generationActive \|\| sending \|\| !!loadError\}/);
+test("stickers cannot be tapped while a reply is generating (outside Life Mode) or a message is being saved", () => {
+  assert.match(room, /<StickerPanel disabled=\{\(generationActive && session\?\.lifeMode !== true\) \|\| sending \|\| !!loadError\}/);
   assert.match(readFileSync("components/chat/sticker-panel.tsx", "utf8"), /disabled=\{disabled\} onClick/);
 });
