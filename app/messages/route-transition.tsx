@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 type TransitionDocument = Document & {
@@ -34,7 +34,7 @@ export function MessagesRouteTransition({ children }: { children: ReactNode }) {
   const router = useRouter();
   const currentPath = useRef(pathname);
   const transitionId = useRef(0);
-  currentPath.current = pathname;
+  useLayoutEffect(() => { currentPath.current = pathname; }, [pathname]);
 
   useEffect(() => {
     const begin = (direction: "forward" | "back", update: () => void | Promise<void>) => {

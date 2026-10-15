@@ -77,7 +77,7 @@ test("ChatRoom exposes recall only through the extracted message action overlay"
   assert.match(actions, /navigator\.clipboard\.writeText/);
   assert.doesNotMatch(room, /chatStorage\.(?:recallMessage|setReaction|deleteMessages)\(/);
   assert.doesNotMatch(room, /navigator\.clipboard\.writeText/);
-  assert.match(overlay, /canRecallMessage\(activeMessage, "user", Date\.now\(\)\)/);
+  assert.match(overlay, /canRecallMessage\(activeMessage, "user", recallNow\)/);
 });
 
 test("backup preserves a recalled message after its body has been cleared", async () => {

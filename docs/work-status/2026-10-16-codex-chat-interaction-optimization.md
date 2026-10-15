@@ -26,9 +26,9 @@ Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR 尚未创建
 
 ## 尚未验证
 
-- PR #219 首轮 GitHub verify 在 TypeScript 阶段失败：一处撤回 session 校验误落入 editMessage，且既有 message-recall 测试仍引用已退休的 previous-only API；两处已修复，更新后的 CI 待运行。首次失败时 lint、测试和 build 被跳过。
+- PR #219 首轮 typecheck 发现一处撤回 session 校验误落入 editMessage，以及既有 message-recall 测试引用已退休的 previous-only API；均已修复。第二轮 typecheck 通过，lint 指出两处新代码在 render 中读 ref/Date.now；已改为 layout/effect 处理，等待第三轮 CI。第二轮 lint 失败使测试和 build 被跳过。
 - iOS/PWA 真机上的整页转场、键盘切换和 Sticker 连发体验待验收。
-- 首次 Vercel 预览部署失败；它对应尚未修复的首轮 typecheck 代码，修复后部署待重跑，失败根因尚未由 Vercel 日志独立确认。
+- 首轮 Vercel 预览部署失败；更新后的预览部署已成功。
 - View Transitions API 不可用或用户启用减少动态效果时，路由正常切换但不运行横向动画。
 
 ## 下一步

@@ -32,15 +32,17 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
   onRecall: () => void;
   onRunRegisteredAction: (id: string) => void;
 }) {
-  const [, refreshRecallWindow] = useState(0);
+  const [recallNow, setRecallNow] = useState(activeMessage?.sentAt ?? 0);
   const recallCandidate = activeMessage?.role === "user" && activeMessage.status === "sent" && !generationActive;
   useEffect(() => {
     if (!recallCandidate) return;
-    const timer = window.setInterval(() => refreshRecallWindow((value) => value + 1), 250);
+    const refresh = () => setRecallNow(Date.now());
+    refresh();
+    const timer = window.setInterval(refresh, 250);
     return () => window.clearInterval(timer);
   }, [recallCandidate, activeMessage?.id, activeMessage?.sentAt]);
   if (!activeMessage) return null;
-  const recallAllowed = canRecallMessage(activeMessage, "user", Date.now()) && !generationActive;
+  const recallAllowed = canRecallMessage(activeMessage, "user", recallNow) && !generationActive;
   return <>
     <button className="chat-context-backdrop" data-message-overlay="" aria-label="Close message actions" onClick={onClose} />
     {canReactTo(activeMessage) && <ReactionBar barRef={reactionBarRef} current={activeMessage.reactions?.user}
