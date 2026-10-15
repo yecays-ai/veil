@@ -24,8 +24,9 @@ export function GiftCard({ message, actor, characterName, onAction, onPointerDow
   const current = status[gift.status];
   const available = (["accept", "decline"] as const).filter((action) => canApplyGiftAction(gift, actor, action));
   return <>
-    <div className={`chat-card-color-source chat-bubble-role-${message.role}`}><section className="chat-gift-card" aria-label={`${relation}, ${current.name}`}
-      onPointerDown={onPointerDown} onContextMenu={(event) => { onContextMenu(); event.preventDefault(); }} onClick={() => setOpen(true)}>
+    <div className={`chat-card-color-source chat-bubble-role-${message.role}`}><section className="chat-gift-card" role="button" tabIndex={0} aria-label={`${relation}, ${current.name}`}
+      onPointerDown={onPointerDown} onContextMenu={(event) => { onContextMenu(); event.preventDefault(); }} onClick={() => setOpen(true)}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setOpen(true); } }}>
       <header className="chat-card-heading"><span className="chat-gift-icon" aria-hidden="true">{gift.icon}</span>
         <span className="chat-card-heading-copy"><small>{relation}</small><strong>A little gift for you</strong></span>
         <Gift className="chat-card-corner-icon" aria-hidden="true" /></header>
