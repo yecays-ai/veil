@@ -20,8 +20,9 @@ export function TransferCard({ message, actor, characterName, onAction, onOpenAc
   if (!transfer) return null;
   const relation = transfer.sender === "user" ? `To ${characterName}` : `From ${characterName}`;
   const current = status[transfer.status], StatusIcon = current.icon;
+  const amount = formatTransferAmount(transfer.amount), amountClass = amount.length > 15 ? " chat-transfer-amount-long" : "";
   const available = (["receive", "decline", "return"] as const).filter((action) => canApplyTransferAction(transfer, actor, action));
-  return <section className="chat-transfer-card" aria-label={`${relation}, ${current.name}`}
+  return <div className={`chat-card-color-source chat-bubble-role-${message.role}`}><section className="chat-transfer-card" aria-label={`${relation}, ${current.name}`}
     onPointerDown={onPointerDown} onContextMenu={(event) => { onContextMenu(); event.preventDefault(); }}
     onClick={(event) => onOpenActions(event, message)}>
     <header className="chat-card-heading">
@@ -29,15 +30,15 @@ export function TransferCard({ message, actor, characterName, onAction, onOpenAc
       <span className="chat-card-heading-copy"><small>{relation}</small><strong>Transfer</strong></span>
       <CreditCard className="chat-card-corner-icon" aria-hidden="true" />
     </header>
-    <strong className="chat-transfer-amount">{formatTransferAmount(transfer.amount)}</strong>
-    <p className="chat-transfer-note">{transfer.note || "No message"}</p>
+    <strong className={`chat-transfer-amount${amountClass}`}>{amount}</strong>
+    <p className="chat-transfer-note" tabIndex={transfer.note ? 0 : undefined}>{transfer.note || "No message"}</p>
     <footer className="chat-card-status"><span><StatusIcon aria-hidden="true" />{current.name}</span><small>{current.detail}</small></footer>
     {available.length > 0 && <div className="chat-card-actions">
       {available.map((action) => <button key={action} type="button" onClick={(event) => { event.stopPropagation(); onAction(message.id, action); }}>
         {action === "receive" ? "Receive" : action === "decline" ? "Decline" : "Return"}
       </button>)}
     </div>}
-  </section>;
+  </section></div>;
 }
 
 export function TransferResultCard({ message, characterName }: { message: ChatMessage; characterName: string }) {
@@ -48,11 +49,12 @@ export function TransferResultCard({ message, characterName }: { message: ChatMe
   const title = received ? "Received" : returned ? "Returned" : "Declined";
   const detail = received ? "Transfer completed" : returned ? "Transfer returned" : "Transfer declined";
   const actor = event.actor === "user" ? "You" : characterName;
-  return <section className="chat-transfer-card chat-result-card" aria-label={`${actor}: ${title}`}>
+  const amount = formatTransferAmount(event.amount), amountClass = amount.length > 15 ? " chat-transfer-amount-long" : "";
+  return <div className={`chat-card-color-source chat-bubble-role-${message.role}`}><section className="chat-transfer-card chat-result-card" aria-label={`${actor}: ${title}`}>
     <header className="chat-card-heading"><span className="chat-card-main-icon" aria-hidden="true"><Icon /></span>
       <span className="chat-card-heading-copy"><small>{actor}</small><strong>{title}</strong></span>
       <CreditCard className="chat-card-corner-icon" aria-hidden="true" /></header>
-    <strong className="chat-result-value">{formatTransferAmount(event.amount)}</strong>
+    <strong className={`chat-result-value${amountClass}`}>{amount}</strong>
     <footer className="chat-card-status"><span><Icon aria-hidden="true" />{title}</span><small>{detail}</small></footer>
-  </section>;
+  </section></div>;
 }
