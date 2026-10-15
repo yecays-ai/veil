@@ -151,12 +151,11 @@ test("Busy schedules one timer; waiting messages merge; a long wait is re-checke
   assert.equal(h.live().length, 0, "stop leaves no timer behind");
 });
 
-test("nothing happens for a conversation without Life Mode, a group, a vanished Character, a parked message or a hidden page", async () => {
+test("nothing happens for a conversation without Life Mode, a group, a vanished Character or a hidden page", async () => {
   const cases: Array<[string, Parameters<typeof harness>[0]]> = [
     ["off", { sessions: [{ id: "s", characterId: "a" }] }],
     ["group", { sessions: [{ id: "s", characterId: "a", type: "group", lifeMode: true }] }],
     ["gone", { inputs: undefined }],
-    ["parked", { inputs: { characterId: "a", timezone: null, routine: { blocks: [], defaultStatus: "offline", jitterMinutes: 0 }, situations: [] } }],
     ["hidden", { visible: false }],
     ["generating elsewhere", { sessions: [{ id: "s", characterId: "a", lifeMode: true, generation: { id: "g" } }] }],
     ["already asked", { messages: [user("m1", 1, DAY0 + 10 * HOUR, { requestedBy: "r" })] }],
@@ -167,6 +166,35 @@ test("nothing happens for a conversation without Life Mode, a group, a vanished 
     assert.deepEqual(h.replies, [], name); assert.equal(h.live().length, 0, `${name}: no timer`);
     h.watcher.stop();
   }
+});
+
+test("a parked message is looked at again now and then, and a message stored during a reply is not forgotten", async () => {
+  const offline: PresenceInputs = { characterId: "a", timezone: null, routine: { blocks: [], defaultStatus: "offline", jitterMinutes: 0 }, situations: [] };
+  const parked = harness({ inputs: offline });
+  parked.watcher.start(); await settle();
+  assert.deepEqual(parked.replies, []);
+  assert.equal(parked.live().length, 1); assert.equal(parked.live()[0].ms, LIFE_REPLY_RECHECK_MS);
+  parked.state.inputs = workDay; await parked.fire();   // a changed situation or routine unparks it
+  assert.deepEqual(parked.replies, ["s"]);
+  parked.watcher.stop();
+
+  const h = harness({ messages: [user("m1", 1, DAY0 + 10 * HOUR, { requestedBy: "r" })] });
+  h.state.generating = true;
+  h.watcher.start(); await settle();
+  h.state.messages = [...h.state.messages, user("m2", 2, h.state.now)];
+  h.watcher.touch("s"); await h.fire();                 // still generating: looked at again, not dropped
+  assert.deepEqual(h.replies, []); assert.equal(h.live().length, 1, "re-armed");
+  h.state.generating = false; h.state.now += 20_000; await h.fire();
+  assert.deepEqual(h.replies, ["s"]);
+  h.watcher.stop();
+});
+
+test("a check that was waiting when Life Mode got turned off does not reply", async () => {
+  const h = harness();
+  const read = h.state.sessions;
+  h.watcher.start(); h.state.sessions = [{ id: "s", characterId: "a" }]; await settle();
+  assert.deepEqual(h.replies, []); void read;
+  h.watcher.stop();
 });
 
 test("turning Life Mode off leaves the waiting message for Request Reply and schedules nothing", async () => {

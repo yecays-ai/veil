@@ -40,7 +40,9 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
 
   async function check(sessionId: string) {
     clear(waiting, sessionId);
-    if (!live() || deps.isGenerating(sessionId) || checking.has(sessionId)) return;
+    if (!live()) return;
+    // Busy with a reply or another check: look again once it settles, so a message stored meanwhile is not forgotten.
+    if (deps.isGenerating(sessionId) || checking.has(sessionId)) { api.touch(sessionId); return; }
     checking.add(sessionId);
     try {
       const listed = (await deps.sessions()).find((item) => item.id === sessionId);
@@ -63,7 +65,11 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
       const presence = await deps.presence(session.characterId);
       if (!live() || !presence) return;
       const plan = lifeReplyPlan({ pendingId: first.id, pendingAt: first.createdAt, lastReplyAt, presence });
-      if (plan.kind === "parked") return;
+      if (plan.kind === "parked") {
+        // No available status is known yet; a changed situation or routine can unpark it, so look again now and then.
+        waiting.set(sessionId, timers.setTimeout(() => { waiting.delete(sessionId); void check(sessionId); }, LIFE_REPLY_RECHECK_MS));
+        return;
+      }
       const wait = plan.at - deps.now();
       if (wait > 0) {
         waiting.set(sessionId, timers.setTimeout(() => { waiting.delete(sessionId); void check(sessionId); },
@@ -71,6 +77,9 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
         return;
       }
       // One attempt per unanswered message: a failure never schedules another, and the reply path marks the message as asked.
+      // Life Mode may have been turned off while the status was being read.
+      const latest = await deps.session(sessionId);
+      if (!live() || latest.session.lifeMode !== true) return;
       attempted.set(sessionId, newest.id);
       await deps.reply(sessionId).catch(() => undefined);
     } catch {
@@ -80,7 +89,7 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
     }
   }
 
-  return {
+  const api = {
     start() { stopped = false; void this.wake(); },
     /** Looks at every conversation with Life Mode on: at start and whenever the page becomes visible. */
     async wake() {
@@ -92,7 +101,7 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
     },
     /** A stored change in one conversation: looked at once it settles, so a streaming reply is not re-read every chunk. */
     touch(sessionId: string) {
-      if (stopped || deps.isGenerating(sessionId)) return;
+      if (stopped) return;
       clear(settling, sessionId);
       settling.set(sessionId, timers.setTimeout(() => { settling.delete(sessionId); void check(sessionId); }, SETTLE_MS));
     },
@@ -107,4 +116,5 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
       attempted.clear();
     },
   };
+  return api;
 }

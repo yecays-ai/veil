@@ -602,7 +602,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }
   useKeyboardDismissAutoReply(shell, {
     sessionId: session?.characterId === characterId ? session.id : undefined,
-    enabled: session?.autoReplyOnKeyboardDismiss === true && session.lifeMode !== true,
+    enabled: session?.autoReplyOnKeyboardDismiss === true,
     blocked: generationActive || !!revealState?.pending || sending || multiSelect || !!activeMessage || !!editingMessage ||
       chatInfoOpen || confirmClear || !!confirmDelete,
     onReply: () => reply("keyboard-auto-reply"),
