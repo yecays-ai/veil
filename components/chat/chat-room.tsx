@@ -718,6 +718,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           generationActive={generationActive}
           regexGroups={regexGroups}
           lastVisibleMessageId={lastVisibleMessageId}
+          lifeMode={session?.lifeMode === true}
           onOpenActions={openActions}
           onToggleSelected={(message) => setSelectedIds((current) => { const next = new Set(current);
             if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; })}
@@ -794,7 +795,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               }}>
               <Square aria-hidden="true" />
             </button>
-          ) : session?.autoReplyOnKeyboardDismiss !== true || session.lifeMode === true ? (
+          ) : session?.autoReplyOnKeyboardDismiss !== true && session?.lifeMode !== true ? (
             <button
               type="button"
               className="chat-composer-icon chat-request-reply"
