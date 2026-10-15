@@ -157,8 +157,7 @@ regressionContract("chat.message-actions-bubble-only", "render-lifecycle",
       assert.equal(menu() === null, true, "a streaming message cannot open a menu");
       await click(firstBubble);
       assert.equal(item("Edit").disabled, true, "existing generation-time action restrictions remain");
-      assert.equal([...menu()!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')]
-        .some((button) => button.textContent === "Recall"), false, "Recall is unavailable during generation");
+      assert.equal(item("Recall").disabled, true, "Recall stays visible but disabled during generation");
       await closeMenu();
       await act(async () => { await chatStorage.updateReply(streamingId, { content: "Finished reply", status: "complete" }); });
 
