@@ -48,7 +48,7 @@ test("assistant groups retain one avatar and a shared gutter while delivery stay
   assert.doesNotMatch(css, /chat-user-gutter/);
   assert.doesNotMatch(css, /\.chat-turn-assistant:not\(\.chat-group-start\)/);
   assert.doesNotMatch(timeline, /message\.role === "user" &&[^\n]*<(?:ChatAvatar|div className="chat-avatar-column")/);
-  assert.match(timeline, /isGroupEnd \? resolveUserMessageDelivery\(message\) : null/);
+  assert.match(timeline, /isGroupEnd \? resolveUserMessageDelivery\(message, lifeMode \? readOnReplyState\(messages\) : undefined\) : null/);
   assert.match(room, /const lastVisibleMessageId = groupedMessages\.findLast\(\(\{ message \}\) => message\.role !== "system"\)\?\.message\.id/);
   assert.match(timeline, /delivery && !typing && message\.id === lastVisibleMessageId && <span className="chat-delivery-status">/);
   assert.match(timeline, /isGroupEnd \? " chat-group-end"/);
