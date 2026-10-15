@@ -9,10 +9,16 @@ type TransitionDocument = Document & {
 const PRIVATE_CHAT = /^\/messages\/[^/]+$/;
 const isMessagesRoute = (path: string) => path === "/messages" || PRIVATE_CHAT.test(path);
 
+// A private chat counts as arrived once its history is published and positioned, so the slide never shows the empty shell.
+function routeArrived(path: string) {
+  const frame = document.querySelector<HTMLElement>("[data-messages-route]");
+  if (frame?.dataset.messagesRoute !== path) return false;
+  return !PRIVATE_CHAT.test(path) || !!frame.querySelector(".chat-room[data-chat-ready]");
+}
+
 function waitForRoute(path: string, previous: string) {
   return new Promise<void>((resolve) => {
-    const frame = document.querySelector<HTMLElement>("[data-messages-route]");
-    if (frame?.dataset.messagesRoute === path && path !== previous) { resolve(); return; }
+    if (path !== previous && routeArrived(path)) { resolve(); return; }
     let done = false;
     const finish = () => {
       if (done) return;
@@ -21,10 +27,8 @@ function waitForRoute(path: string, previous: string) {
       window.clearTimeout(timeout);
       resolve();
     };
-    const observer = new MutationObserver(() => {
-      if (document.querySelector<HTMLElement>("[data-messages-route]")?.dataset.messagesRoute === path) finish();
-    });
-    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-messages-route"] });
+    const observer = new MutationObserver(() => { if (routeArrived(path)) finish(); });
+    observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-messages-route", "data-chat-ready"] });
     const timeout = window.setTimeout(finish, 900);
   });
 }

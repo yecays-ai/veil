@@ -260,3 +260,12 @@ test("Messages navigation transitions the full route page in both directions and
   assert.match(css, /view-transition-old\(messages-route\)[^{]*\{[^}]*messages-route-back-out/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?view-transition-group\(messages-route\)/);
 });
+
+test("Messages navigation slides a complete, opaque chat page and keeps the leaving chat on top going back", () => {
+  const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+  assert.match(room, /data-chat-ready=\{framePublished \? "" : undefined\}/);
+  assert.match(routeTransition, /PRIVATE_CHAT\.test\(path\) \|\| !!frame\.querySelector\("\.chat-room\[data-chat-ready\]"\)/);
+  assert.match(routeTransition, /attributeFilter: \["data-messages-route", "data-chat-ready"\]/);
+  assert.match(css, /\.messages-route-frame\s*\{[^}]*background:\s*var\(--theme-background\)/);
+  assert.match(css, /data-messages-nav="back"\]::view-transition-old\(messages-route\)\s*\{[^}]*z-index:\s*1/);
+});
