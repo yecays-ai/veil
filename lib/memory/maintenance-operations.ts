@@ -9,12 +9,36 @@ export class MaintenanceParseError extends Error {
   constructor(readonly stage: "json" | "format") { super("Invalid Memory maintenance operations."); }
 }
 const invalid = (): never => { throw new MaintenanceParseError("format"); };
+/**
+ * Strict JSON first. Failing that, accept one complete JSON object when the model wrapped it in a code fence or added a sentence
+ * around it: exactly one top-level object, braces balanced outside strings, and it must still parse and pass the full contract below.
+ */
+export function topLevelObjects(raw: string): { spans: [number, number][]; balanced: boolean } {
+  const spans: [number, number][] = [];
+  let depth = 0, start = -1, inString = false, escaped = false;
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (depth === 0) { if (ch === "{") { depth = 1; start = i; } continue; }
+    if (inString) { if (escaped) escaped = false; else if (ch === "\\") escaped = true; else if (ch === '"') inString = false; continue; }
+    if (ch === '"') inString = true; else if (ch === "{") depth++; else if (ch === "}" && --depth === 0) spans.push([start, i + 1]);
+  }
+  return { spans, balanced: depth === 0 };
+}
+export function extractJsonObject(raw: string): string | undefined {
+  const { spans, balanced } = topLevelObjects(raw);
+  return balanced && spans.length === 1 ? raw.slice(spans[0][0], spans[0][1]) : undefined;
+}
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 /** No eval, repair request, ID supplied by the model, or trust in prompt-only permissions. */
 export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSnapshot, createId: () => string = () => crypto.randomUUID(), now: number = Date.now()) {
   if (raw.length > MAINTENANCE_LIMITS.outputCharacters) return invalid();
-  let parsed: unknown; try { parsed = JSON.parse(raw); } catch { throw new MaintenanceParseError("json"); }
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); }
+  catch {
+    const extracted = extractJsonObject(raw);
+    try { parsed = JSON.parse(extracted ?? ""); } catch { throw new MaintenanceParseError("json"); }
+  }
   if (!obj(parsed) || Object.keys(parsed).some((key) => key !== "operations") || !Array.isArray(parsed.operations)
     || parsed.operations.length > MAINTENANCE_LIMITS.operations) return invalid();
   const stateOperations = parseStateOperations(parsed.operations.filter((value) => obj(value) && String(value.op).startsWith("STATE_")),

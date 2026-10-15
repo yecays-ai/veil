@@ -8,7 +8,7 @@ import { createCompletionRequestContext } from "../chat/request-diagnostics";
 import { maintenanceDue, maintenanceSettled, MAINTENANCE_MAX_SAFE_CLAIMS, MAINTENANCE_TRIGGER_SEQUENCES } from "./maintenance-capacity";
 import { MAINTENANCE_LIMITS, MaintenanceInputTooLarge, maintenanceCandidateText, planMaintenanceInput, selectMaintenanceCandidates, type MaintenancePlan, type MaintenanceStats } from "./maintenance-input";
 import { MaintenanceParseError, parseMaintenanceOperations } from "./maintenance-operations";
-import { createMaintenanceDiagnostics, type MaintenanceCounts, type MaintenanceStage } from "./maintenance-diagnostics";
+import { createMaintenanceDiagnostics, responseShape, type MaintenanceCounts, type MaintenanceShape, type MaintenanceStage } from "./maintenance-diagnostics";
 import type { MemoryBatchTicket, MemoryProgressProtocol } from "./progress";
 import { validMemoryProgress, type MemoryProgress } from "./progress-types";
 import type { MemoryStorage } from "./storage";
@@ -81,6 +81,11 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
       if (batch.state === "ready" && batch.attempts < MAX_SAFE_CLAIMS) {
         ticket = await deps.protocol.refresh(saved.ticket, []); break;
       }
+      // A range whose request is known to have failed is retried once, as the same range with the same sources (refresh re-reads
+      // exactly its own messages). The persisted attempt count caps it at MAX_SAFE_CLAIMS requests; uncertain ranges are never retried.
+      if (batch.state === "failed" && batch.attempts < MAX_SAFE_CLAIMS) {
+        ticket = await deps.protocol.refresh(saved.ticket, []); break;
+      }
       // A too-large range is looked at again on a normal trigger, a limited number of times per budget; never counted as done.
       if (batch.state === "too-large" && !((batch.sizeAttempts ?? 0) >= MAINTENANCE_SIZE_ATTEMPTS && batch.budgetKey === budgetKey)) {
         const candidate = await deps.protocol.refresh(saved.ticket, [], false);
@@ -124,9 +129,10 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     const clock = deps.now();
     const started = performance.now(); let inputCharacters = 0, sizeAttempts = 0; const stats: Partial<MaintenanceStats> = {};
     const seqs = snapshot.messages.flatMap((m) => m.memorySequence?.seq !== undefined ? [m.memorySequence.seq] : []);
+    const attempt = (await deps.protocol.describe(ticket)).attempts + 1;
     const record = (outcome: "committed" | "rejected" | "commit-failed", stage: MaintenanceStage,
-      parsed?: { operationCount: number; discarded: number; counts: MaintenanceCounts }) => deps.diagnostics?.record({
-      outcome, stage, at: clock, messageCount: snapshot.messages.length, candidateCount: snapshot.candidates.length, inputCharacters,
+      parsed?: { operationCount: number; discarded: number; counts: MaintenanceCounts }, shape?: MaintenanceShape) => deps.diagnostics?.record({
+      outcome, stage, attempt, ...(shape ? { shape } : {}), at: clock, messageCount: snapshot.messages.length, candidateCount: snapshot.candidates.length, inputCharacters,
       operationCount: parsed?.operationCount ?? 0, discarded: parsed?.discarded ?? 0, durationMs: performance.now() - started, sizeAttempts, ...stats,
       ...(seqs.length ? { fromSeq: Math.min(...seqs), toSeq: Math.max(...seqs) } : {}), ...(parsed ? { counts: parsed.counts } : {}) });
     let plan: MaintenancePlan | undefined;
@@ -196,7 +202,9 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
       operations = parseMaintenanceOperations(text, visible, undefined, clock);
     } catch (error) {
       await deps.protocol.transition(ticket, "failed").catch(() => undefined);
-      record("rejected", error instanceof MaintenanceParseError ? error.stage : finishReason && isTruncatedReason(finishReason) ? "truncated" : "format"); return false;
+      const truncated = !!finishReason && isTruncatedReason(finishReason);
+      record("rejected", error instanceof MaintenanceParseError ? error.stage : truncated ? "truncated" : "format", undefined,
+        responseShape(text, truncated ? "length" : finishReason === "stop" ? "stop" : finishReason ? "other" : "none")); return false;
     }
     await deps.protocol.transition(ticket, "commit-pending");
     try {
