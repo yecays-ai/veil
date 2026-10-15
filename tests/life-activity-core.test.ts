@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { lifeActivityStatus, lifeTimeline, normalizeLifeState, reconcileLifeActivities,
+import { lifeActivityStatus, lifeMomentRevealAt, lifeTimeline, normalizeLifeState, reconcileLifeActivities,
   type LifeActivity } from "../lib/life/activity";
 import { emptyPresenceDocument, normalizePresenceDocument, presenceRecord, setLifeState } from "../lib/presence/storage";
 
@@ -86,17 +86,23 @@ test("the timeline only shows a repeated settled moment once without changing st
     "display deduplication must not rewrite persisted settled activity");
 });
 
-test("duplicate upcoming moments keep the newer detail and preserve timeline order", () => {
-  const repeated = "Spilled a little water and cleaned it up before anyone noticed.";
-  const older = lunch({ id: "upcoming-older", occurrenceKey: "upcoming-older", startsAt: 2 * HOUR,
-    endsAt: 3 * HOUR, moment: repeated });
-  const newer = lunch({ id: "upcoming-newer", occurrenceKey: "upcoming-newer", startsAt: 4 * HOUR,
-    endsAt: 5 * HOUR, moment: repeated });
-  const state = reconcileLifeActivities(undefined, [older, newer], HOUR);
+test("nothing planned ahead is shown, and a Moment appears only once its time inside the activity has come", () => {
+  const later = lunch({ id: "later", occurrenceKey: "later", startsAt: 20 * HOUR, endsAt: 21 * HOUR, moment: "Found a shortcut." });
+  const now = lunch({ id: "now", occurrenceKey: "now", startsAt: 12 * HOUR, endsAt: 14 * HOUR, moment: "Heard a song." });
+  const state = reconcileLifeActivities(undefined, [now, later], 12 * HOUR);
 
-  const timeline = lifeTimeline(state, HOUR);
-  assert.deepEqual(timeline.upcoming.map((item) => item.id), ["upcoming-older", "upcoming-newer"]);
-  assert.equal(timeline.upcoming[0].moment, undefined);
-  assert.equal(timeline.upcoming[1].moment, repeated);
+  const atStart = lifeTimeline(state, 12 * HOUR);
+  assert.equal(atStart.current?.id, "now");
+  assert.equal(atStart.current?.moment, undefined, "the Moment has not happened at the start");
+  assert.deepEqual(Object.keys(atStart), ["current", "completed"]);
+  assert.equal(JSON.stringify(atStart).includes("Found a shortcut."), false, "a later activity is not exposed at all");
+
+  const reveal = lifeMomentRevealAt(now);
+  assert.ok(reveal >= 12 * HOUR + 0.3 * 2 * HOUR - 1 && reveal <= 12 * HOUR + 0.7 * 2 * HOUR + 1);
+  assert.equal(lifeMomentRevealAt(now), reveal, "stable for the occurrence");
+  assert.equal(lifeTimeline(state, reveal - 1).current?.moment, undefined);
+  assert.equal(lifeTimeline(state, reveal).current?.moment, "Heard a song.");
+  assert.equal(lifeTimeline(state, 14 * HOUR).completed[0].moment, "Heard a song.", "stays once finished");
+  assert.equal(state.activities.find((item) => item.id === "now")?.moment, "Heard a song.", "stored data is unchanged");
 });
 

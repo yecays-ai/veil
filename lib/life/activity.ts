@@ -99,22 +99,33 @@ export function reconcileLifeActivities(current: LifeState | undefined, candidat
   return { activities, reconciledAt: effectiveNow };
 }
 
+/**
+ * When an activity's Moment "happens": a stable point 30–70% of the way through it, derived from the occurrence so a
+ * reload never moves it. The Moment is stored when the day is planned, but nothing shows or uses it before this time.
+ */
+export function lifeMomentRevealAt(activity: Pick<LifeActivity, "occurrenceKey" | "startsAt" | "endsAt">): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < activity.occurrenceKey.length; index++)
+    hash = Math.imul(hash ^ activity.occurrenceKey.charCodeAt(index), 0x01000193);
+  const fraction = 0.3 + ((hash >>> 0) % 41) / 100;
+  return activity.startsAt + Math.floor((activity.endsAt - activity.startsAt) * fraction);
+}
+
+/**
+ * What has happened by `now`, and nothing planned ahead: the current activity and the most recent finished ones. An
+ * activity not yet started is absent, and a Moment appears only once its time inside the activity has come.
+ */
 export function lifeTimeline(state: LifeState | undefined, now: number, recent = 8) {
   const activities = state?.activities ?? [];
   const current = activities.find((item) => lifeActivityStatus(item, now) === "active") ?? null;
   const limit = Math.max(0, recent);
   const completed = limit ? activities.filter((item) => item.endsAt <= now).slice(-limit).reverse() : [];
-  const upcoming = activities.filter((item) => item.startsAt > now).slice(0, 3);
   const shownMoments = new Set<string>();
-  const withoutRepeatedMoments = (items: readonly LifeActivity[]) => items.map((item) => {
+  const happened = (items: readonly LifeActivity[]) => items.map((item) => {
     if (!item.moment) return item;
-    if (shownMoments.has(item.moment)) return { ...item, moment: undefined };
+    if (now < lifeMomentRevealAt(item) || shownMoments.has(item.moment)) return { ...item, moment: undefined };
     shownMoments.add(item.moment);
     return item;
   });
-  const uniqueCurrent = current ? withoutRepeatedMoments([current])[0] : null;
-  const uniqueCompleted = withoutRepeatedMoments(completed);
-  const uniqueUpcoming = withoutRepeatedMoments([...upcoming].reverse()).reverse();
-  return { current: uniqueCurrent, completed: uniqueCompleted, upcoming: uniqueUpcoming };
+  return { current: current ? happened([current])[0] : null, completed: happened(completed) };
 }
-

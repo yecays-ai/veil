@@ -3,7 +3,7 @@
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore, type Ref } from "react";
 import type { Character } from "../../lib/foundation-types";
-import { lifeActivityStatus, lifeTimeline, type LifeActivity } from "../../lib/life/activity";
+import { lifeActivityStatus, lifeMomentRevealAt, lifeTimeline, type LifeActivity } from "../../lib/life/activity";
 import { reconcileProjectedLife } from "../../lib/life/plan";
 import { livePresence } from "../../lib/presence/live";
 import { browserPresenceStorage, presenceRecord, setLifeState } from "../../lib/presence/storage";
@@ -32,7 +32,7 @@ export function LifeTimelineScreen({ screenRef, character, onBack }: {
   const [now, setNow] = useState(() => Date.now()), [writeError, setWriteError] = useState("");
   const record = presenceRecord(snapshot.document, character.characterId);
   const timeline = useMemo(() => lifeTimeline(record?.life, now), [record?.life, now]);
-  const items = [...timeline.completed].reverse().concat(timeline.current ? [timeline.current] : [], timeline.upcoming);
+  const items = [...timeline.completed].reverse().concat(timeline.current ? [timeline.current] : []);
 
   useEffect(() => {
     if (!snapshot.ready) return;
@@ -47,11 +47,13 @@ export function LifeTimelineScreen({ screenRef, character, onBack }: {
   }, [snapshot.ready, character.characterId, character.timezone]);
 
   useEffect(() => {
-    const edge = items.flatMap((item) => [item.startsAt, item.endsAt]).filter((value) => value > now).sort((a, b) => a - b)[0];
+    // The next moment the page changes: an activity starting or ending, or a Moment coming due. Nothing earlier is polled.
+    const edge = (record?.life?.activities ?? []).flatMap((item) => [item.startsAt, item.endsAt,
+      ...(item.moment ? [lifeMomentRevealAt(item)] : [])]).filter((value) => value > now).sort((a, b) => a - b)[0];
     if (!edge) return;
     const timer = setTimeout(() => setNow(Date.now()), Math.min(Math.max(1_000, edge - Date.now()), 2 ** 31 - 1));
     return () => clearTimeout(timer);
-  }, [items, now]);
+  }, [record?.life, now]);
 
   return <section ref={screenRef} className="chat-info-screen" role="dialog" aria-modal="true" aria-label={`${character.name}'s Life`}>
     <header className="chat-info-header">
