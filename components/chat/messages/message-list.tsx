@@ -4,7 +4,7 @@ import { applyRegex } from "../../../lib/regex-engine";
 import type { RegexGroup } from "../../../lib/regex";
 import { canContinueTurn, canRegenerateTurn } from "../../../lib/chat/turns";
 import type { ChatMessage } from "../../../lib/chat/types";
-import { resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../../lib/chat/delivery";
+import { readOnReplyState, resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../../lib/chat/delivery";
 import { reactionBadges } from "../../../lib/chat/reactions";
 import { parseQuotedReply } from "../../../lib/chat/quote";
 import { visibleReplyText } from "../../../lib/chat/usability";
@@ -22,7 +22,7 @@ type GroupedMessage = { message: ChatMessage; showTimestamp: boolean; isGroupSta
 /** The message timeline is presentation-only; ChatRoom retains session, overlay and generation coordination. */
 export function MessageList({
   groupedMessages, messages, selectedIds, activeMessageId, highlightedMessageId, multiSelect, typing, typingBeforeId,
-  typingIndicator, character, userName, streamOnline, generationActive, regexGroups, lastVisibleMessageId,
+  typingIndicator, character, userName, streamOnline, generationActive, regexGroups, lastVisibleMessageId, lifeMode,
   onOpenActions, onToggleSelected, onClearHighlight, onRegenerate,
   onPointerDownMessage, onContextMenuMessage, onTransferAction, onGiftAction,
 }: {
@@ -41,6 +41,7 @@ export function MessageList({
   generationActive: boolean;
   regexGroups: readonly RegexGroup[];
   lastVisibleMessageId?: string;
+  lifeMode?: boolean;
   onOpenActions: (event: MouseEvent<HTMLElement>, message: ChatMessage) => void;
   onToggleSelected: (message: ChatMessage) => void;
   onClearHighlight: (messageId: string) => void;
@@ -52,7 +53,7 @@ export function MessageList({
 }) {
   return <>
     {groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
-      const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
+      const delivery = isGroupEnd ? resolveUserMessageDelivery(message, lifeMode ? readOnReplyState(messages) : undefined) : null;
       const groupClass = `${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${isGroupStart || isGroupEnd ? "" : " chat-group-middle"}`;
       const visibleText = visibleReplyText(message, streamOnline);
       const parsed = message.role === "assistant" ? parseQuotedReply(visibleText) : { content: visibleText, preview: null };
