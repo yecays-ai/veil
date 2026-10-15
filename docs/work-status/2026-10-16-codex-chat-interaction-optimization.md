@@ -1,7 +1,7 @@
 # STATUS — 2026-10-16-codex-chat-interaction-optimization
 
 更新人：Codex
-更新时间：2026-10-16T05:08+08:00
+更新时间：2026-10-16T05:14+08:00
 发现范围：从 GitHub main SHA 5914e198952c8a322552382f2485ac1038683a22 开始；开始时核对无其他开放 PR、PR #216（已于 2026-10-15 合并）。工作分支 codex/chat-interaction-120s-stickers-navigation 基于该 SHA；PR #219 已创建并保持 Open。
 
 ## 当前任务
@@ -21,7 +21,7 @@ Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR #219：https
 - 普通模型历史只加入 [User recalled a message] / [Character recalled a message]；原文继续从消息行清空并排除摘要、Memory 与搜索。
 - Character 自己撤回的原文仅保存在当前引擎内存中，供下一次正常模型请求延续；请求开始后消费，刷新/重进会话后不会保留，清空/删除后也无法从消息行恢复。
 - Sticker 点击发送后保留面板挂载；输入框 focus 收起面板并交给系统键盘。
-- Messages 路由转场包裹整页内容，支持列表进入与浏览器返回；尊重减少动态效果偏好。
+- Messages 路由转场包裹整页内容，支持列表进入与浏览器返回；尊重减少动态效果偏好。真机验收发现聊天页为空白；初步根因是横向 flex wrapper 下 ChatRoom 的 flex:none 缺少宽度约束，当前修复为显式填满 wrapper 并添加布局回归断言。
 - 备份白名单接受可选 sentAt，兼容无此字段的旧备份。
 
 ## 尚未验证
@@ -33,4 +33,4 @@ Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR #219：https
 
 ## 下一步
 
-CodeRabbit 审核仍在进行；最新 0c3740029f9268176481a6f33048d552d285785b 的 Vercel Preview 部署成功。需用户真机验收 iOS/PWA 转场、面板与键盘切换；不自行合并。
+CodeRabbit 审核仍在进行；最新 0c3740029f9268176481a6f33048d552d285785b 的 Vercel Preview 部署成功。验收网址目前临时恢复到旧的可用部署。ChatRoom 宽度修复 CI 通过后再把该网址指向修复部署，需用户重新验收 iOS/PWA 转场、面板与键盘切换；不自行合并。

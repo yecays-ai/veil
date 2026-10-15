@@ -255,6 +255,7 @@ test("Messages navigation transitions the full route page in both directions and
   assert.match(routeTransition, /target === "\/messages" \? "back" : "forward"/);
   assert.match(routeTransition, /prefers-reduced-motion: reduce/);
   assert.match(css, /\.messages-route-frame\s*\{[^}]*view-transition-name:\s*messages-route/);
+  assert.match(css, /\.messages-route-frame > \.chat-room\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*flex:\s*1 1 0/);
   assert.match(css, /view-transition-new\(messages-route\)[^{]*\{[^}]*messages-route-forward-in/);
   assert.match(css, /view-transition-old\(messages-route\)[^{]*\{[^}]*messages-route-back-out/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?view-transition-group\(messages-route\)/);
