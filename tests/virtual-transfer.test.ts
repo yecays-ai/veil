@@ -10,7 +10,7 @@ test("virtual transfer persists pending, receive and return as one original plus
   const session = await storage.openSession("transfer-user");
   const original = await storage.createTransfer(session.id, 12.5, "coffee", "user");
   assert.deepEqual(original.transfer, { amount: 12.5, note: "coffee", sender: "user", recipient: "assistant", status: "pending" });
-  await assert.rejects(storage.recallMessage(original.id, "user"), /cannot be recalled/);
+  await assert.rejects(storage.recallMessage(original.id, "user"), /Only your own message sent within the last 2 minutes can be recalled/);
   await assert.rejects(storage.actOnTransfer(original.id, "user", "receive"), /not available/);
   const accepted = await storage.actOnTransfer(original.id, "assistant", "receive");
   assert.equal(accepted.message.transfer?.status, "received");

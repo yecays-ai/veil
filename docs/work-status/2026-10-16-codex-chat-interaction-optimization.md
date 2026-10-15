@@ -1,8 +1,8 @@
 # STATUS — 2026-10-16-codex-chat-interaction-optimization
 
 更新人：Codex
-更新时间：2026-10-16T04:49+08:00
-发现范围：从 GitHub main SHA 5914e198952c8a322552382f2485ac1038683a22 开始；核对当前开放 PR（无）及 PR #216（已于 2026-10-15 合并）。工作分支 codex/chat-interaction-120s-stickers-navigation 基于该 SHA。
+更新时间：2026-10-16T05:04+08:00
+发现范围：从 GitHub main SHA 5914e198952c8a322552382f2485ac1038683a22 开始；开始时核对无其他开放 PR、PR #216（已于 2026-10-15 合并）。工作分支 codex/chat-interaction-120s-stickers-navigation 基于该 SHA；PR #219 已创建并保持 Open。
 
 ## 当前任务
 
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR 尚未创建。
+Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR #219：https://github.com/yecays-ai/veil/pull/219
 涉及 Chat Storage、Prompt、Character Actions、聊天消息菜单、Sticker Composer、Messages 路由转场、备份验证和定向测试。
 不修改白闪/白边、Memory 内容规则、删除规则或 PR #216 的 Life Mode 插话行为。
 
@@ -26,11 +26,11 @@ Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR 尚未创建
 
 ## 尚未验证
 
-- PR #219 首轮 typecheck 发现一处撤回 session 校验误落入 editMessage，以及既有 message-recall 测试引用已退休的 previous-only API；均已修复。第二轮 typecheck 通过，lint 指出两处新代码在 render 中读 ref/Date.now；已改为 layout/effect 处理，等待第三轮 CI。第二轮 lint 失败使测试和 build 被跳过。
+- PR #219 首轮 typecheck 发现一处撤回 session 校验误落入 editMessage，以及既有 message-recall 测试引用已退休的 previous-only API；均已修复。第二轮 typecheck 通过，lint 指出两处新代码在 render 中读 ref/Date.now；已改为 layout/effect 处理，第三轮提交 9c098b2e314361835dca5176acbd2748d8642382 的 typecheck 与 lint 通过；完整 npm test 发现 4 个断言失败：撤回模型测试未在第二轮请求前设置目标 ID、Recall 静态 UI 断言仍指向旧结构、Presence 状态断言包含已移除的 canRecall 字段、转账卡撤回错误文案断言过期。已修正测试断言/夹具，等待下一轮 CI。测试失败导致 build 与 diff 检查跳过。
 - iOS/PWA 真机上的整页转场、键盘切换和 Sticker 连发体验待验收。
-- 首轮 Vercel 预览部署失败；更新后的预览部署已成功。
+- 首轮 Vercel 预览部署失败；9c098b2e314361835dca5176acbd2748d8642382 的 Vercel Preview 部署成功。
 - View Transitions API 不可用或用户启用减少动态效果时，路由正常切换但不运行横向动画。
 
 ## 下一步
 
-等待更新后的 GitHub CI、Vercel 预览和 CodeRabbit 结果；修复真实发现后等待用户真机验收；不自行合并。
+等待第四轮 GitHub CI、CodeRabbit 结果；Vercel Preview 已部署。CI 通过后仍需用户真机验收；不自行合并。

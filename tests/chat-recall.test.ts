@@ -116,6 +116,7 @@ test("a Character's just-recalled text survives one next request in memory, then
   await storage.send(session.id, "first");
   await engine.requestReply(session.id);
   const original = (await storage.readSession(session.id)).messages.find((message) => message.role === "assistant")!;
+  targetId = original.id;
   await storage.send(session.id, "second");
   await engine.requestReply(session.id);
   assert.match(prompts[1], new RegExp(original.id));
