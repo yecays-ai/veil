@@ -14,25 +14,27 @@ const rule = (selector: string) => {
   return match[1];
 };
 
-test("transfer and gift cards keep stable responsive outer dimensions", () => {
+test("transfer and gift cards keep a stable responsive width without fixed heights", () => {
   const container = rule(".chat-message-transfer, .chat-message-gift");
   assert.match(container, /width:\s*min\(260px, calc\(100% - var\(--chat-avatar-size\)/);
   assert.match(container, /max-width:\s*none/);
   const transferCard = rule(".chat-transfer-card");
   assert.match(transferCard, /width:\s*100%/);
-  assert.match(transferCard, /height:\s*248px/);
+  assert.doesNotMatch(transferCard, /height:/);
   assert.match(transferCard, /grid-template-rows:/);
   const giftCard = rule(".chat-gift-card");
   assert.match(giftCard, /width:\s*100%/);
-  assert.match(giftCard, /height:\s*190px/);
+  assert.doesNotMatch(giftCard, /height:/);
   assert.match(rule(".chat-result-card"), /width:\s*100%/);
 });
 
 test("amount stays complete and transfer note remains fully reachable", () => {
   const amount = rule(".chat-transfer-amount");
   assert.match(amount, /font-size:\s*clamp/);
-  assert.match(amount, /overflow-x:\s*auto/);
+  assert.match(amount, /overflow:\s*hidden/);
   assert.match(amount, /white-space:\s*nowrap/);
+  assert.match(rule(".chat-transfer-amount-long"), /font-size:\s*clamp/);
+  assert.match(transfer, /amount\.length > 15/);
   const note = rule(".chat-transfer-note");
   assert.match(note, /overflow:\s*auto/);
   assert.match(transfer, /tabIndex=\{transfer\.note \? 0 : undefined\}/);
@@ -41,8 +43,8 @@ test("amount stays complete and transfer note remains fully reachable", () => {
 
 test("gift preview clamps rendered lines while its existing detail keeps the full content", () => {
   const content = rule(".chat-gift-content");
-  assert.match(content, /-webkit-line-clamp:\s*3/);
-  assert.match(content, /max-height:\s*3\.9em/);
+  assert.match(content, /-webkit-line-clamp:\s*2/);
+  assert.match(content, /max-height:\s*2\.6em/);
   assert.match(gift, /role="dialog"[\s\S]*?<p>\{gift\.content\}<\/p>/);
 });
 
