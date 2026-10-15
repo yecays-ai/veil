@@ -687,7 +687,7 @@ export class ChatStorage {
   }
 
   updateSessionSettings(sessionId: string, patch: {
-    streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean; pinned?: boolean;
+    streamOnline?: boolean; autoReplyOnKeyboardDismiss?: boolean; pinned?: boolean; lifeMode?: boolean;
     backgroundImage?: string | null;
     backgroundBlur?: number | null;
     customCSS?: string | null;
@@ -702,6 +702,11 @@ export class ChatStorage {
           if (typeof patch[key] !== "boolean") throw new Error("Invalid conversation setting.");
           next[key] = patch[key];
         }
+      if (patch.lifeMode !== undefined) {
+        if (typeof patch.lifeMode !== "boolean") throw new Error("Invalid conversation setting.");
+        if (patch.lifeMode && session.type === "group") throw new Error("Life Mode is only for direct conversations.");
+        if (patch.lifeMode) next.lifeMode = true; else delete next.lifeMode;
+      }
       if (patch.backgroundImage !== undefined) {
         if (patch.backgroundImage !== null) {
           if (typeof patch.backgroundImage !== "string" || !patch.backgroundImage)

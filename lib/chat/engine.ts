@@ -48,14 +48,14 @@ const recordSentToPresence: SentRecorder = (characterId, sentAt) =>
   typeof window === "undefined" ? Promise.resolve() : sentRecorder(browserPresenceStorage)(characterId, sentAt);
 
 /** What this Character knows about itself right now: the user's remark, its status, situation and signature. */
-type SelfLoader = (character: Character, now: number, reply: { lastReplyAt: number | null; announceChange: boolean; allowActions: boolean; reactions?: ReactionState }) =>
+type SelfLoader = (character: Character, now: number, reply: { lastReplyAt: number | null; announceChange: boolean; allowActions: boolean; reactions?: ReactionState; lifeMode?: boolean }) =>
   Promise<SelfState | undefined>;
 const loadSelfState: SelfLoader = async (character, now, reply) => {
   if (typeof window === "undefined") return undefined;
   try {
     const [contacts, presence] = await Promise.all([browserContactStorage.load(), browserPresenceStorage.load()]);
     return selfState(character, contacts.contacts.find((item) => item.characterId === character.characterId),
-      presenceRecord(presence, character.characterId), now, reply.lastReplyAt, reply.announceChange, reply.allowActions, reply.reactions);
+      presenceRecord(presence, character.characterId), now, reply.lastReplyAt, reply.announceChange, reply.allowActions, reply.reactions, reply.lifeMode);
   } catch {
     console.warn("[Presence] own state was not added to the reply context");
     return undefined;
@@ -248,7 +248,7 @@ export function createChatEngine(
       const reaction = proactive || source === "continue" ? null : reactionTarget(batch.messages, batch.assistant.order);
       const reactions: ReactionState = { canReact: !!reaction && characterMayReact(batch.messages, reaction), notes: userReactionNotes(batch.messages) };
       const ownState = await awaited(self(character, now().getTime(), { announceChange: source !== "continue",
-          allowActions: source !== "continue", reactions,
+          allowActions: source !== "continue", reactions, lifeMode: batch.session.lifeMode === true,
           lastReplyAt: batch.messages.reduce<number | null>((latest, message) =>
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
               ? message.createdAt : latest, null) }), controller.signal);

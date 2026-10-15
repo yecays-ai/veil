@@ -13,6 +13,8 @@ export type ChatSession = {
   lastMessageId?: string;
   lastMessagePreview?: string;
   autoReplyOnKeyboardDismiss: boolean;
+  /** Life Mode (direct chats only): the Character decides when to answer, see life-reply.ts. Absent when off. */
+  lifeMode?: true;
   streamOnline?: boolean;
   backgroundImage?: string;
   backgroundBlur?: number;
