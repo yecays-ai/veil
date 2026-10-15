@@ -6,11 +6,11 @@
 
 ## 当前任务
 
-待审查。"第一章"：角色回复时知道自己此刻在做什么，以及这项活动里已经"发生"的小插曲。不新增模型调用。
+待合并。"第一章"：角色回复时知道自己此刻在做什么，以及这项活动里已经"发生"的小插曲。不新增模型调用。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-iwht8v`；PR：创建后补链接。涉及 `lib/chat/self-context.ts`、`tests/presence-self-context.test.ts`。不改存储、计划生成、Presence 或 `lib/memory/*`。
+Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-ai/veil/pull/208。涉及 `lib/chat/self-context.ts`、`tests/presence-self-context.test.ts`。不改存储、计划生成、Presence 或 `lib/memory/*`。
 
 ## 已完成
 
