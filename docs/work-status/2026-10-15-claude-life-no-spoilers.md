@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-iwht8v`；PR 链接待创建后补充。涉及 `lib/life/activity.ts`、`components/chat/life-timeline.tsx`、`tests/life-activity-core.test.ts`。只改呈现，不改存储、计划生成、Presence 或 `lib/memory/*`。
+Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-ai/veil/pull/207。涉及 `lib/life/activity.ts`、`components/chat/life-timeline.tsx`、`tests/life-activity-core.test.ts`。只改呈现，不改存储、计划生成、Presence 或 `lib/memory/*`。
 
 ## 已完成
 

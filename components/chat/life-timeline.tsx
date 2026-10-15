@@ -66,7 +66,7 @@ export function LifeTimelineScreen({ screenRef, character, onBack }: {
       {!snapshot.ready ? <p className="chat-info-search-unavailable" role="status">Loading Life…</p> : items.length ?
         <div className="life-timeline" aria-label={`${character.name}'s activity timeline`}>
           {items.map((item) => <TimelineItem key={item.id} item={item} now={now} timezone={character.timezone} />)}
-        </div> : <div className="life-timeline-empty"><strong>No activity yet.</strong><span>Life will appear after a routine or situation is available.</span></div>}
+        </div> : <div className="life-timeline-empty"><strong>No activity yet.</strong><span>Activity will appear here once it starts.</span></div>}
     </div>
   </section>;
 }
