@@ -35,6 +35,7 @@ import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
 import { createTransientFeedback, hasPendingUserContent } from "../../lib/chat/usability";
 import { groupVisibleMessages, hiddenForReveal } from "../../lib/chat/bubble-pacing";
 import { useBubbleReveal } from "./use-bubble-reveal";
+import { useBackgroundReplyReveal } from "./use-background-reply-reveal";
 import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
 import { CustomCSSSettings } from "./custom-css-settings";
@@ -204,6 +205,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     // eslint-disable-next-line react-hooks/refs
     currentSessionId.current, messages, session?.streamOnline === true, !!loadError,
   );
+  useBackgroundReplyReveal(revealQueue, { sessionId: session?.characterId === characterId ? session.id : undefined,
+    generationId: session?.generation?.id, messages, streaming: session?.streamOnline === true, owned: generating, running: chatEngine.isGenerating, timing: bubbleTiming });
   function showFeedback(text: string) {
     feedbackController.show(text);
   }
