@@ -92,7 +92,7 @@ function user(id: string, order: number, createdAt: number, extra: Partial<ChatM
 function harness(options: { sessions?: Row[]; messages?: ChatMessage[]; inputs?: PresenceInputs | undefined; now?: number; visible?: boolean } = {}) {
   const state = { sessions: options.sessions ?? [{ id: "s", characterId: "a", lifeMode: true as const }],
     messages: options.messages ?? [user("m1", 1, DAY0 + 10 * HOUR)], now: options.now ?? DAY0 + 10 * HOUR + 30_000,
-    visible: options.visible ?? true, generating: false, composing: false, inputs: "inputs" in options ? options.inputs : workDay };
+    visible: options.visible ?? true, generating: false, composing: false, notStarted: false, inputs: "inputs" in options ? options.inputs : workDay };
   const replies: string[] = [];
   const hooks = { onSessionRead: async () => {} };
   const timers: { run: () => void; ms: number; live: boolean }[] = [];
@@ -103,7 +103,13 @@ function harness(options: { sessions?: Row[]; messages?: ChatMessage[]; inputs?:
     presence: async () => state.inputs,
     isGenerating: () => state.generating,
     composing: () => state.composing,
-    reply: async (id) => { replies.push(id); if (fail) throw new Error("provider down"); },
+    reply: async (id) => {
+      replies.push(id);
+      if (state.notStarted) throw new Error("A reply is already in progress.");
+      // Like the real reply path: once started, it claims every waiting message, even when the provider then fails.
+      state.messages = state.messages.map((m) => m.role === "user" && !m.requestedBy ? { ...m, requestedBy: `r${replies.length}` } : m);
+      if (fail) throw new Error("provider down");
+    },
     now: () => state.now, visible: () => state.visible,
   };
   let fail = false;
@@ -136,6 +142,19 @@ test("a failed reply is not retried by the scheduler, but a new message from the
   h.state.now += 20_000;
   h.watcher.touch("s"); await h.fire();
   assert.deepEqual(h.replies, ["s", "s"]);
+  h.watcher.stop();
+});
+
+test("a reply that could not start (another reply held the conversation) is asked again on the next event, without a timer", async () => {
+  const h = harness(); h.state.notStarted = true;
+  h.watcher.start(); await settle();
+  assert.deepEqual(h.replies, ["s"]);
+  assert.equal(h.live().length, 0, "nothing is scheduled by itself, so a refused start cannot loop");
+  h.state.notStarted = false;
+  h.watcher.touch("s"); await h.fire();              // e.g. the other reply ended and released the conversation
+  assert.deepEqual(h.replies, ["s", "s"], "the waiting message is not skipped");
+  h.watcher.touch("s"); await h.fire(); await h.watcher.wake();
+  assert.deepEqual(h.replies, ["s", "s"], "answered once it started");
   h.watcher.stop();
 });
 
@@ -227,8 +246,8 @@ test("a hidden page keeps no timer and a returning page answers what is overdue"
 
 // ---- storage, engine and context ----
 
-function setup() {
-  const storage = new ChatStorage(() => new IDBFactory());
+function setup(factory = new IDBFactory()) {
+  const storage = new ChatStorage(() => factory);
   const document = defaultFoundation(); document.runtime.timeAware = false;
   document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
   let failing = false; const prompts: { role: string; content: string }[][] = [];
@@ -260,6 +279,75 @@ test("a started reply marks every waiting message as asked, even when the provid
   const { messages } = await storage.readSession(session.id);
   assert.deepEqual(messages.filter((m) => m.role === "user").map((m) => !!m.requestedBy), [true, true]);
   assert.equal(messages.some((m) => m.role === "user" && m.status === "sent" && !m.requestedBy), false);
+});
+
+/** The page-level watcher wired to real storage and engine, as in life-reply-browser.ts; `beforeLastRead` runs once, at
+ * the check's final read right before it replies. */
+function liveWatcher(storage: ChatStorage, engine: ReturnType<typeof setup>["engine"], beforeLastRead: () => void) {
+  const outcomes: string[] = []; let reads = 0; let fired = false;
+  const watcher = createLifeReplyWatcher({
+    sessions: () => storage.listSessions(),
+    session: async (id) => { if (++reads === 2 && !fired) { fired = true; beforeLastRead(); } return storage.readSession(id); },
+    presence: async () => ({ characterId: "a", timezone: null, routine: { blocks: [], defaultStatus: "online", jitterMinutes: 0 }, situations: [] }),
+    isGenerating: (id) => engine.isGenerating(id),
+    composing: () => false,
+    reply: (id) => engine.requestReply(id, undefined, "life-reply").then(
+      (reply) => { outcomes.push(reply ? "reply" : "none"); return reply; }, (error) => { outcomes.push((error as Error).message); throw error; }),
+    now: () => Date.now() + HOUR,
+    visible: () => true,
+  });
+  const unsubscribe = storage.subscribe((change) => { if (change.domain === "messages" || change.domain === "session") watcher.touch(change.sessionId); });
+  return { watcher, outcomes, stop() { unsubscribe(); watcher.stop(); } };
+}
+const waitFor = async (done: () => boolean | Promise<boolean>) => {
+  for (let tries = 0; tries < 300 && !(await done()); tries++) await new Promise((resolve) => setTimeout(resolve, 10));
+};
+
+test("losing the start to a Character-initiated attempt on the same page does not leave the message unanswered", async () => {
+  const { storage, engine, prompts } = setup();
+  const session = await storage.openSession("a");
+  await storage.updateSessionSettings(session.id, { lifeMode: true });
+  await engine.send(session.id, "hi");
+  // The proactive pass does not look for unanswered messages before it starts; storage then makes it give up.
+  let initiated: Promise<unknown> | undefined;
+  const live = liveWatcher(storage, engine, () => { initiated = engine.initiate(session.id); });
+  live.watcher.start();
+  await waitFor(() => live.outcomes.length >= 2);
+  assert.equal(await initiated, null, "the Character-initiated attempt gave up without spending its budget");
+  assert.deepEqual(live.outcomes, ["A reply is already in progress.", "reply"], "refused once, then answered after the other attempt ended");
+  const { messages, session: stored } = await storage.readSession(session.id);
+  assert.equal(messages.some((m) => m.role === "user" && !m.requestedBy), false);
+  assert.equal(stored.proactiveAttempts, undefined);
+  assert.equal(prompts.length, 1, "one model call in total");
+  live.stop();
+});
+
+test("losing the start to another tab does not leave the message unanswered", async () => {
+  const factory = new IDBFactory();
+  const { storage, engine, prompts } = setup(factory);
+  const otherTab = new ChatStorage(() => factory);
+  const session = await storage.openSession("a");
+  await storage.updateSessionSettings(session.id, { lifeMode: true });
+  await engine.send(session.id, "hi");
+  let other: Promise<unknown> | undefined;
+  const live = liveWatcher(storage, engine, () => {
+    other = (async () => {
+      const owned = await otherTab.claimGeneration(session.id, undefined, "initiate");
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const batch = await otherTab.beginReply(session.id, undefined, owned, "initiate");
+      await otherTab.releaseGeneration(session.id, owned);
+      return batch;
+    })();
+  });
+  live.watcher.start();
+  await waitFor(() => live.outcomes.length >= 1 && !!other);
+  assert.equal(await other, null);
+  live.watcher.touch(session.id); // the other tab's release reaches this page as a change
+  await waitFor(() => live.outcomes.length >= 2);
+  assert.deepEqual(live.outcomes, ["A reply is already in progress.", "reply"]);
+  assert.equal((await storage.readSession(session.id)).messages.some((m) => m.role === "user" && !m.requestedBy), false);
+  assert.equal(prompts.length, 1);
+  live.stop();
 });
 
 test("the Character is told it may wrap up only when Busy is about to start or just started, and only in Life Mode", () => {

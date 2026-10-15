@@ -94,6 +94,11 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
       if (deps.composing(sessionId)) return;
       attempted.set(sessionId, newest.id);
       await deps.reply(sessionId).catch(() => undefined);
+      // A reply that never started (another reply held the conversation) claimed nothing, so the message is forgotten
+      // here and the next event looks again. A started reply always claims it, failed or not, so the model is never retried.
+      const after = await deps.session(sessionId);
+      if (after.messages.some((item) => item.id === newest.id && item.role === "user" && item.status === "sent" && !item.requestedBy))
+        attempted.delete(sessionId);
     } catch {
       /* A failed check is skipped; the next event or visible page tries again, and it never reaches the model. */
     } finally {
