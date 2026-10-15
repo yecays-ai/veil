@@ -7,8 +7,8 @@ import { historyTimestamp } from "../chat/time-context";
 import { createCompletionRequestContext } from "../chat/request-diagnostics";
 import { maintenanceDue, maintenanceSettled, MAINTENANCE_MAX_SAFE_CLAIMS, MAINTENANCE_TRIGGER_SEQUENCES } from "./maintenance-capacity";
 import { MAINTENANCE_LIMITS, MaintenanceInputTooLarge, maintenanceCandidateText, planMaintenanceInput, selectMaintenanceCandidates, type MaintenancePlan, type MaintenanceStats } from "./maintenance-input";
-import { parseMaintenanceOperations } from "./maintenance-operations";
-import { createMaintenanceDiagnostics } from "./maintenance-diagnostics";
+import { MaintenanceParseError, parseMaintenanceOperations } from "./maintenance-operations";
+import { createMaintenanceDiagnostics, type MaintenanceCounts, type MaintenanceStage } from "./maintenance-diagnostics";
 import type { MemoryBatchTicket, MemoryProgressProtocol } from "./progress";
 import { validMemoryProgress, type MemoryProgress } from "./progress-types";
 import type { MemoryStorage } from "./storage";
@@ -123,9 +123,12 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     // One reading of the clock for this maintenance request: what is due, and the review times it may set.
     const clock = deps.now();
     const started = performance.now(); let inputCharacters = 0, sizeAttempts = 0; const stats: Partial<MaintenanceStats> = {};
-    const record = (outcome: "committed" | "rejected" | "commit-failed", operationCount = 0, discarded = 0) => deps.diagnostics?.record({
-      outcome, messageCount: snapshot.messages.length, candidateCount: snapshot.candidates.length, inputCharacters,
-      operationCount, discarded, durationMs: performance.now() - started, sizeAttempts, ...stats });
+    const seqs = snapshot.messages.flatMap((m) => m.memorySequence?.seq !== undefined ? [m.memorySequence.seq] : []);
+    const record = (outcome: "committed" | "rejected" | "commit-failed", stage: MaintenanceStage,
+      parsed?: { operationCount: number; discarded: number; counts: MaintenanceCounts }) => deps.diagnostics?.record({
+      outcome, stage, at: clock, messageCount: snapshot.messages.length, candidateCount: snapshot.candidates.length, inputCharacters,
+      operationCount: parsed?.operationCount ?? 0, discarded: parsed?.discarded ?? 0, durationMs: performance.now() - started, sizeAttempts, ...stats,
+      ...(seqs.length ? { fromSeq: Math.min(...seqs), toSeq: Math.max(...seqs) } : {}), ...(parsed ? { counts: parsed.counts } : {}) });
     let plan: MaintenancePlan | undefined;
     // Only the synchronous planner defines unacceptable input. Storage reads and refreshes stay outside the guard, so an
     // infrastructure failure leaves the ready range retryable, without spending a claim.
@@ -139,7 +142,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
           try { await deps.protocol.claim(ticket!, MAX_SAFE_CLAIMS); await deps.protocol.transition(ticket!, "failed"); }
           catch { /* Changed/deleted authority stays protected; never recreate the cursor. */ }
         }
-        record("rejected"); return false;
+        record("rejected", error instanceof MaintenanceInputTooLarge ? "too-large" : "preflight"); return false;
       }
     };
     let room = 0;
@@ -153,7 +156,7 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
       // Every message held a secret: nothing to extract, so no request. The range stays a retained hole, as before.
       try { await deps.protocol.claim(ticket, MAX_SAFE_CLAIMS); await deps.protocol.transition(ticket, "failed"); }
       catch { /* Changed authority is never recreated or declared successful. */ }
-      record("rejected"); return false;
+      record("rejected", "all-redacted"); return false;
     }
     const input = plan.input;
     // The model may only cite messages it was actually shown.
@@ -185,24 +188,24 @@ export async function runMaintenance(characterId: string, deps: MaintenanceRunne
     } catch {
       // A dispatched request may have been received even if fetch failed or the page closed.
       await deps.protocol.transition(ticket, "uncertain").catch(() => undefined);
-      record("rejected"); return false;
+      record("rejected", "provider-error"); return false;
     } finally { clearTimeout(deadline); signal.removeEventListener("abort", abort); }
     let operations;
     try {
       if (finishReason && isTruncatedReason(finishReason)) throw new Error("Incomplete maintenance output.");
       operations = parseMaintenanceOperations(text, visible, undefined, clock);
-    } catch {
+    } catch (error) {
       await deps.protocol.transition(ticket, "failed").catch(() => undefined);
-      record("rejected"); return false;
+      record("rejected", error instanceof MaintenanceParseError ? error.stage : finishReason && isTruncatedReason(finishReason) ? "truncated" : "format"); return false;
     }
     await deps.protocol.transition(ticket, "commit-pending");
     try {
       await deps.protocol.commitAutomatic(ticket, { put: operations.put, stateOperations: operations.stateOperations }, signal);
-      record("committed", operations.operationCount, operations.discarded); return true;
+      record("committed", "ok", operations); return true;
     } catch {
       // Keep result-unknown state for recovery, never invoke a repair model or resend.
       await deps.protocol.transition(ticket, "uncertain").catch(() => undefined);
-      record("commit-failed", operations.operationCount, operations.discarded); return false;
+      record("commit-failed", "commit-failed", operations); return false;
     }
   });
   return outcome ?? "busy";
