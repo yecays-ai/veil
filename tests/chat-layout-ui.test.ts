@@ -251,8 +251,8 @@ test("standalone diagnostics never render an Enable DIAG overlay", () => {
 test("Messages navigation transitions the full route page in both directions and respects reduced motion", () => {
   assert.match(messagesLayout, /<MessagesRouteTransition>\{children\}<\/MessagesRouteTransition>/);
   assert.match(routeTransition, /router\.push\(url\.pathname/);
-  assert.match(routeTransition, /addEventListener\("popstate", onPopState\)/);
-  assert.match(routeTransition, /target === "\/messages" \? "back" : "forward"/);
+  assert.doesNotMatch(routeTransition, /addEventListener\("popstate"/);
+  assert.match(routeTransition, /url\.pathname === "\/messages" && PRIVATE_CHAT\.test\(currentPath\.current\) \? "back"/);
   assert.match(routeTransition, /prefers-reduced-motion: reduce/);
   assert.match(css, /\.messages-route-frame\s*\{[^}]*view-transition-name:\s*messages-route/);
   assert.match(css, /\.messages-route-frame > \.chat-room\s*\{[^}]*width:\s*100%;[^}]*min-width:\s*0;[^}]*flex:\s*1 1 0/);

@@ -54,28 +54,21 @@ export function MessagesRouteTransition({ children }: { children: ReactNode }) {
       const link = target.closest<HTMLAnchorElement>("a[href]");
       if (!link || link.target && link.target !== "_self" || link.hasAttribute("download")) return;
       const url = new URL(link.href, window.location.href);
-      if (url.origin !== window.location.origin || !PRIVATE_CHAT.test(url.pathname) || url.pathname === currentPath.current) return;
+      if (url.origin !== window.location.origin || url.pathname === currentPath.current) return;
+      const direction = PRIVATE_CHAT.test(url.pathname) ? "forward"
+        : url.pathname === "/messages" && PRIVATE_CHAT.test(currentPath.current) ? "back" : null;
+      if (!direction || !isMessagesRoute(url.pathname)) return;
       const start = (document as TransitionDocument).startViewTransition;
       if (!start || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       event.preventDefault();
       const previous = currentPath.current;
-      begin("forward", async () => {
+      begin(direction, async () => {
         router.push(url.pathname + url.search + url.hash);
         await waitForRoute(url.pathname, previous);
       });
     };
-    const onPopState = () => {
-      const target = window.location.pathname, previous = currentPath.current;
-      if (!isMessagesRoute(target) || !isMessagesRoute(previous) || target === previous
-        || !(document as TransitionDocument).startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      begin(target === "/messages" ? "back" : "forward", () => waitForRoute(target, previous));
-    };
     document.addEventListener("click", onClick, true);
-    window.addEventListener("popstate", onPopState);
-    return () => {
-      document.removeEventListener("click", onClick, true);
-      window.removeEventListener("popstate", onPopState);
-    };
+    return () => document.removeEventListener("click", onClick, true);
   }, [router]);
 
   return <div className="messages-route-frame" data-messages-route={pathname}>{children}</div>;
