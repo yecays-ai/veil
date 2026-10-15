@@ -19,7 +19,7 @@ Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR 尚未创建
 - 用户与 Character 共享 sentAt + 120 秒可撤回校验；存储最终写事务重新验证 sender、状态、会话和时限。
 - Character Action 从 recallPrevious 改为 recallMessageId，提示中只列出 120 秒内自己的候选消息。
 - 普通模型历史只加入 [User recalled a message] / [Character recalled a message]；原文继续从消息行清空并排除摘要、Memory 与搜索。
-- Character 自己撤回的原文仅保存在当前引擎内存中，供下一次正常模型请求延续；请求开始后消费，清空/删除后也无法从消息行恢复。
+- Character 自己撤回的原文仅保存在当前引擎内存中，供下一次正常模型请求延续；请求开始后消费，刷新/重进会话后不会保留，清空/删除后也无法从消息行恢复。
 - Sticker 点击发送后保留面板挂载；输入框 focus 收起面板并交给系统键盘。
 - Messages 路由转场包裹整页内容，支持列表进入与浏览器返回；尊重减少动态效果偏好。
 - 备份白名单接受可选 sentAt，兼容无此字段的旧备份。

@@ -66,7 +66,8 @@ export function MessagesRouteTransition({ children }: { children: ReactNode }) {
     };
     const onPopState = () => {
       const target = window.location.pathname, previous = currentPath.current;
-      if (!isMessagesRoute(target) || !isMessagesRoute(previous) || target === previous) return;
+      if (!isMessagesRoute(target) || !isMessagesRoute(previous) || target === previous
+        || !(document as TransitionDocument).startViewTransition || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       begin(target === "/messages" ? "back" : "forward", () => waitForRoute(target, previous));
     };
     document.addEventListener("click", onClick, true);

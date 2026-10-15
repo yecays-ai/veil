@@ -60,7 +60,7 @@ function historyMessages(context: PromptRuntimeContext) {
 function promptHistoryMessages(context: PromptRuntimeContext) {
   const pendingIds = new Set(context.pending.map((message) => message.id));
   return context.currentMessages.filter((message) => !pendingIds.has(message.id) &&
-    (message.recalled ? message.role === "user" || message.role === "assistant" : historyEligible([message]).length > 0))
+    (message.recalled ? (message.role === "user" && message.status === "sent") || (message.role === "assistant" && message.status === "complete") : historyEligible([message]).length > 0))
     .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES);
 }
 function pendingMessages(context: PromptRuntimeContext) {
