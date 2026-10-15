@@ -31,11 +31,12 @@ test("message text selection remains native and the anchored positioning observe
 test("the fixed 4 by 2 action set uses one Lucide icon family", () => {
   for (const mapping of [
     ["Copy", "Copy"], ["Edit", "Pencil"], ["Quote", "Quote"],
-    ["Memory", "Brain"], ["Select", "CircleCheck"], ["Favorite", "Bookmark"],
+    ["Memory", "Brain"], ["Select", "CircleCheck"], ["Recall", "Undo2"],
     ["Delete", "Trash2"], ["Regenerate", "RotateCcw"],
   ]) assert.match(actions, new RegExp(`label="${mapping[0]}" icon=\\{${mapping[1]}\\}`));
-  assert.equal((actions.match(/<Action label="(?:Copy|Edit|Quote|Memory|Select|Favorite|Delete|Regenerate)"/g) || []).length, 8);
-  assert.match(actions, /recallAllowed[\s\S]*?label="Recall"/);
+  assert.equal((actions.match(/<Action label="(?:Copy|Edit|Quote|Memory|Select|Recall|Delete|Regenerate)"/g) || []).length, 8);
+  assert.match(actions, /label="Recall" icon=\{Undo2\} disabled=\{!recallAllowed\} onClick=\{onRecall\}/);
+  assert.doesNotMatch(actions, /label="Favorite"|icon=\{Bookmark\}/);
   assert.match(actions, /<Icon size=\{25\} strokeWidth=\{1\.75\}/);
   assert.match(css, /grid-template-columns:\s*repeat\(4,/);
   assert.match(css, /width:\s*min\(360px, 92%\)/);

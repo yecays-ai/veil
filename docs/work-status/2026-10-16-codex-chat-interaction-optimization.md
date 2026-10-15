@@ -1,7 +1,7 @@
 # STATUS — 2026-10-16-codex-chat-interaction-optimization
 
 更新人：Codex
-更新时间：2026-10-16T05:29+08:00
+更新时间：2026-10-16T06:00+08:00
 发现范围：从 GitHub main SHA 5914e198952c8a322552382f2485ac1038683a22 开始；开始时核对无其他开放 PR、PR #216（已于 2026-10-15 合并）。工作分支 codex/chat-interaction-120s-stickers-navigation 基于该 SHA；PR #219 已创建并保持 Open。
 
 ## 当前任务
@@ -23,6 +23,7 @@ Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR #219：https
 - Sticker 点击发送后保留面板挂载；输入框 focus 收起面板并交给系统键盘。
 - Messages 路由转场包裹整页内容，支持列表进入与浏览器返回；尊重减少动态效果偏好。真机验收发现聊天页为空白；初步根因是横向 flex wrapper 下 ChatRoom 的 flex:none 缺少宽度约束，当前修复为显式填满 wrapper 并添加布局回归断言。
 - 备份白名单接受可选 sentAt，兼容无此字段的旧备份。
+- 用户已验收 Sticker/键盘切换与撤回功能；撤回超过 120 秒后菜单仍保留 Recall 原位，仅以 disabled 灰态显示，不再回退为 Favorite。
 
 ## 尚未验证
 
@@ -33,4 +34,4 @@ Codex；分支 codex/chat-interaction-120s-stickers-navigation；PR #219：https
 
 ## 下一步
 
-CodeRabbit 审核仍在进行；最新 0c3740029f9268176481a6f33048d552d285785b 的 Vercel Preview 部署成功。ChatRoom 宽度修复已部署并通过 CI。录屏验收发现退出聊天时双闪；根因定位为 popstate 发生后再启动 View Transition，与 Next 路由监听并发导致快照时机不稳定。改为 Messages 内部返回链接在导航前主动启动一次反向转场；浏览器原生返回不再事后追加转场。等待 CI 后更新验收网址；不自行合并。
+CodeRabbit 审核仍在进行；最新 0c3740029f9268176481a6f33048d552d285785b 的 Vercel Preview 部署成功。ChatRoom 宽度修复已部署并通过 CI。录屏验收发现退出聊天时双闪；根因定位为 popstate 发生后再启动 View Transition，与 Next 路由监听并发导致快照时机不稳定。改为 Messages 内部返回链接在导航前主动启动一次反向转场；浏览器原生返回不再事后追加转场。同时按验收反馈把超时后的 Recall 固定为原位灰态。等待 CI 后更新验收网址；不自行合并。

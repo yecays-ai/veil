@@ -1,6 +1,6 @@
 "use client";
 
-import { Bookmark, Brain, CircleCheck, Copy, Pencil, Plus, Quote, RotateCcw, Trash2, Undo2, type LucideIcon } from "lucide-react";
+import { Brain, CircleCheck, Copy, Pencil, Plus, Quote, RotateCcw, Trash2, Undo2, type LucideIcon } from "lucide-react";
 import { useEffect, useState, type RefObject } from "react";
 import { canReactTo } from "../../../lib/chat/reactions";
 import { getMessageActions } from "../../../lib/chat/message-action-registry";
@@ -56,9 +56,7 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
         <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onQuote} />
         <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={onMemory} />
         <Action label="Select" icon={CircleCheck} onClick={onSelect} />
-        {recallAllowed
-          ? <Action label="Recall" icon={Undo2} onClick={onRecall} />
-          : <Action label="Favorite" icon={Bookmark} disabled />}
+        <Action label="Recall" icon={Undo2} disabled={!recallAllowed} onClick={onRecall} />
         <Action label="Delete" icon={Trash2} danger onClick={onDelete} />
         <Action label="Regenerate" icon={RotateCcw} disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || revealPending} onClick={onRegenerate} />
         {getMessageActions(activeMessage).map((action) => <Action key={action.id} label={action.label} icon={Plus} onClick={() => onRunRegisteredAction(action.id)} />)}
