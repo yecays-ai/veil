@@ -57,6 +57,12 @@ function historyMessages(context: PromptRuntimeContext) {
   const pendingIds = new Set(context.pending.map((message) => message.id));
   return historyEligible(context.currentMessages).filter((message) => !pendingIds.has(message.id)).slice(-RECENT_MESSAGES);
 }
+function promptHistoryMessages(context: PromptRuntimeContext) {
+  const pendingIds = new Set(context.pending.map((message) => message.id));
+  return context.currentMessages.filter((message) => !pendingIds.has(message.id) &&
+    (message.recalled ? (message.role === "user" && message.status === "sent") || (message.role === "assistant" && message.status === "complete") : historyEligible([message]).length > 0))
+    .sort((a, b) => a.order - b.order).slice(-RECENT_MESSAGES);
+}
 function pendingMessages(context: PromptRuntimeContext) {
   const current = new Map(eligibleMessages(context).map((message) => [message.id, message]));
   return [...new Set(context.pending.map((message) => message.id))]
@@ -160,9 +166,14 @@ export function resolvePresetMarker(
     case "memory":
       return context.memory.entries.length ? context.memory.entries.join("\n") : null;
     case "history": {
-      const turns = historyMessages(context)
-        .map((message) => ({ role: message.role, content: context.time
-          ? `${historyTimestamp(message.createdAt, context.time.user.timezone)}\n${promptContent(message, context)}` : promptContent(message, context) }));
+      const turns = promptHistoryMessages(context).map((message) => {
+        const body = message.recalled
+          ? (message.role === "user" ? "[User recalled a message]" : "[Character recalled a message]")
+          : promptContent(message, context);
+        const at = message.recalled?.at ?? message.createdAt;
+        return { role: message.role as PromptTurn["role"], content: context.time
+          ? `${historyTimestamp(at, context.time.user.timezone)}\n${body}` : body };
+      });
       // Only a summary whose covered messages are still unchanged is ever shown.
       return validSummary(context.summary, context.currentMessages) ? [summaryTurn(context.summary), ...turns] : turns;
     }

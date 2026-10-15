@@ -182,6 +182,8 @@ test("a sticker message draws only the picture, is saved without a reply request
   const sendSticker = room.slice(sendStickerStart, room.indexOf("\n  async function reply", sendStickerStart));
   assert.match(sendSticker, /chatEngine\.sendSticker\(/);
   assert.doesNotMatch(sendSticker, /requestReply|beginReply/);
+  assert.doesNotMatch(sendSticker, /setPanel\(null\)/, "sending a sticker keeps its picker mounted");
+  assert.match(room, /onFocus=\{\(\) => setPanel\(null\)\}/, "focusing the composer switches to the system keyboard");
   assert.match(actions, /label="Edit" icon=\{Pencil\} disabled=\{activeMessage\.role === "system" \|\| !!activeMessage\.sticker/);
   assert.match(image, /referrerPolicy="no-referrer"/);
 });
