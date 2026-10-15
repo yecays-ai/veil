@@ -13,7 +13,7 @@ export const immediateReadState: UserMessageReadStateResolver = {
 
 /** Life Mode: a message is Delivered until a Character bubble has appeared after it, and only then Read. */
 export function readOnReplyState(messages: readonly ChatMessage[]): UserMessageReadStateResolver {
-  return { resolve: (message) => messages.some((item) => item.role === "assistant" && item.order > message.order) ? "read" : "delivered" };
+  return { resolve: (message) => messages.some((item) => item.role === "assistant" && item.status !== "error" && item.status !== "cancelled" && item.order > message.order) ? "read" : "delivered" };
 }
 
 export function resolveUserMessageDelivery(

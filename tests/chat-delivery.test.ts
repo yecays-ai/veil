@@ -28,4 +28,6 @@ test("in Life Mode a message stays Delivered until a Character bubble appears af
   assert.equal(resolveUserMessageDelivery(user, readOnReplyState([user])), "delivered");
   assert.equal(resolveUserMessageDelivery(user, readOnReplyState([user, reply])), "read");
   assert.equal(resolveUserMessageDelivery({ ...user, order: 3 }, readOnReplyState([user, reply])), "delivered");
+  for (const status of ["error", "cancelled"] as const)
+    assert.equal(resolveUserMessageDelivery(user, readOnReplyState([user, { ...reply, status }])), "delivered", `a ${status} attempt is not a reply`);
 });
