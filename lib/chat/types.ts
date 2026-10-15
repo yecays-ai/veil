@@ -84,6 +84,8 @@ export type ChatMessage = {
   content: string;
   status: "sent" | "streaming" | "complete" | "cancelled" | "error";
   createdAt: number;
+  /** When a sent/complete message became visible. Legacy rows without this timestamp cannot be recalled. */
+  sentAt?: number;
   order: number;
   requestedBy?: string;
   error?: string;

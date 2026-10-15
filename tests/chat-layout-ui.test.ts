@@ -10,6 +10,8 @@ const globalCss = readFileSync("app/globals.css", "utf8");
 const layout = readFileSync("app/layout.tsx", "utf8");
 const appearance = readFileSync("app/appearance.css", "utf8");
 const mobile = readFileSync("app/mobile-foundation.css", "utf8");
+const messagesLayout = readFileSync("app/messages/layout.tsx", "utf8");
+const routeTransition = readFileSync("app/messages/route-transition.tsx", "utf8");
 
 function rule(selector: string): string {
   const pattern = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -244,4 +246,16 @@ test("standalone diagnostics never render an Enable DIAG overlay", () => {
   assert.doesNotMatch(diagnostics, /Enable DIAG|StandaloneDiagnosticsOptIn/);
   assert.match(diagnostics, /get\("veilDiagnostics"\) === "1"/);
   assert.match(diagnostics, /<DiagnosticsPanel onDisable=\{onDisable\} \/>/);
+});
+
+test("Messages navigation transitions the full route page in both directions and respects reduced motion", () => {
+  assert.match(messagesLayout, /<MessagesRouteTransition>\{children\}<\/MessagesRouteTransition>/);
+  assert.match(routeTransition, /router\.push\(url\.pathname/);
+  assert.match(routeTransition, /addEventListener\("popstate", onPopState\)/);
+  assert.match(routeTransition, /target === "\/messages" \? "back" : "forward"/);
+  assert.match(routeTransition, /prefers-reduced-motion: reduce/);
+  assert.match(css, /\.messages-route-frame\s*\{[^}]*view-transition-name:\s*messages-route/);
+  assert.match(css, /view-transition-new\(messages-route\)[^{]*\{[^}]*messages-route-forward-in/);
+  assert.match(css, /view-transition-old\(messages-route\)[^{]*\{[^}]*messages-route-back-out/);
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?view-transition-group\(messages-route\)/);
 });

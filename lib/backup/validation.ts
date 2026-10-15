@@ -188,12 +188,13 @@ function validateChat(value: unknown) {
   });
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "sentAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
       && ["sent", "complete", "cancelled", "error"].includes(String(row.status)) && integer(row.createdAt)
       && integer(row.order) && (row.order as number) >= 1, path);
+    check(row.sentAt === undefined || integer(row.sentAt), path, "invalid-data", "sentAt-invalid");
     const order = `${row.sessionId}:${row.order}`;
     check(!orders.has(order), path, "duplicate-order"); orders.add(order);
     check((row.order as number) < (sessions.get(row.sessionId)!.nextOrder as number), path, "invalid-next-order");

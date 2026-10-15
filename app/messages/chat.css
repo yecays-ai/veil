@@ -1271,3 +1271,20 @@
 .sticker-single input { flex: 1 1 120px; width: auto; }
 .sticker-danger { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 24px; }
 .sticker-danger button { color: #c9363e; }
+
+
+/* The route frame contains the whole chat page, so navigation moves its header, wallpaper, history and composer together. */
+.messages-route-frame { display: flex; position: relative; width: 100%; height: 100%; min-height: 0; overflow: hidden;
+  view-transition-name: messages-route; }
+::view-transition-group(messages-route) { animation-duration: 240ms; animation-timing-function: cubic-bezier(.2, .75, .25, 1); }
+html[data-messages-nav="forward"]::view-transition-old(messages-route) { animation: messages-route-forward-out 240ms both; }
+html[data-messages-nav="forward"]::view-transition-new(messages-route) { animation: messages-route-forward-in 240ms both; }
+html[data-messages-nav="back"]::view-transition-old(messages-route) { animation: messages-route-back-out 240ms both; }
+html[data-messages-nav="back"]::view-transition-new(messages-route) { animation: messages-route-back-in 240ms both; }
+@keyframes messages-route-forward-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes messages-route-forward-out { from { transform: translateX(0); } to { transform: translateX(-18%); } }
+@keyframes messages-route-back-in { from { transform: translateX(-18%); } to { transform: translateX(0); } }
+@keyframes messages-route-back-out { from { transform: translateX(0); } to { transform: translateX(100%); } }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(messages-route), ::view-transition-old(messages-route), ::view-transition-new(messages-route) { animation-duration: 1ms !important; }
+}

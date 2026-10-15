@@ -18,6 +18,7 @@ import {
   normalizeBubbleTiming,
   isTruncatedReason,
 } from "./types";
+import { canRecallMessage } from "./recall";
 import { splitAssistantReply } from "./reply-splitter";
 import { attemptsAllow, recentAttempts } from "./proactive";
 import { quoteMessage } from "./quote";
@@ -940,7 +941,7 @@ export class ChatStorage {
   async editMessage(id: string, content: string, scope?: PersistenceWriteScope): Promise<ChatMessage> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
-      if (!target) throw new Error("Message not found.");
+      if (!target || (expectedSessionId && target.sessionId !== expectedSessionId)) throw new Error("Message not found in this conversation.");
       await this.recoverGeneration(target.sessionId);
       return this.sourceMemory.withExclusive(async (owned) => {
         const view = await this.readMemorySources(target.sessionId, owned);
@@ -995,16 +996,17 @@ export class ChatStorage {
     }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
   }
 
-  async recallMessage(id: string, by: "user" | "assistant", scope?: PersistenceWriteScope): Promise<ChatMessage> {
+  async recallMessage(id: string, by: "user" | "assistant", scope?: PersistenceWriteScope, expectedSessionId?: string): Promise<ChatMessage> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
-      if (!target) throw new Error("Message not found.");
+      if (!target || (expectedSessionId && target.sessionId !== expectedSessionId)) throw new Error("Message not found in this conversation.");
+      if (!target.recalled && !canRecallMessage(target, by, Date.now())) throw new Error("Only your own message sent within the last 2 minutes can be recalled.");
       await this.recoverGeneration(target.sessionId);
       return this.sourceMemory.withExclusive(async (owned) => {
         const view = await this.readMemorySources(target.sessionId, owned);
         if (!view.session) throw new Error("Conversation not found.");
         const affected = view.messages.filter((message) => message.id === id && !message.recalled);
-        return invalidateChatSources(this.sourceMemory!, view.session, affected, () => this.recallMessage(id, by, owned), owned);
+        return invalidateChatSources(this.sourceMemory!, view.session, affected, () => this.recallMessage(id, by, owned, expectedSessionId), owned);
       });
     }
     const owner = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
@@ -1012,13 +1014,12 @@ export class ChatStorage {
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("messages");
       const message: ChatMessage | undefined = await request(table.get(id));
-      if (!message) throw new Error("Message not found.");
-      if (message.role !== by || (by === "user" ? message.status !== "sent" : message.status !== "complete"))
-        throw new Error("Only your own sent message can be recalled.");
-      if (message.transfer || message.transferEvent || message.gift || message.giftEvent) throw new Error("Special message cards cannot be recalled; update or delete the card instead.");
+      if (!message || (expectedSessionId && message.sessionId !== expectedSessionId)) throw new Error("Message not found in this conversation.");
       if (message.recalled) return message;
+      if (!canRecallMessage(message, by, Date.now()))
+        throw new Error("Only your own message sent within the last 2 minutes can be recalled.");
       const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(message.sessionId));
-      if (!session) throw new Error("Conversation not found.");
+      if (!session || (expectedSessionId && session.id !== expectedSessionId)) throw new Error("Conversation not found.");
       if (session.generation) throw new Error("A reply is in progress. Stop it before recalling a message.");
       const next: ChatMessage = { ...message, content: "", recalled: { at: Date.now(), by },
         ...(message.memorySequence ? { memorySequence: { epoch: message.memorySequence.epoch } } : {}) };
@@ -1036,15 +1037,11 @@ export class ChatStorage {
     }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }), undefined, scope);
   }
 
-  async recallPreviousAssistantMessage(replyId: string): Promise<ChatMessage | null> {
+  async recallAssistantMessageForReply(replyId: string, targetId: string): Promise<boolean> {
     const reply = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyId)));
-    if (!reply || reply.role !== "assistant") return null;
-    const { messages } = await this.readSession(reply.sessionId);
-    const target = messages.filter((message) => message.role === "assistant" && message.status === "complete" &&
-      !message.recalled && message.order < reply.order)
-      .sort((a, b) => b.order - a.order)[0];
-    if (!target) return null;
-    return this.recallMessage(target.id, "assistant");
+    if (!reply || reply.role !== "assistant" || reply.status !== "complete") throw new Error("Reply not found.");
+    await this.recallMessage(targetId, "assistant", undefined, reply.sessionId);
+    return true;
   }
 
   async regenerationSessionId(id: string): Promise<string> {
@@ -1431,6 +1428,7 @@ export class ChatStorage {
         if (target.role === "assistant" && target.status !== "complete") throw new Error("Only completed replies can be quoted.");
         quote = quoteMessage(target);
       }
+      const sentAt = Date.now();
       const message: ChatMessage = {
         id: crypto.randomUUID(),
         sessionId,
@@ -1438,7 +1436,8 @@ export class ChatStorage {
         ...(this.tracking() && session.type !== "group" ? memoryBirth(session) : {}),
         content: content.trim(),
         status: "sent",
-        createdAt: Date.now(),
+        createdAt: sentAt,
+        sentAt,
         order: session.nextOrder,
         ...(quote ? { quote } : {}),
         ...(sticker ? { sticker } : {}),
@@ -1678,8 +1677,9 @@ export class ChatStorage {
       // A regenerated turn never inherits an old sticker; only this reply's own sticker is stored.
       const firstBase: ChatMessage = { ...first };
       delete firstBase.sticker;
+      const sentAt = Date.now();
       const generated: ChatMessage[] = entries.map((part, index) => ({
-        ...firstBase, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
+        ...firstBase, sentAt, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
         content: part.content, ...(part.sticker ? { sticker: part.sticker } : {}), status: "complete", outcome, finishReason, error: undefined,
         attemptFor: undefined, attemptMode: undefined, failureStage: undefined,
         // Each reply records only its own request; a regenerated or continued part never inherits an older one.
