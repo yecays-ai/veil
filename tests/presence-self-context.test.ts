@@ -146,3 +146,22 @@ test("the change reaches the first reply after it, a Regenerate of that reply, a
   await engine.requestReply(app.session.id);
   assert.match(seen[4], /just removed the remark they had for you \(it was "Honey"\)/);
 });
+
+test("the Character knows its current activity and only a Moment that has already happened", () => {
+  const HOUR = 3600_000;
+  const startsAt = NOW.getTime() - HOUR;
+  const activity = { id: "a:1", occurrenceKey: "a|1", kind: "meal" as const, title: "Lunch", startsAt, endsAt: startsAt + 2 * HOUR,
+    moment: "Found a shortcut." };
+  const life = { reconciledAt: startsAt, activities: [activity, { ...activity, id: "a:2", occurrenceKey: "a|2", title: "Dinner",
+    startsAt: startsAt + 6 * HOUR, endsAt: startsAt + 7 * HOUR, moment: "Burned the rice." }] };
+  const early = selfState(character(), undefined, record({ life }), startsAt + 1);
+  assert.deepEqual(early.activity, { title: "Lunch" });
+  const text = selfStateContent(early)!;
+  assert.match(text, /doing right now: "Lunch"/);
+  assert.doesNotMatch(text, /shortcut|Dinner|rice/, "neither a hidden Moment nor a later activity reaches the prompt");
+  const later = selfState(character(), undefined, record({ life }), startsAt + 2 * HOUR - 1);
+  assert.deepEqual(later.activity, { title: "Lunch", moment: "Found a shortcut." });
+  assert.match(selfStateContent(later)!, /Something small already happened during it: "Found a shortcut\."/);
+  assert.equal(selfState(character(), undefined, record({ life, situations: [situation] }), NOW.getTime()).activity, undefined,
+    "an active situation overrides the day");
+});
