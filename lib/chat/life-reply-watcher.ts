@@ -5,6 +5,8 @@ import { lifeReplyPlan } from "./life-reply";
 /** A long wait is cut into pieces, so the status is looked at again now and then instead of trusting one distant timer. */
 export const LIFE_REPLY_RECHECK_MS = 30 * 60_000;
 const SETTLE_MS = 400;
+/** Nobody answers sooner than this after the user's newest unanswered message, so a run of short messages is one turn. */
+export const LIFE_REPLY_QUIET_MS = 3000;
 
 export type LifeReplyDeps = {
   sessions: () => Promise<readonly ChatSession[]>;
@@ -12,6 +14,8 @@ export type LifeReplyDeps = {
   /** The Character's Presence inputs; undefined when the Character no longer exists. */
   presence: (characterId: string) => Promise<PresenceInputs | undefined>;
   isGenerating: (sessionId: string) => boolean;
+  /** The user has text in this conversation's composer; the reply waits for it to be sent or cleared. */
+  composing: (sessionId: string) => boolean;
   reply: (sessionId: string) => Promise<unknown>;
   now: () => number;
   visible: () => boolean;
@@ -70,12 +74,15 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
         waiting.set(sessionId, timers.setTimeout(() => { waiting.delete(sessionId); void check(sessionId); }, LIFE_REPLY_RECHECK_MS));
         return;
       }
-      const wait = plan.at - deps.now();
+      // Presence decides the rhythm; the quiet window only ever pushes it later, measured from the newest message.
+      const wait = Math.max(plan.at, newest.createdAt + LIFE_REPLY_QUIET_MS) - deps.now();
       if (wait > 0) {
         waiting.set(sessionId, timers.setTimeout(() => { waiting.delete(sessionId); void check(sessionId); },
           Math.min(wait, LIFE_REPLY_RECHECK_MS)));
         return;
       }
+      // A draft in the composer holds the reply back for as long as it exists; clearing or sending it calls touch again.
+      if (deps.composing(sessionId)) return;
       // One attempt per unanswered message: a failure never schedules another, and the reply path marks the message as asked.
       // Life Mode may have been turned off while the status was being read.
       const latest = await deps.session(sessionId);
