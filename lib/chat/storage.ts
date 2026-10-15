@@ -941,7 +941,7 @@ export class ChatStorage {
   async editMessage(id: string, content: string, scope?: PersistenceWriteScope): Promise<ChatMessage> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
-      if (!target || (expectedSessionId && target.sessionId !== expectedSessionId)) throw new Error("Message not found in this conversation.");
+      if (!target) throw new Error("Message not found.");
       await this.recoverGeneration(target.sessionId);
       return this.sourceMemory.withExclusive(async (owned) => {
         const view = await this.readMemorySources(target.sessionId, owned);
