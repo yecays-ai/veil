@@ -11,6 +11,8 @@ export type MaintenanceDiagnostic = { outcome: "prepared" | "validated" | "rejec
   at?: number; stage?: MaintenanceStage; fromSeq?: number; toSeq?: number; counts?: MaintenanceCounts };
 export type MaintenanceDiagnosticStore = { load(): string | null; save(value: string): void };
 export const MAINTENANCE_RESULTS_KEY = "veil.memory-maintenance-results.v1";
+/** Fired after a result is stored, so an open status page can refresh. */
+export const MAINTENANCE_RESULTS_EVENT = "veil-memory-maintenance-results";
 const MAX_RECORDS = 20;
 const OUTCOMES = ["prepared", "validated", "rejected", "commit-failed", "committed"];
 const OPTIONAL = ["sizeAttempts", "redactedCharacters", "omittedMessages", "backgroundOmitted", "manualSent", "at", "fromSeq", "toSeq"] as const;
@@ -56,7 +58,10 @@ export function createMaintenanceDiagnostics(enabled = process.env.NODE_ENV === 
 /** Browser store: localStorage may be unavailable or full, which only means no history. */
 export const browserMaintenanceDiagnosticStore: MaintenanceDiagnosticStore = {
   load: () => { try { return localStorage.getItem(MAINTENANCE_RESULTS_KEY); } catch { return null; } },
-  save: (value) => { try { localStorage.setItem(MAINTENANCE_RESULTS_KEY, value); } catch { /* ignore */ } },
+  save: (value) => {
+    try { localStorage.setItem(MAINTENANCE_RESULTS_KEY, value); } catch { /* ignore */ }
+    try { window.dispatchEvent(new Event(MAINTENANCE_RESULTS_EVENT)); } catch { /* ignore */ }
+  },
 };
 
 const STAGE_TEXT: Record<Exclude<MaintenanceStage, "ok">, string> = {

@@ -5,7 +5,7 @@ import { browserBindingStorage } from "../../lib/binding-storage";
 import { chatStorage } from "../../lib/chat/storage";
 import { readUsageBaseline, type UsageBaselineRecord } from "../../lib/chat/usage-baseline";
 import { browserMemoryStorage } from "../../lib/memory/browser";
-import { browserMaintenanceDiagnosticStore, createMaintenanceDiagnostics, describeMaintenanceResult, pairMaintenanceResults, type MaintenanceDiagnostic } from "../../lib/memory/maintenance-diagnostics";
+import { browserMaintenanceDiagnosticStore, createMaintenanceDiagnostics, describeMaintenanceResult, MAINTENANCE_RESULTS_EVENT, pairMaintenanceResults, type MaintenanceDiagnostic } from "../../lib/memory/maintenance-diagnostics";
 import {
   MAINTENANCE_CONFIG_EVENT, MAINTENANCE_CONSENT_KEY, maintenanceConsentStored, maintenanceReleaseApproved,
   maintenanceReleaseChecks, setMaintenanceConsent,
@@ -76,8 +76,12 @@ export function MemoryMaintenanceSettings() {
     const storage = (event: StorageEvent) => { if (event.key === MAINTENANCE_CONSENT_KEY) sync(); };
     sync();
     window.addEventListener(MAINTENANCE_CONFIG_EVENT, sync); window.addEventListener("storage", storage);
-    return () => { window.removeEventListener(MAINTENANCE_CONFIG_EVENT, sync); window.removeEventListener("storage", storage); };
-  }, []);
+    window.addEventListener(MAINTENANCE_RESULTS_EVENT, refresh);
+    return () => {
+      window.removeEventListener(MAINTENANCE_CONFIG_EVENT, sync); window.removeEventListener("storage", storage);
+      window.removeEventListener(MAINTENANCE_RESULTS_EVENT, refresh);
+    };
+  }, [refresh]);
 
   useEffect(() => {
     if (!ready || !release) return;
