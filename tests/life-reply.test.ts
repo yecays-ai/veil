@@ -94,10 +94,12 @@ function harness(options: { sessions?: Row[]; messages?: ChatMessage[]; inputs?:
     messages: options.messages ?? [user("m1", 1, DAY0 + 10 * HOUR)], now: options.now ?? DAY0 + 10 * HOUR + 30_000,
     visible: options.visible ?? true, generating: false, composing: false, inputs: "inputs" in options ? options.inputs : workDay };
   const replies: string[] = [];
+  const hooks = { onSessionRead: async () => {} };
   const timers: { run: () => void; ms: number; live: boolean }[] = [];
   const deps: LifeReplyDeps = {
     sessions: async () => state.sessions as unknown as ChatSession[],
-    session: async (id) => ({ session: state.sessions.find((row) => row.id === id) as unknown as ChatSession, messages: state.messages }),
+    session: async (id) => { await hooks.onSessionRead();
+      return { session: state.sessions.find((row) => row.id === id) as unknown as ChatSession, messages: state.messages }; },
     presence: async () => state.inputs,
     isGenerating: () => state.generating,
     composing: () => state.composing,
@@ -109,7 +111,7 @@ function harness(options: { sessions?: Row[]; messages?: ChatMessage[]; inputs?:
     setTimeout: (run, ms) => { const timer = { run, ms, live: true }; timers.push(timer); return timer; },
     clearTimeout: (handle) => { (handle as { live: boolean }).live = false; },
   });
-  return { state, replies, timers, watcher, failNext: () => { fail = true; },
+  return { state, replies, timers, watcher, hooks, failNext: () => { fail = true; },
     live: () => timers.filter((timer) => timer.live),
     async fire() { const next = timers.filter((timer) => timer.live).at(-1); if (!next) return false; next.live = false; next.run(); await settle(); return true; } };
 }
@@ -321,6 +323,23 @@ test("a draft in the composer holds the reply for as long as it exists, then the
   h.state.now += 10 * MIN; await h.watcher.wake();
   assert.deepEqual(h.replies, [], "a long pause does not end the hold");
   h.state.composing = false; h.watcher.touch("s"); await h.fire();
+  assert.deepEqual(h.replies, ["s"]);
+  h.watcher.stop();
+});
+
+test("a draft or a newer message that appears during the last read still holds the reply", async () => {
+  const h = harness();
+  let reads = 0;
+  // The second session read of a check is the last one before replying: a draft starts while it is pending.
+  h.hooks.onSessionRead = async () => { reads++; if (reads === 2) h.state.composing = true; };
+  h.watcher.start(); await settle();
+  assert.deepEqual(h.replies, [], "the draft begun during the read is respected");
+  h.state.composing = false; reads = 10;
+  h.hooks.onSessionRead = async () => { reads++; if (reads === 12) h.state.messages = [...h.state.messages, user("m2", 2, h.state.now)]; };
+  h.watcher.touch("s"); await h.fire();
+  assert.deepEqual(h.replies, [], "a message stored during the read restarts the quiet window");
+  h.hooks.onSessionRead = async () => {};
+  h.state.now += LIFE_REPLY_QUIET_MS; await h.fire();
   assert.deepEqual(h.replies, ["s"]);
   h.watcher.stop();
 });
