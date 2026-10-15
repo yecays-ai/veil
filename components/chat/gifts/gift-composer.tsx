@@ -8,17 +8,17 @@ export function GiftComposer({ disabled, onClose, onSend }: { disabled: boolean;
   function submit(event: FormEvent) {
     event.preventDefault();
     try { onSend(normalizeGiftIcon(icon), normalizeGiftContent(content)); setError(""); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "请填写礼物内容"); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "Describe the gift."); }
   }
   return <div className="chat-gift-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
     <form className="chat-gift-composer" role="dialog" aria-modal="true" aria-labelledby="chat-gift-title" onSubmit={submit}>
-      <h2 id="chat-gift-title">送一份礼物</h2>
-      <label>图标<input autoFocus value={icon} maxLength={GIFT_ICON_LIMIT} onChange={(event) => setIcon(event.target.value)} aria-label="礼物图标" /></label>
-      <label>礼物内容<textarea required maxLength={GIFT_CONTENT_LIMIT} rows={4} value={content}
-        onChange={(event) => setContent(event.target.value)} placeholder="写下你送的礼物" /></label>
-      <p className="chat-gift-preview"><span aria-hidden="true">{icon || "🎁"}</span> {content || "礼物描述预览"} · 仅作聊天互动</p>
+      <h2 id="chat-gift-title">Send a gift</h2>
+      <label>Icon<input autoFocus value={icon} maxLength={GIFT_ICON_LIMIT} onChange={(event) => setIcon(event.target.value)} aria-label="Gift icon" /></label>
+      <label>Gift description<textarea required maxLength={GIFT_CONTENT_LIMIT} rows={4} value={content}
+        onChange={(event) => setContent(event.target.value)} placeholder="Describe your gift" /></label>
+      <p className="chat-gift-preview"><span aria-hidden="true">{icon || "🎁"}</span> {content || "Gift preview"} · Virtual chat gesture</p>
       {error && <p role="alert" className="chat-error">{error}</p>}
-      <div className="chat-gift-composer-actions"><button type="button" onClick={onClose}>取消</button><button type="submit" disabled={disabled}>发送礼物</button></div>
+      <div className="chat-gift-composer-actions"><button type="button" onClick={onClose}>Cancel</button><button type="submit" disabled={disabled}>Send gift</button></div>
     </form>
   </div>;
 }

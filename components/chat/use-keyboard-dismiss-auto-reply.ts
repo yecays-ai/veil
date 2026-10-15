@@ -20,7 +20,10 @@ export function useKeyboardDismissAutoReply(
     const detector = new KeyboardCloseDetector(window.innerWidth, viewport.height);
     let alive = true, timer = 0, frame = 0, poll = 0, revision = 0;
     const input = () => root.current?.querySelector<HTMLTextAreaElement>("#chat-input");
-    const focused = () => globalThis.document.activeElement === input();
+    const focused = () => {
+      const active = globalThis.document.activeElement;
+      return !!active && !!root.current?.contains(active) && active.matches("textarea, input");
+    };
     const inset = () => Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
     const cancel = () => { revision++; window.clearTimeout(timer); timer = 0; };
     const schedule = () => {
@@ -47,7 +50,7 @@ export function useKeyboardDismissAutoReply(
     };
     const requestMeasure = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };
     const onFocus = (event: Event) => {
-      if (event.target !== input()) return;
+      if (!(event.target instanceof HTMLElement) || !root.current?.contains(event.target) || !event.target.matches("textarea, input")) return;
       cancel();
       if (!poll) poll = window.setInterval(measure, 200);
       requestMeasure();

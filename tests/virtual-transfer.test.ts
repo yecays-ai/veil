@@ -32,11 +32,25 @@ test("Character transfer action can be parsed and user can decline its pending c
   const reply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "Here is a little gesture.")).at(0)!;
   const sent = await storage.createTransferForReply(reply.id, 5, "For you");
   assert.equal(sent.transfer?.recipient, "user");
+  const ordered = (await storage.readSession(session.id)).messages;
+  assert.ok(ordered.findIndex((message) => message.id === sent.id) < ordered.findIndex((message) => message.id === reply.id),
+    "Character transfer card is fixed before the reply that carried its Action");
   const action = splitActions('<veil-action>{"transfer":{"recipient":"user","amount":5,"note":"For you"}}</veil-action>');
   assert.equal(action.actions?.transfer?.amount, 5);
   const declined = await storage.actOnTransfer(sent.id, "user", "decline");
   assert.equal(declined.message.transfer?.status, "declined");
   assert.equal(declined.event.transferEvent?.action, "decline");
+});
+
+test("Character transfer result is inserted before the reply that decided it", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("transfer-action-order");
+  const transfer = await storage.createTransfer(session.id, 8, "snack", "user");
+  const reply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "I'll take it.")).at(0)!;
+  await storage.actOnTransferForCharacter("transfer-action-order", transfer.id, "receive", reply.id);
+  const messages = (await storage.readSession(session.id)).messages;
+  const event = messages.find((message) => message.transferEvent?.transferId === transfer.id)!;
+  assert.ok(event.order < messages.find((message) => message.id === reply.id)!.order);
 });
 
 test("transfer amounts are positive, finite and capped", () => {

@@ -68,7 +68,8 @@ export function MessageList({
           data-message-id={message.id} data-active={activeMessageId === message.id ? "" : undefined}
           onClick={() => { if (multiSelect) onToggleSelected(message); }}>
           {multiSelect && <span className="chat-selection-control" aria-hidden="true">{selected ? "✓" : ""}</span>}
-          <p className="chat-system-pill" onClick={(event) => onOpenActions(event, message)}>{message.recalled ? "Message recalled" : message.content}</p>
+          <p className="chat-system-pill" onClick={(event) => onOpenActions(event, message)}>{message.recalled
+            ? message.role === "user" ? "You recalled a message." : `${character.name} recalled a message.` : message.content}</p>
         </div> : <div className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${groupClass}${selected ? " chat-turn-selected" : ""}${highlighted ? " chat-turn-search-highlight" : ""}`}
           data-message-id={message.id} data-consecutive={!isGroupStart ? "" : undefined}
           data-active={activeMessageId === message.id ? "" : undefined}

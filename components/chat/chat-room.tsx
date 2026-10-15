@@ -165,9 +165,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
   const transfers = useTransferActions(session?.characterId === characterId ? session.id : undefined, setError,
-    () => { setPanel(null); feedbackController.show("转账已发送"); });
+    () => { setPanel(null); feedbackController.show("Transfer sent"); });
   const gifts = useGiftActions(session?.characterId === characterId ? session.id : undefined, setError,
-    () => { setPanel(null); feedbackController.show("礼物已发送"); });
+    () => { setPanel(null); feedbackController.show("Gift sent"); });
   const sendingLock = useRef(false);
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);

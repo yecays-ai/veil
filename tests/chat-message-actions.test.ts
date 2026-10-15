@@ -175,7 +175,7 @@ regressionContract("chat.message-actions-bubble-only", "render-lifecycle",
       }
       await click(firstBubble);
       await press(item("Recall"), "Enter");
-      await waitFor(() => row(first.id).textContent?.includes("Message recalled") === true);
+      await waitFor(() => row(first.id).textContent?.includes("You recalled a message.") === true);
       assert.equal(row(first.id).textContent?.includes(first.content), false, "successful Recall removes the original text");
 
       await click(row(second.id).querySelector<HTMLElement>(".chat-bubble")!);

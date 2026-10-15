@@ -151,9 +151,9 @@ export type ActionDeps = {
   noteChanged?: (characterId: string, note: string | null, at: number) => Promise<void>;
   recallPreviousMessage?: (replyMessageId: string) => Promise<void>;
   sendTransfer?: (replyMessageId: string, amount: number, note: string) => Promise<void>;
-  actOnTransfer?: (characterId: string, messageId: string, action: TransferAction) => Promise<void>;
+  actOnTransfer?: (characterId: string, messageId: string, action: TransferAction, replyMessageId: string) => Promise<void>;
   sendGift?: (replyMessageId: string, icon: string, content: string) => Promise<void>;
-  actOnGift?: (characterId: string, messageId: string, action: GiftAction) => Promise<void>;
+  actOnGift?: (characterId: string, messageId: string, action: GiftAction, replyMessageId: string) => Promise<void>;
 };
 /** The note is Presence data alone, so check and write happen in one transaction; the chat event follows only a real change. */
 async function applyUserNote(deps: ActionDeps, characterId: string, note: string | null, now: number, source: string) {
@@ -185,7 +185,7 @@ export const characterActionApplier = (deps: ActionDeps) =>
       catch { console.warn("[Presence] the virtual transfer could not be saved"); }
     }
     if (actions.transferAction) {
-      try { await deps.actOnTransfer?.(characterId, actions.transferAction.messageId, actions.transferAction.action); }
+      try { await deps.actOnTransfer?.(characterId, actions.transferAction.messageId, actions.transferAction.action, messageId); }
       catch { console.warn("[Presence] the virtual transfer action could not be saved"); }
     }
     if (actions.gift) {
@@ -193,7 +193,7 @@ export const characterActionApplier = (deps: ActionDeps) =>
       catch { console.warn("[Presence] the gift could not be saved"); }
     }
     if (actions.giftAction) {
-      try { await deps.actOnGift?.(characterId, actions.giftAction.messageId, actions.giftAction.action); }
+      try { await deps.actOnGift?.(characterId, actions.giftAction.messageId, actions.giftAction.action, messageId); }
       catch { console.warn("[Presence] the gift action could not be saved"); }
     }
     if (actions.signature === undefined) return;

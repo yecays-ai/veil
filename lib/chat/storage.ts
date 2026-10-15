@@ -1019,12 +1019,13 @@ export class ChatStorage {
         ...(message.memorySequence ? { memorySequence: { epoch: message.memorySequence.epoch } } : {}) };
       await request(table.put(next));
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
-      for (const quoted of all) if (quoted.quote?.messageId === id && quoted.quote.preview !== "Message recalled")
-        await request(table.put({ ...quoted, quote: { ...quoted.quote, preview: "Message recalled" } }));
+      for (const quoted of all) if (quoted.quote?.messageId === id && quoted.quote.preview !== "This message has been recalled.")
+        await request(table.put({ ...quoted, quote: { ...quoted.quote, preview: "This message has been recalled." } }));
       const staleSummary = !!session.summary && message.order <= session.summary.throughOrder;
       if (session.lastMessageId === id || staleSummary)
         await request(tx.objectStore("sessions").put({ ...session,
-          ...(session.lastMessageId === id ? { updatedAt: Date.now(), lastMessagePreview: "Message recalled" } : {}),
+          ...(session.lastMessageId === id ? { updatedAt: Date.now(), lastMessagePreview: message.role === "user"
+            ? "You recalled a message." : "Character recalled a message." } : {}),
           ...(staleSummary ? { summary: undefined } : {}) }));
       return next;
     }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }), undefined, scope);
@@ -1191,6 +1192,22 @@ export class ChatStorage {
     await request(tx.objectStore("sessions").put(next));
     return next;
   }
+  /** Inserts a Character action card before the reply turn that carried the action, keeping its visual position stable. */
+  private async appendBeforeReply(tx: IDBTransaction, session: ChatSession, message: ChatMessage, replyMessageId: string) {
+    const table = tx.objectStore("messages");
+    const reply: ChatMessage | undefined = await request(table.get(replyMessageId));
+    if (!reply || reply.sessionId !== session.id || reply.role !== "assistant") return this.append(tx, session, this.sequence(session, message));
+    const turnId = reply.turnId ?? reply.id;
+    const all: ChatMessage[] = await request(table.index("sessionId").getAll(session.id));
+    const turn = all.filter((item) => item.role === "assistant" && (item.turnId ?? item.id) === turnId);
+    const order = Math.min(...turn.map((item) => item.order));
+    for (const item of all.filter((item) => item.order >= order).sort((a, b) => b.order - a.order))
+      await request(table.put({ ...item, order: item.order + 1 }));
+    const sequenced = this.sequence(session, { ...message, order });
+    await request(table.add(sequenced));
+    await request(tx.objectStore("sessions").put({ ...session, nextOrder: session.nextOrder + 1 }));
+    return { session, message: sequenced };
+  }
   /**
    * Adds a grey system event (role "system", display only) to the Character's existing conversation, or does nothing
    * when it has none. It is not a chat turn: the conversation's order, preview and update time stay as they were.
@@ -1234,18 +1251,27 @@ export class ChatStorage {
   async createTransferForReply(replyMessageId: string, amount: number, note: string): Promise<ChatMessage> {
     const reply = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyMessageId)), ["messages"]);
     if (!reply || reply.role !== "assistant") throw new Error("Transfer action has no committed reply.");
-    const session = await this.readSession(reply.sessionId);
-    if (session.session.type === "group") throw new Error("Virtual transfers are available in direct conversations only.");
-    return this.createTransfer(reply.sessionId, amount, note, "assistant");
+    const cleanAmount = normalizeTransferAmount(amount), cleanNote = normalizeTransferNote(note), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(reply.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Virtual transfers are available in direct conversations only.");
+      if (this.tracking() && !session.memorySequence) session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const transfer: VirtualTransfer = { amount: cleanAmount, note: cleanNote, sender: "assistant", recipient: "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId: session.id, role: "assistant", content: transferMessageContent(transfer, id, "Character"),
+        status: "complete", createdAt: Date.now(), order: session.nextOrder, transfer };
+      const placed = await this.appendBeforeReply(tx, session, message, replyMessageId);
+      return "message" in placed ? placed.message : message;
+    }, STORES, { domain: "messages", sessionId: reply.sessionId });
   }
-  async actOnTransferForCharacter(characterId: string, id: string, action: TransferAction): Promise<void> {
+  async actOnTransferForCharacter(characterId: string, id: string, action: TransferAction, replyMessageId?: string): Promise<void> {
     const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
     if (!target) throw new Error("Transfer was not found.");
     const session = await this.readSession(target.sessionId);
     if (session.session.type === "group" || session.session.characterId !== characterId) throw new Error("Transfer is outside this Character's conversation.");
-    await this.actOnTransfer(id, "assistant", action);
+    await this.actOnTransfer(id, "assistant", action, undefined, replyMessageId);
   }
-  async actOnTransfer(id: string, actor: TransferActor, action: TransferAction, scope?: PersistenceWriteScope): Promise<{ message: ChatMessage; event: ChatMessage }> {
+  async actOnTransfer(id: string, actor: TransferActor, action: TransferAction, scope?: PersistenceWriteScope, replyMessageId?: string): Promise<{ message: ChatMessage; event: ChatMessage }> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
       if (!target) throw new Error("Transfer was not found.");
@@ -1255,7 +1281,7 @@ export class ChatStorage {
         const snapshot = await this.readSession(view.session.id);
         const previous = snapshot.messages.filter((item) => item.id === id || item.transferEvent?.transferId === id);
         return invalidateChatSources(this.sourceMemory!, snapshot.session, previous,
-          () => this.actOnTransfer(id, actor, action, owned), owned);
+          () => this.actOnTransfer(id, actor, action, owned, replyMessageId), owned);
       });
     }
     if (scope) this.sourceMemory?.assertExclusive(scope);
@@ -1278,8 +1304,8 @@ export class ChatStorage {
         content: transferEventContent(eventData, "Character"), status: actor === "user" ? "sent" : "complete",
         createdAt: Date.now(), order: session.nextOrder, transferEvent: eventData };
       await request(table.put(next));
-      const sequenced = this.sequence(session, event);
-      await this.append(tx, session, sequenced);
+      const placed = replyMessageId ? await this.appendBeforeReply(tx, session, event, replyMessageId) : await this.append(tx, session, this.sequence(session, event));
+      const sequenced = "message" in placed ? placed.message : event;
       return { message: next, event: sequenced };
     }, STORES, { domain: "messages", sessionId: view.session.id }, undefined, scope);
   }
@@ -1303,18 +1329,27 @@ export class ChatStorage {
   async createGiftForReply(replyMessageId: string, icon: string, content: string): Promise<ChatMessage> {
     const reply = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyMessageId)), ["messages"]);
     if (!reply || reply.role !== "assistant") throw new Error("Gift action has no committed reply.");
-    const view = await this.readSession(reply.sessionId);
-    if (view.session.type === "group") throw new Error("Gifts are available in direct conversations only.");
-    return this.createGift(reply.sessionId, icon, content, "assistant");
+    const cleanIcon = normalizeGiftIcon(icon), cleanContent = normalizeGiftContent(content), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(reply.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Gifts are available in direct conversations only.");
+      if (this.tracking() && !session.memorySequence) session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const gift: ChatGift = { icon: cleanIcon, content: cleanContent, sender: "assistant", recipient: "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId: session.id, role: "assistant", content: giftMessageContent(gift, id),
+        status: "complete", createdAt: Date.now(), order: session.nextOrder, gift };
+      const placed = await this.appendBeforeReply(tx, session, message, replyMessageId);
+      return "message" in placed ? placed.message : message;
+    }, STORES, { domain: "messages", sessionId: reply.sessionId });
   }
-  async actOnGiftForCharacter(characterId: string, id: string, action: GiftAction): Promise<void> {
+  async actOnGiftForCharacter(characterId: string, id: string, action: GiftAction, replyMessageId?: string): Promise<void> {
     const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
     if (!target) throw new Error("Gift was not found.");
     const view = await this.readSession(target.sessionId);
     if (view.session.type === "group" || view.session.characterId !== characterId) throw new Error("Gift is outside this Character's conversation.");
-    await this.actOnGift(id, "assistant", action);
+    await this.actOnGift(id, "assistant", action, undefined, replyMessageId);
   }
-  async actOnGift(id: string, actor: GiftActor, action: GiftAction, scope?: PersistenceWriteScope): Promise<{ message: ChatMessage; event: ChatMessage }> {
+  async actOnGift(id: string, actor: GiftActor, action: GiftAction, scope?: PersistenceWriteScope, replyMessageId?: string): Promise<{ message: ChatMessage; event: ChatMessage }> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
       if (!target) throw new Error("Gift was not found.");
@@ -1323,7 +1358,7 @@ export class ChatStorage {
       return this.sourceMemory.withExclusive(async (owned) => {
         const snapshot = await this.readSession(view.session.id);
         return invalidateChatSources(this.sourceMemory!, snapshot.session, snapshot.messages.filter((item) => item.id === id || item.giftEvent?.giftId === id),
-          () => this.actOnGift(id, actor, action, owned), owned);
+          () => this.actOnGift(id, actor, action, owned, replyMessageId), owned);
       });
     }
     if (scope) this.sourceMemory?.assertExclusive(scope);
@@ -1345,8 +1380,8 @@ export class ChatStorage {
         content: giftEventContent(data), status: actor === "user" ? "sent" : "complete", createdAt: Date.now(),
         order: session.nextOrder, giftEvent: data };
       await request(table.put(next));
-      const sequenced = this.sequence(session, event);
-      await this.append(tx, session, sequenced);
+      const placed = replyMessageId ? await this.appendBeforeReply(tx, session, event, replyMessageId) : await this.append(tx, session, this.sequence(session, event));
+      const sequenced = "message" in placed ? placed.message : event;
       return { message: next, event: sequenced };
     }, STORES, { domain: "messages", sessionId: view.session.id }, undefined, scope);
   }

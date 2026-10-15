@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { parseStickerText, type StickerParse } from "../../lib/chat/sticker-import";
+import { parseStickerText, validateStickerRows, type StickerParse } from "../../lib/chat/sticker-import";
 import {
   addStickers, browserStickerStorage, createPack, deletePack, MAX_STICKERS_PER_PACK, PACK_NAME_MAX, PACK_NOTE_MAX,
   removeSticker, renameSticker, setPackCharacter, updatePackInfo, type StickerPack,
@@ -50,6 +50,7 @@ function PackDetail({ pack, characters, onBack }: { pack: StickerPack; character
   const [rename, setRename] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [single, setSingle] = useState({ name: "", url: "" });
+  const [broken, setBroken] = useState<Set<string>>(new Set()), [retryVersion, setRetryVersion] = useState(0);
   const run = async (task: () => Promise<unknown>) => {
     try { await task(); setMessage(""); } catch (reason) { setMessage(reason instanceof Error ? reason.message : "保存失败。"); }
   };
@@ -82,11 +83,14 @@ function PackDetail({ pack, characters, onBack }: { pack: StickerPack; character
     {pack.stickers.length ? <div className="sticker-grid">
       {pack.stickers.map((item) => <button key={item.id} type="button" className="sticker-cell" aria-pressed={item.id === picked}
         title={item.name} aria-label={`表情 ${item.name}`} onClick={() => { setPicked(item.id === picked ? null : item.id); setRename(item.name); }}>
-        <StickerImage url={item.url} name={item.name} />
+        <StickerImage key={`${item.id}:${retryVersion}`} url={item.url} name={item.name}
+          onLoadError={() => setBroken((current) => new Set(current).add(item.id))} />
       </button>)}
     </div> : <p className="sticker-note">还没有表情。</p>}
     {sticker && <div className="sticker-edit">
+      {broken.has(sticker.id) && <p className="sticker-note sticker-error" role="alert">Image unavailable. Check the URL, retry, or remove this sticker.</p>}
       <input value={rename} maxLength={40} aria-label="表情名" onChange={(e) => setRename(e.target.value)} />
+      {broken.has(sticker.id) && <button type="button" onClick={() => { setBroken((current) => { const next = new Set(current); next.delete(sticker.id); return next; }); setRetryVersion((value) => value + 1); }}>Retry</button>}
       <button type="button" disabled={!rename.trim() || rename === sticker.name}
         onClick={() => void run(() => browserStickerStorage.transact((d) => renameSticker(d, pack.id, sticker.id, rename)))}>改名</button>
       <button type="button" aria-label="删除这个表情" onClick={() => { setPicked(null);
@@ -95,17 +99,22 @@ function PackDetail({ pack, characters, onBack }: { pack: StickerPack; character
 
     <h3>批量导入</h3>
     <PasteImport label="导入到这个图集" onImport={async (rows) => {
+      const checked = await validateStickerRows(rows);
+      if (!checked.loadable.length) throw new Error(`No image could be loaded. ${checked.failed.length} link(s) had valid syntax but did not return an image.`);
       let result = { added: 0, full: false };
-      await browserStickerStorage.transact((d) => { const next = addStickers(d, pack.id, rows); result = next; return next.document; });
-      setMessage(result.full ? `已加入 ${result.added} 个，图集已满。` : `已加入 ${result.added} 个。`);
+      await browserStickerStorage.transact((d) => { const next = addStickers(d, pack.id, checked.loadable); result = next; return next.document; });
+      const failure = checked.failed.length ? ` ${checked.failed.length} link(s) were valid URLs but the images could not be loaded.` : "";
+      setMessage((result.full ? `Added ${result.added}; the pack is full.` : `Added ${result.added}.`) + failure);
     }} />
     <h3>按链接添加一个</h3>
     <div className="sticker-edit sticker-single">
       <input value={single.name} placeholder="表情名" maxLength={40} onChange={(e) => setSingle({ ...single, name: e.target.value })} />
       <input value={single.url} placeholder="https://…" inputMode="url" onChange={(e) => setSingle({ ...single, url: e.target.value })} />
       <button type="button" disabled={!single.name.trim() || !single.url.trim()} onClick={() => void run(async () => {
+        const checked = await validateStickerRows([{ name: single.name, url: single.url }]);
+        if (!checked.loadable.length) throw new Error("The URL is valid, but the image could not be loaded. Check it and retry.");
         let added = 0;
-        await browserStickerStorage.transact((d) => { const next = addStickers(d, pack.id, [{ name: single.name, url: single.url }]); added = next.added; return next.document; });
+        await browserStickerStorage.transact((d) => { const next = addStickers(d, pack.id, checked.loadable); added = next.added; return next.document; });
         if (!added) throw new Error("链接无效、已存在或图集已满。");
         setSingle({ name: "", url: "" });
       })}>添加</button>
