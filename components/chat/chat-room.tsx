@@ -466,6 +466,19 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       window.removeEventListener("orientationchange", update);
     };
   }, [ready]);
+  // A sticker has no known size until its picture loads, so the list that scrolled to the new message ends up short of the
+  // bottom once it does. While the reader is at the latest message, follow the picture's own growth.
+  useEffect(() => {
+    const list = history.current;
+    if (!list) return;
+    const follow = (event: Event) => {
+      if (event.target instanceof HTMLImageElement && event.target.classList.contains("chat-sticker-image") && nearBottom.current.value)
+        list.scrollTo({ top: list.scrollHeight });
+    };
+    // `load` does not bubble, so it is heard in the capture phase.
+    list.addEventListener("load", follow, true);
+    return () => list.removeEventListener("load", follow, true);
+  }, [ready]);
   async function persistDraft(content: string, sessionId: string, focus: boolean) {
     sendingLock.current = true;
     setSending(true);

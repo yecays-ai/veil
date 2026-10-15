@@ -203,6 +203,17 @@ test("chat history scrolls only vertically, so a wide child cannot be dragged si
   assert.match(history, /touch-action:\s*pan-y pinch-zoom/);
 });
 
+test("a sticker bubble stays bare even when conversation CSS restyles the role bubbles", () => {
+  const rule = css.match(/\.chat-bubble\.chat-bubble-sticker,\s*\.chat-turn-user \.chat-bubble\.chat-bubble-sticker\s*\{[^}]*\}/)?.[0] ?? "";
+  for (const property of ["padding: 0", "background: transparent", "border: 0"]) assert.ok(rule.includes(`${property} !important`), property);
+});
+
+test("the history follows a sticker picture loading while the reader is at the latest message", () => {
+  assert.match(room, /addEventListener\("load", follow, true\)/);
+  assert.match(room, /classList\.contains\("chat-sticker-image"\) && nearBottom\.current\.value/);
+  assert.match(room, /removeEventListener\("load", follow, true\)/);
+});
+
 test("iOS keyboard handling keeps header and history on the stable chat canvas", () => {
   assert.match(css, /\.chat-history\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*overflow-y:\s*auto/);
   assert.match(room, /chatKeyboardInset\(/);
