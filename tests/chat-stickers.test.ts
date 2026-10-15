@@ -161,23 +161,28 @@ test("backup accepts a sticker on user and assistant messages, and rejects malfo
 
 import { readFileSync } from "node:fs";
 const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+const timeline = readFileSync("components/chat/messages/message-list.tsx", "utf8");
+const actions = readFileSync("components/chat/message-actions/message-actions-overlay.tsx", "utf8");
 const plus = readFileSync("components/chat/chat-plus-panel.tsx", "utf8");
 const image = readFileSync("components/chat/sticker-image.tsx", "utf8");
 
-test("the + button opens the panel: stickers work, the other four only hold their place", () => {
+test("the + button opens the panel: stickers, transfers, and gifts work while remaining placeholders stay disabled", () => {
   assert.match(room, /setPanel\(\(current\) => current === null \? "plus" : null\)/);
   assert.match(room, /<ChatPlusPanel onStickers=/);
-  for (const label of ["照片", "礼物", "一起听歌", "文件"]) assert.match(plus, new RegExp(`label: "${label}"`));
+  for (const label of ["Photos", "Listen together", "File"]) assert.match(plus, new RegExp(`label: "${label}"`));
+  assert.match(plus, /onGift/);
   assert.match(plus, /soon\.map[\s\S]*?disabled>/, "placeholders are disabled and send nothing");
   assert.doesNotMatch(plus, /chatEngine|chatStorage/);
 });
 
 test("a sticker message draws only the picture, is saved without a reply request, and cannot be edited or copied as text", () => {
-  assert.match(room, /message\.sticker && <StickerImage/);
-  assert.match(room, /message\.sticker \? null : message\.status === "error"/);
-  assert.match(room.match(/async function sendSticker\([\s\S]*?\n  }\n/)![0], /chatEngine\.sendSticker\(/);
-  assert.doesNotMatch(room.match(/async function sendSticker\([\s\S]*?\n  }\n/)![0], /requestReply|beginReply/);
-  assert.match(room, /label="Edit" icon=\{Pencil\} disabled=\{activeMessage\.role === "system" \|\| !!activeMessage\.sticker/);
+  assert.match(timeline, /message\.sticker && <StickerImage/);
+  assert.match(timeline, /message\.sticker \? null : message\.status === "error"/);
+  const sendStickerStart = room.indexOf("async function sendSticker(");
+  const sendSticker = room.slice(sendStickerStart, room.indexOf("\n  async function reply", sendStickerStart));
+  assert.match(sendSticker, /chatEngine\.sendSticker\(/);
+  assert.doesNotMatch(sendSticker, /requestReply|beginReply/);
+  assert.match(actions, /label="Edit" icon=\{Pencil\} disabled=\{activeMessage\.role === "system" \|\| !!activeMessage\.sticker/);
   assert.match(image, /referrerPolicy="no-referrer"/);
 });
 
@@ -207,4 +212,9 @@ test("opening a panel recomputes the chat area: the history follows the composer
   assert.match(observer, /--chat-composer-height/);
   assert.match(css, /\.chat-composer:has\(\.chat-tray\) \{[^}]*backdrop-filter: blur\(26px\)/);
   assert.match(css.match(/\.chat-reaction-badge \{[^}]*\}/)![0], /bottom:\s*-1px/);
+});
+
+test("stickers cannot be tapped while a reply is generating or a message is being saved", () => {
+  assert.match(room, /<StickerPanel disabled=\{generationActive \|\| sending \|\| !!loadError\}/);
+  assert.match(readFileSync("components/chat/sticker-panel.tsx", "utf8"), /disabled=\{disabled\} onClick/);
 });

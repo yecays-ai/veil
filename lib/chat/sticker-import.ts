@@ -11,6 +11,7 @@ export const STICKER_URL_MAX = 2000;
 export type StickerRow = { name: string; url: string };
 export type StickerSkip = { text: string; reason: "no-url" | "bad-url" | "duplicate" };
 export type StickerParse = { rows: StickerRow[]; skipped: StickerSkip[] };
+export type StickerLoadResult = { loadable: StickerRow[]; failed: StickerRow[] };
 
 const HAS_URL = /https?:\/\//i;
 const IMAGE_END = /\.(?:png|jpe?g|gif|webp|avif|bmp|svg)(?:[?#]\S*)?$/i;
@@ -79,4 +80,21 @@ export function parseStickerText(text: string): StickerParse {
     for (const { label, link } of splitLine(line)) add(label, link, line);
   }
   return { rows, skipped };
+}
+
+/** URL syntax and actual image loading are separate checks; imports use both. */
+export async function validateStickerRows(rows: readonly StickerRow[], timeoutMs = 8_000,
+  createImage: () => HTMLImageElement = () => new Image()): Promise<StickerLoadResult> {
+  const results = await Promise.all(rows.map((row) => new Promise<{ row: StickerRow; ok: boolean }>((resolve) => {
+    const image = createImage();
+    let settled = false;
+    const finish = (ok: boolean) => { if (settled) return; settled = true; clearTimeout(timer); image.onload = null; image.onerror = null; resolve({ row, ok }); };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    image.referrerPolicy = "no-referrer";
+    image.onload = () => finish(image.naturalWidth > 0 && image.naturalHeight > 0);
+    image.onerror = () => finish(false);
+    image.src = row.url;
+  })));
+  return { loadable: results.filter((result) => result.ok).map((result) => result.row),
+    failed: results.filter((result) => !result.ok).map((result) => result.row) };
 }

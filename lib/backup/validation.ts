@@ -187,7 +187,7 @@ function validateChat(value: unknown) {
   });
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -199,6 +199,11 @@ function validateChat(value: unknown) {
     for (const key of ["requestedBy", "turnId", "attemptId", "attemptFor"]) check(row[key] === undefined || id(row[key]), path);
     for (const key of ["error", "finishReason"]) check(row[key] === undefined || typeof row[key] === "string", path);
     check(row.confirmed === undefined || typeof row.confirmed === "boolean", path);
+    if (row.recalled !== undefined) {
+      keys(row.recalled, ["at", "by"], ["at", "by"], path);
+      check(integer(row.recalled.at) && (row.recalled.by === "user" || row.recalled.by === "assistant")
+        && row.role === row.recalled.by && row.content === "", path);
+    }
     if (row.memoryRefs !== undefined) {
       // Ids and content hashes only: a backup never carries injected memory text inside a chat message.
       check(Array.isArray(row.memoryRefs) && row.memoryRefs.length <= MEMORY_REF_LIMIT && row.role === "assistant", path);
@@ -209,13 +214,55 @@ function validateChat(value: unknown) {
     }
     check(row.reactions === undefined || (isMessageReactions(row.reactions) && (row.role === "user" || row.role === "assistant")), path);
     check(row.sticker === undefined || (isMessageSticker(row.sticker) && (row.role === "user" || row.role === "assistant")), path);
+    if (row.transfer !== undefined) {
+      keys(row.transfer, ["amount", "note", "sender", "recipient", "status"], ["amount", "note", "sender", "recipient", "status"], path);
+      const transfer = row.transfer;
+      check(number(transfer.amount) && (transfer.amount as number) > 0 && (transfer.amount as number) <= 1_000_000_000_000
+        && typeof transfer.note === "string" && transfer.note.length <= 240
+        && ["user", "assistant"].includes(String(transfer.sender))
+        && ["user", "assistant"].includes(String(transfer.recipient)) && transfer.sender !== transfer.recipient
+        && ["pending", "received", "declined", "returned"].includes(String(transfer.status))
+        && row.role === transfer.sender && row.transferEvent === undefined && row.recalled === undefined, path);
+    }
+    if (row.transferEvent !== undefined) {
+      keys(row.transferEvent, ["transferId", "action", "actor", "amount", "note"], ["transferId", "action", "actor", "amount", "note"], path);
+      const event = row.transferEvent, source = messages.get(String(event.transferId));
+      const sourceTransfer = source && record(source.transfer) ? source.transfer : null;
+      check(id(event.transferId) && !!sourceTransfer && source?.sessionId === row.sessionId
+        && ["receive", "decline", "return"].includes(String(event.action))
+        && ["user", "assistant"].includes(String(event.actor)) && row.role === event.actor
+        && number(event.amount) && event.amount === sourceTransfer.amount
+        && typeof event.note === "string" && event.note.length <= 240 && row.transfer === undefined, path);
+    }
+    if (row.gift !== undefined) {
+      keys(row.gift, ["icon", "content", "sender", "recipient", "status"], ["icon", "content", "sender", "recipient", "status"], path);
+      const gift = row.gift;
+      check(typeof gift.icon === "string" && gift.icon.length > 0 && Array.from(gift.icon).length <= 24
+        && typeof gift.content === "string" && gift.content.trim().length > 0 && Array.from(gift.content).length <= 500
+        && ["user", "assistant"].includes(String(gift.sender)) && ["user", "assistant"].includes(String(gift.recipient))
+        && gift.sender !== gift.recipient && ["pending", "accepted", "declined"].includes(String(gift.status))
+        && row.role === gift.sender && row.transfer === undefined && row.transferEvent === undefined
+        && row.giftEvent === undefined && row.recalled === undefined, path);
+    }
+    if (row.giftEvent !== undefined) {
+      keys(row.giftEvent, ["giftId", "action", "actor", "icon", "content"], ["giftId", "action", "actor", "icon", "content"], path);
+      const event = row.giftEvent, source = messages.get(String(event.giftId));
+      const sourceGift = source && record(source.gift) ? source.gift : null;
+      check(id(event.giftId) && !!sourceGift && source?.sessionId === row.sessionId
+        && (event.action === "accept" || event.action === "decline")
+        && ["user", "assistant"].includes(String(event.actor)) && row.role === event.actor
+        && typeof event.icon === "string" && event.icon.length > 0 && Array.from(event.icon).length <= 24
+        && typeof event.content === "string" && event.content.trim().length > 0 && Array.from(event.content).length <= 500
+        && event.icon === sourceGift.icon && event.content === sourceGift.content
+        && row.gift === undefined && row.transfer === undefined && row.transferEvent === undefined, path);
+    }
     if (row.memorySequence !== undefined) {
       keys(row.memorySequence, ["epoch", "seq"], ["epoch"], path);
       const session = sessions.get(row.sessionId)!, tracking = session.memorySequence as { epoch?: string; nextSeq?: number } | undefined;
       check(id(row.memorySequence.epoch) && row.memorySequence.epoch === tracking?.epoch, path);
       if (row.memorySequence.seq !== undefined) {
         check(integer(row.memorySequence.seq) && (row.memorySequence.seq as number) >= 1 && (row.memorySequence.seq as number) < tracking!.nextSeq!
-          && memoryMessageEligible(row as unknown as ChatMessage), path);
+          && row.recalled === undefined && memoryMessageEligible(row as unknown as ChatMessage), path);
         const seqKey = `${row.sessionId}\u0000${row.memorySequence.epoch}\u0000${row.memorySequence.seq}`;
         check(!memorySeqs.has(seqKey), path, "duplicate-memory-sequence"); memorySeqs.add(seqKey);
       }

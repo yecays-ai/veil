@@ -22,7 +22,7 @@ const situation = { status: "busy" as const, reason: "on a night shift", startsA
 test("a Character without routine or situation gets no status line, only what it really has", () => {
   const state = selfState(character({ statusMessage: "  hello  " }), contact(" Dearest "), undefined, NOW.getTime());
   assert.deepEqual(state, { remark: "Dearest", remarkChange: null, status: null, situation: null, signature: "hello",
-    userNote: null, canChange: { situation: true, signature: true, note: true } });
+    userNote: null, canRecall: true, canTransfer: true, canGift: true, canChange: { situation: true, signature: true, note: true } });
   const text = selfStateContent(state)!;
   assert.match(text, /Your signature: "hello"/);
   assert.match(text, /Background, needs no response: the remark the user has saved for you is "Dearest"\. Mention it only when it fits naturally/);

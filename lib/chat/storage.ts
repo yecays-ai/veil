@@ -29,6 +29,10 @@ import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
 import { isMessageSticker, stickerContent, stickerPreview, type MessageSticker } from "./sticker-message";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
+import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
+  type TransferAction, type TransferActor, type TransferEvent, type VirtualTransfer } from "./transfer";
+import { canApplyGiftAction, giftEventContent, giftMessageContent, normalizeGiftContent, normalizeGiftIcon,
+  type ChatGift, type GiftAction, type GiftActor, type GiftEvent } from "./gift";
 
 export const CHAT_DATABASE_NAME = "veil-chat-v2";
 export const CHAT_DATABASE_VERSION = 1;
@@ -949,6 +953,8 @@ export class ChatStorage {
       const table = tx.objectStore("messages");
       const existing: ChatMessage | undefined = await request(table.get(id));
       if (!existing) throw new Error("Message not found.");
+      if (existing.recalled) throw new Error("A recalled message cannot be edited.");
+      if (existing.transfer || existing.transferEvent || existing.gift || existing.giftEvent) throw new Error("Special message cards cannot be edited.");
       if (existing.sticker) throw new Error("表情包不能编辑。");
       const current: ChatSession = await request(tx.objectStore("sessions").get(existing.sessionId));
       if (current.generation) throw new Error("A reply is in progress. Stop it before editing this conversation.");
@@ -984,6 +990,58 @@ export class ChatStorage {
     }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
   }
 
+  async recallMessage(id: string, by: "user" | "assistant", scope?: PersistenceWriteScope): Promise<ChatMessage> {
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
+      if (!target) throw new Error("Message not found.");
+      await this.recoverGeneration(target.sessionId);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(target.sessionId, owned);
+        if (!view.session) throw new Error("Conversation not found.");
+        const affected = view.messages.filter((message) => message.id === id && !message.recalled);
+        return invalidateChatSources(this.sourceMemory!, view.session, affected, () => this.recallMessage(id, by, owned), owned);
+      });
+    }
+    const owner = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
+    if (owner && !scope) await this.recoverGeneration(owner.sessionId);
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const message: ChatMessage | undefined = await request(table.get(id));
+      if (!message) throw new Error("Message not found.");
+      if (message.role !== by || (by === "user" ? message.status !== "sent" : message.status !== "complete"))
+        throw new Error("Only your own sent message can be recalled.");
+      if (message.transfer || message.transferEvent || message.gift || message.giftEvent) throw new Error("Special message cards cannot be recalled; update or delete the card instead.");
+      if (message.recalled) return message;
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(message.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.generation) throw new Error("A reply is in progress. Stop it before recalling a message.");
+      const next: ChatMessage = { ...message, content: "", recalled: { at: Date.now(), by },
+        ...(message.memorySequence ? { memorySequence: { epoch: message.memorySequence.epoch } } : {}) };
+      await request(table.put(next));
+      const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
+      for (const quoted of all) if (quoted.quote?.messageId === id && quoted.quote.preview !== "This message has been recalled.")
+        await request(table.put({ ...quoted, quote: { ...quoted.quote, preview: "This message has been recalled." } }));
+      const staleSummary = !!session.summary && message.order <= session.summary.throughOrder;
+      if (session.lastMessageId === id || staleSummary)
+        await request(tx.objectStore("sessions").put({ ...session,
+          ...(session.lastMessageId === id ? { updatedAt: Date.now(), lastMessagePreview: message.role === "user"
+            ? "You recalled a message." : "Character recalled a message." } : {}),
+          ...(staleSummary ? { summary: undefined } : {}) }));
+      return next;
+    }, STORES, (message) => ({ domain: "messages", sessionId: message.sessionId }), undefined, scope);
+  }
+
+  async recallPreviousAssistantMessage(replyId: string): Promise<ChatMessage | null> {
+    const reply = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyId)));
+    if (!reply || reply.role !== "assistant") return null;
+    const { messages } = await this.readSession(reply.sessionId);
+    const target = messages.filter((message) => message.role === "assistant" && message.status === "complete" &&
+      !message.recalled && message.order < reply.order)
+      .sort((a, b) => b.order - a.order)[0];
+    if (!target) return null;
+    return this.recallMessage(target.id, "assistant");
+  }
+
   async regenerationSessionId(id: string): Promise<string> {
     const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
     if (target) await this.recoverGeneration(target.sessionId);
@@ -1007,8 +1065,12 @@ export class ChatStorage {
       return this.sourceMemory.withExclusive(async (owned) => {
         const view = await this.readMemorySources(sessionId, owned);
         if (!view.session) throw new Error("Conversation not found.");
-        const targets = view.messages.filter((m) => ids.includes(m.id));
-        return invalidateChatSources(this.sourceMemory!, view.session, targets, () => this.deleteMessages(sessionId, ids, owned), owned);
+        const selected = new Set(ids);
+        const relatedIds = new Set(view.messages.filter((m) => selected.has(m.id) && (m.transfer || m.gift)).map((m) => m.id));
+        const expanded = new Set([...selected, ...view.messages.filter((m) =>
+          (m.transferEvent && relatedIds.has(m.transferEvent.transferId)) || (m.giftEvent && relatedIds.has(m.giftEvent.giftId))).map((m) => m.id)]);
+        const targets = view.messages.filter((m) => expanded.has(m.id));
+        return invalidateChatSources(this.sourceMemory!, view.session, targets, () => this.deleteMessages(sessionId, [...expanded], owned), owned);
       });
     }
     const targets = new Set(ids);
@@ -1022,6 +1084,9 @@ export class ChatStorage {
       const table = tx.objectStore("messages");
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
       if (this.tracking()) all.sort((a, b) => a.order - b.order);
+      const selectedRelatedIds = new Set(all.filter((message) => targets.has(message.id) && (message.transfer || message.gift)).map((message) => message.id));
+      for (const message of all) if ((message.transferEvent && selectedRelatedIds.has(message.transferEvent.transferId)) ||
+          (message.giftEvent && selectedRelatedIds.has(message.giftEvent.giftId))) targets.add(message.id);
       const latestUserOrder = Math.max(0, ...all.filter((m) => m.role === "user").map((m) => m.order));
       const previousNextSeq = session.memorySequence?.nextSeq;
       for (const message of all) if (message.role === "assistant" && message.order < latestUserOrder && !message.confirmed) {
@@ -1127,6 +1192,22 @@ export class ChatStorage {
     await request(tx.objectStore("sessions").put(next));
     return next;
   }
+  /** Inserts a Character action card before the reply turn that carried the action, keeping its visual position stable. */
+  private async appendBeforeReply(tx: IDBTransaction, session: ChatSession, message: ChatMessage, replyMessageId: string) {
+    const table = tx.objectStore("messages");
+    const reply: ChatMessage | undefined = await request(table.get(replyMessageId));
+    if (!reply || reply.sessionId !== session.id || reply.role !== "assistant") return this.append(tx, session, this.sequence(session, message));
+    const turnId = reply.turnId ?? reply.id;
+    const all: ChatMessage[] = await request(table.index("sessionId").getAll(session.id));
+    const turn = all.filter((item) => item.role === "assistant" && (item.turnId ?? item.id) === turnId);
+    const order = Math.min(...turn.map((item) => item.order));
+    for (const item of all.filter((item) => item.order >= order).sort((a, b) => b.order - a.order))
+      await request(table.put({ ...item, order: item.order + 1 }));
+    const sequenced = this.sequence(session, { ...message, order });
+    await request(table.add(sequenced));
+    await request(tx.objectStore("sessions").put({ ...session, nextOrder: session.nextOrder + 1 }));
+    return { session, message: sequenced };
+  }
   /**
    * Adds a grey system event (role "system", display only) to the Character's existing conversation, or does nothing
    * when it has none. It is not a chat turn: the conversation's order, preview and update time stay as they were.
@@ -1149,6 +1230,160 @@ export class ChatStorage {
   sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string): Promise<ChatMessage> {
     if (!isMessageSticker(sticker)) return Promise.reject(new Error("这个表情包不可用。"));
     return this.send(sessionId, stickerContent("user", sticker), quoteMessageId, undefined, sticker);
+  }
+  async createTransfer(sessionId: string, amountValue: number, noteValue: string, sender: TransferActor): Promise<ChatMessage> {
+    const amount = normalizeTransferAmount(amountValue), note = normalizeTransferNote(noteValue), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions"), session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Virtual transfers are available in direct conversations only.");
+      if (session.generation) throw new Error("Wait until the current reply finishes before sending a transfer.");
+      if (typeof this.memoryTracking === "function" && this.tracking() && !session.memorySequence)
+        session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const transfer: VirtualTransfer = { amount, note, sender, recipient: sender === "user" ? "assistant" : "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId, role: sender, content: transferMessageContent(transfer, id, "Character"),
+        status: sender === "user" ? "sent" : "complete", createdAt: Date.now(), order: session.nextOrder,
+        ...(this.tracking() ? memoryBirth(session) : {}), transfer };
+      await this.append(tx, session, this.sequence(session, message));
+      return message;
+    }, STORES, { domain: "messages", sessionId });
+  }
+  async createTransferForReply(replyMessageId: string, amount: number, note: string): Promise<ChatMessage> {
+    const reply = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyMessageId)), ["messages"]);
+    if (!reply || reply.role !== "assistant") throw new Error("Transfer action has no committed reply.");
+    const cleanAmount = normalizeTransferAmount(amount), cleanNote = normalizeTransferNote(note), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(reply.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Virtual transfers are available in direct conversations only.");
+      if (this.tracking() && !session.memorySequence) session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const transfer: VirtualTransfer = { amount: cleanAmount, note: cleanNote, sender: "assistant", recipient: "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId: session.id, role: "assistant", content: transferMessageContent(transfer, id, "Character"),
+        status: "complete", createdAt: Date.now(), order: session.nextOrder, transfer };
+      const placed = await this.appendBeforeReply(tx, session, message, replyMessageId);
+      return "message" in placed ? placed.message : message;
+    }, STORES, { domain: "messages", sessionId: reply.sessionId });
+  }
+  async actOnTransferForCharacter(characterId: string, id: string, action: TransferAction, replyMessageId?: string): Promise<void> {
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Transfer was not found.");
+    const session = await this.readSession(target.sessionId);
+    if (session.session.type === "group" || session.session.characterId !== characterId) throw new Error("Transfer is outside this Character's conversation.");
+    await this.actOnTransfer(id, "assistant", action, undefined, replyMessageId);
+  }
+  async actOnTransfer(id: string, actor: TransferActor, action: TransferAction, scope?: PersistenceWriteScope, replyMessageId?: string): Promise<{ message: ChatMessage; event: ChatMessage }> {
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+      if (!target) throw new Error("Transfer was not found.");
+      const view = await this.readSession(target.sessionId);
+      await this.recoverGeneration(view.session.id);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const snapshot = await this.readSession(view.session.id);
+        const previous = snapshot.messages.filter((item) => item.id === id || item.transferEvent?.transferId === id);
+        return invalidateChatSources(this.sourceMemory!, snapshot.session, previous,
+          () => this.actOnTransfer(id, actor, action, owned, replyMessageId), owned);
+      });
+    }
+    if (scope) this.sourceMemory?.assertExclusive(scope);
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Transfer was not found.");
+    const view = await this.readSession(target.sessionId);
+    await this.recoverGeneration(view.session.id);
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages"), sessions = tx.objectStore("sessions");
+      const original: ChatMessage | undefined = await request(table.get(id));
+      if (!original?.transfer) throw new Error("Transfer was not found.");
+      if (!canApplyTransferAction(original.transfer, actor, action)) throw new Error("This transfer action is not available.");
+      const nextStatus: VirtualTransfer["status"] = action === "receive" ? "received" : action === "decline" ? "declined" : "returned";
+      const transfer = { ...original.transfer, status: nextStatus };
+      const next: ChatMessage = { ...original, transfer, content: transferMessageContent(transfer, original.id, "Character") };
+      const eventData: TransferEvent = { transferId: id, action, actor, amount: transfer.amount, note: transfer.note };
+      const session: ChatSession | undefined = await request(sessions.get(original.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const event: ChatMessage = { id: crypto.randomUUID(), sessionId: original.sessionId, role: actor,
+        content: transferEventContent(eventData, "Character"), status: actor === "user" ? "sent" : "complete",
+        createdAt: Date.now(), order: session.nextOrder, transferEvent: eventData };
+      await request(table.put(next));
+      const placed = replyMessageId ? await this.appendBeforeReply(tx, session, event, replyMessageId) : await this.append(tx, session, this.sequence(session, event));
+      const sequenced = "message" in placed ? placed.message : event;
+      return { message: next, event: sequenced };
+    }, STORES, { domain: "messages", sessionId: view.session.id }, undefined, scope);
+  }
+  async createGift(sessionId: string, iconValue: string, contentValue: string, sender: GiftActor): Promise<ChatMessage> {
+    const icon = normalizeGiftIcon(iconValue), content = normalizeGiftContent(contentValue), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const sessions = tx.objectStore("sessions"), session: ChatSession | undefined = await request(sessions.get(sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Gifts are available in direct conversations only.");
+      if (session.generation) throw new Error("Wait until the current reply finishes before sending a gift.");
+      if (typeof this.memoryTracking === "function" && this.tracking() && !session.memorySequence)
+        session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const gift: ChatGift = { icon, content, sender, recipient: sender === "user" ? "assistant" : "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId, role: sender, content: giftMessageContent(gift, id),
+        status: sender === "user" ? "sent" : "complete", createdAt: Date.now(), order: session.nextOrder,
+        ...(this.tracking() ? memoryBirth(session) : {}), gift };
+      await this.append(tx, session, this.sequence(session, message));
+      return message;
+    }, STORES, { domain: "messages", sessionId });
+  }
+  async createGiftForReply(replyMessageId: string, icon: string, content: string): Promise<ChatMessage> {
+    const reply = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(replyMessageId)), ["messages"]);
+    if (!reply || reply.role !== "assistant") throw new Error("Gift action has no committed reply.");
+    const cleanIcon = normalizeGiftIcon(icon), cleanContent = normalizeGiftContent(content), id = crypto.randomUUID();
+    return this.transaction("readwrite", async (tx) => {
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(reply.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      if (session.type === "group") throw new Error("Gifts are available in direct conversations only.");
+      if (this.tracking() && !session.memorySequence) session.memorySequence = { epoch: crypto.randomUUID(), nextSeq: 1 };
+      const gift: ChatGift = { icon: cleanIcon, content: cleanContent, sender: "assistant", recipient: "user", status: "pending" };
+      const message: ChatMessage = { id, sessionId: session.id, role: "assistant", content: giftMessageContent(gift, id),
+        status: "complete", createdAt: Date.now(), order: session.nextOrder, gift };
+      const placed = await this.appendBeforeReply(tx, session, message, replyMessageId);
+      return "message" in placed ? placed.message : message;
+    }, STORES, { domain: "messages", sessionId: reply.sessionId });
+  }
+  async actOnGiftForCharacter(characterId: string, id: string, action: GiftAction, replyMessageId?: string): Promise<void> {
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Gift was not found.");
+    const view = await this.readSession(target.sessionId);
+    if (view.session.type === "group" || view.session.characterId !== characterId) throw new Error("Gift is outside this Character's conversation.");
+    await this.actOnGift(id, "assistant", action, undefined, replyMessageId);
+  }
+  async actOnGift(id: string, actor: GiftActor, action: GiftAction, scope?: PersistenceWriteScope, replyMessageId?: string): Promise<{ message: ChatMessage; event: ChatMessage }> {
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+      if (!target) throw new Error("Gift was not found.");
+      const view = await this.readSession(target.sessionId);
+      await this.recoverGeneration(view.session.id);
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const snapshot = await this.readSession(view.session.id);
+        return invalidateChatSources(this.sourceMemory!, snapshot.session, snapshot.messages.filter((item) => item.id === id || item.giftEvent?.giftId === id),
+          () => this.actOnGift(id, actor, action, owned, replyMessageId), owned);
+      });
+    }
+    if (scope) this.sourceMemory?.assertExclusive(scope);
+    const target = await this.transaction("readonly", async (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)), ["messages"]);
+    if (!target) throw new Error("Gift was not found.");
+    const view = await this.readSession(target.sessionId);
+    await this.recoverGeneration(view.session.id);
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages"), original: ChatMessage | undefined = await request(table.get(id));
+      if (!original?.gift) throw new Error("Gift was not found.");
+      if (!canApplyGiftAction(original.gift, actor, action)) throw new Error("This gift action is not available.");
+      const status: ChatGift["status"] = action === "accept" ? "accepted" : "declined";
+      const gift: ChatGift = { ...original.gift, status };
+      const next: ChatMessage = { ...original, gift, content: giftMessageContent(gift, original.id) };
+      const data: GiftEvent = { giftId: id, action, actor, icon: gift.icon, content: gift.content };
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(original.sessionId));
+      if (!session) throw new Error("Conversation not found.");
+      const event: ChatMessage = { id: crypto.randomUUID(), sessionId: original.sessionId, role: actor,
+        content: giftEventContent(data), status: actor === "user" ? "sent" : "complete", createdAt: Date.now(),
+        order: session.nextOrder, giftEvent: data };
+      await request(table.put(next));
+      const placed = replyMessageId ? await this.appendBeforeReply(tx, session, event, replyMessageId) : await this.append(tx, session, this.sequence(session, event));
+      const sequenced = "message" in placed ? placed.message : event;
+      return { message: next, event: sequenced };
+    }, STORES, { domain: "messages", sessionId: view.session.id }, undefined, scope);
   }
   async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker): Promise<ChatMessage> {
     if (!content.trim())

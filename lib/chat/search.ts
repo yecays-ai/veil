@@ -5,7 +5,7 @@ export const SEARCH_SCAN_CHUNK_SIZE = 120;
 export const SEARCH_TEXT_SCAN_LIMIT = 20_000;
 
 export function isSearchVisibleMessage(message: ChatMessage): boolean {
-  return (message.role === "user" || message.role === "assistant") &&
+  return !message.recalled && (message.role === "user" || message.role === "assistant") &&
     message.status !== "streaming" && !!getSearchResultText(message);
 }
 

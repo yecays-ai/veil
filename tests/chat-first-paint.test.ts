@@ -29,7 +29,8 @@ regressionContract("chat.route-keeps-identity-boundary", "render-lifecycle",
     assert.match(pending, new RegExp(`ref=\\{${ref}\\}`));
   assert.match(pending, /<textarea[^>]*[\s\S]*?disabled placeholder="Message…"/);
   assert.match(room, /aria-busy=\{!framePublished\}/);
-  assert.match(room, /framePublished && groupedMessages\.map/);
+  assert.match(room, /framePublished && <MessageList/);
+  assert.match(readFileSync("components/chat/messages/message-list.tsx", "utf8"), /groupedMessages\.map/);
   assert.match(readFileSync("components/chat/use-chat-background.ts", "utf8"), /BACKGROUND_PREPARE_LIMIT_MS/);
     assert.match(room, /if \(!bindingsReady\) return/);
 });

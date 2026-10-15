@@ -1,19 +1,25 @@
 "use client";
 
-import { Gift, Image as ImageIcon, Music, Paperclip, Smile } from "lucide-react";
+import { ArrowLeftRight, Gift, Image as ImageIcon, Music, Paperclip, Smile } from "lucide-react";
 
-/** First layer of the `+` button: only stickers do anything; the rest only hold their place. */
-export function ChatPlusPanel({ onStickers }: { onStickers: () => void }) {
+/** First layer of the `+` button: message features plus disabled placeholders for later additions. */
+export function ChatPlusPanel({ onStickers, onTransfer, onGift }: { onStickers: () => void; onTransfer: () => void; onGift: () => void }) {
   const soon = [
-    { label: "照片", icon: ImageIcon }, { label: "礼物", icon: Gift },
-    { label: "一起听歌", icon: Music }, { label: "文件", icon: Paperclip },
+    { label: "Photos", icon: ImageIcon },
+    { label: "Listen together", icon: Music }, { label: "File", icon: Paperclip },
   ];
-  return <div className="chat-tray chat-plus-panel" role="menu" aria-label="更多">
+  return <div className="chat-tray chat-plus-panel" role="menu" aria-label="More message options">
     <button type="button" role="menuitem" className="chat-plus-item" onClick={onStickers}>
-      <span className="chat-plus-icon"><Smile aria-hidden="true" /></span><span>表情包</span>
+      <span className="chat-plus-icon"><Smile aria-hidden="true" /></span><span>Stickers</span>
+    </button>
+    <button type="button" role="menuitem" className="chat-plus-item" onClick={onTransfer}>
+      <span className="chat-plus-icon"><ArrowLeftRight aria-hidden="true" /></span><span>Transfer</span>
+    </button>
+    <button type="button" role="menuitem" className="chat-plus-item" onClick={onGift}>
+      <span className="chat-plus-icon"><Gift aria-hidden="true" /></span><span>Gift</span>
     </button>
     {soon.map(({ label, icon: Icon }) => <button key={label} type="button" role="menuitem" className="chat-plus-item" disabled>
-      <span className="chat-plus-icon"><Icon aria-hidden="true" /></span><span>{label}</span><small>开发中</small>
+      <span className="chat-plus-icon"><Icon aria-hidden="true" /></span><span>{label}</span><small>Coming Soon</small>
     </button>)}
   </div>;
 }

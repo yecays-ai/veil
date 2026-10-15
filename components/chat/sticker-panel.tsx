@@ -8,7 +8,7 @@ import { StickerImage } from "./sticker-image";
 import { useStickerLibrary } from "./use-sticker-library";
 
 /** Pack tabs on top, the active pack's stickers below; tapping one sends it. */
-export function StickerPanel({ onSend, onManage }: { onSend: (sticker: MessageSticker) => void; onManage: () => void }) {
+export function StickerPanel({ onSend, onManage, disabled = false }: { onSend: (sticker: MessageSticker) => void; onManage: () => void; disabled?: boolean }) {
   const { document, error } = useStickerLibrary();
   const [chosen, setChosen] = useState<string | null>(null);
   const packs = document?.packs ?? [];
@@ -29,7 +29,7 @@ export function StickerPanel({ onSend, onManage }: { onSend: (sticker: MessageSt
       </div>
       {active && (active.stickers.length ? <div className="sticker-grid">
         {active.stickers.map((sticker) => <button key={sticker.id} type="button" className="sticker-cell" title={sticker.name}
-          aria-label={`发送表情包 ${sticker.name}`} onClick={() => onSend(toMessageSticker(active, sticker))}>
+          aria-label={`发送表情包 ${sticker.name}`} disabled={disabled} onClick={() => onSend(toMessageSticker(active, sticker))}>
           <StickerImage url={sticker.url} name={sticker.name} />
         </button>)}
       </div> : <p className="sticker-empty">这个图集还没有表情，点右上角管理去添加。</p>)}

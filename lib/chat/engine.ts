@@ -65,6 +65,11 @@ const loadSelfState: SelfLoader = async (character, now, reply) => {
 const applyActionsToStores: ActionApplier = (characterId, actions, now, messageId) =>
   typeof window === "undefined" ? Promise.resolve()
     : characterActionApplier({ presence: browserPresenceStorage, foundation: browserFoundationStorage,
+      recallPreviousMessage: async (replyId) => { await chatStorage.recallPreviousAssistantMessage(replyId); },
+      sendTransfer: async (replyId, amount, note) => { await chatStorage.createTransferForReply(replyId, amount, note); },
+      actOnTransfer: async (id, transferId, action, replyId) => { await chatStorage.actOnTransferForCharacter(id, transferId, action, replyId); },
+      sendGift: async (replyId, icon, content) => { await chatStorage.createGiftForReply(replyId, icon, content); },
+      actOnGift: async (id, giftId, action, replyId) => { await chatStorage.actOnGiftForCharacter(id, giftId, action, replyId); },
       noteChanged: async (id, note, at) => {
         const character = (await browserFoundationStorage.load()).characters.find((item) => item.characterId === id);
         if (character) await chatStorage.appendSystemEvent(id, characterNoteEventText(character.name, note), at);
@@ -305,7 +310,8 @@ export function createChatEngine(
       // The Character's own changes: after the commit, once, and never for Continue, which only extends a reply.
       const { reactToUser, ...ownChanges } = actions ?? {};
       delete ownChanges.sticker; // chat data, saved with the reply itself
-      if (Object.keys(ownChanges).length && source !== "continue") void Promise.resolve().then(() => applyActions(target.characterId, ownChanges, now().getTime(), completed[0].id))
+      if (Object.keys(ownChanges).length && source !== "continue") await Promise.resolve()
+        .then(() => applyActions(target.characterId, ownChanges, now().getTime(), completed[0].id))
         .catch(() => { console.warn("[Presence] the Character's own change was not saved"); });
       // The reaction is chat data: checked again against what is stored now, and a failure never undoes the reply.
       if (reactToUser && reaction && reactions.canReact) void storage.readSession(sessionId).then(({ messages }) => {

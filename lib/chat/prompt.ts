@@ -11,6 +11,8 @@ import { selfStateContent, type SelfState } from "./self-context";
 import { backgroundBlock, selectBackground, splitBackground } from "./character-background";
 import { historyEligible, RECENT_MESSAGES, summaryTurn, validSummary } from "./summary";
 import type { MemoryConversation, MemoryContextMessage } from "../memory/context";
+import { transferPromptContent } from "./transfer";
+import { giftPromptContent } from "./gift";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -120,6 +122,10 @@ export function memoryConversation(context: PromptRuntimeContext, preset: Preset
     earlier: history.filter((message) => !currentIds.has(message.id) && !recentIds.has(message.id)).map(body) };
 }
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
+  const transfer = transferPromptContent(message, context.character.name);
+  if (transfer) return messageHistoryContentWithBody(message, transfer);
+  const gift = giftPromptContent(message);
+  if (gift) return messageHistoryContentWithBody(message, gift);
   // A sticker's semantic text is VEIL's own, not the user's or the Character's wording, so user regex rules leave it alone.
   const body = !message.sticker && (message.role === "user" || message.role === "assistant")
     ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt",

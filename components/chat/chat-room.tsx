@@ -1,24 +1,15 @@
 "use client";
 import { useBindings } from "../use-bindings";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
   type CSSProperties } from "react";
 import {
-  Bookmark,
   ChevronLeft,
   ChevronRight,
-  CircleCheck,
-  Copy,
-  Brain,
-  Pencil,
   Plus,
-  Quote,
-  RotateCcw,
   SendHorizontal,
   Search,
   Sparkles,
   Square,
-  Trash2,
-  type LucideIcon,
 } from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
@@ -28,18 +19,11 @@ import { LifeTimelineScreen } from "./life-timeline";
 import { withMemoryClear } from "../../lib/memory/browser";
 import { DEFAULT_BUBBLE_TIMING, type ChatMessage, type ChatSession } from "../../lib/chat/types";
 import {
-  MESSAGE_MENU_GAP_PX,
-  messageMenuPosition,
-  messageStackShift,
-  reactionBarLeft,
   selectMessageRange,
 } from "../../lib/chat/message-actions";
-import { canReactTo, reactionBadges } from "../../lib/chat/reactions";
-import { ReactionBar, ReactionPickerSheet } from "./reaction-bar";
 import { ChatPlusPanel } from "./chat-plus-panel";
 import { StickerPanel } from "./sticker-panel";
 import { StickerManager } from "./sticker-manager";
-import { StickerImage } from "./sticker-image";
 import type { MessageSticker } from "../../lib/chat/sticker-message";
 import { ChatAvatar } from "./avatar";
 import { ChatHeader } from "./chat-header";
@@ -47,10 +31,8 @@ import { useCharacterPresence } from "../use-character-presence";
 import { ChatMultiSelectBar } from "./chat-multi-select-bar";
 import { useChatSession } from "./use-chat-session";
 import { useKeyboardDismissAutoReply } from "./use-keyboard-dismiss-auto-reply";
-import { createTransientFeedback, hasPendingUserContent, visibleReplyText } from "../../lib/chat/usability";
-import { canContinueTurn, canRegenerateTurn } from "../../lib/chat/turns";
+import { createTransientFeedback, hasPendingUserContent } from "../../lib/chat/usability";
 import { groupVisibleMessages, hiddenForReveal } from "../../lib/chat/bubble-pacing";
-import { resolveUserMessageDelivery, userMessageDeliveryLabel } from "../../lib/chat/delivery";
 import { useBubbleReveal } from "./use-bubble-reveal";
 import { useChatBackground } from "./use-chat-background";
 import { ChatBackgroundSettings } from "./chat-background-settings";
@@ -58,14 +40,12 @@ import { CustomCSSSettings } from "./custom-css-settings";
 import { Switch } from "../settings/ui/switch";
 import { SessionCustomCSS } from "./session-custom-css";
 import { chatHeaderOffset, chatKeyboardInset } from "../../lib/chat/viewport";
-import { getMessageActions, messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
-import { MessageFooter } from "./message-footer";
-import { parseQuotedReply, quoteMessage } from "../../lib/chat/quote";
+import { messageActionsRevision, runMessageAction, subscribeMessageActions } from "../../lib/chat/message-action-registry";
+import { quoteMessage } from "../../lib/chat/quote";
 import { QuoteBubble } from "./quote-bubble";
 import { resolveBindings } from "../../lib/bindings";
 import { browserRegexStorage } from "../../lib/regex-storage";
 import { resolveRegexGroups, type RegexGroup } from "../../lib/regex";
-import { applyRegex } from "../../lib/regex-engine";
 import { createRegexReadGuard } from "../../lib/chat/regex-read-guard";
 import { chatScrollIntentMatchesSession, shouldPositionChatHistoryAtBottom } from "../../lib/chat/initial-scroll";
 import { SEARCH_RESULT_LIMIT, searchConversationMessages } from "../../lib/chat/search";
@@ -73,6 +53,13 @@ import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
 import { chatLoadingNotice } from "../../lib/chat/loading-notice";
 import { isChatDiagnosticsEnabled, recordChatDiagnostic } from "../../lib/diagnostics/chat-first-paint";
+import { MessageList } from "./messages/message-list";
+import { MessageActionsOverlay } from "./message-actions/message-actions-overlay";
+import { useMessageActions } from "./message-actions/use-message-actions";
+import { TransferComposer } from "./transfers/transfer-composer";
+import { useTransferActions } from "./transfers/use-transfer-actions";
+import { GiftComposer } from "./gifts/gift-composer";
+import { useGiftActions } from "./gifts/use-gift-actions";
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -153,6 +140,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [publishedSessionId, setPublishedSessionId] = useState<string | null>(null);
   const frameReady = !!loadError || (!!session && chatBackground.readyForFrame && regexReady);
   useEffect(() => {
+    // Keep the existing frame publication boundary after readiness.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (session && frameReady && publishedSessionId !== session.id) setPublishedSessionId(session.id);
   }, [session, frameReady, publishedSessionId]);
   const framePublished = !!loadError || (!!session && publishedSessionId === session.id);
@@ -161,7 +150,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const draftEditVersion = useRef(0);
   const savedDraftAwaitingSession = useRef<{ sessionId: string; content: string; editVersion: number } | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
-  useEffect(() => { setQuotingMessage(null); }, [characterId]);
+  useEffect(() => {
+    // A character switch must clear the quote before the next send can use it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQuotingMessage(null);
+  }, [characterId]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const generationActive = generating || !!session?.generation;
@@ -171,9 +164,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [failedDraft, setFailedDraft] = useState<{ sessionId: string; content: string; quote: ChatMessage | null; editVersion: number } | null>(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
+  const transfers = useTransferActions(session?.characterId === characterId ? session.id : undefined, setError,
+    () => { setPanel(null); feedbackController.show("Transfer sent"); });
+  const gifts = useGiftActions(session?.characterId === characterId ? session.id : undefined, setError,
+    () => { setPanel(null); feedbackController.show("Gift sent"); });
   const sendingLock = useRef(false);
   const replyLock = useRef(false);
   const currentSessionId = useRef(session?.id);
+  // Keep the session identity current for async reply guards.
+  // eslint-disable-next-line react-hooks/refs
   currentSessionId.current = session?.characterId === characterId ? session.id : undefined;
   useEffect(() => {
     const saved = savedDraftAwaitingSession.current;
@@ -184,27 +183,26 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   }, [session?.id, characterId]);
   useEffect(() => {
     replyLock.current = false; sendingLock.current = false;
+    // Reset transient reply state when the selected Character changes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setGenerating(false); setSending(false); setError("");
     setFailedDraft(null);
   }, [characterId]);
+  // This ref tracks the active session for the reveal queue's async callbacks.
   const { queue: revealQueue, state: revealState } = useBubbleReveal(
+    // eslint-disable-next-line react-hooks/refs
     currentSessionId.current, messages, session?.streamOnline === true, !!loadError,
   );
   function showFeedback(text: string) {
     feedbackController.show(text);
   }
   useEffect(() => () => feedbackController.cancel(), [feedbackController]);
-  const [activeMessage, setActiveMessage] = useState<ChatMessage | null>(null);
-  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
-  const reactionBar = useRef<HTMLDivElement>(null);
-  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
   const [multiSelect, setMultiSelect] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionStartId, setSelectionStartId] = useState<string | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [memoryMessage, setMemoryMessage] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
-  const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null);
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const [pendingSearchJumpId, setPendingSearchJumpId] = useState<string | null>(null);
@@ -229,14 +227,18 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const shell = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const composerBar = useRef<HTMLFormElement>(null);
-  const actionMenu = useRef<HTMLDivElement>(null);
   const chatInfoScreen = useRef<HTMLElement>(null);
   const confirmDialog = useRef<HTMLDivElement>(null);
   const settingsTrigger = useRef<HTMLButtonElement>(null);
   const overlayFocusOrigin = useRef(new Map<string, HTMLElement | null>());
   const previousOverlay = useRef<string | null>(null);
-  const positionMenu = useRef<() => void>(() => {});
   const nativeSelectionActive = useRef(false);
+  const { activeMessage, reactionPickerOpen, reactionBar, actionMenu, positionMenu, closeActions, openActions,
+    confirmDelete, cancelDelete, deleteConfirmed, onPointerDownMessage, onContextMenuMessage,
+    react: reactToMessage, copyMessage, recallActiveMessage, requestDelete, setReactionPickerOpen } = useMessageActions({
+    shell, history, session: session?.characterId === characterId ? session : null,
+    multiSelect, nativeSelectionActive, nearBottom, onCloseChatInfo: () => setChatInfoOpen(false), onError: setError,
+    onFeedback: showFeedback, onDeleted: (ids) => { revealQueue.discard(ids); setMultiSelect(false); setSelectedIds(new Set()); } });
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -269,22 +271,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     return () => observer.disconnect();
   }, []);
   const panelOpen = useRef(false);
+  // Synchronize the panel visibility ref used by the composer resize observer.
+  // eslint-disable-next-line react-hooks/immutability
   useEffect(() => { panelOpen.current = panel !== null; }, [panel]);
-  useEffect(() => {
-    const trackSelection = () => {
-      const selection = window.getSelection();
-      nativeSelectionActive.current = !!selection && !selection.isCollapsed &&
-        !!selection.toString();
-    };
-    globalThis.document.addEventListener("selectionchange", trackSelection);
-    return () => globalThis.document.removeEventListener("selectionchange", trackSelection);
-  }, []);
-
-  const closeActions = useCallback(() => {
-    setActiveMessage(null);
-    setMenuAnchor(null);
-    setReactionPickerOpen(false);
-  }, []);
   const overlayKind = confirmDelete ? "confirm-delete" : confirmClear ? "confirm-clear" :
     chatInfoOpen ? "chat-info" : activeMessage ? "message-actions" : null;
   useLayoutEffect(() => {
@@ -334,7 +323,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         event.stopPropagation();
         if (overlayKind === "chat-info") setChatInfoOpen(false);
         else if (overlayKind === "message-actions") closeActions();
-        else if (overlayKind === "confirm-delete") setConfirmDelete(null);
+        else if (overlayKind === "confirm-delete") cancelDelete();
         else if (overlayKind === "confirm-clear") setConfirmClear(false);
         return;
       }
@@ -367,107 +356,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         if (!wasInert) element.removeAttribute("inert");
       }
     };
-  }, [overlayKind, closeActions]);
-  useLayoutEffect(() => {
-    if (!activeMessage || !menuAnchor || !actionMenu.current || !shell.current) return;
-    const menu = actionMenu.current, bar = reactionBar.current, scroller = history.current, root = shell.current;
-    const measure = () => {
-      const viewportRect = root.getBoundingClientRect();
-      const scaleX = viewportRect.width / root.clientWidth || 1;
-      const scaleY = viewportRect.height / root.clientHeight || 1;
-      const rect = menuAnchor.getBoundingClientRect();
-      return {
-        bubble: { left: (rect.left - viewportRect.left) / scaleX, right: (rect.right - viewportRect.left) / scaleX,
-          top: (rect.top - viewportRect.top) / scaleY, bottom: (rect.bottom - viewportRect.top) / scaleY },
-        viewport: { width: root.clientWidth, height: root.clientHeight },
-      };
-    };
-    const menuHeight = () => menu.scrollHeight + menu.offsetHeight - menu.clientHeight;
-    // With a reaction bar the bar, bubble and menu are one stack. If it does not fit, the bubble moves (the history
-    // scrolls, with temporary bottom room if it is already at the end) so the bar stays above and the menu below.
-    const wasNearBottom = nearBottom.current.value;
-    let restoreScroll = () => {};
-    if (bar && scroller) {
-      const { bubble, viewport } = measure();
-      const shift = messageStackShift(bubble, { height: bar.offsetHeight }, { height: menuHeight() },
-        { height: viewport.height, safeTop: parseFloat(getComputedStyle(scroller).paddingTop) || 0 });
-      if (shift) {
-        const wanted = scroller.scrollTop - shift;
-        const room = wanted - (scroller.scrollHeight - scroller.clientHeight);
-        if (room > 0) scroller.style.paddingBottom = `${(parseFloat(getComputedStyle(scroller).paddingBottom) || 0) + room}px`;
-        scroller.scrollTop = wanted;
-        restoreScroll = () => {
-          scroller.style.paddingBottom = "";
-          if (wasNearBottom) scroller.scrollTop = scroller.scrollHeight;
-        };
-      }
-    }
-    const position = () => {
-      if (!menu.isConnected || !menuAnchor.isConnected) return;
-      const { bubble, viewport } = measure();
-      menu.style.maxWidth = `${Math.max(0, viewport.width - 16)}px`;
-      const size = { width: menu.offsetWidth, height: menuHeight() };
-      if (bar) {
-        const menuTop = Math.min(bubble.bottom + MESSAGE_MENU_GAP_PX, Math.max(viewport.height - 8 - size.height, 8));
-        Object.assign(bar.style, {
-          left: `${reactionBarLeft(bubble, bar.offsetWidth, viewport.width, activeMessage.role)}px`,
-          top: `${bubble.top - MESSAGE_MENU_GAP_PX - bar.offsetHeight}px`, visibility: "visible" });
-        Object.assign(menu.style, { left: `${messageMenuPosition(bubble, size, viewport).left}px`, top: `${menuTop}px`,
-          maxHeight: `${Math.max(0, viewport.height - 8 - menuTop)}px`, visibility: "visible" });
-        return;
-      }
-      const result = messageMenuPosition(bubble, size, viewport);
-      Object.assign(menu.style, { left: `${result.left}px`, top: `${result.top}px`,
-        maxHeight: `${result.maxHeight}px`, visibility: "visible" });
-    };
-    positionMenu.current = position;
-    const openedAt = performance.now();
-    let frame = requestAnimationFrame(function track() {
-      position();
-      if (performance.now() < openedAt + 180) frame = requestAnimationFrame(track);
-    });
-    const observer = new ResizeObserver(position);
-    observer.observe(menuAnchor);
-    window.addEventListener("resize", position);
-    window.addEventListener("scroll", position, true);
-    window.visualViewport?.addEventListener("resize", position);
-    window.visualViewport?.addEventListener("scroll", position);
-    return () => {
-      cancelAnimationFrame(frame); observer.disconnect();
-      window.removeEventListener("resize", position);
-      window.removeEventListener("scroll", position, true);
-      window.visualViewport?.removeEventListener("resize", position);
-      window.visualViewport?.removeEventListener("scroll", position);
-      restoreScroll();
-    };
-  }, [activeMessage, menuAnchor]);
-
-  function openActions(e: React.MouseEvent<HTMLElement>, message: ChatMessage) {
-    if (multiSelect || message.status === "streaming") return;
-    const selection = window.getSelection();
-    if (nativeSelectionActive.current ||
-      (selection && !selection.isCollapsed && selection.toString())) return;
-    setActiveMessage(message);
-    setMenuAnchor(e.currentTarget);
-    setChatInfoOpen(false);
-  }
-  async function react(message: ChatMessage, emoji: string | null) {
-    closeActions();
-    try { await chatStorage.setReaction(message.id, "user", emoji); }
-    catch (e) { setError(e instanceof Error ? e.message : "Reaction could not be saved."); }
-  }
-  async function copyMessage() {
-    if (!activeMessage) return;
-    try { await navigator.clipboard.writeText(activeMessage.content); showFeedback("Copied"); }
-    catch { setError("Message could not be copied."); }
-    closeActions();
-  }
-  async function deleteConfirmed() {
-    if (!session || !confirmDelete) return;
-    try { await chatStorage.deleteMessages(session.id, confirmDelete); revealQueue.discard(confirmDelete); showFeedback("Deleted");
-      setConfirmDelete(null); setMultiSelect(false); setSelectedIds(new Set()); }
-    catch (e) { setError(e instanceof Error ? e.message : "Messages could not be deleted."); }
-  }
+  }, [overlayKind, closeActions, actionMenu, cancelDelete]);
   useLayoutEffect(() => {
     if (!framePublished || !session || initialPositionedSession.current === session.id) return;
     initialPositionedSession.current = session.id;
@@ -808,93 +697,38 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       >
         {!framePublished && loadingNotice && <p className="chat-notice" role="status">{loadingNotice}</p>}
         {empty && <p className="chat-empty-state">No messages yet</p>}
-        {framePublished && groupedMessages.map(({ message, showTimestamp, isGroupStart, isGroupEnd }) => {
-          const delivery = isGroupEnd ? resolveUserMessageDelivery(message) : null;
-          // Middle of a same-sender group: neither end keeps a full radius.
-          const groupClass = `${isGroupStart ? " chat-group-start" : ""}${isGroupEnd ? " chat-group-end" : ""}${isGroupStart || isGroupEnd ? "" : " chat-group-middle"}`;
-          const visibleText = visibleReplyText(message, session?.streamOnline === true);
-          const parsed = message.role === "assistant" ? parseQuotedReply(visibleText)
-            : { content: visibleText, preview: null };
-          const quotePreview = message.quote?.preview ?? parsed.preview;
-          return (
-          <Fragment key={message.id}>
-            {typingBeforeId === message.id && typingIndicator}
-            {showTimestamp && <div className="chat-time-separator chat-sys-msg">
-              <time dateTime={new Date(message.createdAt).toISOString()}>
-                {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </time>
-            </div>}
-          {message.role === "system" ? <div className={`chat-turn chat-system-event${selectedIds.has(message.id) ? " chat-turn-selected" : ""}${highlightedMessageId === message.id ? " chat-turn-search-highlight" : ""}`}
-            data-message-id={message.id} data-active={activeMessage?.id === message.id ? "" : undefined}
-            onClick={() => {
-              if (!multiSelect) return;
-              setSelectedIds((current) => { const next = new Set(current);
-                if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; });
-            }}>
-            {multiSelect && <span className="chat-selection-control" aria-hidden="true">
-              {selectedIds.has(message.id) ? "✓" : ""}
-            </span>}
-            <p className="chat-system-pill" onClick={(e) => openActions(e, message)}>{message.content}</p>
-          </div> : <div
-            className={`chat-turn chat-msg-wrapper chat-turn-${message.role}${groupClass}${selectedIds.has(message.id) ? " chat-turn-selected" : ""}${highlightedMessageId === message.id ? " chat-turn-search-highlight" : ""}`}
-            data-message-id={message.id}
-            data-consecutive={!isGroupStart ? "" : undefined}
-            data-active={activeMessage?.id === message.id ? "" : undefined}
-            onClick={() => {
-              if (!multiSelect || message.status === "streaming") return;
-              setSelectedIds((current) => { const next = new Set(current);
-                if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; });
-            }}
-          >
-            {multiSelect && <span className="chat-selection-control" aria-hidden="true">
-              {selectedIds.has(message.id) ? "✓" : ""}
-            </span>}
-            {message.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">
-              {isGroupStart && <ChatAvatar profile={character} />}
-            </div>}
-            <div className="chat-message">
-              <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
-                onAnimationEnd={() => { if (highlightedMessageId === message.id) setHighlightedMessageId(null); }}
-                onPointerDown={() => { nativeSelectionActive.current = false; }}
-                onContextMenu={() => { nativeSelectionActive.current = true; }}
-                onClick={(e) => openActions(e, message)}>
-                {reactionBadges(message).map((emoji, index) => <span key={index} className="chat-reaction-badge"
-                  data-emoji={emoji} data-side={index === 0 && message.reactions?.character ? "character" : "user"} role="img" aria-label={`Reaction ${emoji}`} />)}
-                {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
-                  author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
-                {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
-                {message.sticker ? null : message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
-                  ? applyRegex(parsed.content, regexGroups, message.role, "display",
-                    { character: character.name, user: document.user.name }) : parsed.content) ||
-                  (message.status === "streaming" && generationActive ? "…" : "")}
-              </p>
-              <MessageFooter messageId={message.id} />
-              <span className="chat-message-meta">
-                {message.status === "streaming" && !generationActive && (
-                  <span>Interrupted reply</span>
-                )}
-                {message.status === "cancelled" && <span>Reply stopped</span>}
-                {message.status === "error" && (
-                  <span role="alert">{message.error || "Reply failed."}</span>
-                )}
-                {!generationActive && message.role === "assistant" && canRegenerateTurn(messages, message.id) &&
-                  (message.status === "error" || message.status === "cancelled") &&
-                  <button type="button" onClick={() => void regenerate(message, message.attemptMode === "continue")}>Retry</button>}
-                {!generationActive && canContinueTurn(messages, message.id) &&
-                  <button type="button" onClick={() => void regenerate(message, true)}>Continue conversation</button>}
-                {delivery && !typing && message.id === lastVisibleMessageId && <span className="chat-delivery-status">
-                  {userMessageDeliveryLabel(delivery)}
-                </span>}
-              </span>
-            </div>
-          </div>}
-          </Fragment>
-        );})}
-        {framePublished && !typingBeforeId && typingIndicator}
+        {framePublished && <MessageList
+          groupedMessages={groupedMessages}
+          messages={messages}
+          selectedIds={selectedIds}
+          activeMessageId={activeMessage?.id}
+          highlightedMessageId={highlightedMessageId}
+          multiSelect={multiSelect}
+          typing={typing}
+          typingBeforeId={typingBeforeId}
+          typingIndicator={typingIndicator}
+          character={character}
+          userName={document.user.name}
+          streamOnline={session?.streamOnline === true}
+          generationActive={generationActive}
+          regexGroups={regexGroups}
+          lastVisibleMessageId={lastVisibleMessageId}
+          onOpenActions={openActions}
+          onToggleSelected={(message) => setSelectedIds((current) => { const next = new Set(current);
+            if (next.has(message.id)) next.delete(message.id); else next.add(message.id); return next; })}
+          onClearHighlight={() => setHighlightedMessageId(null)}
+          onRegenerate={(message, continuation) => void regenerate(message, continuation)}
+          onPointerDownMessage={onPointerDownMessage}
+          onContextMenuMessage={onContextMenuMessage}
+          onTransferAction={(id, action) => void transfers.act(id, action)}
+          onGiftAction={(id, action) => void gifts.act(id, action)}
+        />}
       </div>
       {(error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
           {error || loadError}
+          {/* Keep retries scoped to the session that produced the saved draft. */}
+          {/* eslint-disable-next-line react-hooks/refs */}
           {failedDraft?.sessionId === currentSessionId.current && failedDraft && <button type="button"
             aria-label="Retry draft" disabled={generationActive || sending || !!loadError}
             onClick={() => void reply("manual-reply", failedDraft)}>Retry</button>}
@@ -905,7 +739,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onSelectAll={() => setSelectedIds(new Set(selectable.map((m) => m.id)))}
         onSelectFromHere={() => selectionStartId &&
           setSelectedIds(new Set(selectMessageRange(selectable.map((m) => m.id), selectionStartId)))}
-        onDelete={() => setConfirmDelete([...selectedIds])}
+        onDelete={() => requestDelete([...selectedIds])}
         onCancel={() => { setMultiSelect(false); setSelectedIds(new Set()); }} />}
       {panel && <button type="button" className="chat-tray-backdrop" aria-label="Close panel" onClick={() => setPanel(null)} />}
       {stickerManagerOpen && <StickerManager
@@ -979,10 +813,15 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <SendHorizontal aria-hidden="true" />
           </button>
         </div>
-        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} />}
-        {panel === "stickers" && <StickerPanel onSend={(sticker) => void sendSticker(sticker)}
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
+          onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
+        {panel === "stickers" && <StickerPanel disabled={generationActive || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
+      {transfers.composerOpen && <TransferComposer disabled={transfers.working || generationActive || !!loadError}
+        onClose={() => transfers.setComposerOpen(false)} onSend={(amount, note) => void transfers.send(amount, note)} />}
+      {gifts.composerOpen && <GiftComposer disabled={gifts.working || generationActive || !!loadError}
+        onClose={() => gifts.setComposerOpen(false)} onSend={(icon, content) => void gifts.send(icon, content)} />}
       {chatInfoOpen && <ChatInfoScreen
         screenRef={chatInfoScreen}
         session={session}
@@ -1003,40 +842,25 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         onUpdate={updateSetting}
         onClear={() => setConfirmClear(true)}
       />}
-      {activeMessage && <>
-        <button className="chat-context-backdrop" data-message-overlay="" aria-label="Close message actions" onClick={closeActions} />
-        {canReactTo(activeMessage) && <ReactionBar barRef={reactionBar} current={activeMessage.reactions?.user}
-          onPick={(emoji) => void react(activeMessage, emoji)} onMore={() => setReactionPickerOpen(true)} />}
-        {reactionPickerOpen && <ReactionPickerSheet onPick={(emoji) => void react(activeMessage, emoji === activeMessage.reactions?.user ? null : emoji)} />}
-        <div ref={actionMenu} tabIndex={-1} data-message-overlay="" className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
-          style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(e) => e.stopPropagation()}>
-          <div className="chat-message-actions-grid">
-            <Action label="Copy" icon={Copy} disabled={!!activeMessage.sticker} onClick={() => void copyMessage()} />
-            <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || !!activeMessage.sticker || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => { setEditingMessage(activeMessage);
-              setEditText(activeMessage.content); closeActions(); }} />
-            <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={() => {
-              setQuotingMessage(activeMessage); closeActions(); composer.current?.focus();
-            }} />
-            <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={() => { setMemoryMessage(activeMessage); closeActions(); }} />
-            <Action label="Select" icon={CircleCheck} onClick={() => { const id = activeMessage.id;
-              setMultiSelect(true); setSelectionStartId(id); setSelectedIds(new Set([id])); closeActions(); }} />
-            <Action label="Favorite" icon={Bookmark} disabled />
-            <Action label="Delete" icon={Trash2} danger onClick={() => { setConfirmDelete([activeMessage.id]); closeActions(); }} />
-            <Action label="Regenerate" icon={RotateCcw}
-              disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || !!revealState?.pending}
-              onClick={() => void regenerate(activeMessage)} />
-            {getMessageActions(activeMessage).map((action) => <Action key={action.id}
-              label={action.label} icon={Plus} onClick={() => {
-                const message = activeMessage;
-                closeActions();
-                void runMessageAction(action.id, message, {
-                  updateMessage: (patch) => chatStorage.editMessage(message.id, patch.content),
-                  toast: showFeedback,
-                }).catch((reason) => setError(reason instanceof Error ? reason.message : "Message action failed."));
-              }} />)}
-          </div>
-        </div>
-      </>}
+      <MessageActionsOverlay activeMessage={activeMessage} messages={messages} generationActive={generationActive}
+        revealPending={!!revealState?.pending} actionMenuRef={actionMenu} reactionBarRef={reactionBar}
+        reactionPickerOpen={reactionPickerOpen} onClose={closeActions}
+        onPickReaction={(emoji) => { void reactToMessage(emoji); }}
+        onOpenReactionPicker={() => setReactionPickerOpen(true)} onCopy={() => void copyMessage()}
+        onEdit={() => { if (!activeMessage) return; setEditingMessage(activeMessage); setEditText(activeMessage.content); closeActions(); }}
+        onQuote={() => { if (!activeMessage) return; setQuotingMessage(activeMessage); closeActions(); composer.current?.focus(); }}
+        onMemory={() => { if (!activeMessage) return; setMemoryMessage(activeMessage); closeActions(); }}
+        onSelect={() => { if (!activeMessage) return; setMultiSelect(true); setSelectionStartId(activeMessage.id); setSelectedIds(new Set([activeMessage.id])); closeActions(); }}
+        onDelete={() => { if (!activeMessage) return; requestDelete([activeMessage.id], true); }}
+        onRegenerate={() => { if (activeMessage) void regenerate(activeMessage); }} onRecall={() => void recallActiveMessage()}
+        onRunRegisteredAction={(id) => {
+          if (!activeMessage) return;
+          const message = activeMessage;
+          closeActions();
+          void runMessageAction(id, message, {
+            updateMessage: (patch) => chatStorage.editMessage(message.id, patch.content), toast: showFeedback,
+          }).catch((reason) => setError(reason instanceof Error ? reason.message : "Message action failed."));
+        }} />
       {memoryMessage && <MessageMemory key={memoryMessage.id} message={memoryMessage} characterId={characterId} onClose={() => setMemoryMessage(null)} />}
       {editingMessage && <div className="chat-dialog-backdrop">
         <form className="chat-dialog" onSubmit={async (e) => { e.preventDefault();
@@ -1050,7 +874,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       </div>}
       {confirmDelete && <ConfirmDialog dialogRef={confirmDialog} title="Delete messages?"
         text={`Delete ${confirmDelete.length} message${confirmDelete.length === 1 ? "" : "s"} from this conversation?`}
-        onCancel={() => setConfirmDelete(null)} onConfirm={() => void deleteConfirmed()} />}
+        onCancel={cancelDelete} onConfirm={() => void deleteConfirmed()} />}
       {confirmClear && <ConfirmDialog dialogRef={confirmDialog} title="Clear Chat History?"
         text={`Delete all ${messages.length} messages from this conversation? The conversation itself will remain.`}
         onCancel={() => setConfirmClear(false)} onConfirm={async () => {
@@ -1232,15 +1056,6 @@ function ChatHistorySearchPage({ screenRef, sessionId, messages, characterName, 
           </div>}
     </div>
   </section>;
-}
-
-function Action({ label, icon, disabled, danger, onClick }: {
-  label: string; icon: LucideIcon; disabled?: boolean; danger?: boolean; onClick?: () => void;
-}) {
-  const Icon = icon;
-  return <button type="button" role="menuitem" disabled={disabled} onClick={onClick}
-    className={`ctx-menu-btn${danger ? " ctx-menu-btn-danger chat-danger" : ""}`}><Icon size={25} strokeWidth={1.75}
-      aria-hidden="true" /><small>{label}</small></button>;
 }
 
 function ConfirmDialog({ dialogRef, title, text, onCancel, onConfirm }: {

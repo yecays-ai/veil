@@ -16,7 +16,7 @@ export const SUMMARY_CHUNK_CHARACTERS = 12_000;
 
 /** The same message set the prompt uses for History, oldest first, before the pending/recent cut. */
 export function historyEligible(messages: readonly ChatMessage[]): ChatMessage[] {
-  return messages.filter((message) => message.content && message.role !== "system" && (message.role !== "assistant" || message.status === "complete")
+  return messages.filter((message) => !message.recalled && message.content && message.role !== "system" && (message.role !== "assistant" || message.status === "complete")
     && (message.role !== "assistant" || !isAssistantBlankLinePlaceholder(message.content)))
     .sort((a, b) => a.order - b.order);
 }

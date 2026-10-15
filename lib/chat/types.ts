@@ -101,6 +101,16 @@ export type ChatMessage = {
   reactions?: import("./reactions").MessageReactions;
   /** A sticker message: `content` then holds its semantic text (for search, summaries, Memory and the prompt), not bubble text. Absent on text messages. */
   sticker?: import("./sticker-message").MessageSticker;
+  /** A VEIL virtual transfer. The row ID is the stable transfer ID; no wallet or real payment is represented. */
+  transfer?: import("./transfer").VirtualTransfer;
+  /** Durable operation result, linked to the original transfer row and never counted as another transfer. */
+  transferEvent?: import("./transfer").TransferEvent;
+  /** A freely described gift card. The stable message row ID identifies the gift. */
+  gift?: import("./gift").ChatGift;
+  /** Durable accept/decline result linked to its original gift card. */
+  giftEvent?: import("./gift").GiftEvent;
+  /** The sender withdrew this message. Its original body is cleared when this marker is written. */
+  recalled?: { at: number; by: "user" | "assistant" };
 };
 
 /** What a reply was given from Memory: the row and a hash of the injected content. Never the memory text itself. */
