@@ -2,6 +2,7 @@ import { browserFoundationStorage } from "../foundation-storage";
 import { browserPresenceStorage, presenceRecord } from "../presence/storage";
 import { chatEngine } from "./engine";
 import { chatStorage } from "./storage";
+import { hasComposingDraft, subscribeComposing } from "./composition";
 import { createLifeReplyWatcher } from "./life-reply-watcher";
 
 const visible = () => document.visibilityState === "visible";
@@ -19,6 +20,7 @@ export function startBrowserLifeReply(): () => void {
       return { characterId, timezone: character.timezone, routine: record?.routine?.routine ?? null, situations: record?.situations ?? [] };
     },
     isGenerating: (id) => chatEngine.isGenerating(id),
+    composing: hasComposingDraft,
     reply: (id) => chatEngine.requestReply(id, undefined, "life-reply"),
     now: Date.now,
     visible,
@@ -26,8 +28,9 @@ export function startBrowserLifeReply(): () => void {
   const unsubscribe = chatStorage.subscribe((change) => {
     if (change.domain === "messages" || change.domain === "session") watcher.touch(change.sessionId);
   });
+  const unsubscribeComposing = subscribeComposing((id) => { if (!hasComposingDraft(id)) watcher.touch(id); });
   const onVisibility = () => { if (visible()) void watcher.wake(); else watcher.suspend(); };
   document.addEventListener("visibilitychange", onVisibility);
   watcher.start();
-  return () => { document.removeEventListener("visibilitychange", onVisibility); unsubscribe(); watcher.stop(); };
+  return () => { document.removeEventListener("visibilitychange", onVisibility); unsubscribe(); unsubscribeComposing(); watcher.stop(); };
 }

@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
 import { lifeReplyPlan } from "../lib/chat/life-reply";
-import { createLifeReplyWatcher, LIFE_REPLY_RECHECK_MS, type LifeReplyDeps } from "../lib/chat/life-reply-watcher";
+import { createLifeReplyWatcher, LIFE_REPLY_QUIET_MS, LIFE_REPLY_RECHECK_MS, type LifeReplyDeps } from "../lib/chat/life-reply-watcher";
 import { selfState, selfStateContent } from "../lib/chat/self-context";
 import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
@@ -14,6 +15,7 @@ import { validateBackupPackage } from "../lib/backup/validation";
 import { backupData, packageFixture } from "./backup-fixture";
 import { restoreIntoEmpty, type RestoreDevice } from "../lib/backup/restore";
 import { readStaticBackupSource } from "../lib/backup/static-source";
+import { hasComposingDraft, setComposingDraft, subscribeComposing } from "../lib/chat/composition";
 import { lockOrigin } from "./generation-lock-fixture";
 
 const MIN = 60_000, HOUR = 60 * MIN;
@@ -90,14 +92,17 @@ function user(id: string, order: number, createdAt: number, extra: Partial<ChatM
 function harness(options: { sessions?: Row[]; messages?: ChatMessage[]; inputs?: PresenceInputs | undefined; now?: number; visible?: boolean } = {}) {
   const state = { sessions: options.sessions ?? [{ id: "s", characterId: "a", lifeMode: true as const }],
     messages: options.messages ?? [user("m1", 1, DAY0 + 10 * HOUR)], now: options.now ?? DAY0 + 10 * HOUR + 30_000,
-    visible: options.visible ?? true, generating: false, inputs: "inputs" in options ? options.inputs : workDay };
+    visible: options.visible ?? true, generating: false, composing: false, inputs: "inputs" in options ? options.inputs : workDay };
   const replies: string[] = [];
+  const hooks = { onSessionRead: async () => {} };
   const timers: { run: () => void; ms: number; live: boolean }[] = [];
   const deps: LifeReplyDeps = {
     sessions: async () => state.sessions as unknown as ChatSession[],
-    session: async (id) => ({ session: state.sessions.find((row) => row.id === id) as unknown as ChatSession, messages: state.messages }),
+    session: async (id) => { await hooks.onSessionRead();
+      return { session: state.sessions.find((row) => row.id === id) as unknown as ChatSession, messages: state.messages }; },
     presence: async () => state.inputs,
     isGenerating: () => state.generating,
+    composing: () => state.composing,
     reply: async (id) => { replies.push(id); if (fail) throw new Error("provider down"); },
     now: () => state.now, visible: () => state.visible,
   };
@@ -106,7 +111,7 @@ function harness(options: { sessions?: Row[]; messages?: ChatMessage[]; inputs?:
     setTimeout: (run, ms) => { const timer = { run, ms, live: true }; timers.push(timer); return timer; },
     clearTimeout: (handle) => { (handle as { live: boolean }).live = false; },
   });
-  return { state, replies, timers, watcher, failNext: () => { fail = true; },
+  return { state, replies, timers, watcher, hooks, failNext: () => { fail = true; },
     live: () => timers.filter((timer) => timer.live),
     async fire() { const next = timers.filter((timer) => timer.live).at(-1); if (!next) return false; next.live = false; next.run(); await settle(); return true; } };
 }
@@ -285,4 +290,74 @@ test("a backup keeps Life Mode when it is on and refuses any other value", async
     const bad = backupData(); (bad.chat.sessions[0] as unknown as Record<string, unknown>).lifeMode = damaged;
     const p = await packageFixture(bad); await assert.rejects(validateBackupPackage(JSON.stringify(p.manifest), p.files));
   }
+});
+
+test("a run of short messages is one turn: the quiet window counts from the newest message", async () => {
+  const T = DAY0 + 10 * HOUR;
+  const h = harness({ messages: [user("m1", 1, T), user("m2", 2, T + 7000)], now: T + 9000 }); // m1 alone was due by T + 8 s
+  h.watcher.start(); await settle();
+  assert.deepEqual(h.replies, [], "m2 is only 2 s old");
+  const wait = h.live().at(-1)!;
+  assert.ok(wait.ms > 0 && wait.ms <= LIFE_REPLY_QUIET_MS, `waits out the rest of the window (${wait.ms} ms)`);
+  h.state.now = T + 7000 + LIFE_REPLY_QUIET_MS; await h.fire();
+  assert.deepEqual(h.replies, ["s"], "one reply for the whole run");
+  h.watcher.stop();
+});
+
+test("the quiet window never brings a Presence delay forward", async () => {
+  const busyAt = DAY0 + 13 * HOUR + 30 * MIN;
+  const h = harness({ messages: [user("m1", 1, busyAt)], now: busyAt + 1000 });
+  h.watcher.start(); await settle();
+  h.state.now = busyAt + 20_000; h.state.messages = [...h.state.messages, user("m2", 2, busyAt + 15_000)];
+  h.watcher.touch("s"); await h.fire();
+  assert.deepEqual(h.replies, [], "Busy still decides when");
+  h.watcher.stop();
+});
+
+test("a draft in the composer holds the reply for as long as it exists, then the reply follows", async () => {
+  const h = harness();
+  h.state.composing = true;
+  h.watcher.start(); await settle();
+  assert.deepEqual(h.replies, []);
+  assert.equal(h.live().length, 0, "no timer polls while the draft exists");
+  h.state.now += 10 * MIN; await h.watcher.wake();
+  assert.deepEqual(h.replies, [], "a long pause does not end the hold");
+  h.state.composing = false; h.watcher.touch("s"); await h.fire();
+  assert.deepEqual(h.replies, ["s"]);
+  h.watcher.stop();
+});
+
+test("a draft or a newer message that appears during the last read still holds the reply", async () => {
+  const h = harness();
+  let reads = 0;
+  // The second session read of a check is the last one before replying: a draft starts while it is pending.
+  h.hooks.onSessionRead = async () => { reads++; if (reads === 2) h.state.composing = true; };
+  h.watcher.start(); await settle();
+  assert.deepEqual(h.replies, [], "the draft begun during the read is respected");
+  h.state.composing = false; reads = 10;
+  h.hooks.onSessionRead = async () => { reads++; if (reads === 12) h.state.messages = [...h.state.messages, user("m2", 2, h.state.now)]; };
+  h.watcher.touch("s"); await h.fire();
+  assert.deepEqual(h.replies, [], "a message stored during the read restarts the quiet window");
+  h.hooks.onSessionRead = async () => {};
+  h.state.now += LIFE_REPLY_QUIET_MS; await h.fire();
+  assert.deepEqual(h.replies, ["s"]);
+  h.watcher.stop();
+});
+
+test("the composition signal reports real changes only and clears per conversation", () => {
+  const heard: string[] = [];
+  const stop = subscribeComposing((id) => heard.push(`${id}:${hasComposingDraft(id)}`));
+  setComposingDraft("x", true); setComposingDraft("x", true); setComposingDraft("y", true);
+  setComposingDraft("x", false); setComposingDraft("x", false);
+  assert.deepEqual(heard, ["x:true", "y:true", "x:false"]);
+  assert.equal(hasComposingDraft("y"), true);
+  setComposingDraft("y", false); stop();
+  setComposingDraft("x", true); setComposingDraft("x", false);
+  assert.equal(heard.length, 4, "no events after unsubscribing");
+});
+
+test("the chat page reports its draft per conversation and clears it when it leaves or switches", () => {
+  const source = readFileSync("components/chat/chat-room.tsx", "utf8");
+  assert.match(source, /setComposingDraft\(composingSessionId, hasDraft\);\s*return \(\) => setComposingDraft\(composingSessionId, false\);/);
+  assert.match(source, /const hasDraft = draft\.trim\(\)\.length > 0;/);
 });

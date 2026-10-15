@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
+import { setComposingDraft } from "../../lib/chat/composition";
 import { chatStorage } from "../../lib/chat/storage";
 import { MessageMemory } from "./message-memory";
 import { LifeTimelineScreen } from "./life-timeline";
@@ -150,6 +151,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const empty = framePublished && !!session && messages.length === 0 && !loadError;
   const [draft, setDraft] = useState("");
   const draftEditVersion = useRef(0);
+  // Life Mode waits while this conversation's composer holds text; leaving or switching clears the signal.
+  const composingSessionId = session?.characterId === characterId ? session.id : undefined;
+  const hasDraft = draft.trim().length > 0;
+  useEffect(() => {
+    if (!composingSessionId) return;
+    setComposingDraft(composingSessionId, hasDraft);
+    return () => setComposingDraft(composingSessionId, false);
+  }, [composingSessionId, hasDraft]);
   const savedDraftAwaitingSession = useRef<{ sessionId: string; content: string; editVersion: number } | null>(null);
   const [quotingMessage, setQuotingMessage] = useState<ChatMessage | null>(null);
   useEffect(() => {
