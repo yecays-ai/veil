@@ -5,7 +5,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createChatEngine } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import {
-  PROACTIVE_DAILY_MAX, PROACTIVE_MIN_GAP_MS, SILENCE_TAG, attemptsAllow, isSilence, maybeSilence, statusMayInitiate,
+  PROACTIVE_DAILY_MAX, PROACTIVE_INSTRUCTION, PROACTIVE_MIN_GAP_MS, SILENCE_TAG, attemptsAllow, isSilence, maybeSilence, statusMayInitiate,
 } from "../lib/chat/proactive";
 import { createProactiveScheduler, runProactiveCheck, type ProactiveCheckDeps } from "../lib/chat/proactive-scheduler";
 import { backupData, packageFixture } from "./backup-fixture";
@@ -280,4 +280,9 @@ test("backup validates and restores proactiveAttempts and refuses damaged ones",
     const bad = backupData(); (bad.chat.sessions[0] as unknown as Record<string, unknown>).proactiveAttempts = damaged;
     const p = await packageFixture(bad); await assert.rejects(validateBackupPackage(JSON.stringify(p.manifest), p.files));
   }
+});
+
+test("the contact decision names something that happened in the Character's day as a possible, never required, reason", () => {
+  assert.match(PROACTIVE_INSTRUCTION, /already happened in your day can be that reason, but it is never required/);
+  assert.ok(PROACTIVE_INSTRUCTION.includes(SILENCE_TAG), "silence stays the way to decline");
 });
