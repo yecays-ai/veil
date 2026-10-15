@@ -231,6 +231,9 @@ test("preflight secret rejection retains a failed hole without starving later va
   f.deps.provider = async function* (_c, messages) {
     assert.ok(!messages.some((m) => m.content.includes("private-value"))); yield ignore;
   };
+  // The known failure gets its one retry first; it is rejected locally again, with no request, and then stays a failed hole.
+  assert.equal(await f.run(), false); assert.equal(f.calls(), 0);
+  assert.equal((await f.progress())!.batches[0].attempts, 2);
   assert.equal(await f.run(), true); const p = (await f.progress())!;
   assert.equal(p.throughSeq, 0); assert.deepEqual(p.completed, [[2, 2]]); assert.equal(p.batches[0].state, "failed");
 });
