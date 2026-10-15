@@ -16,6 +16,9 @@ function routeArrived(path: string) {
   return !PRIVATE_CHAT.test(path) || !!frame.querySelector(".chat-room[data-chat-ready]");
 }
 
+// The chat page gives up on a slow wallpaper after 1200 ms and then publishes without it; the slide must wait at least that long.
+const ARRIVAL_LIMIT_MS = 1500;
+
 function waitForRoute(path: string, previous: string) {
   return new Promise<void>((resolve) => {
     if (path !== previous && routeArrived(path)) { resolve(); return; }
@@ -29,7 +32,7 @@ function waitForRoute(path: string, previous: string) {
     };
     const observer = new MutationObserver(() => { if (routeArrived(path)) finish(); });
     observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["data-messages-route", "data-chat-ready"] });
-    const timeout = window.setTimeout(finish, 900);
+    const timeout = window.setTimeout(finish, ARRIVAL_LIMIT_MS);
   });
 }
 

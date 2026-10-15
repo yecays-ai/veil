@@ -265,6 +265,8 @@ test("Messages navigation slides a complete, opaque chat page and keeps the leav
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
   assert.match(room, /data-chat-ready=\{framePublished \? "" : undefined\}/);
   assert.match(routeTransition, /PRIVATE_CHAT\.test\(path\) \|\| !!frame\.querySelector\("\.chat-room\[data-chat-ready\]"\)/);
+  assert.match(routeTransition, /ARRIVAL_LIMIT_MS = 1500/);
+  assert.match(routeTransition, /window\.setTimeout\(finish, ARRIVAL_LIMIT_MS\)/);
   assert.match(routeTransition, /attributeFilter: \["data-messages-route", "data-chat-ready"\]/);
   assert.match(css, /\.messages-route-frame\s*\{[^}]*background:\s*var\(--theme-background\)/);
   assert.match(css, /data-messages-nav="back"\]::view-transition-old\(messages-route\)\s*\{[^}]*z-index:\s*1/);
