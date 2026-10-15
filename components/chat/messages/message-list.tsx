@@ -60,6 +60,9 @@ export function MessageList({
       const quotePreview = message.quote?.preview ?? parsed.preview;
       const selected = selectedIds.has(message.id);
       const highlighted = highlightedMessageId === message.id;
+      const badges = reactionBadges(message);
+      const specialKind = message.transfer || message.transferEvent ? " chat-message-transfer"
+        : message.gift || message.giftEvent ? " chat-message-gift" : "";
       return <Fragment key={message.id}>
         {typingBeforeId === message.id && typingIndicator}
         {showTimestamp && <div className="chat-time-separator chat-sys-msg"><time dateTime={new Date(message.createdAt).toISOString()}>
@@ -77,26 +80,31 @@ export function MessageList({
           onClick={() => { if (multiSelect && message.status !== "streaming") onToggleSelected(message); }}>
           {multiSelect && <span className="chat-selection-control" aria-hidden="true">{selected ? "✓" : ""}</span>}
           {message.role === "assistant" && <div className="chat-avatar-column chat-msg-avatar">{isGroupStart && <ChatAvatar profile={character} />}</div>}
-          <div className="chat-message">
+          <div className={`chat-message${specialKind}`}>
             {message.transfer ? <TransferCard message={message} actor="user" characterName={character.name} onAction={onTransferAction}
               onOpenActions={onOpenActions} onPointerDown={onPointerDownMessage} onContextMenu={onContextMenuMessage} />
               : message.gift ? <GiftCard message={message} actor="user" characterName={character.name} onAction={onGiftAction}
                 onOpenActions={onOpenActions} onPointerDown={onPointerDownMessage} onContextMenu={onContextMenuMessage} />
                 : message.giftEvent ? <GiftResultCard message={message} characterName={character.name} />
-              : message.transferEvent ? <TransferResultCard message={message} characterName={character.name} /> : <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
-              onAnimationEnd={() => { if (highlighted) onClearHighlight(message.id); }}
-              onPointerDown={onPointerDownMessage}
-              onContextMenu={onContextMenuMessage}
-              onClick={(event) => onOpenActions(event, message)}>
-              {reactionBadges(message).map((emoji, index) => <span key={index} className="chat-reaction-badge" data-emoji={emoji}
-                data-side={index === 0 && message.reactions?.character ? "character" : "user"} role="img" aria-label={`Reaction ${emoji}`} />)}
-              {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
-                author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
-              {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
-              {message.sticker ? null : message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
-                ? applyRegex(parsed.content, regexGroups, message.role, "display", { character: character.name, user: userName }) : parsed.content) ||
-                (message.status === "streaming" && generationActive ? "…" : "")}
-            </p>}
+              : message.transferEvent ? <TransferResultCard message={message} characterName={character.name} /> : <div
+                className={`chat-bubble-shell${badges.length ? " chat-bubble-shell-has-reactions" : ""}`}>
+                {badges.length > 0 && <span className="chat-reaction-stack" aria-label="Message reactions">
+                  {badges.map((emoji, index) => <span key={index} className="chat-reaction-badge" data-emoji={emoji}
+                    data-side={index === 0 && message.reactions?.character ? "character" : "user"} role="img" aria-label={`Reaction ${emoji}`} />)}
+                </span>}
+                <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : ""}`}
+                  onAnimationEnd={() => { if (highlighted) onClearHighlight(message.id); }}
+                  onPointerDown={onPointerDownMessage}
+                  onContextMenu={onContextMenuMessage}
+                  onClick={(event) => onOpenActions(event, message)}>
+                  {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
+                    author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
+                  {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
+                  {message.sticker ? null : message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
+                    ? applyRegex(parsed.content, regexGroups, message.role, "display", { character: character.name, user: userName }) : parsed.content) ||
+                    (message.status === "streaming" && generationActive ? "…" : "")}
+                </p>
+              </div>}
             <MessageFooter messageId={message.id} />
             <span className="chat-message-meta">
               {message.status === "streaming" && !generationActive && <span>Interrupted reply</span>}

@@ -24,14 +24,14 @@ export function GiftCard({ message, actor, characterName, onAction, onPointerDow
   const current = status[gift.status];
   const available = (["accept", "decline"] as const).filter((action) => canApplyGiftAction(gift, actor, action));
   return <>
-    <section className="chat-gift-card" aria-label={`${relation}, ${current.name}`}
+    <div className={`chat-card-color-source chat-bubble-role-${message.role}`}><section className="chat-gift-card" aria-label={`${relation}, ${current.name}`}
       onPointerDown={onPointerDown} onContextMenu={(event) => { onContextMenu(); event.preventDefault(); }} onClick={() => setOpen(true)}>
       <header className="chat-card-heading"><span className="chat-gift-icon" aria-hidden="true">{gift.icon}</span>
         <span className="chat-card-heading-copy"><small>{relation}</small><strong>A little gift for you</strong></span>
         <Gift className="chat-card-corner-icon" aria-hidden="true" /></header>
       <p className="chat-gift-content">{gift.content}</p>
       <footer className="chat-card-status"><span><Gift aria-hidden="true" />{current.name}</span><small>{current.detail}</small></footer>
-    </section>
+    </section></div>
     {open && <div className="chat-gift-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
       <section className="chat-gift-detail" role="dialog" aria-modal="true" aria-label="Gift details">
         <span className="chat-gift-detail-icon" aria-hidden="true">{gift.icon}</span>
@@ -51,11 +51,11 @@ export function GiftResultCard({ message, characterName }: { message: ChatMessag
   const accepted = event.action === "accept", Icon = accepted ? Check : RotateCcw;
   const title = accepted ? "Gift received" : "Gift declined";
   const actor = event.actor === "user" ? "You" : characterName;
-  return <section className="chat-gift-card chat-result-card" aria-label={`${actor}: ${title}`}>
+  return <div className={`chat-card-color-source chat-bubble-role-${message.role}`}><section className="chat-gift-card chat-result-card" aria-label={`${actor}: ${title}`}>
     <header className="chat-card-heading"><span className="chat-gift-icon" aria-hidden="true">{event.icon}</span>
       <span className="chat-card-heading-copy"><small>{actor}</small><strong>{title}</strong></span>
       <Gift className="chat-card-corner-icon" aria-hidden="true" /></header>
     <p className="chat-gift-content">{event.content}</p>
     <footer className="chat-card-status"><span><Icon aria-hidden="true" />{accepted ? "Received" : "Returned"}</span><small>{title}</small></footer>
-  </section>;
+  </section></div>;
 }
