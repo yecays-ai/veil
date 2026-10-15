@@ -15,7 +15,7 @@ Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-
 ## 已完成
 
 - 原因：`.chat-history` 只写了 `overflow-y: auto`，另一个方向按 CSS 规则也算成 `auto`，任何一个比屏幕宽的子元素都会让它能横向滚动。
-- 修复：加 `overflow-x: hidden` 与 `touch-action: pan-y`。
+- 修复：加 `overflow-x: hidden` 与 `touch-action: pan-y pinch-zoom`（保留双指缩放）。
 - 检查：手机尺寸 Chromium 模拟横向滑动，塞入 520px 宽元素时修复前 `scrollLeft` 变为 154，修复后保持 0；`tests/chat-layout-ui.test.ts` 新增一条回归断言。
 
 ## 尚未验证

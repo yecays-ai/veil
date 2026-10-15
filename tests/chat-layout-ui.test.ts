@@ -200,7 +200,7 @@ test("chat history scrolls only vertically, so a wide child cannot be dragged si
   const history = css.match(/\.chat-history\s*\{[^}]*\}/)?.[0] ?? "";
   assert.match(history, /overflow-y:\s*auto/);
   assert.match(history, /overflow-x:\s*hidden/);
-  assert.match(history, /touch-action:\s*pan-y/);
+  assert.match(history, /touch-action:\s*pan-y pinch-zoom/);
 });
 
 test("iOS keyboard handling keeps header and history on the stable chat canvas", () => {
