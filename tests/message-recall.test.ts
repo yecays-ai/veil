@@ -20,7 +20,7 @@ test("recall clears message text, replaces quoted previews and excludes it from 
   assert.deepEqual(recalled.recalled?.by, "user");
   assert.equal(recalled.content, "");
   const { messages } = await storage.readSession(session.id);
-  assert.equal(messages.find((message) => message.id === reply.id)?.quote?.preview, "Message recalled");
+  assert.equal(messages.find((message) => message.id === reply.id)?.quote?.preview, "This message has been recalled.");
   assert.deepEqual(await searchConversationMessages(messages, session.id, "private sentence"), []);
   assert.equal(historyEligible(messages).some((message) => message.id === target.id), false);
   const foundation = defaultFoundation();
@@ -29,7 +29,7 @@ test("recall clears message text, replaces quoted previews and excludes it from 
   foundation.characters = [character];
   const prompt = assembleChatPrompt(foundation, character, messages, [], emptyMemorySlot());
   assert.doesNotMatch(prompt.messages.map((message) => message.content).join("\n"), /private sentence/);
-  assert.match(prompt.messages.map((message) => message.content).join("\n"), /Message recalled/);
+  assert.match(prompt.messages.map((message) => message.content).join("\n"), /This message has been recalled\./);
 });
 
 test("recall is sender-only and Character action targets only its own previous reply", async () => {

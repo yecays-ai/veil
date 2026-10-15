@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseStickerText } from "../lib/chat/sticker-import";
+import { parseStickerText, validateStickerRows } from "../lib/chat/sticker-import";
 
 const U = "https://imgbed.heliar.top/file";
 
@@ -49,4 +49,23 @@ test("only http(s) links are accepted and trailing punctuation is not part of th
 test("names are capped at 40 characters and carry no control characters", () => {
   const { rows } = parseStickerText(`${"长".repeat(60)}​：${U}/a.png`);
   assert.equal(Array.from(rows[0].name).length, 40);
+});
+
+test("sticker import distinguishes URL syntax from an image that actually loads", async () => {
+  const rows = [{ name: "works", url: "https://example.com/works.png" },
+    { name: "broken", url: "https://example.com/broken.png" }];
+  const result = await validateStickerRows(rows, 50, () => {
+    const image = { naturalWidth: 0, naturalHeight: 0, onload: null, onerror: null, referrerPolicy: "" } as unknown as HTMLImageElement;
+    Object.defineProperty(image, "src", { set(value: string) {
+      queueMicrotask(() => {
+        if (value.includes("works")) {
+          Object.defineProperty(image, "naturalWidth", { value: 32 });
+          Object.defineProperty(image, "naturalHeight", { value: 32 });
+          image.onload?.(new Event("load"));
+        } else image.onerror?.(new Event("error"));
+      });
+    } });
+    return image;
+  });
+  assert.deepEqual(result, { loadable: [rows[0]], failed: [rows[1]] });
 });

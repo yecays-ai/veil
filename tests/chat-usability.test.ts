@@ -122,3 +122,13 @@ test("keyboard auto reply requires one real close, the setting and an unclaimed 
   assert.equal(shouldRequestAutoReply(true, true, [{ ...pending, requestedBy: "reply" }]), false);
   assert.equal(shouldRequestAutoReply(true, true, []), false);
 });
+
+test("user transfer and gift cards are independent pending messages eligible for delayed reply", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("special-pending");
+  const transfer = await storage.createTransfer(session.id, 3, "tea", "user");
+  const gift = await storage.createGift(session.id, "🍪", "cookie", "user");
+  const messages = (await storage.readSession(session.id)).messages;
+  assert.deepEqual(messages.filter((message) => message.role === "user" && message.status === "sent").map((message) => message.id), [transfer.id, gift.id]);
+  assert.equal(shouldRequestAutoReply(true, true, messages), true);
+});

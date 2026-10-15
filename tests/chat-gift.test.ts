@@ -29,11 +29,25 @@ test("Character may send free-text gifts and user may reject them", async () => 
   const reply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "I brought you something.")).at(0)!;
   const sent = await storage.createGiftForReply(reply.id, "🌻", "A tiny sunflower");
   assert.equal(sent.gift?.recipient, "user");
+  const ordered = (await storage.readSession(session.id)).messages;
+  assert.ok(ordered.findIndex((message) => message.id === sent.id) < ordered.findIndex((message) => message.id === reply.id),
+    "Character gift card is fixed before the reply that carried its Action");
   const parsed = splitActions('<veil-action>{"gift":{"icon":"🌻","content":"A tiny sunflower"}}</veil-action>');
   assert.deepEqual(parsed.actions?.gift, { icon: "🌻", content: "A tiny sunflower" });
   const declined = await storage.actOnGift(sent.id, "user", "decline");
   assert.equal(declined.message.gift?.status, "declined");
   assert.equal(declined.event.giftEvent?.action, "decline");
+});
+
+test("Character gift result is inserted before the reply that decided it", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("gift-action-order");
+  const gift = await storage.createGift(session.id, "☕", "coffee", "user");
+  const reply = (await storage.finalizeReply((await storage.beginReply(session.id))!.assistant.id, "Coffee sounds good.")).at(0)!;
+  await storage.actOnGiftForCharacter("gift-action-order", gift.id, "accept", reply.id);
+  const messages = (await storage.readSession(session.id)).messages;
+  const event = messages.find((message) => message.giftEvent?.giftId === gift.id)!;
+  assert.ok(event.order < messages.find((message) => message.id === reply.id)!.order);
 });
 
 test("gift icon and content are bounded, custom text stays free-form", () => {

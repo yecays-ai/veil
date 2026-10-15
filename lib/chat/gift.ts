@@ -24,11 +24,13 @@ export function normalizeGiftContent(value: unknown): string {
 }
 
 export function giftMessageContent(gift: ChatGift, id: string): string {
-  return `[VEIL gift ${id}] ${gift.sender === "user" ? "You" : "Character"} sent ${gift.icon} ${JSON.stringify(gift.content)}; status: ${gift.status}.`;
+  return `[VEIL virtual gift ${id}] ${gift.sender === "user" ? "You" : "Character"} sent ${gift.icon} ${JSON.stringify(gift.content)}; status: ${gift.status}. ` +
+    "This is an in-chat gesture, not a real purchase, delivery, bank transfer, balance, or item of inventory.";
 }
 
 export function giftEventContent(event: GiftEvent): string {
-  return `[VEIL gift result for ${event.giftId}] ${event.actor === "user" ? "You" : "Character"} ${event.action === "accept" ? "accepted" : "declined"} ${event.icon} ${JSON.stringify(event.content)}.`;
+  return `[VEIL virtual gift result for ${event.giftId}] ${event.actor === "user" ? "You" : "Character"} ${event.action === "accept" ? "accepted" : "declined"} ${event.icon} ${JSON.stringify(event.content)}. ` +
+    "This changes only the status of the same in-chat gift and does not move real money or property.";
 }
 
 export function giftPromptContent(message: ChatMessage): string | null {
