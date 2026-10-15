@@ -10,7 +10,7 @@ Life V1.5：回复生成前结算 Life，并把最近已结束的经历交给模
 
 ## 谁在改哪里
 
-Claude；分支 claude/project-thread-dn1s6a；PR 见 GitHub。涉及 lib/life/recent.ts（新）、lib/life/settle.ts（新）、lib/life/activity.ts（96 条上限只清最旧已结束记录）、lib/chat/self-context.ts、lib/chat/engine.ts（loadSelfState 先结算）、tests/life-recent-context.test.ts。不碰 lib/memory/*。
+Claude；分支 claude/project-thread-dn1s6a；PR：https://github.com/yecays-ai/veil/pull/213 。涉及 lib/life/recent.ts（新）、lib/life/settle.ts（新）、lib/life/activity.ts（96 条上限只清最旧已结束记录）、lib/chat/self-context.ts、lib/chat/engine.ts（loadSelfState 先结算）、tests/life-recent-context.test.ts。不碰 lib/memory/*。
 
 ## 已完成
 

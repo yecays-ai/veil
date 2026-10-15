@@ -67,7 +67,7 @@ test("the prompt separates finished time from the present, plans nothing, and st
   const life = { reconciledAt: NOON, activities: [activity("w", NOON - 5 * HOUR, NOON - 3 * HOUR), activity("future", NOON + 2 * HOUR, NOON + 3 * HOUR, { title: "Tomorrow plan" })] };
   const record = { characterId: "a", routine: null, situations: [], signature: null, lastOnlineAt: null, lastMessageAt: null, life };
   const text = selfStateContent(selfState(character, undefined, record as never, NOON))!;
-  assert.match(text, /Earlier today, from VEIL's rough record.*07:00–09:00 "Working"/);
+  assert.match(text, /From VEIL's rough record of your last hours.*07:00–09:00 "Working"/);
   assert.match(text, /not verified events/);
   assert.match(text, /do not bring it up every time/);
   assert.doesNotMatch(text, /Tomorrow plan/);
@@ -84,8 +84,20 @@ test("over the 96-activity cap only the oldest finished activities go, never the
   assert.equal(next.activities.length, LIFE_ACTIVITY_LIMIT);
   assert.ok(next.activities.some((item) => item.title === "Running") && next.activities.some((item) => item.title === "Future"));
   assert.ok(!next.activities.some((item) => item.id === "life:o0"), "the oldest finished one was dropped");
-  const crowded = { reconciledAt: now, activities: Array.from({ length: LIFE_ACTIVITY_LIMIT }, (_, i) => activity(`f${i}`, now + (2 * i + 1) * HOUR / 2 / 4, now + (2 * i + 2) * HOUR / 2 / 4)) };
-  assert.throws(() => reconcileLifeActivities(crowded, [running], now), /Too many|overlap/, "future time is never traded away");
+  const crowded = { reconciledAt: now, activities: Array.from({ length: LIFE_ACTIVITY_LIMIT }, (_, i) => activity(`f${i}`, now + HOUR + i * HOUR / 2, now + 1.5 * HOUR + i * HOUR / 2)) };
+  assert.throws(() => reconcileLifeActivities(crowded, [activity("run2", now - 30 * 60_000, now + HOUR / 2, { title: "Running" })], now),
+    /Too many life activities\./, "future time is never traded away");
+});
+
+test("entries are clipped to the window, and one from the previous local day says so", () => {
+  const life = { reconciledAt: NOON, activities: [activity("long", NOON - 20 * HOUR, NOON - HOUR)] };
+  const [entry] = recentLife(life, [], NOON);
+  assert.equal(entry.startsAt, NOON - 12 * HOUR, "the part before the window is not told");
+  const early = Date.UTC(2026, 9, 12, 2);
+  const record = { characterId: "a", routine: null, situations: [], signature: null, lastOnlineAt: null, lastMessageAt: null,
+    life: { reconciledAt: early, activities: [activity("night", early - 4 * HOUR, early - HOUR)] } };
+  const text = selfStateContent(selfState(character, undefined, record as never, early))!;
+  assert.match(text, /yesterday 22:00–01:00 "Working"/);
 });
 
 test("a Situation recorded with the document does not break settling", () => {
