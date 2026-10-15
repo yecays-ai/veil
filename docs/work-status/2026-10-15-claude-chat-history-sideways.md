@@ -6,7 +6,7 @@
 
 ## 当前任务
 
-待 lan iPhone 真机验收。聊天记录区域可被手指左右拖动（松手后弹回），壁纸、顶部栏、输入框不动。
+待 lan 在 iPhone 上彼得原会话真机验收（只有那里不能再左右拖动才算通过）。已修复的是容器允许横向滚动的通用缺陷；彼得旧会话里是什么内容触发横向溢出，尚未确认。聊天记录区域可被手指左右拖动（松手后弹回），壁纸、顶部栏、输入框不动。
 
 ## 谁在改哪里
 
@@ -15,7 +15,7 @@ Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-
 ## 已完成
 
 - 原因：`.chat-history` 只写了 `overflow-y: auto`，另一个方向按 CSS 规则也算成 `auto`，任何一个比屏幕宽的子元素都会让它能横向滚动。
-- 修复：加 `overflow-x: hidden` 与 `touch-action: pan-y`。
+- 修复：加 `overflow-x: hidden` 与 `touch-action: pan-y pinch-zoom`（保留双指缩放）。
 - 检查：手机尺寸 Chromium 模拟横向滑动，塞入 520px 宽元素时修复前 `scrollLeft` 变为 154，修复后保持 0；`tests/chat-layout-ui.test.ts` 新增一条回归断言。
 
 ## 尚未验证

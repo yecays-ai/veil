@@ -93,6 +93,8 @@ export function reconcileLifeActivities(current: LifeState | undefined, candidat
     ids.set(item.id, item.occurrenceKey); occurrences.add(item.occurrenceKey); additions.push(item);
   }
   const activities = [...kept, ...additions].sort((a, b) => a.startsAt - b.startsAt || a.id.localeCompare(b.id));
+  // Over the cap, only the oldest finished activities go; the running one and everything ahead are never dropped.
+  while (activities.length > LIFE_ACTIVITY_LIMIT && activities[0].endsAt <= effectiveNow) activities.shift();
   if (activities.length > LIFE_ACTIVITY_LIMIT) throw new Error("Too many life activities.");
   if (activities.some((item, index) => index > 0 && item.startsAt < activities[index - 1].endsAt))
     throw new Error("Life activities overlap.");

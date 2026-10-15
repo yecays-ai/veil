@@ -13,6 +13,7 @@ import { browserMemoryStorage } from "../memory/browser";
 import { emptyMemoryContext, memoryEntryHash, selectMemoryContext } from "../memory/context";
 import { journalEntry, selectJournal } from "../memory/journal";
 import type { Memory } from "../memory/types";
+import { settleLifeDocument } from "../life/settle";
 import { selfState, type ReactionState, type SelfState } from "./self-context";
 import { isSilence, maybeSilence, PROACTIVE_INSTRUCTION } from "./proactive";
 import { browserContactStorage } from "../contact-storage";
@@ -53,6 +54,10 @@ type SelfLoader = (character: Character, now: number, reply: { lastReplyAt: numb
 const loadSelfState: SelfLoader = async (character, now, reply) => {
   if (typeof window === "undefined") return undefined;
   try {
+    // Finished time is brought up to now here, so a chat opened straight after hours away already has it. A failure
+    // only leaves Life as stored; it never costs the rest of the Character's own state.
+    await browserPresenceStorage.transact((document) => settleLifeDocument(document, character.characterId, character.timezone, now))
+      .catch(() => console.warn("[Life] activities were not settled before this reply"));
     const [contacts, presence] = await Promise.all([browserContactStorage.load(), browserPresenceStorage.load()]);
     return selfState(character, contacts.contacts.find((item) => item.characterId === character.characterId),
       presenceRecord(presence, character.characterId), now, reply.lastReplyAt, reply.announceChange, reply.allowActions, reply.reactions, reply.lifeMode);
