@@ -6,13 +6,14 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createIndexedDBFoundationStorage, FOUNDATION_STORAGE_KEY } from "../lib/foundation-storage";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { runMaintenance, type MaintenanceRunnerDependencies } from "../lib/memory/maintenance-runner";
+import { extractJsonObject, parseMaintenanceOperations } from "../lib/memory/maintenance-operations";
 import { createMaintenanceDiagnostics, describeMaintenanceResult, pairMaintenanceResults, type MaintenanceDiagnostic, type MaintenanceDiagnosticStore } from "../lib/memory/maintenance-diagnostics";
 import type { TextProvider } from "../lib/chat/provider";
 
 const SECRET_WORDS = ["Peter loves the harbour at dawn", "SECRET-CANDIDATE-TEXT", "RAW-MODEL-RESPONSE-MARKER"];
 
 async function fixture() {
-  const f = await progressFixture(); let output = "";
+  const f = await progressFixture(); let output = ""; const queue: string[] = []; const inputs: string[] = [];
   const character = { characterId: "c", ...normalizeCharacterInput({ name: "Peter", backstory: "A quiet student.", personality: "calm", speakingStyle: "short" }) };
   await f.core.replaceIfCurrent(FOUNDATION_STORAGE_KEY, await f.core.read(FOUNDATION_STORAGE_KEY), JSON.stringify({ ...defaultFoundation(), characters: [character] }));
   const chat = new ChatStorage(() => f.factory, () => f.locks, f.gate, true, f.memory);
@@ -24,8 +25,8 @@ async function fixture() {
     sessions: (scope) => scope ? chat.listExistingSessions(scope) : chat.listSessions(),
     model: async () => ({ config: { id: "selected", baseUrl: "https://example.invalid/v1", apiKey: "stub-only", model: "stub" }, context: "{}" }),
     enabled: () => true, now: () => Date.now() + 310_000, triggerSequences: 1, diagnostics,
-    provider: (async function* () { yield output; }) as TextProvider };
-  return { ...f, chat, deps, diagnostics, say: (text: string) => { output = text; }, send: (text: string) => chat.send(f.session.id, text),
+    provider: (async function* (_c, messages) { inputs.push(messages.map((m) => m.content).join("\n")); yield queue.length ? queue.shift()! : output; }) as TextProvider };
+  return { ...f, chat, deps, diagnostics, say: (text: string) => { output = text; queue.length = 0; }, script: (...texts: string[]) => { queue.splice(0, queue.length, ...texts); }, inputs, send: (text: string) => chat.send(f.session.id, text),
     progress: async () => (await f.memory.listCursors("c"))[0]?.extraction,
     run: () => runMaintenance("c", deps, new AbortController().signal) };
 }
@@ -55,7 +56,7 @@ test("valid, over-600, protected and duplicate operations are counted separately
   assert.match(describeMaintenanceResult(d), /Dropped: 1 over 600 characters, 1 protected, 1 duplicate\./);
 });
 
-test("unparseable JSON and a format violation are distinct stages, the batch becomes a failed hole, and nothing is retried or re-billed", async () => {
+test("unparseable JSON and a format violation are distinct stages, and the failed range stays recoverable", async () => {
   const f = await fixture(); const m = await f.send(SECRET_WORDS[0]); let calls = 0;
   const provider = f.deps.provider; f.deps.provider = (async function* (...args: Parameters<TextProvider>) { calls++; yield* provider(...args); }) as TextProvider;
   f.say("RAW-MODEL-RESPONSE-MARKER not json");
@@ -65,9 +66,9 @@ test("unparseable JSON and a format violation are distinct stages, the batch bec
   await f.send("another"); f.say(JSON.stringify({ operations: [{ op: "CREATE", messageIds: [m.id] }] }));
   await f.run();
   assert.equal(last(f).stage, "format");
-  // The first failed range is not offered again: each run spent at most one request on a fresh range.
-  assert.ok(calls <= 2);
-  assert.match(describeMaintenanceResult(last(f)), /^Not written: .*not retried/);
+  // The second run is the one allowed retry of the same range, so it spends exactly one request.
+  assert.equal(calls, 2);
+  assert.match(describeMaintenanceResult(last(f)), /^Retry\. Not written: .*no more automatic retries/);
 });
 
 test("results contain only numbers and enums: no chat text, candidate text or model response", async () => {
@@ -99,4 +100,79 @@ test("each usage row pairs with the result of its own request, never an older or
   const rows = [{ at: 30_000 }, { at: 520_000 }, { at: 900_000 }];
   const { pairs, unpaired } = pairMaintenanceResults(rows, [a, b]);
   assert.equal(pairs.get(rows[0]), a); assert.equal(pairs.get(rows[1]), b); assert.equal(pairs.has(rows[2]), false); assert.equal(unpaired.length, 0);
+});
+
+const create = (id: string, text: string) => JSON.stringify({ operations: [{ op: "CREATE", messageIds: [id], text, kind: "fact", subject: "user" }] });
+const bad = "```json\n{\"operations\": [ oops ]}\n```";
+
+test("one complete JSON object is extracted from a fence or surrounding words; anything else is still a JSON failure", () => {
+  const body = '{"operations":[{"op":"IGNORE"}]}';
+  assert.equal(extractJsonObject("```json\n" + body + "\n```"), body);
+  assert.equal(extractJsonObject("Here you go: " + body + " Done."), body);
+  assert.equal(extractJsonObject('{"operations":[],"x":"a } b { c \\" }"}'), '{"operations":[],"x":"a } b { c \\" }"}');
+  assert.equal(extractJsonObject(body + " " + body), undefined, "two objects are ambiguous");
+  assert.equal(extractJsonObject('{"operations":['), undefined, "unbalanced");
+  assert.equal(extractJsonObject("no object"), undefined);
+});
+
+test("an extracted object still goes through the full contract: bad shape stays a format failure, bad JSON a json failure", async () => {
+  const f = await fixture(); await f.send("hello there friend");
+  const snapshot = await f.protocol.withOwner("c", async (owner) => f.protocol.readInput(await f.protocol.prepare(owner, f.session.id, 1, 1, [])));
+  assert.deepEqual(parseMaintenanceOperations("```json\n" + JSON.stringify({ operations: [{ op: "IGNORE" }] }) + "\n```", snapshot).counts.ignored, 1);
+  assert.throws(() => parseMaintenanceOperations("```json\n" + JSON.stringify({ operations: [{ op: "NOPE" }] }) + "\n```", snapshot), { stage: "format" });
+  assert.throws(() => parseMaintenanceOperations(bad, snapshot), { stage: "json" });
+  assert.throws(() => parseMaintenanceOperations(JSON.stringify({ operations: [], extra: 1 }), snapshot), { stage: "format" });
+});
+
+test("a failed range is retried once as the same range: sources kept, no new messages mixed in, memory committed, no duplicates", async () => {
+  const f = await fixture(); const first = await f.send("RANGE-ONE Peter adopted a cat named Miso");
+  f.script(bad, create(first.id, "I adopted a cat named Miso."));
+  assert.equal(await f.run(), false);
+  let progress = (await f.progress())!;
+  assert.equal(progress.batches.length, 1); assert.equal(progress.batches[0].state, "failed"); assert.equal(progress.batches[0].attempts, 1);
+  assert.deepEqual([progress.batches[0].fromSeq, progress.batches[0].toSeq], [1, 1]);
+  assert.equal((await f.memory.listMemories("c")).length, 0);
+  const shape = last(f).shape!;
+  assert.deepEqual([shape.head, shape.tail, shape.fenced, shape.objects, shape.finish], ["fence", "fence", true, 1, "none"]);
+  assert.ok(!JSON.stringify(f.diagnostics.read()).includes("oops"));
+  const second = await f.send("RANGE-TWO a later message");
+  assert.equal(await f.run(), true);
+  assert.equal(f.inputs.length, 2);
+  assert.ok(f.inputs[1].includes("RANGE-ONE") && !f.inputs[1].includes("RANGE-TWO"), "the retry carries its own range only");
+  assert.equal(last(f).attempt, 2); assert.equal(last(f).stage, "ok");
+  const [memory] = await f.memory.listMemories("c");
+  assert.deepEqual(memory.sources, [{ sessionId: f.session.id, messageId: first.id }]);
+  progress = (await f.progress())!;
+  assert.equal(progress.batches.length, 0); assert.equal(progress.throughSeq, 1, "the range is complete only after the commit");
+  // The later message is not lost or reordered: it is the next batch, and repeating the same memory is dropped, not duplicated.
+  f.say(create(first.id, "I adopted a cat named Miso."));
+  await f.send("RANGE-THREE"); await f.run();
+  assert.equal((await f.memory.listMemories("c")).filter((r) => r.status === "active").length, 1);
+  assert.ok(second.id);
+});
+
+test("a range gets at most two requests: the second failure leaves it failed and it is never requested again", async () => {
+  const f = await fixture(); await f.send("LOST-RANGE content");
+  f.script(bad, bad); await f.run();
+  await f.send("next one"); assert.equal(await f.run(), false);
+  assert.equal(f.inputs.length, 2);
+  const batch = (await f.progress())!.batches[0];
+  assert.equal(batch.state, "failed"); assert.equal(batch.attempts, 2);
+  assert.match(describeMaintenanceResult(last(f)), /^Retry\. Not written: .*no more automatic retries/);
+  f.say(JSON.stringify({ operations: [{ op: "IGNORE" }] }));
+  for (let i = 0; i < 3; i++) { await f.send(`more ${i}`); await f.run(); }
+  assert.ok(f.inputs.slice(2).every((text) => !text.includes("LOST-RANGE")), "the exhausted range is not sent again");
+  assert.equal((await f.progress())!.batches.find((b) => b.id === batch.id)?.attempts, 2);
+});
+
+test("an uncertain range (request may have been received) is never retried automatically", async () => {
+  const f = await fixture(); await f.send("UNSURE-RANGE content");
+  const real = f.deps.provider;
+  f.deps.provider = (async function* () { throw new Error("network dropped"); yield ""; }) as TextProvider;
+  assert.equal(await f.run(), false);
+  assert.equal((await f.progress())!.batches[0].state, "uncertain");
+  f.deps.provider = real; f.say(JSON.stringify({ operations: [{ op: "IGNORE" }] }));
+  await f.send("another"); await f.run(); await f.send("again"); await f.run();
+  assert.ok(f.inputs.every((text) => !text.includes("UNSURE-RANGE")));
+  assert.equal((await f.progress())!.batches[0].state, "uncertain");
 });
