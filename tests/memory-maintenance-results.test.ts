@@ -117,7 +117,7 @@ test("one complete JSON object is extracted from a fence or surrounding words; a
 
 test("an extracted object still goes through the full contract: bad shape stays a format failure, bad JSON a json failure", async () => {
   const f = await fixture(); await f.send("hello there friend");
-  const snapshot = await f.protocol.withOwner("c", async (owner) => f.protocol.readInput(await f.protocol.prepare(owner, f.session.id, 1, 1, [])));
+  const snapshot = (await f.protocol.withOwner("c", async (owner) => f.protocol.readInput(await f.protocol.prepare(owner, f.session.id, 1, 1, []))))!;
   assert.deepEqual(parseMaintenanceOperations("```json\n" + JSON.stringify({ operations: [{ op: "IGNORE" }] }) + "\n```", snapshot).counts.ignored, 1);
   assert.throws(() => parseMaintenanceOperations("```json\n" + JSON.stringify({ operations: [{ op: "NOPE" }] }) + "\n```", snapshot), { stage: "format" });
   assert.throws(() => parseMaintenanceOperations(bad, snapshot), { stage: "json" });
