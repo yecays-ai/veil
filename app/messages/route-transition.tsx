@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useRef, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 
 type TransitionDocument = Document & {
@@ -36,6 +36,16 @@ function waitForRoute(path: string, previous: string) {
   });
 }
 
+// Next calls a Link's onNavigate only for a plain same-tab navigation that the Link's own onClick did not cancel
+// (the Chats row cancels the click that ends a swipe), so a capturing document click listener is not used.
+const MessagesNavigationContext = createContext<(href: string) => boolean>(() => false);
+
+/** Returns a Link `onNavigate` that slides Chats <-> chat. Without view-transition support it leaves navigation to the Link. */
+export function useMessagesNavigation() {
+  const navigate = useContext(MessagesNavigationContext);
+  return (href: string) => (event: { preventDefault: () => void }) => { if (navigate(href)) event.preventDefault(); };
+}
+
 export function MessagesRouteTransition({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -43,40 +53,27 @@ export function MessagesRouteTransition({ children }: { children: ReactNode }) {
   const transitionId = useRef(0);
   useLayoutEffect(() => { currentPath.current = pathname; }, [pathname]);
 
-  useEffect(() => {
-    const begin = (direction: "forward" | "back", update: () => void | Promise<void>) => {
-      const start = (document as TransitionDocument).startViewTransition;
-      if (!start || window.matchMedia("(prefers-reduced-motion: reduce)").matches) { void update(); return; }
-      const id = ++transitionId.current;
-      document.documentElement.dataset.messagesNav = direction;
-      const transition = start.call(document, update);
-      void transition.finished.catch(() => {}).finally(() => {
-        if (transitionId.current === id) delete document.documentElement.dataset.messagesNav;
-      });
-    };
-    const onClick = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const link = target.closest<HTMLAnchorElement>("a[href]");
-      if (!link || link.target && link.target !== "_self" || link.hasAttribute("download")) return;
-      const url = new URL(link.href, window.location.href);
-      if (url.origin !== window.location.origin || url.pathname === currentPath.current) return;
-      const direction = PRIVATE_CHAT.test(url.pathname) ? "forward"
-        : url.pathname === "/messages" && PRIVATE_CHAT.test(currentPath.current) ? "back" : null;
-      if (!direction || !isMessagesRoute(url.pathname)) return;
-      const start = (document as TransitionDocument).startViewTransition;
-      if (!start || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-      event.preventDefault();
-      const previous = currentPath.current;
-      begin(direction, async () => {
-        router.push(url.pathname + url.search + url.hash);
-        await waitForRoute(url.pathname, previous);
-      });
-    };
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
+  const navigate = useCallback((href: string) => {
+    const url = new URL(href, window.location.href);
+    if (url.origin !== window.location.origin || url.pathname === currentPath.current) return false;
+    const direction = PRIVATE_CHAT.test(url.pathname) ? "forward"
+      : url.pathname === "/messages" && PRIVATE_CHAT.test(currentPath.current) ? "back" : null;
+    const start = (document as TransitionDocument).startViewTransition;
+    if (!direction || !isMessagesRoute(url.pathname) || !start || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return false;
+    const previous = currentPath.current;
+    const id = ++transitionId.current;
+    document.documentElement.dataset.messagesNav = direction;
+    const transition = start.call(document, async () => {
+      router.push(url.pathname + url.search + url.hash);
+      await waitForRoute(url.pathname, previous);
+    });
+    void transition.finished.catch(() => {}).finally(() => {
+      if (transitionId.current === id) delete document.documentElement.dataset.messagesNav;
+    });
+    return true;
   }, [router]);
 
-  return <div className="messages-route-frame" data-messages-route={pathname}>{children}</div>;
+  return <MessagesNavigationContext.Provider value={navigate}>
+    <div className="messages-route-frame" data-messages-route={pathname}>{children}</div>
+  </MessagesNavigationContext.Provider>;
 }

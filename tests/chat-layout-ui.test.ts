@@ -261,6 +261,14 @@ test("Messages navigation transitions the full route page in both directions and
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?view-transition-group\(messages-route\)/);
 });
 
+test("Messages navigation starts from Link onNavigate, so a row's swipe-suppressed click never navigates", () => {
+  const home = readFileSync("components/chat/messages-home.tsx", "utf8");
+  const header = readFileSync("components/chat/chat-header.tsx", "utf8");
+  assert.doesNotMatch(routeTransition, /addEventListener\("click"/);
+  assert.match(home, /onNavigate=\{onNavigate\(/);
+  assert.match(header, /onNavigate=\{onNavigate\("\/messages"\)\}/);
+});
+
 test("Messages navigation slides a complete, opaque chat page and keeps the leaving chat on top going back", () => {
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
   assert.match(room, /data-chat-ready=\{framePublished \? "" : undefined\}/);

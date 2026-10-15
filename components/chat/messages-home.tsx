@@ -15,6 +15,7 @@ import { CONVERSATION_DELETE_WIDTH, conversationDeleteMotion, conversationSwipeO
   conversationSwipeReleaseTarget } from "../../lib/chat/swipe-gesture";
 import { ChatAvatar } from "./avatar";
 import { CharacterPresenceBadge } from "../presence";
+import { useMessagesNavigation } from "../../app/messages/route-transition";
 import { RootAppHeader } from "../root-app-header";
 import { useContacts } from "../use-contacts";
 import { contactDisplayName } from "../../lib/contact-storage";
@@ -22,6 +23,7 @@ import { contactDisplayName } from "../../lib/contact-storage";
 type Filter = "all" | "private" | "groups";
 export function MessagesHome() {
   const router = useRouter(), { document, ready } = useFoundation();
+  const onNavigate = useMessagesNavigation();
   const contacts = useContacts();
   const [snapshot] = useState(() => lastSessionList(chatStorage));
   const [sessions, setSessions] = useState<ChatSession[]>(snapshot ?? []), [loaded, setLoaded] = useState(snapshot !== null);
@@ -161,6 +163,7 @@ export function MessagesHome() {
           <Link className={`conversation-row${draggingRowId === session.id ? " is-dragging" : ""}`}
             style={{ transform: `translateX(${offset}px)` }} data-testid={`conversation-link-${session.id}`}
             href={group ? `/messages/group/${encodeURIComponent(session.id)}` : `/messages/${encodeURIComponent(session.characterId)}`}
+            onNavigate={onNavigate(group ? `/messages/group/${encodeURIComponent(session.id)}` : `/messages/${encodeURIComponent(session.characterId)}`)}
             onPointerDownCapture={(event) => {
               if (!group && event.isPrimary && event.button === 0)
                 void prefetchChatSession(session.characterId, chatStorage);
