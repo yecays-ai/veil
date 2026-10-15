@@ -185,7 +185,8 @@ test("composer keeps Send and conditional Request Reply as separate icon actions
   assert.match(room, /onReply:\s*\(\)\s*=>\s*reply\("keyboard-auto-reply"\)/);
   assert.match(room, /aria-label="Request Reply"[\s\S]*<Sparkles/);
   assert.match(room, /aria-label="Send"[\s\S]*<SendHorizontal/);
-  assert.match(room, /disabled=\{!session \|\| generationActive \|\| sending \|\| !draft\.trim\(\)/);
+  // Life Mode allows Send during a reply (it interjects); everywhere else a running reply still locks it.
+  assert.match(room, /disabled=\{!session \|\| \(generationActive && session\.lifeMode !== true\) \|\| sending \|\| !draft\.trim\(\)/);
   assert.doesNotMatch(room, />\s*(?:Send|Request Reply)\s*</);
 });
 
