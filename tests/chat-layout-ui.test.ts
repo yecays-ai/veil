@@ -196,6 +196,13 @@ test("composer overlays the wallpaper and tracks its measured height", () => {
   assert.match(room, /Math\.min\(textarea\.scrollHeight, 120\)/);
 });
 
+test("chat history scrolls only vertically, so a wide child cannot be dragged sideways", () => {
+  const history = css.match(/\.chat-history\s*\{[^}]*\}/)?.[0] ?? "";
+  assert.match(history, /overflow-y:\s*auto/);
+  assert.match(history, /overflow-x:\s*hidden/);
+  assert.match(history, /touch-action:\s*pan-y/);
+});
+
 test("iOS keyboard handling keeps header and history on the stable chat canvas", () => {
   assert.match(css, /\.chat-history\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0;[^}]*overflow-y:\s*auto/);
   assert.match(room, /chatKeyboardInset\(/);

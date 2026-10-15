@@ -314,6 +314,9 @@
   flex: none;
   min-height: 0;
   overflow-y: auto;
+  /* overflow-y alone makes the x axis scrollable too: one over-wide child let a finger drag the whole history sideways. */
+  overflow-x: hidden;
+  touch-action: pan-y;
   overscroll-behavior: contain;
   padding: calc(var(--chat-safe-top, var(--app-safe-top)) + var(--chat-viewport-top, 0px) + 74px) max(12px, var(--app-safe-right))
     calc(var(--chat-composer-height, 70px) + var(--chat-keyboard-inset, 0px) + 14px)
