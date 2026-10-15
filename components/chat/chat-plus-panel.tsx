@@ -2,7 +2,7 @@
 
 import { ArrowLeftRight, Gift, Image as ImageIcon, Music, Paperclip, Smile } from "lucide-react";
 
-/** First layer of the `+` button: only stickers do anything; the rest only hold their place. */
+/** First layer of the `+` button: message features plus disabled placeholders for later additions. */
 export function ChatPlusPanel({ onStickers, onTransfer, onGift }: { onStickers: () => void; onTransfer: () => void; onGift: () => void }) {
   const soon = [
     { label: "Photos", icon: ImageIcon },

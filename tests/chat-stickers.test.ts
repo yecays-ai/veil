@@ -169,7 +169,7 @@ const image = readFileSync("components/chat/sticker-image.tsx", "utf8");
 test("the + button opens the panel: stickers, transfers, and gifts work while remaining placeholders stay disabled", () => {
   assert.match(room, /setPanel\(\(current\) => current === null \? "plus" : null\)/);
   assert.match(room, /<ChatPlusPanel onStickers=/);
-  for (const label of ["照片", "一起听歌", "文件"]) assert.match(plus, new RegExp(`label: "${label}"`));
+  for (const label of ["Photos", "Listen together", "File"]) assert.match(plus, new RegExp(`label: "${label}"`));
   assert.match(plus, /onGift/);
   assert.match(plus, /soon\.map[\s\S]*?disabled>/, "placeholders are disabled and send nothing");
   assert.doesNotMatch(plus, /chatEngine|chatStorage/);
