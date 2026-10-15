@@ -10,7 +10,7 @@ PR-B：Life Mode 生成中插话与安全取消。待审查 / 待 lan 真机验�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-reply-interject`；PR 创建后补链接。
+Claude；分支 `claude/life-reply-interject`；PR https://github.com/yecays-ai/veil/pull/216 ；测试分支 claude/presence-routine-fix 已同步。
 - `lib/chat/storage.ts`（`send` 新增 `interject`，同一事务内删除未提交草稿、解除认领、保存新消息）
 - `lib/chat/engine.ts`（`send` 透传 `interject`）
 - `components/chat/chat-room.tsx`（Life Mode 生成中允许发送）
