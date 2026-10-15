@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-iwht8v`；PR 见下方链接。只改 `.chat-history` 的 CSS 两行与一条回归测试，不碰生活模式、消息生成、会话数据。
+Claude；分支 `claude/project-thread-iwht8v`；PR：https://github.com/yecays-ai/veil/pull/211。只改 `.chat-history` 的 CSS 两行与一条回归测试，不碰生活模式、消息生成、会话数据。
 
 ## 已完成
 
