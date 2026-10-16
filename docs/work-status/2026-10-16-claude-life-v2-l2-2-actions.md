@@ -10,7 +10,7 @@ Life V2 工单 L2-2：Character 在聊天回复里调整自己当天的计划（
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-v2-l2-2-actions`；PR 链接见 PR 描述（开出后补）。涉及 `lib/life/chat-edit.ts`（新）、`lib/life/activity.ts`（`LifeState.actedAt`）、`lib/presence/actions.ts`（`life` 动作解析与应用）、`lib/chat/self-context.ts`（条目清单与动作说明）、`lib/chat/engine.ts`（把本次回复的代号换成行 ID）、`tests/life-chat-edit.test.ts`。不碰 `lib/memory/*`、主动消息调度器。
+Claude；分支 `claude/life-v2-l2-2-actions`；PR https://github.com/yecays-ai/veil/pull/229 。涉及 `lib/life/chat-edit.ts`（新）、`lib/life/activity.ts`（`LifeState.actedAt`）、`lib/presence/actions.ts`（`life` 动作解析与应用）、`lib/chat/self-context.ts`（条目清单与动作说明）、`lib/chat/engine.ts`（把本次回复的代号换成行 ID）、`tests/life-chat-edit.test.ts`。不碰 `lib/memory/*`、主动消息调度器。
 
 ## 已完成
 
