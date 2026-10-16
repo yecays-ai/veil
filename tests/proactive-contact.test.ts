@@ -275,6 +275,27 @@ test("a pass skips a Character whose chat is generating, stops when no longer al
   assert.deepEqual(stopping.started, ["s-a"]);
 });
 
+test("a Character about to be offered an attempt is prepared first; nobody else is, and preparation never blocks the attempt", async () => {
+  const order: string[] = [];
+  const sessions = [direct("on"), direct("busy"), direct("spent", { proactiveAttempts: [T0 - HOUR] }), direct("broken"), { ...direct("group"), type: "group" as const }];
+  const { deps, started } = checkDeps(sessions, { on: "online", busy: "busy", spent: "online", broken: "online", group: "online" }, {
+    prepare: async (id) => { order.push(`prepare:${id}`); if (id === "broken") throw new Error("plan failed"); },
+    initiate: async (id) => { order.push(`initiate:${id}`); } });
+  assert.equal(await runProactiveCheck(deps, () => true), 2);
+  assert.deepEqual(order, ["prepare:on", "initiate:s-on", "prepare:broken", "initiate:s-broken"]);
+  void started;
+});
+
+test("if the page is hidden or the chat starts generating while preparing, the attempt is not started", async () => {
+  let generating = false, alive = true;
+  const first = checkDeps([direct("a")], { a: "online" }, { prepare: async () => { generating = true; }, isGenerating: () => generating });
+  assert.equal(await runProactiveCheck(first.deps, () => true), 0);
+  assert.deepEqual(first.started, []);
+  const second = checkDeps([direct("a")], { a: "online" }, { prepare: async () => { alive = false; } });
+  assert.equal(await runProactiveCheck(second.deps, () => alive), 0);
+  assert.deepEqual(second.started, []);
+});
+
 test("being away builds no backlog: a pass after a long gap starts the same single attempt per Character", async () => {
   const { deps, started } = checkDeps([direct("a", { proactiveAttempts: [T0 - 200 * HOUR] })], { a: "online" });
   await runProactiveCheck(deps, () => true);
