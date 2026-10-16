@@ -10,7 +10,7 @@ Life V2 工单 L2-3：Character 自己当天后续的计划进入聊天上下文
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-v2-l2-3-context`；PR 链接见 PR 描述。涉及 `lib/life/recent.ts`（新增 `aheadLife`）、`lib/chat/self-context.ts`（新增 `ahead` 与一行提示）、`tests/life-recent-context.test.ts`。不碰 `lib/memory/*`。
+Claude；分支 `claude/life-v2-l2-3-context`；PR https://github.com/yecays-ai/veil/pull/228 。涉及 `lib/life/recent.ts`（新增 `aheadLife`）、`lib/chat/self-context.ts`（新增 `ahead` 与一行提示）、`tests/life-recent-context.test.ts`。不碰 `lib/memory/*`。
 
 ## 已完成
 
