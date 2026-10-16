@@ -1,5 +1,5 @@
 import type { PresenceSituation } from "../presence/compute";
-import { lifeMomentRevealAt, type LifeActivity, type LifeState } from "./activity";
+import { lifeLive, lifeMomentRevealAt, type LifeActivity, type LifeState } from "./activity";
 
 export const LIFE_RECENT_WINDOW_MS = 12 * 60 * 60_000;
 export const LIFE_RECENT_LIMIT = 4;
@@ -30,7 +30,7 @@ export function recentLife(life: LifeState | undefined, situations: readonly Pre
   const covers = situations.filter((item) => item.startsAt < now).map((item): [number, number] => [item.startsAt, Math.min(item.endsAt, now)]);
   const since = now - windowMs;
   const pieces: Piece[] = [
-    ...(life?.activities ?? []).filter((item) => item.endsAt <= now && item.endsAt > since).flatMap((item) => subtract(item, [...covers, [-Infinity, since]])),
+    ...lifeLive(life?.activities ?? []).filter((item) => item.endsAt <= now && item.endsAt > since).flatMap((item) => subtract(item, [...covers, [-Infinity, since]])),
     ...situations.flatMap((item): Piece[] => {
       const reason = item.reason?.trim();
       return reason && item.endsAt <= now && item.endsAt > now - windowMs && item.endsAt - Math.max(item.startsAt, since) >= MIN_PIECE_MS

@@ -133,5 +133,5 @@ export function reconcileProjectedLife(current: LifeState | undefined, inputs: P
     const id = ids.has(candidate.id) ? `${candidate.id}:${candidate.endsAt}` : candidate.id;
     return endsAt - startsAt >= MIN_FILL_MS ? [{ ...candidate, id, startsAt, endsAt }] : [];
   });
-  return reconcileLifeActivities({ activities: frozen, reconciledAt: current?.reconciledAt ?? 0 }, candidates, now);
+  return reconcileLifeActivities({ ...current, activities: frozen, reconciledAt: current?.reconciledAt ?? 0 }, candidates, now);
 }
