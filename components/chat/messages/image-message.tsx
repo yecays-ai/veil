@@ -6,10 +6,10 @@ import { X } from "lucide-react";
 import { chatStorage } from "../../../lib/chat/storage";
 import type { ChatMessage } from "../../../lib/chat/types";
 
-const EXTENSION: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
+export const ATTACHMENT_EXTENSION: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif" };
 
 /** The picture of one message, read from its own asset. `null` while loading, `false` when the bytes are gone. */
-function useAttachmentUrl(sessionId: string, messageId: string, assetId: string | undefined) {
+export function useAttachmentUrl(sessionId: string, messageId: string, assetId: string | undefined) {
   const [url, setUrl] = useState<string | null | false>(null);
   useEffect(() => {
     if (!assetId) return;
@@ -25,7 +25,7 @@ function useAttachmentUrl(sessionId: string, messageId: string, assetId: string 
   return url;
 }
 
-function ImageViewer({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
+export function ImageViewer({ url, name, onClose }: { url: string; name: string; onClose: () => void }) {
   useEffect(() => {
     const key = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", key);
@@ -58,6 +58,6 @@ export function ImageMessage({ message, multiSelect }: { message: ChatMessage; m
       <img className="chat-image-message" src={url} alt="" width={attachment.width} height={attachment.height}
         decoding="async" draggable={false} />
     </button>
-    {open && <ImageViewer url={url} name={`image.${EXTENSION[attachment.mime] ?? "img"}`} onClose={() => setOpen(false)} />}
+    {open && <ImageViewer url={url} name={`image.${ATTACHMENT_EXTENSION[attachment.mime] ?? "img"}`} onClose={() => setOpen(false)} />}
   </>;
 }

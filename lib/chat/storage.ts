@@ -563,6 +563,32 @@ export class ChatStorage {
       request(tx.objectStore("sessions").getAll()), STORES, null, undefined, scope,
     );
   }
+  /**
+   * Read-only: the newest image messages of this Character's direct conversation, newest first. Never creates a
+   * conversation and never loads the bytes; one cursor pass keeps one message row in memory at a time.
+   */
+  listSessionImages(characterId: string, limit: number, scope?: PersistenceWriteScope):
+    Promise<{ sessionId: string; images: { messageId: string; attachment: MessageAttachment; order: number }[] } | null> {
+    return this.transaction("readonly", async (tx) => {
+      const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
+      const session = directSessionFor(sessions, characterId);
+      if (!session) return null;
+      const images: { messageId: string; attachment: MessageAttachment; order: number }[] = [];
+      await new Promise<void>((resolve, reject) => {
+        const cursor = tx.objectStore("messages").index("sessionId").openCursor(session.id);
+        cursor.onerror = () => reject(new Error("Chat storage could not be read or written."));
+        cursor.onsuccess = () => {
+          const at = cursor.result;
+          if (!at) { resolve(); return; }
+          const message = at.value as ChatMessage;
+          if (message.attachment && !message.recalled) images.push({ messageId: message.id, attachment: message.attachment, order: message.order });
+          at.continue();
+        };
+      });
+      images.sort((a, b) => b.order - a.order);
+      return { sessionId: session.id, images: images.slice(0, Math.max(0, limit)) };
+    }, ["sessions", "messages"], null, undefined, scope);
+  }
   /** Read-only message count for a conversation; never recovers or writes generation state. */
   countMessages(sessionId: string, scope?: PersistenceWriteScope): Promise<number> {
     return this.transaction("readonly", (tx) =>

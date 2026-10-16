@@ -23,6 +23,8 @@ test("Contacts pages expose shared load Retry, deduplicate clicks, and ignore la
   for (const name of ["window", "document", "navigator", "HTMLElement", "Event"] as const) install(name, dom.window[name]);
   install("self", dom.window);
   install("IS_REACT_ACT_ENVIRONMENT", true);
+  // Contact Info's Shared Media listens to chat storage; an open BroadcastChannel would keep the test process alive.
+  install("BroadcastChannel", undefined);
 
   const requests: ReturnType<typeof deferred<ContactDocument>>[] = [];
   const originalRead = browserContactStorage.load;
