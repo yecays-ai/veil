@@ -145,6 +145,44 @@ test("a user message whose reply was deleted still counts as unanswered", async 
   assert.equal((await storage.readSession(session.id)).session.proactiveAttempts, undefined);
 });
 
+test("after a reply is deleted, chatting on lets the Character write first again", async () => {
+  const { storage, prompts, reply } = setup();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "hello");
+  const answer = await reply("Hi").requestReply(session.id);
+  await storage.deleteMessages(session.id, [answer!.id]);
+  assert.equal(await at(T0, () => reply("early").initiate(session.id)), null, "still unanswered while nothing was said after it");
+  await storage.send(session.id, "new topic");
+  await reply("Sure").requestReply(session.id);
+  const spoken = await at(T0 + 4 * HOUR, () => reply("Thinking of you").initiate(session.id));
+  assert.equal(spoken?.content, "Thinking of you");
+  assert.equal(prompts.length, 3, "one request for each reply and one for the Character writing first");
+  assert.equal((await storage.readSession(session.id)).session.proactiveAttempts?.length, 1);
+});
+
+test("a newer unanswered user message still blocks writing first, even when older replies exist", async () => {
+  const { storage, reply } = setup();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "one");
+  await reply("A").requestReply(session.id);
+  await storage.send(session.id, "two");
+  const second = await reply("B").requestReply(session.id);
+  await storage.deleteMessages(session.id, [second!.id]);
+  assert.equal(await at(T0, () => reply("early").initiate(session.id)), null);
+  await storage.send(session.id, "three");
+  assert.equal(await at(T0, () => reply("early").initiate(session.id)), null, "a fresh pending message is protected too");
+});
+
+test("a transfer card the Character left behind is not speech: deleting the reply keeps the user message protected", async () => {
+  const { storage, reply } = setup();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "hello");
+  const answer = await reply("Hi").requestReply(session.id);
+  await storage.createTransferForReply(answer!.id, 5, "For you");
+  await storage.deleteMessages(session.id, [answer!.id]);
+  assert.equal(await at(T0, () => reply("early").initiate(session.id)), null);
+});
+
 test("recovery drops an interrupted initiated draft but keeps partial text as an interrupted reply", async () => {
   for (const partial of [false, true]) {
     const factory = new IDBFactory();
