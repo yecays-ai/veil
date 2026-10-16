@@ -10,7 +10,7 @@ D5：发送新消息时丢弃尚未显示的 Character 气泡。待 lan 真机�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/discard-unrevealed-bubbles`；PR 创建后补链接。
+Claude；分支 `claude/discard-unrevealed-bubbles`；PR https://github.com/yecays-ai/veil/pull/224。
 
 ## 已完成
 
