@@ -12,7 +12,7 @@ export const USAGE_BASELINE_MAX_RECORDS = 300;
 const MAX_MODEL_LENGTH = 80;
 const VALID_SOURCES: ReadonlySet<string> = new Set<CompletionSource>([
   "manual-reply", "keyboard-auto-reply", "regenerate", "continue",
-  "test-connection", "here-there-comment", "presence-routine", "memory-maintenance", "memory-summary", "unclassified",
+  "test-connection", "here-there-comment", "presence-routine", "life-day-plan", "memory-maintenance", "memory-summary", "unclassified",
 ]);
 const VALID_OUTCOMES: ReadonlySet<string> = new Set<CompletionOutcome>([
   "completed", "truncated", "error", "timeout", "cancelled", "abandoned",

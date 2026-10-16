@@ -28,6 +28,7 @@ import { StickerManager } from "./sticker-manager";
 import type { MessageSticker } from "../../lib/chat/sticker-message";
 import { ChatAvatar } from "./avatar";
 import { ChatHeader } from "./chat-header";
+import { requestDayPlan } from "../../lib/life/day-plan";
 import { useCharacterPresence } from "../use-character-presence";
 import { ChatMultiSelectBar } from "./chat-multi-select-bar";
 import { useChatSession } from "./use-chat-session";
@@ -96,6 +97,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const contact = contacts.document.contacts.find((item) => item.characterId === characterId);
   const contactName = character ? contactDisplayName(contact, character.name) : "";
   const presence = useCharacterPresence(character);
+  // Opening a Character's chat is the on-demand trigger for today's day plan; it is claimed once per local day.
+  const hasCharacter = !!character;
+  useEffect(() => { if (ready && hasCharacter) requestDayPlan(characterId); }, [ready, hasCharacter, characterId]);
   const [regexReadState, setRegexReadState] = useState<{
     owner: string; groups: RegexGroup[]; ready: boolean;
   }>({ owner: "", groups: [], ready: false });
