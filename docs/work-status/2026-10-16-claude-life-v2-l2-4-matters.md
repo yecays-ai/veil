@@ -10,7 +10,7 @@ Life V2 工单 L2-4：跨天事项（`life.threads`）。每日计划的提示�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-v2-l2-4-matters`；PR 链接见 GitHub PR（创建后补入）。涉及 `lib/life/matters.ts`（新）、`lib/life/day-plan.ts`、`lib/chat/self-context.ts`、`tests/life-matters.test.ts`（新）。不碰 `lib/memory/*`、主动消息调度器、`lib/life/chat-edit.ts`。
+Claude；分支 `claude/life-v2-l2-4-matters`；PR https://github.com/yecays-ai/veil/pull/230。涉及 `lib/life/matters.ts`（新）、`lib/life/day-plan.ts`、`lib/chat/self-context.ts`、`tests/life-matters.test.ts`（新）。不碰 `lib/memory/*`、主动消息调度器、`lib/life/chat-edit.ts`。
 
 ## 已完成
 
