@@ -10,7 +10,7 @@ Life V2 工单 L2-0：Life 数据结构与备份兼容，不改任何用户可�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-v2-l2-0-schema`；PR 见下方创建后补充；涉及 `lib/life/activity.ts`、`lib/life/recent.ts`、`lib/life/plan.ts`（一行：对账时带上新记录）、`tests/life-v2-schema.test.ts`。不碰 `lib/memory/*`。
+Claude；分支 `claude/life-v2-l2-0-schema`；PR https://github.com/yecays-ai/veil/pull/226；涉及 `lib/life/activity.ts`、`lib/life/recent.ts`、`lib/life/plan.ts`（一行：对账时带上新记录）、`tests/life-v2-schema.test.ts`。不碰 `lib/memory/*`。
 
 ## 已完成
 
