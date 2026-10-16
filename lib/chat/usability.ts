@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./types";
+import { isPendingUserMessage } from "./recall";
 
 export function createTransientFeedback(update: (text: string) => void) {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -13,7 +14,7 @@ export function createTransientFeedback(update: (text: string) => void) {
 }
 
 export const hasPendingUserContent = (messages: readonly ChatMessage[]) =>
-  messages.some((message) => message.role === "user" && message.status === "sent" && !message.requestedBy);
+  messages.some(isPendingUserMessage);
 
 export function shouldRequestAutoReply(keyboardClosed: boolean, enabled: boolean,
   messages: readonly ChatMessage[]): boolean {

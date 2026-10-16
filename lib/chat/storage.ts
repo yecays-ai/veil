@@ -18,7 +18,7 @@ import {
   normalizeBubbleTiming,
   isTruncatedReason,
 } from "./types";
-import { canRecallMessage } from "./recall";
+import { canRecallMessage, isPendingUserMessage } from "./recall";
 import { splitAssistantReply } from "./reply-splitter";
 import { attemptsAllow, recentAttempts } from "./proactive";
 import { quoteMessage } from "./quote";
@@ -1479,7 +1479,7 @@ export class ChatStorage {
         const table = tx.objectStore("messages");
         let messages: ChatMessage[] = await request(table.index("sessionId").getAll(sessionId));
         messages.sort((a, b) => a.order - b.order);
-        const pending = messages.filter((m) => m.role === "user" && m.status === "sent" && !m.requestedBy);
+        const pending = messages.filter(isPendingUserMessage);
         let target: ChatMessage[] = [];
         if (regenerateId !== undefined) {
           if (!(mode === "continue" ? canContinueTurn(messages, regenerateId) : canRegenerateTurn(messages, regenerateId)))

@@ -10,3 +10,7 @@ export function canRecallMessage(message: ChatMessage, by: "user" | "assistant",
   const age = now - message.sentAt!;
   return age >= 0 && age <= MESSAGE_RECALL_WINDOW_MS;
 }
+
+/** A user message nobody has asked the Character about yet. A recalled one is not a question: it reaches the model only as the recall marker in history. */
+export const isPendingUserMessage = (message: ChatMessage) =>
+  message.role === "user" && message.status === "sent" && !message.requestedBy && !message.recalled;
