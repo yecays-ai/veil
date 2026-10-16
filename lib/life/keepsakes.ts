@@ -4,7 +4,7 @@ import { LIFE_KEEPSAKE_LIMIT, LIFE_KEEPSAKE_TEXT_LIMIT, type LifeKeepsake } from
 // Written by the day plan and by one chat action; read by the day plan and (the top few) by chat replies. This is its own
 // small record, kept apart from the Memory feature, which it neither reads nor writes.
 
-const MAX_UPDATES = 4;
+const MAX_UPDATES = 4, MAX_ENTRIES = 12;
 export const CHAT_KEEPSAKES = 5;
 
 export type KeepsakeUpdate = { do: "add"; text: string; weight: LifeKeepsake["weight"] } | { do: "retire"; keepsake: string };
@@ -13,7 +13,8 @@ export type KeepsakeDraft = { text: string; weight: LifeKeepsake["weight"] };
 const weightOf = (value: unknown): LifeKeepsake["weight"] | null =>
   typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 5 ? value as LifeKeepsake["weight"] : null;
 const textOf = (value: unknown) => {
-  const text = typeof value === "string" ? value.replace(/[\p{Cc}\p{Cf}]/gu, " ").replace(/\s+/g, " ").trim() : "";
+  // Control, zero-width and bidi characters out, except the zero-width joiner that glues emoji sequences together.
+  const text = typeof value === "string" ? value.replace(/[\p{Cc}\p{Cf}]/gu, (char) => char === "\u200d" ? char : " ").replace(/\s+/g, " ").trim() : "";
   return text && text.length <= LIFE_KEEPSAKE_TEXT_LIMIT ? text : null;
 };
 /** One keepsake as the chat action carries it; null when text or weight is unusable. */
@@ -33,7 +34,9 @@ export function parseKeepsakeUpdates(reply: string): KeepsakeUpdate[] {
   try { list = (JSON.parse(reply.slice(start, end + 1)) as { keepsakes?: unknown } | null)?.keepsakes; } catch { return []; }
   if (!Array.isArray(list)) return [];
   const result: KeepsakeUpdate[] = [];
-  for (const item of list.slice(0, MAX_UPDATES)) {
+  // Only valid entries count toward the limit, so a few bad ones in front cannot push a good one out.
+  for (const item of list.slice(0, MAX_ENTRIES)) {
+    if (result.length >= MAX_UPDATES) break;
     const raw = item as Record<string, unknown> | null;
     if (typeof raw?.retire === "string" && /^K\d{1,2}$/.test(raw.retire.trim())) { result.push({ do: "retire", keepsake: raw.retire.trim() }); continue; }
     const draft = keepsakeDraft({ text: raw?.add, weight: raw?.weight });

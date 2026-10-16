@@ -22,6 +22,16 @@ test("the keepsakes list of a reply is read strictly; bad entries are skipped", 
   [{ do: "add", text: "Lost a close friend.", weight: 5 }, { do: "retire", keepsake: "K2" }]);
 });
 
+test("bad entries in front do not push a valid one past the limit, and a joined emoji survives", () => {
+  const bad = { add: "x", weight: 9 };
+  assert.deepEqual(parseKeepsakeUpdates(JSON.stringify({ keepsakes: [bad, bad, bad, bad, { retire: "K1" }, { retire: "K2" }, { retire: "K3" }, { retire: "K4" }, { retire: "K5" }] })),
+    [{ do: "retire", keepsake: "K1" }, { do: "retire", keepsake: "K2" }, { do: "retire", keepsake: "K3" }, { do: "retire", keepsake: "K4" }]);
+  const family = "Family trip \u{1F469}\u200D\u{1F469}\u200D\u{1F467} \u202e";
+  const kept = JSON.stringify(parseKeepsakeUpdates(JSON.stringify({ keepsakes: [{ add: family, weight: 2 }] })));
+  assert.ok(kept.includes("\\u200d") || kept.includes("\u200d"));
+  assert.ok(!kept.includes("\u202e") && !kept.includes("\\u202e"));
+});
+
 test("a full list: the lowest-weight oldest is replaced only by one at least as heavy; otherwise refused and nothing is lost", () => {
   const list = [...full(3).slice(0, 19), keep(20, 2, NOW - 100 * DAY)];
   assert.equal(addKeepsake(list, { text: "Light", weight: 1 }, NOW, "n"), null);
