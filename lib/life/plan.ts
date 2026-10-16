@@ -1,8 +1,10 @@
 import type { Presence } from "../foundation-types";
 import { localDayWindow, presenceSegments, type PresenceInputs, type PresenceSegment } from "../presence/compute";
-import { LIFE_FUTURE_MS, LIFE_HISTORY_MS, reconcileLifeActivities, type LifeActivity, type LifeActivityKind, type LifeState } from "./activity";
+import { LIFE_HISTORY_MS, lifeMomentRevealAt, reconcileLifeActivities, type LifeActivity, type LifeActivityKind, type LifeState } from "./activity";
 
 const MAX_DAILY_SEGMENTS = 12;
+/** A leftover shorter than this after clipping against recorded time is not worth an entry. */
+const MIN_FILL_MS = 60_000;
 
 const presentation: Record<Presence, { kind: LifeActivityKind; title: string }> = {
   offline: { kind: "sleep", title: "Sleeping" },
@@ -91,15 +93,45 @@ export function projectDailyLife(inputs: PresenceInputs, now: number, recentMome
   }).sort((a, b) => a.startsAt - b.startsAt || a.id.localeCompare(b.id));
 }
 
-/** Freezes already-settled time. A later Routine edit may fill gaps but cannot replace an activity the user could have seen. */
+/**
+ * Settles stored Life against the latest Routine and Situations. What has already begun is history and stays: finished
+ * activities and revealed Moments never change. What has not happened yet follows the latest state: a planned
+ * activity that no longer matches is dropped, and the running one is cut at `now` so the time after it can follow the
+ * new status. A cut activity keeps its Moment only if that Moment had already been revealed.
+ */
 export function reconcileProjectedLife(current: LifeState | undefined, inputs: PresenceInputs, now: number): LifeState {
   const effectiveNow = Math.max(current?.reconciledAt ?? 0, now);
-  const recentMoments = current?.activities
-    .filter((item) => item.endsAt >= effectiveNow - LIFE_HISTORY_MS
-      && item.startsAt <= effectiveNow + LIFE_FUTURE_MS)
-    .flatMap((item) => item.moment ? [item.moment] : []) ?? [];
-  const candidates = projectDailyLife(inputs, now, recentMoments).filter((candidate) => !(current?.activities.some((stored) =>
-    stored.occurrenceKey !== candidate.occurrenceKey && candidate.startsAt < stored.endsAt && stored.startsAt < candidate.endsAt)));
-  return reconcileLifeActivities(current, candidates, now);
+  const projected = projectDailyLife(inputs, now, (current?.activities
+    .filter((item) => item.endsAt >= effectiveNow - LIFE_HISTORY_MS && item.endsAt <= effectiveNow)
+    .flatMap((item) => item.moment ? [item.moment] : [])) ?? []);
+  const wanted = new Map(projected.map((item) => [item.occurrenceKey, item] as const));
+  const frozen = (current?.activities ?? []).flatMap((item): LifeActivity[] => {
+    const same = wanted.get(item.occurrenceKey);
+    // The same planned stretch keeps its identity; only its wording follows the latest status, and only before it starts.
+    if (same && item.startsAt > effectiveNow) return [{ ...item, title: same.title }];
+    if (same && item.startsAt <= effectiveNow && effectiveNow < item.endsAt && same.title !== item.title) {
+      // A running stretch whose wording changed is cut here and becomes history under its own key, so the rest of the
+      // stretch can continue under the plan's key with the new wording.
+      const { moment, ...rest } = item;
+      const head = { ...rest, occurrenceKey: `${item.occurrenceKey}~${effectiveNow}`, endsAt: effectiveNow };
+      return [{ ...head, ...(moment && lifeMomentRevealAt(head) <= effectiveNow ? { moment } : {}) }];
+    }
+    if (same || item.endsAt <= effectiveNow) return [item];
+    if (item.startsAt >= effectiveNow) return [];
+    const { moment, ...rest } = item;
+    return [{ ...rest, endsAt: effectiveNow, ...(moment && lifeMomentRevealAt(item) <= effectiveNow ? { moment } : {}) }];
+  });
+  const ids = new Set(frozen.map((item) => item.id));
+  const candidates = projected.flatMap((candidate): LifeActivity[] => {
+    if (frozen.some((stored) => stored.occurrenceKey === candidate.occurrenceKey)) return [candidate];
+    // Time that already belongs to the record is not rewritten. The candidate keeps what lies after it, because that is
+    // the part still ahead; an unrecorded stretch before recorded time is not invented afterwards.
+    let { startsAt } = candidate;
+    const { endsAt } = candidate;
+    for (const stored of frozen) if (startsAt < stored.endsAt && stored.startsAt < endsAt) startsAt = stored.endsAt;
+    // A segment that shares its start with recorded time keeps a distinct row ID.
+    const id = ids.has(candidate.id) ? `${candidate.id}:${candidate.endsAt}` : candidate.id;
+    return endsAt - startsAt >= MIN_FILL_MS ? [{ ...candidate, id, startsAt, endsAt }] : [];
+  });
+  return reconcileLifeActivities({ activities: frozen, reconciledAt: current?.reconciledAt ?? 0 }, candidates, now);
 }
-
