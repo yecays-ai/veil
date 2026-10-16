@@ -10,7 +10,7 @@ Life V2 工单 L2-5：纪念物（`life.keepsakes`）。Character 自己判断�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-v2-l2-5-keepsakes`；PR 见 GitHub（创建后补入）。涉及 `lib/life/keepsakes.ts`（新）、`lib/life/day-plan.ts`、`lib/presence/actions.ts`（`lifeKeepsake` 动作）、`lib/chat/self-context.ts`、`tests/life-keepsakes.test.ts`（新）、`tests/presence-self-context.test.ts`（期望值加 `canKeepsake`）。不碰 `lib/memory/*`（Memory 功能）：纪念物是 Life 记录里的独立小列表，不读不写 Memory。
+Claude；分支 `claude/life-v2-l2-5-keepsakes`；PR https://github.com/yecays-ai/veil/pull/231。涉及 `lib/life/keepsakes.ts`（新）、`lib/life/day-plan.ts`、`lib/presence/actions.ts`（`lifeKeepsake` 动作）、`lib/chat/self-context.ts`、`tests/life-keepsakes.test.ts`（新）、`tests/presence-self-context.test.ts`（期望值加 `canKeepsake`）。不碰 `lib/memory/*`（Memory 功能）：纪念物是 Life 记录里的独立小列表，不读不写 Memory。
 
 ## 已完成
 
