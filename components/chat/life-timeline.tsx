@@ -4,6 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import { useEffect, useMemo, useState, useSyncExternalStore, type Ref } from "react";
 import type { Character } from "../../lib/foundation-types";
 import { lifeActivityStatus, lifeMomentRevealAt, lifeTimeline, type LifeActivity } from "../../lib/life/activity";
+import { requestDayPlan } from "../../lib/life/day-plan";
 import { reconcileProjectedLife } from "../../lib/life/plan";
 import { livePresence } from "../../lib/presence/live";
 import { browserPresenceStorage, presenceRecord, setLifeState } from "../../lib/presence/storage";
@@ -45,6 +46,8 @@ export function LifeTimelineScreen({ screenRef, character, onBack }: {
       return setLifeState(document, character.characterId, life);
     }).catch(() => setWriteError("Life could not be refreshed. Existing activity is still shown."));
   }, [snapshot.ready, character.characterId, character.timezone]);
+
+  useEffect(() => { if (snapshot.ready) requestDayPlan(character.characterId); }, [snapshot.ready, character.characterId]);
 
   useEffect(() => {
     // The next moment the page changes: an activity starting or ending, or a Moment coming due. Nothing earlier is polled.

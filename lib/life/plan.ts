@@ -93,6 +93,21 @@ export function projectDailyLife(inputs: PresenceInputs, now: number, recentMome
   }).sort((a, b) => a.startsAt - b.startsAt || a.id.localeCompare(b.id));
 }
 
+/** A day-plan row against the Situations: finished or cancelled rows stay; the rest give way to the first Situation they meet. */
+function planRow(item: LifeActivity, situations: PresenceInputs["situations"], now: number): LifeActivity[] {
+  if (item.endsAt <= now || item.state === "cancelled") return [item];
+  const meets = situations.filter((situation) => situation.endsAt > item.startsAt && situation.startsAt < item.endsAt && situation.endsAt > now)
+    .sort((a, b) => a.startsAt - b.startsAt)[0];
+  const running = item.startsAt < now;
+  const cutAt = !meets ? item.endsAt : meets.startsAt <= Math.max(item.startsAt, running ? now : 0) ? (running ? now : item.startsAt) : meets.startsAt;
+  if (cutAt === item.endsAt) return [item];
+  const { moment, ...rest } = item;
+  // A running row's Moment stays only if it had already been revealed; a row not yet started has shown nothing.
+  const keep = moment && (running ? lifeMomentRevealAt(item) <= now : true);
+  if (running ? cutAt <= item.startsAt : cutAt - item.startsAt < MIN_FILL_MS) return [];
+  return [{ ...rest, endsAt: cutAt, ...(keep ? { moment } : {}) }];
+}
+
 /**
  * Settles stored Life against the latest Routine and Situations. What has already begun is history and stays: finished
  * activities and revealed Moments never change. What has not happened yet follows the latest state: a planned
@@ -106,6 +121,9 @@ export function reconcileProjectedLife(current: LifeState | undefined, inputs: P
     .flatMap((item) => item.moment ? [item.moment] : [])) ?? []);
   const wanted = new Map(projected.map((item) => [item.occurrenceKey, item] as const));
   const frozen = (current?.activities ?? []).flatMap((item): LifeActivity[] => {
+    // A row the Character's day plan wrote is not part of the Routine projection, so it is never dropped for being absent
+    // from it. Situations still win: a plan row yields to the first one it overlaps.
+    if (item.origin === "plan") return planRow(item, inputs.situations, effectiveNow);
     const same = wanted.get(item.occurrenceKey);
     // The same planned stretch keeps its identity; only its wording follows the latest status, and only before it starts.
     if (same && item.startsAt > effectiveNow) return [{ ...item, title: same.title }];

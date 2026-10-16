@@ -7,7 +7,7 @@ import { recordContextInspector } from "./context-inspector";
 type MemorySummary = Pick<MemoryContext, "ids" | "characterLength" | "outcome">;
 
 export type CompletionSource = "manual-reply" | "keyboard-auto-reply" | "regenerate" | "continue" | "proactive" | "life-reply"
-  | "test-connection" | "here-there-comment" | "presence-routine" | "memory-maintenance" | "memory-summary" | "unclassified";
+  | "test-connection" | "here-there-comment" | "presence-routine" | "life-day-plan" | "memory-maintenance" | "memory-summary" | "unclassified";
 export type CompletionRequestContext = { requestId: string; source: CompletionSource; sessionId?: string };
 export type CompletionUsage = {
   prompt_tokens: number | null;

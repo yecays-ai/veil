@@ -82,6 +82,15 @@ export function localDayWindow(instant: number, timezone: string | null, offsetD
   return { key: date.key, startsAt: localInstant(date, 0, zone), endsAt: localInstant(nextDate(date), 0, zone) };
 }
 
+/** The instant of a local wall-clock minute of the day (may exceed 1440) on the local day `offsetDays` from `instant`'s. */
+export function localWallClock(instant: number, timezone: string | null, minute: number, offsetDays = 0) {
+  const zone = validTimezone(timezone) ?? "UTC";
+  let date = localDate(instant, zone);
+  for (let index = 0; index < Math.abs(offsetDays); index++) date = offsetDays < 0
+    ? makeDate(date.year, date.month, date.day - 1) : nextDate(date);
+  return localInstant(date, minute, zone);
+}
+
 /** A bounded, read-only projection. It does not schedule work or call a model. */
 export function presenceSegments(inputs: PresenceInputs, from: number, to: number): PresenceSegment[] {
   if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) return [];
