@@ -213,7 +213,7 @@ test("a sticker bubble stays bare even when conversation CSS restyles the role b
 
 test("the history follows a sticker picture loading while the reader is at the latest message", () => {
   assert.match(room, /addEventListener\("load", follow, true\)/);
-  assert.match(room, /classList\.contains\("chat-sticker-image"\) && nearBottom\.current\.value/);
+  assert.match(room, /classList\.contains\("chat-sticker-image"\) \|\| event\.target\.classList\.contains\("chat-image-message"\)\) && nearBottom\.current\.value/);
   assert.match(room, /removeEventListener\("load", follow, true\)/);
 });
 
