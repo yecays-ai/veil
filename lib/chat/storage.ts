@@ -28,7 +28,9 @@ import { historyFingerprint, type WorldBookActivationState } from "../worldbook-
 import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
-import { isMessageSticker, stickerContent, stickerPreview, type MessageSticker } from "./sticker-message";
+import { isMessageSticker, stickerContent, type MessageSticker } from "./sticker-message";
+import { ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
+import { isCardMessage, listPreview } from "./message-kind";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
   type TransferAction, type TransferActor, type TransferEvent, type VirtualTransfer } from "./transfer";
@@ -65,6 +67,15 @@ function globalProfileRecord(
     nextCommentAt: change.nextCommentAt !== undefined ? change.nextCommentAt : finiteOrNull(current?.nextCommentAt) };
 }
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/** The attachment a message gets for this image, or the reason it is refused. */
+function imageAttachment(blob: Blob, width: number, height: number, assetId: string): MessageAttachment {
+  if (!ATTACHMENT_IMAGE_MIMES.includes(blob.type)) throw new Error("Choose a JPEG, PNG, WebP or GIF image.");
+  if (!blob.size || blob.size > MAX_ATTACHMENT_IMAGE_BYTES) throw new Error("Images must be 25 MiB or smaller.");
+  const valid = [width, height].every((edge) => Number.isSafeInteger(edge) && edge >= 1 && edge <= MAX_ATTACHMENT_IMAGE_EDGE);
+  if (!valid) throw new Error("This image's size could not be read.");
+  return { kind: "image", assetId, mime: blob.type, width, height, bytes: blob.size };
+}
 
 function directSessionFor(sessions: ChatSession[], characterId: string) {
   return sessions.find((session) => session.type !== "group" && session.characterId === characterId);
@@ -119,7 +130,7 @@ const request = <T>(req: IDBRequest<T>): Promise<T> =>
       reject(new Error("Chat storage could not be read or written."));
   });
 
-// The only references to a chat image are session wallpapers and the global wallpaper setting.
+// A chat image is referenced by a session wallpaper, the global wallpaper setting, or a message's attachment.
 async function referencedChatImageIds(tx: IDBTransaction): Promise<Set<string>> {
   const sessions: ChatSession[] = await request(tx.objectStore("sessions").getAll());
   const global: ChatBackgroundSettings | undefined = await request(
@@ -127,7 +138,26 @@ async function referencedChatImageIds(tx: IDBTransaction): Promise<Set<string>> 
   const ids = new Set<string>();
   for (const session of sessions) if (session.backgroundImage) ids.add(session.backgroundImage);
   if (global?.globalChatBackgroundImage) ids.add(global.globalChatBackgroundImage);
+  // One cursor pass, one row in memory at a time: this reads every message of every conversation.
+  await new Promise<void>((resolve, reject) => {
+    const cursor = tx.objectStore("messages").openCursor();
+    cursor.onerror = () => reject(new Error("Chat storage could not be read or written."));
+    cursor.onsuccess = () => {
+      const at = cursor.result;
+      if (!at) { resolve(); return; }
+      const assetId = (at.value as ChatMessage).attachment?.assetId;
+      if (typeof assetId === "string") ids.add(assetId);
+      at.continue();
+    };
+  });
   return ids;
+}
+
+// A message owns its attachment's asset one-to-one, so the asset goes in the same transaction as the message row.
+// Orphan reclamation below stays as the safety net for a row that was never written.
+async function deleteAttachmentAssets(tx: IDBTransaction, messages: readonly Pick<ChatMessage, "attachment">[]) {
+  const assets = tx.objectStore("assets");
+  for (const message of messages) if (message.attachment) await request(assets.delete(message.attachment.assetId));
 }
 
 async function deleteUnusedChatImage(tx: IDBTransaction, id: string | undefined) {
@@ -161,6 +191,7 @@ async function resetConversationHistory(tx: IDBTransaction, session: ChatSession
   if (!exclusiveOwner && (session.generation || messages.some((message) => message.status === "streaming")))
     throw new Error("A reply is in progress. Stop it before clearing this conversation.");
   for (const message of messages) await request(table.delete(message.id));
+  await deleteAttachmentAssets(tx, messages);
   await request(tx.objectStore("worldBookStates").delete(session.id));
   // The rolling summary is made of this history's text, so it goes with it.
   const resetSession: ChatSession = { ...session, generation: undefined, summary: undefined, unreadCount: undefined, updatedAt: Date.now(), nextOrder: 1,
@@ -247,7 +278,7 @@ export class ChatStorage {
         .sort((a, b) => a.order - b.order).at(-1) : undefined;
       await request(sessions.put({ ...session, generation: undefined,
         ...(dropped ? { lastMessageId: tail?.id, updatedAt: tail?.createdAt ?? session.updatedAt,
-          lastMessagePreview: tail ? (tail.sticker ? stickerPreview(tail.sticker) : tail.content.slice(0, 120)) || (tail.status === "error" ? "Reply failed" : "") : "" }
+          lastMessagePreview: tail ? listPreview(tail) || (tail.status === "error" ? "Reply failed" : "") : "" }
           : last?.status === "streaming" || !last ? { lastMessagePreview: "Generation interrupted" } : {}) }));
       changed = true;
     }
@@ -960,8 +991,9 @@ export class ChatStorage {
       const existing: ChatMessage | undefined = await request(table.get(id));
       if (!existing) throw new Error("Message not found.");
       if (existing.recalled) throw new Error("A recalled message cannot be edited.");
-      if (existing.transfer || existing.transferEvent || existing.gift || existing.giftEvent) throw new Error("Special message cards cannot be edited.");
+      if (isCardMessage(existing)) throw new Error("Special message cards cannot be edited.");
       if (existing.sticker) throw new Error("表情包不能编辑。");
+      if (existing.attachment) throw new Error("Media messages cannot be edited.");
       const current: ChatSession = await request(tx.objectStore("sessions").get(existing.sessionId));
       if (current.generation) throw new Error("A reply is in progress. Stop it before editing this conversation.");
       if (existing.status === "streaming")
@@ -1023,7 +1055,10 @@ export class ChatStorage {
       if (session.generation) throw new Error("A reply is in progress. Stop it before recalling a message.");
       const next: ChatMessage = { ...message, content: "", recalled: { at: Date.now(), by },
         ...(message.memorySequence ? { memorySequence: { epoch: message.memorySequence.epoch } } : {}) };
+      // A withdrawn message keeps nothing of what it carried.
+      delete next.attachment;
       await request(table.put(next));
+      await deleteAttachmentAssets(tx, [message]);
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
       for (const quoted of all) if (quoted.quote?.messageId === id && quoted.quote.preview !== "This message has been recalled.")
         await request(table.put({ ...quoted, quote: { ...quoted.quote, preview: "This message has been recalled." } }));
@@ -1106,6 +1141,7 @@ export class ChatStorage {
       }
       const deletedIds = new Set(deleting.map((message) => message.id));
       for (const message of deleting) await request(table.delete(message.id));
+      await deleteAttachmentAssets(tx, deleting);
       const remaining = all.filter((message) => !deletedIds.has(message.id))
         .sort((a, b) => a.order - b.order);
       for (let index = 0; index < remaining.length; index++) {
@@ -1122,7 +1158,7 @@ export class ChatStorage {
       const staleSummary = !!session.summary && deleting.some((message) => message.order <= session.summary!.throughOrder);
       await request(sessions.put({ ...session, updatedAt: Date.now(),
         nextOrder: remaining.length + 1, lastMessageId: last?.id,
-        lastMessagePreview: last ? (last.sticker ? stickerPreview(last.sticker) : last.content.slice(0, 120)) : "", ...(staleSummary ? { summary: undefined } : {}) }));
+        lastMessagePreview: last ? listPreview(last) : "", ...(staleSummary ? { summary: undefined } : {}) }));
       return deleting.length;
     }, STORES, (count) => count ? { domain: "messages", sessionId } : null, undefined, scope);
   }
@@ -1143,7 +1179,7 @@ export class ChatStorage {
     if (chosen.length !== wanted.size) return 0;
     const first = chosen[0];
     const plain = chosen.every((m) => m.role === "assistant" && m.status === "complete" && !m.recalled && m.turnId !== undefined
-      && m.turnId === first.turnId && !m.transfer && !m.gift && !m.transferEvent && !m.giftEvent);
+      && m.turnId === first.turnId && !isCardMessage(m));
     const tail = ordered.filter((m) => m.order >= first.order);
     if (!plain || tail.length !== chosen.length) return 0;
     return this.deleteMessages(sessionId, [...wanted]);
@@ -1211,7 +1247,7 @@ export class ChatStorage {
       nextOrder: message.order + 1,
       updatedAt: message.createdAt,
       lastMessageId: message.id,
-      lastMessagePreview: message.sticker ? stickerPreview(message.sticker) : message.content.slice(0, 120) || "Replying…",
+      lastMessagePreview: listPreview(message) || "Replying…",
     };
     await request(tx.objectStore("sessions").put(next));
     return next;
@@ -1249,6 +1285,22 @@ export class ChatStorage {
       await request(tx.objectStore("sessions").put({ ...session, nextOrder: message.order + 1 }));
       return message;
     }, STORES, (message) => message ? { domain: "messages", sessionId: message.sessionId } : null);
+  }
+  /** An image from the user: saved like a sent message with its bytes as an asset it owns; `content` is its semantic text. */
+  sendImage(sessionId: string, blob: Blob, width: number, height: number, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
+    try { imageAttachment(blob, width, height, "pending"); }
+    catch (error) { return Promise.reject(error); }
+    return this.send(sessionId, attachmentContent("user", { kind: "image" }), quoteMessageId, undefined, undefined, interject,
+      { blob, width, height });
+  }
+  /** The bytes of one message's attachment. Null unless that message belongs to this conversation and still has them. */
+  readMessageAttachment(sessionId: string, messageId: string): Promise<Blob | null> {
+    return this.transaction("readonly", async (tx) => {
+      const message: ChatMessage | undefined = await request(tx.objectStore("messages").get(messageId));
+      if (!message || message.sessionId !== sessionId || !message.attachment) return null;
+      const asset: ChatImageAsset | undefined = await request(tx.objectStore("assets").get(message.attachment.assetId));
+      return asset?.blob ?? null;
+    });
   }
   /** A sticker from the user: saved like a sent message (no reply is requested); `content` is its semantic text. */
   sendSticker(sessionId: string, sticker: MessageSticker, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
@@ -1415,7 +1467,7 @@ export class ChatStorage {
    * A reply that already finished is never touched; then this is an ordinary send.
    */
   async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker,
-    interject = false): Promise<ChatMessage> {
+    interject = false, media?: { blob: Blob; width: number; height: number }): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
     if (content.length > 12000)
@@ -1451,6 +1503,12 @@ export class ChatStorage {
         quote = quoteMessage(target);
       }
       const sentAt = Date.now();
+      // The asset and the message that owns it are written in this one transaction: neither can exist without the other.
+      let attachment: MessageAttachment | undefined;
+      if (media) {
+        attachment = imageAttachment(media.blob, media.width, media.height, crypto.randomUUID());
+        await request(tx.objectStore("assets").add({ id: attachment.assetId, blob: media.blob, createdAt: sentAt } satisfies ChatImageAsset));
+      }
       const message: ChatMessage = {
         id: crypto.randomUUID(),
         sessionId,
@@ -1463,6 +1521,7 @@ export class ChatStorage {
         order: session.nextOrder,
         ...(quote ? { quote } : {}),
         ...(sticker ? { sticker } : {}),
+        ...(attachment ? { attachment } : {}),
       };
       const sequenced = this.sequence(session, message);
       await this.append(tx, session, sequenced);
@@ -1509,7 +1568,9 @@ export class ChatStorage {
           target = assistantTurn(messages, regenerateId);
           const targetId = target[0].turnId ?? target[0].id;
           // Only obsolete failed attempts are removed, never the original visible turn.
-          for (const old of messages.filter((m) => m.attemptFor === targetId)) await request(table.delete(old.id));
+          const obsolete = messages.filter((m) => m.attemptFor === targetId);
+          for (const old of obsolete) await request(table.delete(old.id));
+          await deleteAttachmentAssets(tx, obsolete);
           messages = messages.filter((m) => !m.attemptFor);
           if (mode === "regenerate") {
             const ids = new Set(target.map((m) => m.id));
@@ -1519,7 +1580,7 @@ export class ChatStorage {
           // A user message nobody has answered yet counts, including one whose reply was deleted (that is no longer "sent").
           // Once the Character has spoken after it (a transfer or gift card is not speech), the conversation has moved on and it no longer blocks anything.
           const lastSpoken = messages.reduce((latest, m) => m.role === "assistant" && m.status === "complete"
-            && !m.transfer && !m.gift && !m.transferEvent && !m.giftEvent && m.order > latest ? m.order : latest, 0);
+            && !isCardMessage(m) && m.order > latest ? m.order : latest, 0);
           if (session.type === "group" || messages.some((m) => m.role === "user" && !m.requestedBy && m.order > lastSpoken)
             || !attemptsAllow(session.proactiveAttempts, Date.now())) return null;
         } else if (!pending.length) return null;
@@ -1699,9 +1760,11 @@ export class ChatStorage {
       const outcome = truncated ? "truncated" : "success";
       const remove = new Set([draft.id, ...(replacing ? target.map((m) => m.id) : [])]);
       for (const deleting of remove) await request(table.delete(deleting));
-      // A regenerated turn never inherits an old sticker; only this reply's own sticker is stored.
+      await deleteAttachmentAssets(tx, all.filter((m) => remove.has(m.id)));
+      // A regenerated turn never inherits an old sticker or attachment; only this reply's own are stored.
       const firstBase: ChatMessage = { ...first };
       delete firstBase.sticker;
+      delete firstBase.attachment;
       const sentAt = Date.now();
       const generated: ChatMessage[] = entries.map((part, index) => ({
         ...firstBase, sentAt, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
@@ -1729,7 +1792,7 @@ export class ChatStorage {
       const unreadCount = replacing || this.viewing.has(draft.sessionId) ? session.unreadCount
         : (session.unreadCount ?? 0) + generated.length;
       await request(sessions.put({ ...session, generation: undefined, nextOrder: ordered.length + 1,
-        updatedAt: Date.now(), lastMessageId: last.id, lastMessagePreview: last.sticker ? stickerPreview(last.sticker) : last.content.slice(0, 120),
+        updatedAt: Date.now(), lastMessageId: last.id, lastMessagePreview: listPreview(last),
         ...(unreadCount ? { unreadCount } : {}) }));
       if (worldBookState) await commitWorldBookState(tx, draft.sessionId, worldBookState);
       return generated;

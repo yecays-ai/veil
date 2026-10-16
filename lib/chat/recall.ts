@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./types";
+import { isCardMessage } from "./message-kind";
 
 export const MESSAGE_RECALL_WINDOW_MS = 120_000;
 
@@ -6,7 +7,7 @@ export const MESSAGE_RECALL_WINDOW_MS = 120_000;
 export function canRecallMessage(message: ChatMessage, by: "user" | "assistant", now: number): boolean {
   if (message.role !== by || message.recalled || !Number.isFinite(message.sentAt)) return false;
   if (by === "user" ? message.status !== "sent" : message.status !== "complete") return false;
-  if (message.transfer || message.transferEvent || message.gift || message.giftEvent) return false;
+  if (isCardMessage(message)) return false;
   const age = now - message.sentAt!;
   return age >= 0 && age <= MESSAGE_RECALL_WINDOW_MS;
 }
