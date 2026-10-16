@@ -411,6 +411,11 @@ export function createChatEngine(
       await discardUnrevealed(sessionId, options?.discardUnrevealed);
       return storage.sendSticker(sessionId, sticker, quoteMessageId, options?.interject === true);
     },
+    sendImage: async (sessionId: string, image: { blob: Blob; width: number; height: number }, quoteMessageId?: string,
+      options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
+      await discardUnrevealed(sessionId, options?.discardUnrevealed);
+      return storage.sendImage(sessionId, image.blob, image.width, image.height, quoteMessageId, options?.interject === true);
+    },
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
     initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),

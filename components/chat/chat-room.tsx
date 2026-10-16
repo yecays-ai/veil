@@ -15,6 +15,8 @@ import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
 import { setComposingDraft } from "../../lib/chat/composition";
 import { chatStorage } from "../../lib/chat/storage";
+import { ATTACHMENT_IMAGE_MIMES } from "../../lib/chat/attachment";
+import { compressChatImage } from "../../lib/chat/image-compress";
 import { MessageMemory } from "./message-memory";
 import { LifeTimelineScreen } from "./life-timeline";
 import { withMemoryClear } from "../../lib/memory/browser";
@@ -65,6 +67,8 @@ import { GiftComposer } from "./gifts/gift-composer";
 import { useGiftActions } from "./gifts/use-gift-actions";
 
 const LIFE_MODE_NOTICE = "Life Mode is on: they answer in their own time. Turn it off in Chat Info to get an answer now.";
+
+const MAX_IMAGES_PER_PICK = 9;
 
 export function ChatRoom({ characterId }: { characterId: string }) {
   useSyncExternalStore(subscribeMessageActions, messageActionsRevision, () => 0);
@@ -177,6 +181,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [error, setError] = useState("");
   const [panel, setPanel] = useState<null | "plus" | "stickers">(null);
   const [stickerManagerOpen, setStickerManagerOpen] = useState(false);
+  const photoInput = useRef<HTMLInputElement>(null);
   const [failedDraft, setFailedDraft] = useState<{ sessionId: string; content: string; quote: ChatMessage | null; editVersion: number } | null>(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackController] = useState(() => createTransientFeedback(setFeedback));
@@ -488,7 +493,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     const list = history.current;
     if (!list) return;
     const follow = (event: Event) => {
-      if (event.target instanceof HTMLImageElement && event.target.classList.contains("chat-sticker-image") && nearBottom.current.value)
+      if (event.target instanceof HTMLImageElement && (event.target.classList.contains("chat-sticker-image") || event.target.classList.contains("chat-image-message")) && nearBottom.current.value)
         list.scrollTo({ top: list.scrollHeight });
     };
     // `load` does not bubble, so it is heard in the capture phase.
@@ -556,6 +561,36 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === quote?.id ? null : current);
     } catch (e) {
       if (mounted.current && currentSessionId.current === sessionId) setError(e instanceof Error ? e.message : "表情包没有发出去。");
+    } finally {
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) { sendingLock.current = false; setSending(false); }
+    }
+  }
+  /** Each picked picture is shrunk and sent as its own message; the quote, if any, goes with the first. */
+  async function sendImages(files: readonly File[]) {
+    if (!files.length || !session || session.characterId !== characterId || sendingLock.current || loadError) return;
+    const interject = session.lifeMode === true && (generationActive || chatEngine.isGenerating(session.id));
+    if (!interject && (generationActive || chatEngine.isGenerating(session.id))) return;
+    const sessionId = session.id;
+    let quote = quotingMessage;
+    sendingLock.current = true;
+    setSending(true);
+    setError("");
+    const batch = files.slice(0, MAX_IMAGES_PER_PICK);
+    let failed = 0, reason = files.length > batch.length ? `一次最多发送 ${MAX_IMAGES_PER_PICK} 张，多出的没有发送。` : "";
+    try {
+      for (const file of batch) {
+        try {
+          const image = await compressChatImage(file);
+          nearBottom.current = { characterId, sessionId, value: true };
+          await chatEngine.sendImage(sessionId, image, quote?.id, { interject, discardUnrevealed: hiddenReplyIds(sessionId) });
+          const sent = quote;
+          quote = null;
+          if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === sent?.id ? null : current);
+        } catch (e) { failed += 1; reason = e instanceof Error ? e.message : "图片没有发出去。"; }
+      }
+      if ((failed || reason) && mounted.current && currentSessionId.current === sessionId)
+        setError(failed > 1 ? `${failed} 张图片没有发出去。${reason}` : reason);
     } finally {
       const current = currentSessionId.current;
       if (mounted.current && (current === sessionId || current === undefined)) { sendingLock.current = false; setSending(false); }
@@ -861,7 +896,9 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <SendHorizontal aria-hidden="true" />
           </button>
         </div>
-        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
+        <input ref={photoInput} hidden type="file" multiple accept={ATTACHMENT_IMAGE_MIMES.join(",")} aria-label="Choose photos"
+          onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; void sendImages(files); }} />
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onPhotos={() => { setPanel(null); photoInput.current?.click(); }} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
           onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
         {panel === "stickers" && <StickerPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}

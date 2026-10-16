@@ -169,7 +169,8 @@ const image = readFileSync("components/chat/sticker-image.tsx", "utf8");
 test("the + button opens the panel: stickers, transfers, and gifts work while remaining placeholders stay disabled", () => {
   assert.match(room, /setPanel\(\(current\) => current === null \? "plus" : null\)/);
   assert.match(room, /<ChatPlusPanel onStickers=/);
-  for (const label of ["Photos", "Listen together", "File"]) assert.match(plus, new RegExp(`label: "${label}"`));
+  for (const label of ["Listen together", "File"]) assert.match(plus, new RegExp(`label: "${label}"`));
+  assert.match(plus, /onClick=\{onPhotos\}/, "Photos is live; M2 sends pictures");
   assert.match(plus, /onGift/);
   assert.match(plus, /soon\.map[\s\S]*?disabled>/, "placeholders are disabled and send nothing");
   assert.doesNotMatch(plus, /chatEngine|chatStorage/);
@@ -177,7 +178,7 @@ test("the + button opens the panel: stickers, transfers, and gifts work while re
 
 test("a sticker message draws only the picture, is saved without a reply request, and cannot be edited or copied as text", () => {
   assert.match(timeline, /message\.sticker && <StickerImage/);
-  assert.match(timeline, /message\.sticker \? null : message\.status === "error"/);
+  assert.match(timeline, /message\.sticker \|\| message\.attachment \? null : message\.status === "error"/);
   const sendStickerStart = room.indexOf("async function sendSticker(");
   const sendSticker = room.slice(sendStickerStart, room.indexOf("\n  async function reply", sendStickerStart));
   assert.match(sendSticker, /chatEngine\.sendSticker\(/);
