@@ -4,8 +4,9 @@ import { isReactionEmoji } from "../chat/reactions";
 import { normalizeTransferAmount, normalizeTransferNote, type TransferAction } from "../chat/transfer";
 import { normalizeGiftContent, normalizeGiftIcon, type GiftAction } from "../chat/gift";
 import { applyLifeEdit, type LifeEdit } from "../life/chat-edit";
+import { addKeepsake, keepsakeDraft, type KeepsakeDraft } from "../life/keepsakes";
 import {
-  addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord, setUserNote,
+  addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord, setLifeState, setUserNote,
   type PresenceDocument, type PresenceRecord,
 } from "./storage";
 
@@ -29,6 +30,8 @@ export type CharacterActions = {
   giftAction?: { messageId: string; action: GiftAction };
   /** One change to the Character's own day. `target` is the code offered for this reply; the chat swaps it for the row ID before applying. */
   life?: { action: LifeEdit["action"]; target: string; minutes?: number; title?: string; moment?: string };
+  /** One experience of the Character's own life that it judges will matter long-term; kept in its Life record. */
+  lifeKeepsake?: KeepsakeDraft;
 };
 export const ACTION_TAG = "veil-action";
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
@@ -116,6 +119,10 @@ function parseActions(json: string): CharacterActions | null {
     if ((action !== "replace" || title) && (action !== "detail" || moment) && (action !== "delay" || minutes !== undefined))
       actions.life = { action, target: life.target.trim(), ...(minutes !== undefined ? { minutes } : {}), ...(title ? { title } : {}), ...(moment ? { moment } : {}) };
   }
+  if (isRecord(value.lifeKeepsake)) {
+    const draft = keepsakeDraft(value.lifeKeepsake);
+    if (draft) actions.lifeKeepsake = draft;
+  }
   return Object.keys(actions).length ? actions : null;
 }
 
@@ -191,6 +198,15 @@ export const characterActionApplier = (deps: ActionDeps) =>
       const { target, ...edit } = actions.life; // the chat has already swapped the code for the row's ID
       await deps.presence.transact((document) => applyLifeEdit(document, characterId, { ...edit, id: target }, now, messageId))
         .catch(() => console.warn("[Life] the Character's change to its day was not saved"));
+    }
+    if (actions.lifeKeepsake) {
+      const draft = actions.lifeKeepsake;
+      await deps.presence.transact((document) => {
+        const life = presenceRecord(document, characterId)?.life ?? { activities: [], reconciledAt: now };
+        const id = `life:${characterId}:keep:${messageId}`;
+        const keepsakes = addKeepsake(life.keepsakes ?? [], draft, now, id);
+        return keepsakes ? setLifeState(document, characterId, { ...life, keepsakes }) : document;
+      }).catch(() => console.warn("[Life] the Character's keepsake was not saved"));
     }
     if (actions.userNote !== undefined) await applyUserNote(deps, characterId, actions.userNote, now, source);
     if (actions.recallMessageId) {
