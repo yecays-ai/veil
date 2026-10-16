@@ -1,5 +1,5 @@
 import type { ChatMessage, MessageQuote } from "./types";
-import { stickerPreview } from "./sticker-message";
+import { mediaPreview } from "./message-kind";
 import { transferQuotePreview } from "./transfer";
 import { giftQuotePreview } from "./gift";
 
@@ -15,7 +15,7 @@ export function quoteMessage(message: ChatMessage): MessageQuote {
   if ((message.role !== "user" && message.role !== "assistant") || message.status === "streaming")
     throw new Error("This message cannot be quoted.");
   return { messageId: message.id, role: message.role,
-    preview: message.recalled ? "This message has been recalled." : message.sticker ? stickerPreview(message.sticker) :
+    preview: message.recalled ? "This message has been recalled." : mediaPreview(message) ??
       transferQuotePreview(message) ?? giftQuotePreview(message) ?? parseQuotedReply(message.content).content.slice(0, 50) };
 }
 

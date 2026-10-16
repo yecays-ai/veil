@@ -18,9 +18,11 @@ export const BACKUP_VERSION = 2;
 /** Backup-domain versions describe this format, not IndexedDB versions or name suffixes. */
 export const BACKUP_DOMAIN_VERSIONS = {
   foundation: 1, appearance: 1, bindings: 1, presets: 3, regex: 1,
-  worldbooks: 1, contacts: 1, presence: 1, chat: 1, memory: 2, apiConfigs: 1,
+  worldbooks: 1, contacts: 1, presence: 1, chat: 2, memory: 2, apiConfigs: 1,
 } as const;
 export type BackupDomain = keyof typeof BACKUP_DOMAIN_VERSIONS;
+/** Older domain versions that are still read, as they hold a subset of the current one: `chat` 1 has no message attachments, `memory` 1 no backgrounds or states. */
+export const BACKUP_READABLE_DOMAIN_VERSIONS: Partial<Record<BackupDomain, number>> = { chat: 1, memory: 1 };
 export type BackupAssetDomain = "appearance" | "chat";
 export type BackupFile = { path: string; bytes: number; sha256: string };
 export type BackupSection = BackupFile & { domain: BackupDomain; version: number; records: number };
@@ -50,7 +52,7 @@ export type BackupData = {
   memory: { memories: Memory[]; suppressions: Suppression[]; operations: MemoryOperation[]; cursors: MemoryCursor[]; backgrounds: BackgroundSnapshot[]; states: CharacterStateVersion[] };
   apiConfigs: Omit<NamedApiConfig, "apiKey">[];
 };
-export type BackupWarning = { code: "credentials-required" | "external-image" | "missing-quote"; path: string };
+export type BackupWarning = { code: "credentials-required" | "external-image" | "missing-quote" | "missing-attachment"; path: string };
 export type ValidatedBackup = { manifest: BackupManifest; data: BackupData; warnings: BackupWarning[] };
 export class BackupValidationError extends Error {
   /** `detail` names the failed rule or field only (fixed words and stored field names), never a value. */

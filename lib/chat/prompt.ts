@@ -13,6 +13,7 @@ import { historyEligible, RECENT_MESSAGES, summaryTurn, validSummary } from "./s
 import type { MemoryConversation, MemoryContextMessage } from "../memory/context";
 import { transferPromptContent } from "./transfer";
 import { giftPromptContent } from "./gift";
+import { hasGeneratedContent } from "./message-kind";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -132,8 +133,8 @@ function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
   if (transfer) return messageHistoryContentWithBody(message, transfer);
   const gift = giftPromptContent(message);
   if (gift) return messageHistoryContentWithBody(message, gift);
-  // A sticker's semantic text is VEIL's own, not the user's or the Character's wording, so user regex rules leave it alone.
-  const body = !message.sticker && (message.role === "user" || message.role === "assistant")
+  // A sticker's or media message's semantic text is VEIL's own, not the user's or the Character's wording, so user regex rules leave it alone.
+  const body = !hasGeneratedContent(message) && (message.role === "user" || message.role === "assistant")
     ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt",
       { character: context.character.name, user: context.foundation.user.name })
     : message.content;
