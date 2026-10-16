@@ -197,12 +197,12 @@ test("the chat page lets Send through during a reply only in Life Mode, and pass
   const room = readFileSync("components/chat/chat-room.tsx", "utf8");
   assert.match(room, /const interject = session\.lifeMode === true && \(generationActive \|\| chatEngine\.isGenerating\(session\.id\)\);/);
   assert.match(room, /if \(!interject && \(generationActive \|\| chatEngine\.isGenerating\(session\.id\)\)\) return;/);
-  assert.match(room, /chatEngine\.send\(sessionId, content, quote\?\.id, \{ interject \}\)/);
+  assert.match(room, /chatEngine\.send\(sessionId, content, quote\?\.id, \{ interject, discardUnrevealed: unrevealed \}\)/);
   assert.match(room, /disabled=\{!session \|\| \(generationActive && session\.lifeMode !== true\) \|\| sending/);
   const sticker = room.slice(room.indexOf("async function sendSticker("), room.indexOf("\n  async function reply"));
   assert.match(sticker, /const interject = session\.lifeMode === true && \(generationActive \|\| chatEngine\.isGenerating\(session\.id\)\);/);
   assert.match(sticker, /if \(!interject && \(generationActive \|\| chatEngine\.isGenerating\(session\.id\)\)\) return;/);
-  assert.match(sticker, /chatEngine\.sendSticker\(sessionId, sticker, quote\?\.id, \{ interject \}\)/);
+  assert.match(sticker, /chatEngine\.sendSticker\(sessionId, sticker, quote\?\.id, \{ interject, discardUnrevealed: unrevealed \}\)/);
   assert.match(room, /<StickerPanel disabled=\{\(generationActive && session\?\.lifeMode !== true\) \|\| sending \|\| !!loadError\}/);
   assert.match(room, /aria-label="Stop reply"[\s\S]{0,200}chatEngine\.stop\(session\.id, \{ persist: true \}\)/, "Stop is unchanged");
 });

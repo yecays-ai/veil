@@ -491,6 +491,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     list.addEventListener("load", follow, true);
     return () => list.removeEventListener("load", follow, true);
   }, [ready]);
+  /** Bubbles of the last reply that are stored but not yet shown; a new message from the user replaces them. */
+  function hiddenReplyIds(sessionId: string) {
+    const state = revealQueue.getSnapshot();
+    return state.sessionId === sessionId && !state.awaiting ? state.replyIds.filter((id) => state.hiddenIds.has(id)) : [];
+  }
   async function persistDraft(content: string, sessionId: string, focus: boolean, interject = false) {
     sendingLock.current = true;
     setSending(true);
@@ -498,7 +503,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     try {
       nearBottom.current = { characterId, sessionId, value: true };
       const quote = quotingMessage;
-      await chatEngine.send(sessionId, content, quote?.id, { interject });
+      const unrevealed = hiddenReplyIds(sessionId);
+      await chatEngine.send(sessionId, content, quote?.id, { interject, discardUnrevealed: unrevealed });
       if (mounted.current && currentSessionId.current === sessionId) {
         setQuotingMessage((current) => current?.id === quote?.id ? null : current);
         setDraft((current) => (current === content ? "" : current));
@@ -541,7 +547,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setError("");
     try {
       nearBottom.current = { characterId, sessionId, value: true };
-      await chatEngine.sendSticker(sessionId, sticker, quote?.id, { interject });
+      const unrevealed = hiddenReplyIds(sessionId);
+      await chatEngine.sendSticker(sessionId, sticker, quote?.id, { interject, discardUnrevealed: unrevealed });
       if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === quote?.id ? null : current);
     } catch (e) {
       if (mounted.current && currentSessionId.current === sessionId) setError(e instanceof Error ? e.message : "表情包没有发出去。");
