@@ -10,7 +10,7 @@ Life V2 工单 L2-6：Life 页展示模型计划行 + 主动联系前先确保�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-v2-l2-6-page-proactive`；PR 见 GitHub（创建后补入）。涉及 `lib/chat/proactive-scheduler.ts`（可选 `prepare` 依赖）、`lib/chat/proactive-browser.ts`（接入 `ensureDayPlan`）、`tests/proactive-contact.test.ts`、`tests/life-day-plan.test.ts`。不碰 `lib/memory/*`、`components/chat/life-timeline.tsx`（见下）。
+Claude；分支 `claude/life-v2-l2-6-page-proactive`；PR https://github.com/yecays-ai/veil/pull/232。涉及 `lib/chat/proactive-scheduler.ts`（可选 `prepare` 依赖）、`lib/chat/proactive-browser.ts`（接入 `ensureDayPlan`）、`tests/proactive-contact.test.ts`、`tests/life-day-plan.test.ts`。不碰 `lib/memory/*`、`components/chat/life-timeline.tsx`（见下）。
 
 ## 已完成
 
