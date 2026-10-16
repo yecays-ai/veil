@@ -10,7 +10,7 @@ D2：已撤回但未回复的用户消息不再触发回复。待审查。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/recalled-pending-reply`；PR 创建后补链接；涉及 `lib/chat/recall.ts`（共享判断）、`life-reply-watcher.ts`、`usability.ts`、`storage.ts`（beginReply 的 pending 一行）、`tests/life-reply.test.ts`。
+Claude；分支 `claude/recalled-pending-reply`；PR https://github.com/yecays-ai/veil/pull/222；涉及 `lib/chat/recall.ts`（共享判断）、`life-reply-watcher.ts`、`usability.ts`、`storage.ts`（beginReply 的 pending 一行）、`tests/life-reply.test.ts`。
 
 ## 已完成
 
