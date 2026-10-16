@@ -13,6 +13,7 @@ import { localDayWindow, localWallClock, type PresenceInputs } from "../presence
 import { browserPresenceStorage, presenceRecord, setLifeState, type PresenceDocument } from "../presence/storage";
 import { LIFE_ACTIVITY_KINDS, LIFE_MOMENT_LIMIT, LIFE_TITLE_LIMIT, lifeLive, lifeMomentRevealAt, reconcileLifeActivities,
   type LifeActivity, type LifeActivityKind, type LifeState } from "./activity";
+import { applyMatterUpdates, matterCodes, parseMatterUpdates, settleMatters, type MatterUpdate } from "./matters";
 import { projectDailyLife } from "./plan";
 import { settleLifeDocument } from "./settle";
 
@@ -61,6 +62,7 @@ export function dayPlanPrompt(input: PromptInput) {
   const recent = [...new Set(lifeLive(input.life?.activities ?? []).filter((item) => item.endsAt <= now && item.endsAt > now - 3 * 86_400_000)
     .map((item) => item.title))].slice(-12);
   const relations = relationLines(input);
+  const matters = matterCodes(settleMatters(input.life?.threads, now));
   const lines = [
     `Write the rest of today for ${field(character.name, 100)}, a fictional character, as the things they do between now and the end of the day, in their own local time.`,
     `Occupation: ${field(character.occupation, 200)}`,
@@ -73,11 +75,14 @@ export function dayPlanPrompt(input: PromptInput) {
     ...(skeleton.length ? ["Their usual rhythm today:", ...skeleton] : []),
     ...(situations.length ? ["Already fixed, do not plan over these:", ...situations] : []),
     ...(recent.length ? [`Recent days: ${recent.join("; ")}`] : []),
+    ...(matters.length ? ["Matters in their life that run over several days (code: title. progress so far. next step):",
+      ...matters.map((item) => `${item.code}${item.state === "paused" ? " (paused)" : ""}: ${item.title}. ${item.progress}. Next: ${item.next}`)] : []),
     "Reply with one JSON object and nothing else:",
-    '{"activities":[{"start":"HH:MM","end":"HH:MM","kind":"meal","title":"Lunch with a colleague","moment":"One small thing that happened, optional."}]}',
+    '{"activities":[{"start":"HH:MM","end":"HH:MM","kind":"meal","title":"Lunch with a colleague","moment":"One small thing that happened, optional."}],"matters":[{"do":"continue","matter":"M1","progress":"What moved today.","next":"What comes next."}]}',
     `Rules: kind is one of ${LIFE_ACTIVITY_KINDS.join(", ")}. Times are 24-hour HH:MM in their local time; an end earlier than its start runs past midnight. At most ${MAX_ROWS} activities, in order, not overlapping, each between 15 minutes and 12 hours. The first starts now or within the next hour.`,
     "Titles are short (a few words). moment is one small concrete thing, optional. This is an ordinary day shaped by their rhythm and character; nothing special has to happen. Follow the usual rhythm unless there is a reason to differ.",
-    "Write titles and moments in the language this character's description is written in.",
+    "matters is optional and usually empty. Use it only when something in their life really moved or ended: do is continue (matter, progress and/or next), pause, finish or cancel (matter), or new (title, progress, next) for a matter that will take several days. Do not invent progress to fill it, and do not restate a matter that did not change. At most 3 matters are active at once.",
+    "Write titles, moments and matter text in the language this character's description is written in.",
   ];
   return [{ role: "system" as const, content: lines.join("\n") }];
 }
@@ -139,7 +144,7 @@ const planKey = (characterId: string, day: string, index: number) => `${characte
  * The Routine skeleton then fills whatever the plan leaves open. Throws if the result is not a valid Life record.
  */
 export function applyDayPlan(document: PresenceDocument, character: Pick<Character, "characterId" | "timezone">,
-  rows: readonly PlanRow[], now: number, claimedAt: number): PresenceDocument {
+  rows: readonly PlanRow[], now: number, claimedAt: number, matters?: { updates: readonly MatterUpdate[]; codes: ReadonlyMap<string, string> }): PresenceDocument {
   const settled = settleLifeDocument(document, character.characterId, character.timezone, now);
   const life = presenceRecord(settled, character.characterId)?.life ?? { activities: [], reconciledAt: now };
   const effectiveNow = Math.max(life.reconciledAt, now);
@@ -155,7 +160,10 @@ export function applyDayPlan(document: PresenceDocument, character: Pick<Charact
     occurrenceKey: planKey(character.characterId, day, index), kind: row.kind, title: row.title, startsAt: row.startsAt,
     endsAt: row.endsAt, origin: "plan", ...(row.moment ? { moment: row.moment } : {}) }));
   const next = reconcileLifeActivities({ ...life, activities: kept }, candidates, now);
-  return setLifeState(settled, character.characterId, { ...next, plan: { day, claimedAt, status: "done" } });
+  // Matters follow the same day: expiry and the Character's own updates land with the plan, in the one document change.
+  const { threads: stored, ...rest } = next;
+  const threads = applyMatterUpdates(stored, matters?.updates ?? [], matters?.codes ?? new Map(), now, `life:${character.characterId}:matter`);
+  return setLifeState(settled, character.characterId, { ...rest, ...(threads ? { threads } : {}), plan: { day, claimedAt, status: "done" } });
 }
 
 export type DayPlanOutcome = "current" | "busy" | "no-character" | "no-routine" | "no-api" | "generated" | "invalid" | "truncated" | "cancelled" | "error";
@@ -249,11 +257,13 @@ export async function ensureDayPlan(characterId: string, signal?: AbortSignal, d
     const rows = parseDayPlan(reply, character.timezone, finished, latest?.situations ?? []);
     if (!rows) { await fail(); return isTruncatedReason(finishReason) ? "truncated" : "invalid"; }
     const mine = claim;
+    const codes = new Map(matterCodes(settleMatters(record.life?.threads, now)).map((item) => [item.code, item.id] as const));
+    const matters = { updates: parseMatterUpdates(reply), codes };
     await deps.write((document) => {
       // Only our own claim may be completed; a Character removed meanwhile has no record to write into.
       const mark = presenceRecord(document, characterId)?.life?.plan;
       if (!mark || mark.day !== mine.day || mark.claimedAt !== mine.claimedAt || mark.status !== "claimed") return document;
-      return applyDayPlan(document, character, rows, finished, mine.claimedAt);
+      return applyDayPlan(document, character, rows, finished, mine.claimedAt, matters);
     });
     return "generated";
   } catch {

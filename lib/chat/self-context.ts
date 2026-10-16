@@ -7,6 +7,7 @@ import type { PresenceRecord } from "../presence/storage";
 import type { UserReactionNote } from "./reactions";
 import type { StickerChoice } from "./sticker-storage";
 import { lifeTimeline } from "../life/activity";
+import { activeMatters } from "../life/matters";
 import { aheadLife, recentLife } from "../life/recent";
 import { lifeChoices, type LifeChoice } from "../life/chat-edit";
 import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
@@ -27,6 +28,8 @@ export type SelfState = {
   recent?: { when: string; title: string; moment?: string }[];
   /** Its own concrete plans for the rest of today, in order, already in its local clock; absent when there are none. */
   ahead?: { when: string; title: string }[];
+  /** The matters running over several days that it is in the middle of (active only), already settled; absent when there are none. */
+  matters?: { title: string; progress: string; next: string }[];
   /** Its own day entries it may change in this reply, each with a code valid for this reply only; absent when it may change none. */
   lifeChoices?: (LifeChoice & { when: string })[];
   /** What the Character itself calls the user (its own note on them); null when none. */
@@ -70,6 +73,7 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     title: item.title, ...(item.moment ? { moment: item.moment } : {}) }));
   const ahead = aheadLife(record?.life, now, character.timezone).map((item) => ({
     when: `${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}`, title: item.title }));
+  const matters = activeMatters(record?.life?.threads, now).map((item) => ({ title: item.title, progress: item.progress, next: item.next }));
   const choices = allowActions ? lifeChoices(record?.life, now, character.timezone).map((item) => ({ ...item,
     when: `${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}` })) : [];
   const leaving = lifeMode && allowActions && known ? leavingBusy(inputs, effective.status, now) : undefined;
@@ -79,6 +83,7 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     ...(leaving ? { leaving } : {}),
     ...(recent.length ? { recent } : {}),
     ...(ahead.length ? { ahead } : {}),
+    ...(matters.length ? { matters } : {}),
     ...(choices.length ? { lifeChoices: choices } : {}),
     ...(current ? { activity: { title: current.title, ...(current.moment ? { moment: current.moment } : {}) } } : {}),
     userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null,
@@ -163,6 +168,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.activity ? `What your day has you doing right now: ${quoted(state.activity.title)}.${state.activity.moment ? ` Something small already happened during it: ${quoted(state.activity.moment)}.` : ""} Background, needs no response: mention it only when it fits naturally, and never invent plans for later in the day.` : null,
     state.recent ? `From VEIL's rough record of your last hours (an outline of your rhythm, not verified events; times are your local time): ${state.recent.map((item) => `${item.when} ${quoted(item.title)}${item.moment ? ` (a small thing happened: ${quoted(item.moment)})` : ""}`).join("; ")}. Background, needs no response: you may draw on it naturally when the user asks about your day or it truly fits. Do not recite it, do not bring it up every time, do not invent details beyond it, and do not assume the user already knows about it.` : null,
     state.ahead ? `What you have planned for the rest of today (your own plan, times are your local time): ${state.ahead.map((item) => `${item.when} ${quoted(item.title)}`).join("; ")}. Background, needs no response: you may mention it naturally when it fits, for example when asked what you will do later. Plans can change; do not recite them, do not bring them up every time, and do not assume the user already knows them.` : null,
+    state.matters ? `Things you are in the middle of over several days (your own, background, needs no response): ${state.matters.map((item) => `${quoted(item.title)}, so far ${quoted(item.progress)}, next ${quoted(item.next)}`).join("; ")}. Mention one only when it fits naturally or the user asks how it is going; do not report on them every time, and do not invent progress beyond this.` : null,
     state.leaving ? `${state.leaving === "soon" ? "Your busy time is about to start." : "Your busy time has just started."} If you are in the middle of a chat, you may say naturally that you have to go and will reply later, only when it fits; most replies need no goodbye, and you never have to explain.` : null,
     state.userNote ? `Your own note on the user, what you call them: ${quoted(state.userNote)}. Use it only when it fits naturally.` : null,
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
