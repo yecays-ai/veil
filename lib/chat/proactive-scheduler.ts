@@ -11,6 +11,8 @@ export type ProactiveCheckDeps = {
   status: (characterId: string, now: number) => Promise<Presence | null | undefined>;
   isGenerating: (sessionId: string) => boolean;
   initiate: (sessionId: string) => Promise<unknown>;
+  /** Runs once for a Character that is about to be offered an attempt, before the attempt (for example, to make sure today's day plan exists). A failure or a slow answer never blocks the attempt. */
+  prepare?: (characterId: string) => Promise<unknown>;
   now: () => number;
 };
 
@@ -29,6 +31,12 @@ export async function runProactiveCheck(deps: ProactiveCheckDeps, alive: () => b
     const status = await deps.status(session.characterId, now);
     if (status === undefined || !statusMayInitiate(status)) continue;
     if (!alive()) break;
+    if (deps.prepare) {
+      await deps.prepare(session.characterId).catch(() => undefined);
+      // The preparation can take a while: the page may have been hidden or the chat may have started generating meanwhile.
+      if (!alive()) break;
+      if (deps.isGenerating(session.id)) continue;
+    }
     started++;
     // A failed attempt is not retried; it already counted, and the next pass sees the budget.
     await deps.initiate(session.id).catch(() => undefined);

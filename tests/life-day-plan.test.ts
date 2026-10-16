@@ -207,10 +207,11 @@ test("a plan round-trips through backup normalization unchanged", async () => {
   void emptyPresenceDocument; void reconcileProjectedLife; void applyDayPlan;
 });
 
-test("the chat page and the Life page ask for the plan; the proactive scheduler does not", () => {
-  const [room, page, scheduler] = ["components/chat/chat-room.tsx", "components/chat/life-timeline.tsx", "lib/chat/proactive-scheduler.ts"]
-    .map((path) => readFileSync(path, "utf8"));
+test("the chat page and the Life page ask for the plan; the proactive pass asks only for a Character about to be offered an attempt", () => {
+  const [room, page, scheduler, browser] = ["components/chat/chat-room.tsx", "components/chat/life-timeline.tsx", "lib/chat/proactive-scheduler.ts",
+    "lib/chat/proactive-browser.ts"].map((path) => readFileSync(path, "utf8"));
   assert.match(room, /requestDayPlan\(characterId\)/);
   assert.match(page, /requestDayPlan\(character\.characterId\)/);
-  assert.doesNotMatch(scheduler, /DayPlan/);
+  assert.doesNotMatch(scheduler, /DayPlan/, "the scheduler itself stays generic");
+  assert.match(browser, /prepare: \(characterId\) => ensureDayPlan\(characterId\)/);
 });
