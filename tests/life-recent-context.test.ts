@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { LIFE_ACTIVITY_LIMIT, reconcileLifeActivities, type LifeActivity } from "../lib/life/activity";
 import { recentLife } from "../lib/life/recent";
+import { lifeTimeline } from "../lib/life/activity";
 import { settleLifeDocument } from "../lib/life/settle";
 import { selfState, selfStateContent } from "../lib/chat/self-context";
 import { emptyPresenceDocument, presenceRecord, setRoutine, addSituation } from "../lib/presence/storage";
@@ -104,4 +105,26 @@ test("a Situation recorded with the document does not break settling", () => {
   const withSituation = addSituation(documentWithRoutine(), "a", { status: "away", reason: "Errand", startsAt: NOON + 10 * HOUR, endsAt: NOON + 11 * HOUR }, mark, NOON);
   const settled = settleLifeDocument(withSituation, "a", "UTC", NOON + 12 * HOUR);
   assert.ok(presenceRecord(settled, "a")!.life);
+});
+
+test("the rest of today's own plan reaches the prompt as titles and times only; the user timeline still hides it", () => {
+  const plan = (id: string, startsAt: number, endsAt: number, extra: Partial<LifeActivity> = {}) =>
+    activity(id, startsAt, endsAt, { origin: "plan", title: `Plan ${id}`, ...extra });
+  const life = { reconciledAt: NOON, activities: [
+    plan("run", NOON - HOUR, NOON + HOUR, { moment: "Running detail." }),
+    plan("a", NOON + 2 * HOUR, NOON + 3 * HOUR, { moment: "Future detail." }),
+    plan("gone", NOON + 3 * HOUR, NOON + 4 * HOUR, { state: "cancelled" }),
+    activity("skeleton", NOON + 4 * HOUR, NOON + 5 * HOUR, { title: "Working" }),
+    plan("b", NOON + 6 * HOUR, NOON + 7 * HOUR),
+    plan("tomorrow", NOON + 13 * HOUR, NOON + 14 * HOUR)] };
+  const record = { characterId: "a", routine: null, situations: [], signature: null, lastOnlineAt: null, lastMessageAt: null, life };
+  const text = selfStateContent(selfState(character, undefined, record as never, NOON))!;
+  assert.match(text, /rest of today.*14:00–15:00 "Plan a"; 18:00–19:00 "Plan b"\./);
+  assert.doesNotMatch(text, /Future detail|Plan gone|Plan tomorrow|Plan run"; |"Working"; /);
+  assert.deepEqual(lifeTimeline(life, NOON).current?.title, "Plan run");
+  assert.ok(!lifeTimeline(life, NOON).completed.some((item) => item.title === "Plan a"), "the user timeline shows nothing ahead");
+  const none = selfState(character, undefined, { ...record, life: { reconciledAt: NOON, activities: [] } } as never, NOON);
+  assert.equal(none.ahead, undefined);
+  const many = { reconciledAt: NOON, activities: Array.from({ length: 8 }, (_, i) => plan(`m${i}`, NOON + (i + 1) * 80 * 60_000 / 4, NOON + (i + 1) * 80 * 60_000 / 4 + 10 * 60_000)) };
+  assert.ok((selfState(character, undefined, { ...record, life: many } as never, NOON).ahead ?? []).length <= 5);
 });
