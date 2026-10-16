@@ -109,6 +109,13 @@ export function reconcileProjectedLife(current: LifeState | undefined, inputs: P
     const same = wanted.get(item.occurrenceKey);
     // The same planned stretch keeps its identity; only its wording follows the latest status, and only before it starts.
     if (same && item.startsAt > effectiveNow) return [{ ...item, title: same.title }];
+    if (same && item.startsAt <= effectiveNow && effectiveNow < item.endsAt && same.title !== item.title) {
+      // A running stretch whose wording changed is cut here and becomes history under its own key, so the rest of the
+      // stretch can continue under the plan's key with the new wording.
+      const { moment, ...rest } = item;
+      const head = { ...rest, occurrenceKey: `${item.occurrenceKey}~${effectiveNow}`, endsAt: effectiveNow };
+      return [{ ...head, ...(moment && lifeMomentRevealAt(head) <= effectiveNow ? { moment } : {}) }];
+    }
     if (same || item.endsAt <= effectiveNow) return [item];
     if (item.startsAt >= effectiveNow) return [];
     const { moment, ...rest } = item;

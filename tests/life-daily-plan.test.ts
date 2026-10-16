@@ -165,3 +165,21 @@ test("a planned stretch that has not started follows a changed status in wording
   assert.equal(row.title, "Focused time");
   assert.equal(row.occurrenceKey, tuesdayWork.occurrenceKey);
 });
+
+test("a running stretch whose status wording changes is cut now and continues with the new wording", () => {
+  const original = reconcileProjectedLife(undefined, presence(), mondayNoon);
+  const focus = presence({ routine: { defaultStatus: "online", jitterMinutes: 0, blocks: [
+    { days: [0, 1, 2, 3, 4, 5, 6], startMinute: 0, endMinute: 8 * 60, status: "offline" },
+    { days: [1, 2, 3, 4, 5], startMinute: 9 * 60, endMinute: 17 * 60, status: "dnd" }] } });
+  const now = mondayNoon + HOUR;   // 13:00, inside the 09:00–17:00 block that was "Working"
+  const running = original.activities.find((item) => item.startsAt <= now && now < item.endsAt)!;
+  assert.equal(running.title, "Working");
+  const next = reconcileProjectedLife(original, focus, now);
+  assert.equal(next.activities.find((item) => item.id === running.id)?.title, "Working", "what already happened keeps its wording");
+  assert.equal(next.activities.find((item) => item.id === running.id)?.endsAt, now);
+  const here = next.activities.find((item) => item.startsAt <= now && now < item.endsAt)!;
+  assert.equal(here.title, "Focused time");
+  assert.equal(here.endsAt, running.endsAt);
+  assert.equal(next.activities.some((item, index) => index > 0 && item.startsAt < next.activities[index - 1].endsAt), false);
+  assert.deepEqual(reconcileProjectedLife(next, focus, now + 60_000).activities, next.activities, "settling again changes nothing");
+});
