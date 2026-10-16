@@ -1494,8 +1494,10 @@ export class ChatStorage {
             messages = messages.filter((m) => !ids.has(m.id));
           }
         } else if (mode === "initiate") {
-          // Any user message without a reply counts, including one whose reply was deleted (that is no longer "sent").
-          if (session.type === "group" || messages.some((m) => m.role === "user" && !m.requestedBy)
+          // A user message nobody has answered yet counts, including one whose reply was deleted (that is no longer "sent").
+          // Once the Character has spoken after it, the conversation has moved on and it no longer blocks anything.
+          const lastSpoken = messages.reduce((latest, m) => m.role === "assistant" && m.status === "complete" && m.order > latest ? m.order : latest, 0);
+          if (session.type === "group" || messages.some((m) => m.role === "user" && !m.requestedBy && m.order > lastSpoken)
             || !attemptsAllow(session.proactiveAttempts, Date.now())) return null;
         } else if (!pending.length) return null;
         const id = crypto.randomUUID();
