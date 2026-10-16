@@ -1128,6 +1128,28 @@ export class ChatStorage {
   }
 
   /**
+   * The user wrote while part of the Character's last reply was still waiting to be shown: those bubbles were never seen,
+   * so they are removed instead of landing above the new message. Only plain Character bubbles of one turn that form the
+   * very end of the conversation qualify; anything else (a transfer or gift card, an older message, a user message) makes
+   * the whole call a no-op. Removal reuses `deleteMessages`, so order, source invalidation and the answered state of the
+   * user message all follow the normal delete rules. Returns how many bubbles were removed.
+   */
+  async discardUnrevealedTail(sessionId: string, ids: readonly string[]): Promise<number> {
+    const wanted = new Set(ids);
+    if (!wanted.size) return 0;
+    const { messages } = await this.readSession(sessionId);
+    const ordered = [...messages].sort((a, b) => a.order - b.order);
+    const chosen = ordered.filter((m) => wanted.has(m.id));
+    if (chosen.length !== wanted.size) return 0;
+    const first = chosen[0];
+    const plain = chosen.every((m) => m.role === "assistant" && m.status === "complete" && !m.recalled && m.turnId !== undefined
+      && m.turnId === first.turnId && !m.transfer && !m.gift && !m.transferEvent && !m.giftEvent);
+    const tail = ordered.filter((m) => m.order >= first.order);
+    if (!plain || tail.length !== chosen.length) return 0;
+    return this.deleteMessages(sessionId, [...wanted]);
+  }
+
+  /**
    * Writes or (with `next === null`) discards the rolling summary, only if the stored one is still the one the caller
    * planned from and the covered messages still hash to `next.digest`. Does not touch `updatedAt`, so a background
    * summary never reorders the chat list. Returns false, without writing, when anything changed meanwhile.
