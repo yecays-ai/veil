@@ -104,9 +104,12 @@ export function reconcileProjectedLife(current: LifeState | undefined, inputs: P
   const projected = projectDailyLife(inputs, now, (current?.activities
     .filter((item) => item.endsAt >= effectiveNow - LIFE_HISTORY_MS && item.endsAt <= effectiveNow)
     .flatMap((item) => item.moment ? [item.moment] : [])) ?? []);
-  const wanted = new Set(projected.map((item) => item.occurrenceKey));
+  const wanted = new Map(projected.map((item) => [item.occurrenceKey, item] as const));
   const frozen = (current?.activities ?? []).flatMap((item): LifeActivity[] => {
-    if (wanted.has(item.occurrenceKey) || item.endsAt <= effectiveNow) return [item];
+    const same = wanted.get(item.occurrenceKey);
+    // The same planned stretch keeps its identity; only its wording follows the latest status, and only before it starts.
+    if (same && item.startsAt > effectiveNow) return [{ ...item, title: same.title }];
+    if (same || item.endsAt <= effectiveNow) return [item];
     if (item.startsAt >= effectiveNow) return [];
     const { moment, ...rest } = item;
     return [{ ...rest, endsAt: effectiveNow, ...(moment && lifeMomentRevealAt(item) <= effectiveNow ? { moment } : {}) }];
@@ -114,12 +117,11 @@ export function reconcileProjectedLife(current: LifeState | undefined, inputs: P
   const ids = new Set(frozen.map((item) => item.id));
   const candidates = projected.flatMap((candidate): LifeActivity[] => {
     if (frozen.some((stored) => stored.occurrenceKey === candidate.occurrenceKey)) return [candidate];
-    // Time that already belongs to the record is not rewritten; the candidate only fills what is left around it.
-    let { startsAt, endsAt } = candidate;
-    for (const stored of frozen) {
-      if (startsAt >= stored.endsAt || stored.startsAt >= endsAt) continue;
-      if (stored.startsAt <= startsAt) startsAt = stored.endsAt; else endsAt = Math.min(endsAt, stored.startsAt);
-    }
+    // Time that already belongs to the record is not rewritten. The candidate keeps what lies after it, because that is
+    // the part still ahead; an unrecorded stretch before recorded time is not invented afterwards.
+    let { startsAt } = candidate;
+    const { endsAt } = candidate;
+    for (const stored of frozen) if (startsAt < stored.endsAt && stored.startsAt < endsAt) startsAt = stored.endsAt;
     // A segment that shares its start with recorded time keeps a distinct row ID.
     const id = ids.has(candidate.id) ? `${candidate.id}:${candidate.endsAt}` : candidate.id;
     return endsAt - startsAt >= MIN_FILL_MS ? [{ ...candidate, id, startsAt, endsAt }] : [];

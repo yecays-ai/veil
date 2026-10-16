@@ -141,3 +141,27 @@ test("a Situation set after the day was settled replaces the rest of it without 
   assert.equal(here.title, "Hospital visit");
   assert.equal(next.activities.some((item, index) => index > 0 && item.startsAt < next.activities[index - 1].endsAt), false);
 });
+
+test("a new Situation that spans recorded time keeps the part still ahead", () => {
+  const stored = reconcileLifeActivities(undefined, [{ id: "old", occurrenceKey: "old", kind: "work", title: "Old", startsAt: mondayNoon - 3 * HOUR,
+    endsAt: mondayNoon - 2 * HOUR }], mondayNoon - 2 * HOUR);
+  const withSituation = presence({ routine: null, situations: [{ status: "away", reason: "Trip", startsAt: mondayNoon - 4 * HOUR, endsAt: mondayNoon + 4 * HOUR }] });
+  const next = reconcileProjectedLife(stored, withSituation, mondayNoon);
+  assert.equal(next.activities.find((item) => item.id === "old")?.title, "Old");
+  const ahead = next.activities.find((item) => item.startsAt <= mondayNoon && mondayNoon < item.endsAt);
+  assert.equal(ahead?.title, "Trip");
+  assert.equal(ahead?.endsAt, mondayNoon + 4 * HOUR);
+  assert.equal(next.activities.some((item, index) => index > 0 && item.startsAt < next.activities[index - 1].endsAt), false);
+});
+
+test("a planned stretch that has not started follows a changed status in wording and keeps its identity", () => {
+  const original = reconcileProjectedLife(undefined, presence(), mondayNoon);   // Tuesday 09:00–17:00 is "Working" (busy)
+  const tuesdayWork = original.activities.find((item) => item.title === "Working" && item.startsAt > mondayNoon)!;
+  const focus = presence({ routine: { defaultStatus: "online", jitterMinutes: 0, blocks: [
+    { days: [0, 1, 2, 3, 4, 5, 6], startMinute: 0, endMinute: 8 * 60, status: "offline" },
+    { days: [1, 2, 3, 4, 5], startMinute: 9 * 60, endMinute: 17 * 60, status: "dnd" }] } });
+  const next = reconcileProjectedLife(original, focus, mondayNoon + 60_000);
+  const row = next.activities.find((item) => item.id === tuesdayWork.id)!;
+  assert.equal(row.title, "Focused time");
+  assert.equal(row.occurrenceKey, tuesdayWork.occurrenceKey);
+});
