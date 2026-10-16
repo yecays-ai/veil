@@ -122,3 +122,11 @@ test("removing the Character's Presence record leaves no matters behind", async 
   assert.equal(presenceRecord(removePresence(document, ID), ID), undefined);
   assert.ok(!JSON.stringify(removePresence(document, ID)).includes("Matter 1"));
 });
+
+test("updates are applied so a later finish still frees a place for an earlier resume, and new ids never collide", () => {
+  const list = [thread(1), thread(2), thread(3), thread(4, "paused")];
+  const resumed = apply(list, [{ do: "continue", matter: "M4", progress: "back" }, { do: "finish", matter: "M1" }])!;
+  assert.equal(resumed.find((item) => item.id === "t4")!.state, "active");
+  const first = apply([], [{ do: "new", title: "A", progress: "a", next: "b" }])!, second = apply(first, [{ do: "new", title: "B", progress: "a", next: "b" }])!;
+  assert.equal(new Set(second.map((item) => item.id)).size, 2);
+});

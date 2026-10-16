@@ -66,10 +66,15 @@ export function applyMatterUpdates(threads: readonly LifeThread[] | undefined, u
   let list = settleMatters(threads, now);
   const count = (state: LifeThread["state"]) => list.filter((item) => item.state === state).length;
   let created = 0;
-  for (const update of updates) {
+  // Updates that free an active place (finish, cancel, pause) run first, then resumes, then new matters, so the order the
+  // model happened to write them in cannot lose a resume or let a new matter take a place a resume needed.
+  const rank = (update: MatterUpdate) => update.do === "continue" ? 1 : update.do === "new" ? 2 : 0;
+  for (const update of [...updates].sort((a, b) => rank(a) - rank(b))) {
     if (update.do === "new") {
       const state = count("active") < LIFE_THREAD_ACTIVE_LIMIT ? "active" : count("paused") < LIFE_THREAD_PAUSED_LIMIT ? "paused" : null;
-      if (state) list = [...list, { id: `${idPrefix}:${now}:${created++}`, title: update.title, progress: update.progress, next: update.next, state,
+      let id = `${idPrefix}:${now}:${created++}`;
+      while (list.some((item) => item.id === id)) id = `${idPrefix}:${now}:${created++}`;
+      if (state) list = [...list, { id, title: update.title, progress: update.progress, next: update.next, state,
         createdAt: now, updatedAt: now }];
       continue;
     }
