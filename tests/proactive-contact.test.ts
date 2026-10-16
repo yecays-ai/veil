@@ -173,6 +173,16 @@ test("a newer unanswered user message still blocks writing first, even when olde
   assert.equal(await at(T0, () => reply("early").initiate(session.id)), null, "a fresh pending message is protected too");
 });
 
+test("a transfer card the Character left behind is not speech: deleting the reply keeps the user message protected", async () => {
+  const { storage, reply } = setup();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "hello");
+  const answer = await reply("Hi").requestReply(session.id);
+  await storage.createTransferForReply(answer!.id, 5, "For you");
+  await storage.deleteMessages(session.id, [answer!.id]);
+  assert.equal(await at(T0, () => reply("early").initiate(session.id)), null);
+});
+
 test("recovery drops an interrupted initiated draft but keeps partial text as an interrupted reply", async () => {
   for (const partial of [false, true]) {
     const factory = new IDBFactory();

@@ -10,7 +10,7 @@ D1：删除 Character 回复后不再永久阻塞主动联系。待审查。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-m91naq`；PR 创建后补链接；涉及 `lib/chat/storage.ts`（`beginReply` 的 initiate 判断）、`tests/proactive-contact.test.ts`。
+Claude；分支 `claude/project-thread-m91naq`；PR https://github.com/yecays-ai/veil/pull/221；涉及 `lib/chat/storage.ts`（`beginReply` 的 initiate 判断）、`tests/proactive-contact.test.ts`。
 
 ## 已完成
 
