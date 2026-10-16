@@ -50,6 +50,8 @@ export type LifePlanMark = { day: string; claimedAt: number; status: "claimed" |
 export type LifeState = {
   activities: LifeActivity[]; reconciledAt: number;
   threads?: LifeThread[]; keepsakes?: LifeKeepsake[]; plan?: LifePlanMark;
+  /** When the Character last changed its own day in a chat reply; paces such changes. Absent until the first one. */
+  actedAt?: number;
 };
 export type LifeActivityStatus = "upcoming" | "active" | "completed";
 
@@ -119,11 +121,13 @@ function normalizePlanMark(value: unknown): LifePlanMark | null {
     ? { day: raw.day, claimedAt: raw.claimedAt, status: raw.status } : null;
 }
 /** The Life V2 records ride along with the activities; absent stays absent so older data reads back unchanged. */
-function lifeRecords(raw: Record<string, unknown>): Pick<LifeState, "threads" | "keepsakes" | "plan"> {
+function lifeRecords(raw: Record<string, unknown>): Pick<LifeState, "threads" | "keepsakes" | "plan" | "actedAt"> {
   const threads = raw.threads === undefined ? null : normalizeThreads(raw.threads);
   const keepsakes = raw.keepsakes === undefined ? null : normalizeKeepsakes(raw.keepsakes);
   const plan = raw.plan === undefined ? null : normalizePlanMark(raw.plan);
-  return { ...(threads ? { threads } : {}), ...(keepsakes ? { keepsakes } : {}), ...(plan ? { plan } : {}) };
+  const actedAt = safeTime(raw.actedAt) ? raw.actedAt : null;
+  return { ...(threads ? { threads } : {}), ...(keepsakes ? { keepsakes } : {}), ...(plan ? { plan } : {}),
+    ...(actedAt !== null ? { actedAt } : {}) };
 }
 
 /** Rows that happened or will: cancelled rows are history of a change of plan, not of the Character's day. */
@@ -181,7 +185,8 @@ export function reconcileLifeActivities(current: LifeState | undefined, candidat
     throw new Error("Life activities overlap.");
   // The Life V2 records belong to the Character, not to this pass, so a reconciliation hands them on untouched.
   return { activities, reconciledAt: effectiveNow, ...(current?.threads ? { threads: current.threads } : {}),
-    ...(current?.keepsakes ? { keepsakes: current.keepsakes } : {}), ...(current?.plan ? { plan: current.plan } : {}) };
+    ...(current?.keepsakes ? { keepsakes: current.keepsakes } : {}), ...(current?.plan ? { plan: current.plan } : {}),
+    ...(current?.actedAt !== undefined ? { actedAt: current.actedAt } : {}) };
 }
 
 /**
