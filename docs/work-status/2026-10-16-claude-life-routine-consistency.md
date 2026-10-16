@@ -10,7 +10,7 @@ D3+D4：Routine 编辑/重新生成或 Situation 之后，当前状态、模型�
 
 ## 谁在改哪里
 
-Claude；分支 `claude/life-routine-consistency`；PR 创建后补链接；涉及 `lib/life/plan.ts`（`reconcileProjectedLife`）、`tests/life-daily-plan.test.ts`。
+Claude；分支 `claude/life-routine-consistency`；PR https://github.com/yecays-ai/veil/pull/223；涉及 `lib/life/plan.ts`（`reconcileProjectedLife`）、`tests/life-daily-plan.test.ts`。
 
 ## 已完成
 
