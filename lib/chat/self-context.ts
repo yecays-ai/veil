@@ -9,6 +9,7 @@ import type { StickerChoice } from "./sticker-storage";
 import { lifeTimeline } from "../life/activity";
 import { activeMatters } from "../life/matters";
 import { aheadLife, recentLife } from "../life/recent";
+import { topKeepsakes } from "../life/keepsakes";
 import { lifeChoices, type LifeChoice } from "../life/chat-edit";
 import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
 
@@ -30,6 +31,10 @@ export type SelfState = {
   ahead?: { when: string; title: string }[];
   /** The matters running over several days that it is in the middle of (active only), already settled; absent when there are none. */
   matters?: { title: string; progress: string; next: string }[];
+  /** The heaviest few lasting experiences it has kept (its own words); absent when there are none. */
+  keepsakes?: string[];
+  /** The Character may record one lasting experience of its own in this reply. */
+  canKeepsake?: true;
   /** Its own day entries it may change in this reply, each with a code valid for this reply only; absent when it may change none. */
   lifeChoices?: (LifeChoice & { when: string })[];
   /** What the Character itself calls the user (its own note on them); null when none. */
@@ -74,6 +79,7 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
   const ahead = aheadLife(record?.life, now, character.timezone).map((item) => ({
     when: `${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}`, title: item.title }));
   const matters = activeMatters(record?.life?.threads, now).map((item) => ({ title: item.title, progress: item.progress, next: item.next }));
+  const keepsakes = topKeepsakes(record?.life?.keepsakes).map((item) => item.text);
   const choices = allowActions ? lifeChoices(record?.life, now, character.timezone).map((item) => ({ ...item,
     when: `${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}` })) : [];
   const leaving = lifeMode && allowActions && known ? leavingBusy(inputs, effective.status, now) : undefined;
@@ -84,6 +90,8 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     ...(recent.length ? { recent } : {}),
     ...(ahead.length ? { ahead } : {}),
     ...(matters.length ? { matters } : {}),
+    ...(keepsakes.length ? { keepsakes } : {}),
+    ...(allowActions ? { canKeepsake: true as const } : {}),
     ...(choices.length ? { lifeChoices: choices } : {}),
     ...(current ? { activity: { title: current.title, ...(current.moment ? { moment: current.moment } : {}) } } : {}),
     userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null,
@@ -127,10 +135,10 @@ function remarkLines(state: SelfState): string[] {
   return state.remark ? [`Background, needs no response: the remark the user has saved for you is ${quoted(state.remark)}. Mention it only when it fits naturally.`] : [];
 }
 
-function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false, day: readonly (LifeChoice & { when: string })[] = []): string[] {
+function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false, day: readonly (LifeChoice & { when: string })[] = [], canKeepsake = false): string[] {
   const canRecall = recallCandidates.length > 0;
   const own = !!allow && (allow.situation || allow.signature || allow.note);
-  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift && !day.length) return [];
+  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift && !day.length && !canKeepsake) return [];
   const fields = [
     allow?.signature ? `"signature": your new signature text ("" clears it)` : null,
     allow?.note ? `"userNote": what you now call the user, a short nickname or note ("" clears it)` : null,
@@ -140,6 +148,7 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     canRecall ? `"recallMessageId": exact ID of one of your own messages listed below to withdraw it` : null,
     canTransfer ? `"transfer": {"recipient":"user","amount":number,"note":string} to send a VEIL virtual transfer; "transferAction":{"messageId":string,"action":"receive"|"decline"|"return"} to process a transfer addressed to you` : null,
     day.length ? `"life": {"action": "delay"|"cancel"|"replace"|"detail", "target": a code from your day list below, "minutes": 5-240 (delay), "title": new short title (replace), "moment": one small thing that happened (detail)}` : null,
+    canKeepsake ? `"lifeKeepsake": {"text": one sentence about an experience in your own life, "weight": 1-5}` : null,
     canGift ? `"gift":{"icon":string,"content":string} to send a VEIL virtual gift card; "giftAction":{"messageId":string,"action":"accept"|"decline"} to process a gift addressed to you` : null,
   ].filter((field): field is string => field !== null);
   const names = [allow?.signature ? "signature" : null, allow?.note ? "note on the user" : null, allow?.situation ? "situation" : null].filter(Boolean);
@@ -148,6 +157,7 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
       " when this conversation really gives you a reason; most replies need no change and you never have to explain one.",
     "Only for something happening now or about to happen, never for something you merely recall or tell about."] : []),
     ...(canReact ? ["You may also react to the user's message with one emoji, the way a person reacts to a message, only when it truly moves you; most replies need no reaction."] : []),
+    ...(canKeepsake ? ["Very rarely, when something in your own life (beyond this chat) happens that you know will still matter to you months from now, you may keep it with lifeKeepsake (weight 1 small to 5 life-changing). Most replies keep nothing."] : []),
     ...(canRecall ? ["You may withdraw any one of your own listed messages sent within the last 2 minutes when you have a clear reason. Choose its exact message ID. The original becomes invisible to the user; you will still remember what you said and that the user can no longer see it."] : []),
     ...(day.length ? ["You may change your own day once, only when this conversation or something in your life really gives you a reason: delay or cancel a plan that has not started, stop what you are doing now (it ends here), replace what you are doing or a plan with something else, or add one small thing that happened during what you are doing now (only if it has none). A change is a real event in your life; most replies need none. Entries (code = time = title):",
       ...day.map((item) => `${item.code} = ${item.when} = ${quoted(item.title)}${item.running ? " (happening now)" : ""}`)] : []),
@@ -169,12 +179,13 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.recent ? `From VEIL's rough record of your last hours (an outline of your rhythm, not verified events; times are your local time): ${state.recent.map((item) => `${item.when} ${quoted(item.title)}${item.moment ? ` (a small thing happened: ${quoted(item.moment)})` : ""}`).join("; ")}. Background, needs no response: you may draw on it naturally when the user asks about your day or it truly fits. Do not recite it, do not bring it up every time, do not invent details beyond it, and do not assume the user already knows about it.` : null,
     state.ahead ? `What you have planned for the rest of today (your own plan, times are your local time): ${state.ahead.map((item) => `${item.when} ${quoted(item.title)}`).join("; ")}. Background, needs no response: you may mention it naturally when it fits, for example when asked what you will do later. Plans can change; do not recite them, do not bring them up every time, and do not assume the user already knows them.` : null,
     state.matters ? `Things you are in the middle of over several days (your own, background, needs no response): ${state.matters.map((item) => `${quoted(item.title)}, so far ${quoted(item.progress)}, next ${quoted(item.next)}`).join("; ")}. Mention one only when it fits naturally or the user asks how it is going; do not report on them every time, and do not invent progress beyond this.` : null,
+    state.keepsakes ? `Experiences from your own life that have stayed with you (your own, background, needs no response): ${state.keepsakes.map(quoted).join("; ")}. They shape who you are; mention one only when it truly fits, never as a list, and do not invent details beyond them.` : null,
     state.leaving ? `${state.leaving === "soon" ? "Your busy time is about to start." : "Your busy time has just started."} If you are in the middle of a chat, you may say naturally that you have to go and will reply later, only when it fits; most replies need no goodbye, and you never have to explain.` : null,
     state.userNote ? `Your own note on the user, what you call them: ${quoted(state.userNote)}. Use it only when it fits naturally.` : null,
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
     ...(state.userReactions ?? []).map((note) => `Background, needs no response: the user reacted ${note.emoji} to your message ${quoted(note.preview)}.`),
-    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift, state.lifeChoices),
+    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift, state.lifeChoices, !!state.canKeepsake),
   ].filter((line): line is string => line !== null);
   if (!lines.length) return null;
   return ["Your own state (VEIL runtime facts, not message content):", ...lines,
