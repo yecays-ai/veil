@@ -243,6 +243,8 @@ export async function ensureDayPlan(characterId: string, signal?: AbortSignal, d
     }
     controller.signal.throwIfAborted();
     const finished = deps.now();
+    // A reply that lands after local midnight would anchor its wall-clock rows to the wrong day; the claimed day is over.
+    if (localDayWindow(finished, character.timezone).key !== day) { await fail(); return "invalid"; }
     const latest = presenceRecord(await deps.presence(), characterId);
     const rows = parseDayPlan(reply, character.timezone, finished, latest?.situations ?? []);
     if (!rows) { await fail(); return isTruncatedReason(finishReason) ? "truncated" : "invalid"; }

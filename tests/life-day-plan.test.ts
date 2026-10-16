@@ -122,6 +122,15 @@ test("a failed or unusable reply is not retried that day, and the Routine skelet
   assert.ok(!(await f.record())!.life!.activities.some((item) => item.origin === "plan"));
 });
 
+test("a reply that lands after local midnight is discarded and the claimed day marked failed", async () => {
+  const f = fixture(() => { f.state.now = at(0, 5, 17); return goodReply; }); await f.ready;
+  assert.equal(await ensureDayPlan(ID, undefined, f.deps), "invalid");
+  const record = (await f.record())!;
+  assert.equal(record.life?.plan?.status, "failed");
+  assert.equal(record.life?.plan?.day, "2026-10-16");
+  assert.ok(!record.life!.activities.some((item) => item.origin === "plan"));
+});
+
 test("a provider error marks the day failed; an abort does too", async () => {
   const boom = fixture(() => { throw new Error("down"); }); await boom.ready;
   assert.equal(await ensureDayPlan(ID, undefined, boom.deps), "error");
@@ -156,7 +165,8 @@ test("applying a plan replaces unstarted skeleton rows and cuts the running one 
   const live = life.activities.filter((item) => item.state !== "cancelled");
   for (let i = 1; i < live.length; i++) assert.ok(live[i].startsAt >= live[i - 1].endsAt, "no overlap");
   assert.ok(life.activities.some((item) => item.origin === "plan" && item.startsAt === T0), "plan starts now");
-  assert.ok(life.activities.filter((item) => item.endsAt <= T0).every((item) => before.some((old) => old.id === item.id && old.endsAt === item.endsAt) || true));
+  for (const item of before.filter((row) => row.endsAt <= T0))
+    assert.deepEqual(life.activities.find((row) => row.id === item.id), item, "finished history is unchanged");
   const gone = before.filter((item) => item.startsAt >= T0 && item.startsAt < at(13));
   for (const item of gone) assert.ok(!life.activities.some((x) => x.id === item.id && !x.origin), `${item.title} gave way`);
 });
