@@ -3,6 +3,7 @@ import { normalizeSituation } from "./compute";
 import { isReactionEmoji } from "../chat/reactions";
 import { normalizeTransferAmount, normalizeTransferNote, type TransferAction } from "../chat/transfer";
 import { normalizeGiftContent, normalizeGiftIcon, type GiftAction } from "../chat/gift";
+import { applyLifeEdit, type LifeEdit } from "../life/chat-edit";
 import {
   addSituation, cancelUpcoming, endSituation, markSignatureChange, markSituationChange, presenceRecord, setUserNote,
   type PresenceDocument, type PresenceRecord,
@@ -26,6 +27,8 @@ export type CharacterActions = {
   transferAction?: { messageId: string; action: TransferAction };
   gift?: { icon: string; content: string };
   giftAction?: { messageId: string; action: GiftAction };
+  /** One change to the Character's own day. `target` is the code offered for this reply; the chat swaps it for the row ID before applying. */
+  life?: { action: LifeEdit["action"]; target: string; minutes?: number; title?: string; moment?: string };
 };
 export const ACTION_TAG = "veil-action";
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
@@ -105,6 +108,14 @@ function parseActions(json: string): CharacterActions | null {
   if (isRecord(value.giftAction) && typeof value.giftAction.messageId === "string" && /^[\w-]{8,80}$/.test(value.giftAction.messageId)
       && (value.giftAction.action === "accept" || value.giftAction.action === "decline"))
     actions.giftAction = { messageId: value.giftAction.messageId, action: value.giftAction.action };
+  const life = value.life;
+  if (isRecord(life) && typeof life.target === "string" && /^L\d{1,2}$/.test(life.target.trim()) && ["delay", "cancel", "replace", "detail"].includes(String(life.action))) {
+    const action = life.action as LifeEdit["action"], title = typeof life.title === "string" ? cleanText(life.title, 80) : null;
+    const moment = typeof life.moment === "string" ? cleanText(life.moment, 280) : null;
+    const minutes = typeof life.minutes === "number" && Number.isInteger(life.minutes) ? life.minutes : undefined;
+    if ((action !== "replace" || title) && (action !== "detail" || moment) && (action !== "delay" || minutes !== undefined))
+      actions.life = { action, target: life.target.trim(), ...(minutes !== undefined ? { minutes } : {}), ...(title ? { title } : {}), ...(moment ? { moment } : {}) };
+  }
   return Object.keys(actions).length ? actions : null;
 }
 
@@ -176,6 +187,11 @@ export const characterActionApplier = (deps: ActionDeps) =>
     const source = `${CHARACTER_SOURCE_PREFIX}${messageId}`;
     let recalledMessageId: string | undefined;
     await deps.presence.transact((document) => applySituationActions(document, { characterId }, actions, now, source));
+    if (actions.life) {
+      const { target, ...edit } = actions.life; // the chat has already swapped the code for the row's ID
+      await deps.presence.transact((document) => applyLifeEdit(document, characterId, { ...edit, id: target }, now, messageId))
+        .catch(() => console.warn("[Life] the Character's change to its day was not saved"));
+    }
     if (actions.userNote !== undefined) await applyUserNote(deps, characterId, actions.userNote, now, source);
     if (actions.recallMessageId) {
       try { if (await deps.recallMessage?.(messageId, actions.recallMessageId)) recalledMessageId = actions.recallMessageId; }

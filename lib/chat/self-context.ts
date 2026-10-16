@@ -8,6 +8,7 @@ import type { UserReactionNote } from "./reactions";
 import type { StickerChoice } from "./sticker-storage";
 import { lifeTimeline } from "../life/activity";
 import { aheadLife, recentLife } from "../life/recent";
+import { lifeChoices, type LifeChoice } from "../life/chat-edit";
 import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
 
 /** What the Character knows about itself for one reply: read once per request, never stored or sent as history. */
@@ -26,6 +27,8 @@ export type SelfState = {
   recent?: { when: string; title: string; moment?: string }[];
   /** Its own concrete plans for the rest of today, in order, already in its local clock; absent when there are none. */
   ahead?: { when: string; title: string }[];
+  /** Its own day entries it may change in this reply, each with a code valid for this reply only; absent when it may change none. */
+  lifeChoices?: (LifeChoice & { when: string })[];
   /** What the Character itself calls the user (its own note on them); null when none. */
   userNote: string | null;
   /** What the Character may change in this reply (its own cooldowns applied); null when it may change nothing (Continue). */
@@ -67,6 +70,8 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     title: item.title, ...(item.moment ? { moment: item.moment } : {}) }));
   const ahead = aheadLife(record?.life, now, character.timezone).map((item) => ({
     when: `${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}`, title: item.title }));
+  const choices = allowActions ? lifeChoices(record?.life, now, character.timezone).map((item) => ({ ...item,
+    when: `${localClock(item.startsAt, character.timezone)}–${localClock(item.endsAt, character.timezone)}` })) : [];
   const leaving = lifeMode && allowActions && known ? leavingBusy(inputs, effective.status, now) : undefined;
   const noteCooldownMinutes = allowActions ? Math.ceil(noteCooldownRemaining(record, now) / 60_000) : 0;
   return { remark: normalizeContactRemark(contact?.remark), remarkChange, status: known ? effective.status : null,
@@ -74,6 +79,7 @@ export function selfState(character: Pick<Character, "characterId" | "timezone" 
     ...(leaving ? { leaving } : {}),
     ...(recent.length ? { recent } : {}),
     ...(ahead.length ? { ahead } : {}),
+    ...(choices.length ? { lifeChoices: choices } : {}),
     ...(current ? { activity: { title: current.title, ...(current.moment ? { moment: current.moment } : {}) } } : {}),
     userNote: record?.userNote?.text || null, canChange: allowActions ? actionAllowance(record, now) : null,
     ...(noteCooldownMinutes > 0 ? { noteCooldownMinutes } : {}),
@@ -116,10 +122,10 @@ function remarkLines(state: SelfState): string[] {
   return state.remark ? [`Background, needs no response: the remark the user has saved for you is ${quoted(state.remark)}. Mention it only when it fits naturally.`] : [];
 }
 
-function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false): string[] {
+function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false, day: readonly (LifeChoice & { when: string })[] = []): string[] {
   const canRecall = recallCandidates.length > 0;
   const own = !!allow && (allow.situation || allow.signature || allow.note);
-  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift) return [];
+  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift && !day.length) return [];
   const fields = [
     allow?.signature ? `"signature": your new signature text ("" clears it)` : null,
     allow?.note ? `"userNote": what you now call the user, a short nickname or note ("" clears it)` : null,
@@ -128,6 +134,7 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     stickers.length ? `"sticker": exactly one code from your sticker list below` : null,
     canRecall ? `"recallMessageId": exact ID of one of your own messages listed below to withdraw it` : null,
     canTransfer ? `"transfer": {"recipient":"user","amount":number,"note":string} to send a VEIL virtual transfer; "transferAction":{"messageId":string,"action":"receive"|"decline"|"return"} to process a transfer addressed to you` : null,
+    day.length ? `"life": {"action": "delay"|"cancel"|"replace"|"detail", "target": a code from your day list below, "minutes": 5-240 (delay), "title": new short title (replace), "moment": one small thing that happened (detail)}` : null,
     canGift ? `"gift":{"icon":string,"content":string} to send a VEIL virtual gift card; "giftAction":{"messageId":string,"action":"accept"|"decline"} to process a gift addressed to you` : null,
   ].filter((field): field is string => field !== null);
   const names = [allow?.signature ? "signature" : null, allow?.note ? "note on the user" : null, allow?.situation ? "situation" : null].filter(Boolean);
@@ -137,6 +144,8 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     "Only for something happening now or about to happen, never for something you merely recall or tell about."] : []),
     ...(canReact ? ["You may also react to the user's message with one emoji, the way a person reacts to a message, only when it truly moves you; most replies need no reaction."] : []),
     ...(canRecall ? ["You may withdraw any one of your own listed messages sent within the last 2 minutes when you have a clear reason. Choose its exact message ID. The original becomes invisible to the user; you will still remember what you said and that the user can no longer see it."] : []),
+    ...(day.length ? ["You may change your own day once, only when this conversation or something in your life really gives you a reason: delay or cancel a plan that has not started, stop what you are doing now (it ends here), replace what you are doing or a plan with something else, or add one small thing that happened during what you are doing now (only if it has none). A change is a real event in your life; most replies need none. Entries (code = time = title):",
+      ...day.map((item) => `${item.code} = ${item.when} = ${quoted(item.title)}${item.running ? " (happening now)" : ""}`)] : []),
     ...(canRecall ? ["Eligible messages (ID → your original text):", ...recallCandidates.map((message) => `${message.id} → ${quoted(message.content)}`)] : []),
     ...(canTransfer ? ["VEIL transfers are virtual chat gestures with no real money or payment. You may send one when it fits. For a transfer addressed to you, wait, talk first, or decide later; use its exact message ID from the conversation to receive or decline a pending transfer, or return one already received. Never claim a real payment occurred."] : []),
     ...(canGift ? ["You may send a VEIL virtual gift card with an icon and your own short description when it fits the conversation. Its custom text is the gesture's description, even when it mentions money. Gifts never move real money, bank balances, purchases, property, deliveries or inventory. You can joke and respond in character without asking the user to explain that the feature is virtual. For a gift addressed to you, you may talk first or decide later, then accept or decline using the exact gift message ID. Execute acceptance or refusal with giftAction, never by narrating clicks or actions in plain text."] : []),
@@ -159,7 +168,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
     ...(state.userReactions ?? []).map((note) => `Background, needs no response: the user reacted ${note.emoji} to your message ${quoted(note.preview)}.`),
-    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift),
+    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift, state.lifeChoices),
   ].filter((line): line is string => line !== null);
   if (!lines.length) return null;
   return ["Your own state (VEIL runtime facts, not message content):", ...lines,

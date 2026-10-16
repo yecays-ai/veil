@@ -331,6 +331,11 @@ export function createChatEngine(
       const { reactToUser, ...ownChanges } = actions ?? {};
       const recallTarget = actions?.recallMessageId ? batch.messages.find((message) => message.id === actions.recallMessageId && message.role === "assistant") : undefined;
       delete ownChanges.sticker; // chat data, saved with the reply itself
+      // A change to its own day names a code from this reply's list; only a code it was offered is swapped for a row ID.
+      if (ownChanges.life) {
+        const choice = offered?.lifeChoices?.find((item) => item.code === ownChanges.life!.target);
+        if (choice) ownChanges.life = { ...ownChanges.life, target: choice.id }; else delete ownChanges.life;
+      }
       if (Object.keys(ownChanges).length && source !== "continue") await Promise.resolve()
         .then(() => applyActions(target.characterId, ownChanges, now().getTime(), completed[0].id))
         .then((result) => { if (result && result.recalledMessageId && recallTarget?.content) recentlyRecalledOwn.set(sessionId, { messageId: result.recalledMessageId, content: recallTarget.content }); })
