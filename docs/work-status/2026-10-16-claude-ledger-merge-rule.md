@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/ledger-merge-rule`；PR 创建后补链接；只改规则第 3 条。各板块里的历史状态（“待 Lan 手动合并”等）按规则 9 保留原样，不改。
+Claude；分支 `claude/ledger-merge-rule`；PR https://github.com/yecays-ai/veil/pull/225；只改规则第 3 条。各板块里的历史状态（“待 Lan 手动合并”等）按规则 9 保留原样，不改。
 
 ## 已完成
 
