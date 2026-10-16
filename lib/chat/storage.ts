@@ -565,7 +565,8 @@ export class ChatStorage {
   }
   /**
    * Read-only: the newest image messages of this Character's direct conversation, newest first. Never creates a
-   * conversation and never loads the bytes; one cursor pass keeps one message row in memory at a time.
+   * conversation and never loads the bytes; one cursor pass keeps one message row in memory at a time. Messages whose
+   * asset is missing are left out before the limit applies.
    */
   listSessionImages(characterId: string, limit: number, scope?: PersistenceWriteScope):
     Promise<{ sessionId: string; images: { messageId: string; attachment: MessageAttachment; order: number }[] } | null> {
@@ -586,8 +587,15 @@ export class ChatStorage {
         };
       });
       images.sort((a, b) => b.order - a.order);
-      return { sessionId: session.id, images: images.slice(0, Math.max(0, limit)) };
-    }, ["sessions", "messages"], null, undefined, scope);
+      // A message whose bytes are gone shows nothing, so it must not take one of the places: check the asset's key
+      // (not its bytes), newest first, until the list is full.
+      const assets = tx.objectStore("assets"), found: typeof images = [];
+      for (const image of images) {
+        if (found.length >= Math.max(0, limit)) break;
+        if ((await request(assets.getKey(image.attachment.assetId))) !== undefined) found.push(image);
+      }
+      return { sessionId: session.id, images: found };
+    }, ["sessions", "messages", "assets"], null, undefined, scope);
   }
   /** Read-only message count for a conversation; never recovers or writes generation state. */
   countMessages(sessionId: string, scope?: PersistenceWriteScope): Promise<number> {

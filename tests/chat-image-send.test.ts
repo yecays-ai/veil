@@ -159,3 +159,34 @@ test("Contact Info shows the chat's pictures, opens them large, and drops a pict
   assert.match(media, /return \(\) => \{ current = false; unsubscribe\(\); \}/);
   assert.doesNotMatch(media, /new ChatStorage|indexedDB|createObjectStore/, "no media library of its own");
 });
+
+async function withoutAsset(factory: IDBFactory, assetId: string) {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const open = factory.open("veil-chat-v2"); open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("assets", "readwrite"); tx.objectStore("assets").delete(assetId);
+    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+test("a message whose picture bytes are gone does not take one of the Shared Media places", async () => {
+  const factory = new IDBFactory(), storage = new ChatStorage(() => factory);
+  const session = await storage.openSession("a");
+  const kept = await storage.sendImage(session.id, blobOf("image/png", 10), 4, 3);
+  const lost = await storage.sendImage(session.id, blobOf("image/png", 20), 4, 3);
+  await withoutAsset(factory, lost.attachment!.assetId);
+  assert.deepEqual((await storage.listSessionImages("a", 1))?.images.map((image) => image.messageId), [kept.id],
+    "limit 1 still returns the older picture that exists");
+  await withoutAsset(factory, kept.attachment!.assetId);
+  assert.deepEqual((await storage.listSessionImages("a", 8))?.images, [], "only lost pictures: nothing listed, so the page can say there are no photos");
+});
+
+test("a failed Shared Media read says so with a Try again instead of claiming there are no photos", () => {
+  const media = readFileSync("components/contact-shared-media.tsx", "utf8");
+  assert.match(media, /failed: true/);
+  assert.match(media, /if \(ready\.failed\) return[\s\S]*?Photos could not be loaded\.[\s\S]*?Try again/);
+  assert.ok(media.indexOf("ready.failed") < media.indexOf("No photos yet."), "the failure is checked before the empty message");
+  assert.match(media, /\[characterId, attempt\]/, "Try again reloads");
+});

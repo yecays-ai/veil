@@ -26,7 +26,8 @@ function SharedImage({ sessionId, item }: { sessionId: string; item: Item }) {
 
 /** The pictures sent in this Character's conversation, newest first: the chat's own image messages, no separate library. */
 export function ContactSharedMedia({ characterId }: { characterId: string }) {
-  const [shared, setShared] = useState<{ characterId: string; sessionId: string | null; items: Item[] } | null>(null);
+  const [shared, setShared] = useState<{ characterId: string; sessionId: string | null; items: Item[]; failed?: boolean } | null>(null);
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let current = true, request = 0, sessionId: string | null = null;
     const load = () => {
@@ -35,7 +36,7 @@ export function ContactSharedMedia({ characterId }: { characterId: string }) {
         if (!current || mine !== request) return;
         sessionId = found?.sessionId ?? null;
         setShared({ characterId, sessionId, items: found?.images ?? [] });
-      }, () => { if (current && mine === request) setShared({ characterId, sessionId: null, items: [] }); });
+      }, () => { if (current && mine === request) setShared({ characterId, sessionId: null, items: [], failed: true }); });
     };
     load();
     // A message deleted, recalled or added elsewhere (another tab, the chat itself) changes this list.
@@ -43,9 +44,12 @@ export function ContactSharedMedia({ characterId }: { characterId: string }) {
       if (sessionId === null ? change.domain === "session" : affectsChatSession(change, sessionId)) load();
     });
     return () => { current = false; unsubscribe(); };
-  }, [characterId]);
+  }, [characterId, attempt]);
   const ready = shared?.characterId === characterId ? shared : null;
   if (!ready) return <div className="contact-media-grid" aria-busy="true" />;
+  // A failed read is not "no photos": the pictures may all still be there.
+  if (ready.failed) return <p className="contact-media-empty" aria-live="polite">Photos could not be loaded.{" "}
+    <button type="button" className="contact-media-retry" onClick={() => setAttempt((count) => count + 1)}>Try again</button></p>;
   if (!ready.sessionId || !ready.items.length) return <p className="contact-media-empty">No photos yet.</p>;
   return <div className="contact-media-grid" aria-label="Shared Media">
     {ready.items.map((item) => <SharedImage key={item.messageId} sessionId={ready.sessionId!} item={item} />)}
