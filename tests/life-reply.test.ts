@@ -449,3 +449,31 @@ test("the chat page reports its draft per conversation and clears it when it lea
   assert.match(source, /setComposingDraft\(composingSessionId, hasDraft\);\s*return \(\) => setComposingDraft\(composingSessionId, false\);/);
   assert.match(source, /const hasDraft = draft\.trim\(\)\.length > 0;/);
 });
+
+test("a recalled message nobody has answered does not wake the Life Mode watcher", async () => {
+  const h = harness({ messages: [user("m1", 1, DAY0 + 10 * HOUR, { content: "", recalled: { at: DAY0 + 10 * HOUR + 5000, by: "user" } })] });
+  h.watcher.start(); await settle();
+  assert.deepEqual(h.replies, []);
+  assert.equal(h.live().length, 0, "no timer is kept for it");
+  h.state.messages = [...h.state.messages, user("m2", 2, DAY0 + 10 * HOUR + 10_000)];
+  h.state.now = DAY0 + 10 * HOUR + 40_000;
+  h.watcher.touch("s"); await h.fire();
+  assert.deepEqual(h.replies, ["s"], "a real message after it is answered normally");
+  h.watcher.stop();
+});
+
+test("only a recalled message pending: nothing is requested; with a real message the model sees the recall marker, never the body", async () => {
+  const { storage, engine, prompts } = setup();
+  const session = await storage.openSession("a");
+  const sent = await storage.send(session.id, "secret words");
+  await storage.recallMessage(sent.id, "user", undefined, session.id);
+  assert.equal(await engine.requestReply(session.id), null);
+  assert.equal(prompts.length, 0, "no model request for a recalled-only turn");
+  await storage.send(session.id, "never mind, hello");
+  await engine.requestReply(session.id);
+  assert.equal(prompts.length, 1);
+  const text = prompts[0].map((m) => m.content).join("\n");
+  assert.match(text, /\[User recalled a message\]/);
+  assert.match(text, /never mind, hello/);
+  assert.doesNotMatch(text, /secret words/);
+});

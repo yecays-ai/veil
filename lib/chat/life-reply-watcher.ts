@@ -1,5 +1,6 @@
 import type { PresenceInputs } from "../presence/compute";
 import type { ChatMessage, ChatSession } from "./types";
+import { isPendingUserMessage } from "./recall";
 import { lifeReplyPlan } from "./life-reply";
 
 /** A long wait is cut into pieces, so the status is looked at again now and then instead of trusting one distant timer. */
@@ -56,7 +57,7 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
       }
       const { session, messages } = await deps.session(sessionId);
       if (!live()) return;
-      const pending = messages.filter((item) => item.role === "user" && item.status === "sent" && !item.requestedBy)
+      const pending = messages.filter(isPendingUserMessage)
         .sort((a, b) => a.order - b.order);
       const first = pending[0];
       if (!first) { attempted.delete(sessionId); return; }
@@ -86,7 +87,7 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
       // restarts the quiet window, so it is looked at again from the start.
       const latest = await deps.session(sessionId);
       if (!live() || latest.session.lifeMode !== true) return;
-      const newer = latest.messages.some((item) => item.role === "user" && item.status === "sent" && !item.requestedBy
+      const newer = latest.messages.some((item) => isPendingUserMessage(item)
         && item.order > newest.order);
       if (newer) { api.touch(sessionId); return; }
       // A draft in the composer holds the reply back for as long as it exists; clearing or sending it calls touch again.
@@ -97,7 +98,7 @@ export function createLifeReplyWatcher(deps: LifeReplyDeps, timers: Timers = rea
       // A reply that never started (another reply held the conversation) claimed nothing, so the message is forgotten
       // here and the next event looks again. A started reply always claims it, failed or not, so the model is never retried.
       const after = await deps.session(sessionId);
-      if (after.messages.some((item) => item.id === newest.id && item.role === "user" && item.status === "sent" && !item.requestedBy))
+      if (after.messages.some((item) => item.id === newest.id && isPendingUserMessage(item)))
         attempted.delete(sessionId);
     } catch {
       /* A failed check is skipped; the next event or visible page tries again, and it never reaches the model. */
