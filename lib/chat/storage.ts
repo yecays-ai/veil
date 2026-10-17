@@ -1,3 +1,6 @@
+import { browserFoundationStorage } from "../foundation-storage";
+import { characterUniverseId } from "../universe";
+import { UNIVERSE_ID, type FoundationDocument } from "../foundation-types";
 import { browserMemoryStorage } from "../memory/instance";
 import { invalidateChatSources } from "../memory/source-invalidation";
 import { allocateMemorySequence, memoryBirth } from "../memory/sequence";
@@ -235,7 +238,19 @@ export class ChatStorage {
     private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
     private memoryTracking: boolean | (() => boolean) = maintenanceEnabled,
-    private sourceMemory?: import("../memory/storage").MemoryStorage) {}
+    private sourceMemory?: import("../memory/storage").MemoryStorage,
+    private foundation?: () => Promise<FoundationDocument>) {}
+  private async universeForMembers(ids: readonly string[]): Promise<string> {
+    if (!this.foundation) return UNIVERSE_ID;
+    const document = await this.foundation();
+    const worlds = ids.map((id) => {
+      const character = document.characters.find((c) => c.characterId === id);
+      if (!character) throw new Error("Character not found.");
+      return characterUniverseId(character);
+    });
+    if (!worlds.length || worlds.some((id) => id !== worlds[0])) throw new Error("Choose contacts from the same Universe.");
+    return worlds[0];
+  }
   private tracking(): boolean { return typeof this.memoryTracking === "function" ? this.memoryTracking() : this.memoryTracking; }
   private sequence(session: ChatSession, message: ChatMessage): ChatMessage {
     return this.tracking() && session.type !== "group" ? allocateMemorySequence(session, message) : message;
@@ -687,31 +702,37 @@ export class ChatStorage {
       return changed;
     }, ["sessions"], (changed) => changed.map((sessionId) => ({ domain: "session" as const, sessionId })), undefined, scope);
   }
-  createGroupSession(participantIds: readonly string[], title: string): Promise<ChatSession> {
+  async createGroupSession(participantIds: readonly string[], title: string): Promise<ChatSession> {
     const members = [...new Set(participantIds.filter(Boolean))];
     if (members.length < 2) return Promise.reject(new Error("Choose at least two contacts."));
     const name = title.trim().slice(0, 100);
     if (!name) return Promise.reject(new Error("Group name is required."));
+    const universeId = await this.universeForMembers(members);
     return this.transaction("readwrite", async (tx) => {
-      const session: ChatSession = { id: crypto.randomUUID(), characterId: members[0], type: "group",
+      const session: ChatSession = { universeId, id: crypto.randomUUID(), characterId: members[0], type: "group",
         participantIds: members, title: name, updatedAt: 0,
         autoReplyOnKeyboardDismiss: false, streamOnline: false, nextOrder: 1 };
       await request(tx.objectStore("sessions").add(session));
       return session;
     }, STORES, (session) => ({ domain: "session", sessionId: session.id }));
   }
-  openSession(characterId: string): Promise<ChatSession> {
+  async openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)
       return Promise.reject(new Error("Character is required."));
+    const universeId = await this.universeForMembers([characterId]);
     let created = false;
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
       const sessions: ChatSession[] = await request(table.getAll());
       const direct = directSessionFor(sessions, characterId);
-      if (direct) return direct;
+      if (direct) {
+        if (direct.universeId && direct.universeId !== universeId) throw new Error("Conversation Universe mismatch.");
+        return direct;
+      }
       const session: ChatSession = {
         id: crypto.randomUUID(),
         characterId,
+        universeId,
         updatedAt: 0,
         autoReplyOnKeyboardDismiss: false,
         streamOnline: false,
@@ -1930,4 +1951,4 @@ export class ChatStorage {
     return completed;
   }
 }
-export const chatStorage = new ChatStorage(undefined, undefined, undefined, undefined, browserMemoryStorage);
+export const chatStorage = new ChatStorage(undefined, undefined, undefined, undefined, browserMemoryStorage, () => browserFoundationStorage.load());

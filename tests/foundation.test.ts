@@ -63,7 +63,7 @@ test("single User, independent birthday/age, separate narrative fields and requi
     universe: { ...d.universe, id: "other" },
     user: { ...d.user, userIdentityId: "discard" },
   });
-  assert.equal(clean.universe.id, UNIVERSE_ID);
+  assert.equal(clean.universe.id, "other");
   assert(!JSON.stringify(clean).includes("discard"));
   assert(!("users" in clean));
   assert(!("universes" in clean));

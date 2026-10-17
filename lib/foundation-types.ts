@@ -23,6 +23,7 @@ export type ProfileBasics = {
 export type UserProfile = ProfileBasics & { aboutMe: string | null };
 export type Character = ProfileBasics & {
   characterId: string;
+  universeId?: string;
   backstory: string | null;
   personality: string | null;
   speakingStyle: string | null;
@@ -55,7 +56,9 @@ export type CharacterRelation = {
 };
 export type RelationInput = Omit<CharacterRelation, "id">;
 export type Universe = {
-  id: typeof UNIVERSE_ID;
+  id: string;
+  createdAt?: number;
+  updatedAt?: number;
   name: string;
   worldSetting: string | null;
   relations: CharacterRelation[];
@@ -66,6 +69,8 @@ export type FoundationDocument = {
   user: UserProfile;
   characters: Character[];
   universe: Universe;
+  /** Additional partitions; universe is the original first partition. */
+  universes?: Universe[];
   runtime: { timeAware: boolean };
 };
 
@@ -160,6 +165,7 @@ export function normalizeCharacterInput(value: unknown): CharacterInput {
   const raw = record(value);
   return {
     ...basics(raw),
+    universeId: optionalText(raw.universeId, 100) ?? UNIVERSE_ID,
     backstory: optionalText(raw.backstory),
     personality: optionalText(raw.personality),
     speakingStyle: optionalText(raw.speakingStyle),
@@ -199,6 +205,12 @@ export function defaultFoundation(): FoundationDocument {
 export function normalizeFoundation(value: unknown): FoundationDocument {
   const raw = record(value),
     world = record(raw.universe);
+  const primaryId = optionalText(world.id, 100) ?? UNIVERSE_ID;
+  const extra = Array.isArray(raw.universes) ? raw.universes.flatMap((value) => {
+    const universe = record(value), id = optionalText(universe.id, 100);
+    return id ? [{ ...universe, id }] : [];
+  }).filter((u, i, rows) => u.id !== primaryId && rows.findIndex((v) => v.id === u.id) === i) : [];
+  const universeIds = new Set([primaryId, ...extra.map((u) => u.id)]);
   const characters: Character[] = [],
     seen = new Set<string>();
   if (Array.isArray(raw.characters))
@@ -214,7 +226,9 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
       )
         continue;
       seen.add(id);
-      characters.push({ characterId: id, ...normalizeCharacterInput(c) });
+      const input = normalizeCharacterInput({ ...c, universeId: optionalText(c.universeId, 100) ?? primaryId });
+      if (!universeIds.has(input.universeId!)) continue;
+      characters.push({ characterId: id, ...input });
     }
   const relations: CharacterRelation[] = [],
     relationIds = new Set<string>(),
@@ -232,7 +246,8 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
         typeof r.characterBId !== "string" ||
         r.characterAId === r.characterBId ||
         !seen.has(r.characterAId) ||
-        !seen.has(r.characterBId)
+        !seen.has(r.characterBId) ||
+        ![r.characterAId, r.characterBId].every((id) => characters.some((c) => c.characterId === id && (c.universeId ?? UNIVERSE_ID) === primaryId))
       )
         continue;
       const pair = [r.characterAId, r.characterBId].sort().join(":");
@@ -251,7 +266,7 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
       });
     }
   const nodePositions: Record<string, NodePosition> = {};
-  characters.forEach((c, i) => {
+  characters.filter((c) => (c.universeId ?? UNIVERSE_ID) === primaryId).forEach((c, i) => {
     nodePositions[c.characterId] = normalizePosition(
       record(world.nodePositions)[c.characterId],
       { x: 32 + (i % 3) * 220, y: 36 + Math.floor(i / 3) * 130 },
@@ -262,12 +277,18 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
     user: normalizeUser(raw.user),
     characters,
     universe: {
-      id: UNIVERSE_ID,
+      id: primaryId,
+      ...(typeof world.createdAt === "number" ? { createdAt: world.createdAt } : {}),
+      ...(typeof world.updatedAt === "number" ? { updatedAt: world.updatedAt } : {}),
       name: optionalText(world.name, 100) || "Universe",
       worldSetting: optionalText(world.worldSetting),
       relations,
       nodePositions,
     },
+    ...(extra.length ? { universes: extra.map((u) => {
+      const scoped = characters.filter((c) => c.universeId === u.id);
+      return normalizeFoundation({ ...raw, characters: scoped, universe: u, universes: [] }).universe;
+    }) } : {}),
     runtime: { timeAware: record(raw.runtime).timeAware !== false },
   };
 }

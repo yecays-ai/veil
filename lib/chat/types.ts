@@ -1,4 +1,5 @@
 export type ChatSession = {
+  universeId?: string;
   id: string;
   /**
    * Direct chat: its Character. Group chat: the first member, or "" once no member remains (a group

@@ -1,3 +1,4 @@
+import { universeForCharacter, characterUniverseId } from "../universe";
 import { browserApiConfigStorage } from "../api-config-storage";
 import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "../api-config";
 import { browserBindingStorage } from "../binding-storage";
@@ -246,7 +247,7 @@ export async function ensureDayPlan(characterId: string, signal?: AbortSignal, d
     if (!won) return "current";
     claim = { day, claimedAt: now };
     const inputs: PresenceInputs = { characterId, timezone: character.timezone, routine: record.routine.routine, situations: record.situations };
-    const messages = dayPlanPrompt({ character, universe: foundation.universe, characters: foundation.characters, inputs, life: record.life, now });
+    const messages = dayPlanPrompt({ character, universe: universeForCharacter(foundation, character), characters: foundation.characters.filter((c) => characterUniverseId(c) === characterUniverseId(character)), inputs, life: record.life, now });
     const request = createCompletionRequestContext("life-day-plan");
     logPromptSummary(request, api.model, [{ identifier: "life-day-plan", role: "system", characterLength: messages[0].content.length }], messages);
     let reply = "", finishReason: string | undefined;

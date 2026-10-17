@@ -1,3 +1,4 @@
+import { allUniverses, characterUniverseId } from "./universe";
 import {
   normalizeCharacterInput,
   normalizeFoundation,
@@ -41,6 +42,7 @@ export function createCharacter(
   input: CharacterInput,
 ): FoundationDocument {
   validateProfile(input);
+  if (!allUniverses(document).some((u) => u.id === characterUniverseId(input))) throw new Error("Choose an existing Universe.");
   const characterId = crypto.randomUUID();
   return normalizeFoundation({
     ...document,
@@ -62,6 +64,7 @@ export function updateCharacter(
     if (expected) throw new CharacterConflictError("Character not found. It was deleted elsewhere; your draft was not saved.");
     throw new Error("Character not found.");
   }
+  if (characterUniverseId(current) !== characterUniverseId(input)) throw new Error("Character Universe cannot be changed.");
   if (expected && JSON.stringify(normalizeCharacterInput(current))
     !== JSON.stringify(normalizeCharacterInput(expected)))
     throw new CharacterConflictError("This Character changed elsewhere. Your draft was not saved. Reopen it to review the latest version.");
@@ -103,6 +106,7 @@ export function saveUniverse(
     ...document,
     universe: {
       ...document.universe,
+      updatedAt: Date.now(),
       name: optionalText(name, 100)!,
       worldSetting: optionalText(worldSetting),
     },
@@ -130,7 +134,7 @@ export function saveRelation(
   if (
     input.characterAId === input.characterBId ||
     ![input.characterAId, input.characterBId].every((id) =>
-      document.characters.some((c) => c.characterId === id),
+      document.characters.some((c) => c.characterId === id && characterUniverseId(c) === document.universe.id),
     )
   )
     throw new Error("Choose two different existing Characters.");

@@ -1,3 +1,4 @@
+import { allUniverses, characterUniverseId, sessionUniverseId } from "../universe";
 import { SUMMARY_CHARACTERS } from "../chat/summary";
 import { memorySourceHash } from "../memory/source-hash";
 import { sourceInvalidationValid } from "../memory/source-hash";
@@ -134,12 +135,13 @@ function validateChat(value: unknown, version: number) {
   const sessions = new Map(value.sessions.map((row) => [row.id, row])), direct = new Set<string>();
   value.sessions.forEach((row, index) => {
     const path = `chat.sessions[${index}]`;
-    keys(row, ["id", "characterId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder", "memorySequence", "summary", "proactiveAttempts", "unreadCount", "lifeMode"],
+    keys(row, ["id", "characterId", "universeId", "type", "participantIds", "title", "updatedAt", "pinned", "lastMessageId", "lastMessagePreview", "autoReplyOnKeyboardDismiss", "streamOnline", "backgroundImage", "backgroundBlur", "customCSS", "nextOrder", "memorySequence", "summary", "proactiveAttempts", "unreadCount", "lifeMode"],
       ["id", "characterId", "updatedAt", "autoReplyOnKeyboardDismiss", "nextOrder"], path);
     check(typeof row.characterId === "string", path, "invalid-data", "characterId-not-string");
     check(integer(row.updatedAt), path, "invalid-data", "updatedAt-not-integer");
     check(integer(row.nextOrder) && (row.nextOrder as number) >= 1, path, "invalid-data", "nextOrder-invalid");
     check(typeof row.autoReplyOnKeyboardDismiss === "boolean", path, "invalid-data", "autoReplyOnKeyboardDismiss-not-boolean");
+    check(row.universeId === undefined || id(row.universeId), path, "invalid-data", "universeId-invalid");
     check(row.type === undefined || ["direct", "group"].includes(String(row.type)), path, "invalid-data", "type-invalid");
     if (row.memorySequence !== undefined) {
       keys(row.memorySequence, ["epoch", "nextSeq"], ["epoch", "nextSeq"], path);
@@ -499,12 +501,23 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
   }
   data.foundation?.characters.forEach((row, index) => image(row.avatar, `foundation.characters[${index}]`));
   image(data.foundation?.user.avatar, "foundation.user");
+  if (data.foundation) {
+    const primaryId = data.foundation.universe.id;
+    const universeIds = new Set(allUniverses(data.foundation).map((u) => u.id));
+    data.worldbooks?.books.forEach((book, index) => check(universeIds.has(book.universeId ?? primaryId), `worldbooks[${index}]`, "cross-character-reference"));
+  }
   data.contacts?.contacts.forEach((row, index) => character(row.characterId, `contacts[${index}]`));
   data.presence?.characters.forEach((row, index) => character(row.characterId, `presence[${index}]`));
   data.chat.sessions.forEach((row, index) => {
     const path = `chat.sessions[${index}]`;
     if (row.type === "group") row.participantIds?.forEach((member) => character(member, path));
     else character(row.characterId, path);
+    if (data.foundation) {
+      const universeId = sessionUniverseId(data.foundation, row);
+      check(universeId !== null && allUniverses(data.foundation).some((u) => u.id === universeId), path, "cross-character-reference");
+      const members = row.type === "group" ? row.participantIds ?? [] : [row.characterId];
+      check(members.every((id) => data.foundation!.characters.some((c) => c.characterId === id && characterUniverseId(c) === universeId)), path, "cross-character-reference");
+    }
     if (row.backgroundImage) check(assets.has(`chat:${row.backgroundImage}`), path, "missing-asset");
   });
   data.chat.chatSettings.forEach((row, index) => {

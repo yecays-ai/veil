@@ -1,3 +1,4 @@
+import { universeForCharacter } from "../universe";
 import { statePromptEntries, STATE_AUTHORITY, type StateView } from "../memory/state-runtime";
 import type { Character, FoundationDocument, ProfileBasics } from "../foundation-types";
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
@@ -39,7 +40,7 @@ function profile(value: ProfileBasics) {
   }).filter(([, item]) => item !== null && item !== undefined && item !== ""));
 }
 function directRelations({ foundation, character }: PromptRuntimeContext) {
-  return foundation.universe.relations
+  return universeForCharacter(foundation, character).relations
     .filter((relation) => relation.characterAId === character.characterId ||
       relation.characterBId === character.characterId)
     .flatMap((relation) => {
@@ -153,8 +154,8 @@ export function resolvePresetMarker(
     case "user":
       return JSON.stringify({ ...profile(context.foundation.user), aboutMe: context.foundation.user.aboutMe });
     case "universe":
-      return JSON.stringify({ name: context.foundation.universe.name,
-        worldSetting: context.foundation.universe.worldSetting });
+      return JSON.stringify({ name: universeForCharacter(context.foundation, context.character).name,
+        worldSetting: universeForCharacter(context.foundation, context.character).worldSetting });
     case "world-info-before":
       return context.worldInfo?.before.map((item) => item.entry.content).join("\n\n") || null;
     case "world-info-after":
