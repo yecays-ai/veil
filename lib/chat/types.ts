@@ -123,7 +123,8 @@ export type ChatMessage = {
 export type MemoryRef = { id: string; hash: string; journal?: true };
 export const MEMORY_REF_LIMIT = 6;
 
-export type PromptTurn = { role: ChatMessage["role"]; content: string };
+/** `images` are chat picture ids chosen while the prompt is assembled; `imageData` is what the engine reads for them (data URLs). */
+export type PromptTurn = { role: ChatMessage["role"]; content: string; images?: string[]; imageData?: string[] };
 export function isTruncatedReason(reason?: string) {
   return ["length", "max_tokens", "max_output_tokens"].includes(reason ?? "");
 }

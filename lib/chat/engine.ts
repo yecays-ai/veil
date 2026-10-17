@@ -8,6 +8,8 @@ import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
 import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
+import { loadPromptImages, newestImageTurns } from "./image-input";
+import { imageInputLimit } from "../api-config";
 import { assembleChatPrompt, hasSystemCharacterSlot, hasSystemMemorySlot, journalTriggerTexts, memoryConversation } from "./prompt";
 import { browserMemoryStorage } from "../memory/browser";
 import { emptyMemoryContext, memoryEntryHash, selectMemoryContext } from "../memory/context";
@@ -289,6 +291,11 @@ export function createChatEngine(
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
       if (proactive) prompt.messages.push({ role: "system", content: PROACTIVE_INSTRUCTION });
+      // Pictures come only from this conversation's own messages, and only when the API was marked as accepting them.
+      const owners = new Map(batch.messages.flatMap((message) => message.attachment ? [[message.attachment.assetId, message.id] as const] : []));
+      prompt.messages = await awaited(loadPromptImages(newestImageTurns(prompt.messages, imageInputLimit(config)),
+        async (assetId) => owners.has(assetId) ? storage.readMessageAttachment(sessionId, owners.get(assetId)!) : null,
+        controller.signal), controller.signal);
       const request: CompletionRequestContext = { requestId: attempt.id, source, sessionId };
       logPromptSummary(request, config.model, prompt.diagnostics, prompt.messages, {
         ids: memory.ids, characterLength: memory.characterLength, outcome: memory.outcome,
