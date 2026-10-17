@@ -24,7 +24,7 @@ export const isFixedMessage = (message: Shape) => isCardMessage(message) || hasG
 export function mediaPreview(message: Pick<ChatMessage, "sticker" | "attachment" | "imageGen" | "voice" | "content">): string | null {
   if (message.sticker) return stickerPreview(message.sticker);
   if (message.imageGen) return attachmentPreview({ kind: "image" });
-  if (message.attachment?.kind === "audio") return `${attachmentPreview(message.attachment)} ${message.content.slice(0, 60)}`;
+  if (message.attachment?.kind === "audio") return message.attachment.untranscribed ? attachmentPreview(message.attachment) : `${attachmentPreview(message.attachment)} ${message.content.slice(0, 60)}`;
   if (message.attachment) return attachmentPreview(message.attachment);
   if (message.voice) return `[语音] ${message.content.slice(0, 60)}`;
   return null;
