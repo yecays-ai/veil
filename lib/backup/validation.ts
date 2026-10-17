@@ -444,7 +444,10 @@ function validateDomain(domain: BackupDomain, value: unknown, version: number): 
     unique(value, "id", domain);
     value.forEach((row, index) => {
       const fields = ["id", "name", "provider", "baseUrl", "model"];
-      keys(row, fields, fields, `apiConfigs[${index}]`);
+      keys(row, [...fields, "imageInput", "imageLimit"], fields, `apiConfigs[${index}]`);
+      check((row.imageInput === undefined || typeof row.imageInput === "boolean")
+        && (row.imageLimit === undefined || (Number.isInteger(row.imageLimit) && (row.imageLimit as number) >= 1 && (row.imageLimit as number) <= 4)),
+        `apiConfigs[${index}]`);
       check(typeof row.name === "string" && !!row.name.trim() && typeof row.baseUrl === "string" && typeof row.model === "string"
         && ["OpenAI-compatible", "Custom"].includes(String(row.provider)), `apiConfigs[${index}]`);
     });

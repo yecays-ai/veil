@@ -3,11 +3,15 @@ import { useBindings } from "../use-bindings";
 import { PageShell } from "../page-shell";
 import { BottomSheet, ConfirmDialog } from "./ui/modal";
 import { Input, Select } from "./ui/form";
+import { Switch } from "./ui/switch";
 import { Alert } from "./ui/feedback";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiConfigConflictError, browserApiConfigStorage } from "../../lib/api-config-storage";
 import {
   DEFAULT_API_CONFIG_ID,
+  DEFAULT_IMAGE_INPUT_LIMIT,
+  MAX_IMAGE_INPUT_LIMIT,
+  imageInputLimit,
   type NamedApiConfig,
 } from "../../lib/api-config";
 import { validateApiConfig } from "../../lib/chat/provider";
@@ -268,6 +272,23 @@ export function TextApiSettings() {
                       </option>
                       {models.map((model) => (
                         <option key={model}>{model}</option>
+                      ))}
+                    </Select>
+                  </label>
+                )}
+                <label>
+                  <span>Image input</span>
+                  <Switch aria-label="Model accepts images" checked={draft.imageInput === true} disabled={!!busy}
+                    onChange={(imageInput) => update({ imageInput })} />
+                  <small>Turn on only if this model can read pictures; otherwise a picture in the chat makes the request fail.</small>
+                </label>
+                {draft.imageInput === true && (
+                  <label>
+                    Pictures per request
+                    <Select value={imageInputLimit(draft)} disabled={!!busy}
+                      onChange={(e) => update({ imageLimit: Number(e.target.value) })}>
+                      {Array.from({ length: MAX_IMAGE_INPUT_LIMIT }, (_, index) => index + 1).map((count) => (
+                        <option key={count} value={count}>{count === DEFAULT_IMAGE_INPUT_LIMIT ? `${count} (newest)` : `${count} newest`}</option>
                       ))}
                     </Select>
                   </label>

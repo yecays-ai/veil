@@ -60,6 +60,17 @@ export function validateApiConfig(config: ApiConfig) {
   if (!config.apiKey.trim() || !config.model.trim())
     throw new Error("Configure API Key and Model in Settings → Text API.");
 }
+/**
+ * What goes on the wire: only `role` and `content`. A turn with pictures becomes the content-parts form;
+ * the engine's own fields never reach the API, because a strict gateway rejects names it does not know.
+ */
+export function wireMessages(messages: readonly PromptTurn[]) {
+  return messages.map((turn) => turn.imageData?.length ? {
+    role: turn.role,
+    content: [{ type: "text", text: turn.content },
+      ...turn.imageData.map((url) => ({ type: "image_url", image_url: { url } }))],
+  } : { role: turn.role, content: turn.content });
+}
 export type TextProvider = (
   config: ApiConfig,
   messages: PromptTurn[],
@@ -145,7 +156,7 @@ export function createOpenAITextProvider(
         },
         body: JSON.stringify({
           model: config.model.trim(),
-          messages,
+          messages: wireMessages(messages),
           stream: true,
           ...(generation?.temperature !== undefined
             ? { temperature: generation.temperature } : {}),
