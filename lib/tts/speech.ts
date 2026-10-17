@@ -55,7 +55,8 @@ async function failedFetch(call: Call): Promise<TtsError> {
   const stop = () => probe.abort(), timer = setTimeout(stop, PROBE_MS);
   call.stop.addEventListener("abort", stop, { once: true });
   try {
-    await call.fetchImpl(`https://${info.host}/`, { method: "GET", mode: "no-cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal: probe.signal });
+    const { fetchImpl } = call; // a local, not `call.fetchImpl(...)`: the browser's own `fetch` throws "Illegal invocation" when called as a method of another object
+    await fetchImpl(`https://${info.host}/`, { method: "GET", mode: "no-cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal: probe.signal });
     return new TtsError("cors", "cors", undefined, info);
   } catch {
     call.stop.throwIfAborted();
@@ -102,9 +103,11 @@ const audioOf = (blob: Blob, call: Call): Blob => {
     throw invalidAudio(call);
   return type.startsWith("audio/") ? blob : new Blob([blob], { type: "audio/mpeg" });
 };
-const post = (call: Call, url: string, headers: Record<string, string>, body: unknown) =>
-  call.fetchImpl(url, { method: "POST", signal: call.signal, credentials: "omit", referrerPolicy: "no-referrer",
+const post = (call: Call, url: string, headers: Record<string, string>, body: unknown) => {
+  const { fetchImpl } = call; // see `failedFetch`: never call it as `call.fetchImpl(...)`
+  return fetchImpl(url, { method: "POST", signal: call.signal, credentials: "omit", referrerPolicy: "no-referrer",
     headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
+};
 
 /** OpenAI-compatible `/audio/speech`. */
 async function openaiSpeech(call: Call): Promise<Blob> {
