@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 `fix/tts-fetch-illegal-invocation`；PR 见 PR 页面；`lib/tts/speech.ts`、`tests/tts-providers.test.ts`。
+Claude；分支 `fix/tts-fetch-illegal-invocation`；PR #248（https://github.com/yecays-ai/veil/pull/248）；`lib/tts/speech.ts`、`tests/tts-providers.test.ts`。
 
 ## 已完成
 
