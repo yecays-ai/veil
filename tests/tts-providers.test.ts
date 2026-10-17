@@ -56,6 +56,7 @@ test("MiniMax: the browser only talks to VEIL; the server makes the one MiniMax 
   const blob = await synthesizeSpeech({ ...minimax, region: "cn" }, { text: " hi ", voice: "my-clone" }, never, { fetchImpl });
   assert.equal(browser.length, 1);
   assert.equal(browser[0].url, "/api/tts/minimax", "a same-origin path, not a MiniMax host");
+  assert.equal(browser[0].init.credentials, "same-origin", "VEIL's own cookies go along, so a protected preview does not redirect it away");
   assert.equal(String(browser[0].init.body).includes("sk-secret"), false, "the key is in a header, not the body or URL");
   assert.equal((browser[0].init.headers as Record<string, string>).Authorization, "Bearer sk-secret");
   assert.equal(server.length, 1);
