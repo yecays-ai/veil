@@ -848,7 +848,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       {(error || voice.error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
           {error || voice.error || loadError}
-          {voice.unsent && !error && <button type="button" aria-label="Send voice message again" disabled={sending || !!loadError}
+          {voice.unsent && <button type="button" aria-label="Send voice message again" disabled={sending || !!loadError}
             onClick={() => void voice.resend()}>Send again</button>}
           {/* Keep retries scoped to the session that produced the saved draft. */}
           {/* eslint-disable-next-line react-hooks/refs */}
