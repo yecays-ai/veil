@@ -10,7 +10,7 @@ Text API 返回 HTTP 错误时，错误信息里带上提供方给的短错误�
 
 ## 谁在改哪里
 
-Claude；分支 `fix/api-error-code`；PR 见 PR 描述（创建后补链接）。
+Claude；分支 `fix/api-error-code`；PR #252（https://github.com/yecays-ai/veil/pull/252）。
 
 ## 已完成
 
