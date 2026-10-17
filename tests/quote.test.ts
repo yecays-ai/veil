@@ -61,7 +61,7 @@ test("core Quote opens cancellable Composer preview and bubble renders quote abo
   assert.match(room, /quotingMessage && <div className="chat-quote-bar"/);
   assert.match(room, /aria-label="Cancel Quote" onClick=\{\(\) => setQuotingMessage\(null\)\}/);
   assert.match(room, /chatEngine\.send\(sessionId, content, quote\?\.id, \{ interject, discardUnrevealed: unrevealed \}\)/);
-  assert.match(timeline, /<QuoteBubble preview=\{quotePreview\}[\s\S]*applyRegex\(parsed\.content, regexGroups/);
+  assert.match(timeline, /applyRegex\(parsed\.content, regexGroups[\s\S]*<QuoteBubble preview=\{quotePreview\}[\s\S]*: bodyText/);
   assert.match(bubble, /className="chat-quote-preview"/);
   assert.match(bubble, /<span>\{preview\}<\/span>/);
 });

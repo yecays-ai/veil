@@ -105,6 +105,8 @@ export type ChatMessage = {
   reactions?: import("./reactions").MessageReactions;
   /** A sticker message: `content` then holds its semantic text (for search, summaries, Memory and the prompt), not bubble text. Absent on text messages. */
   sticker?: import("./sticker-message").MessageSticker;
+  /** The Character spoke this message: `content` is what it says (its transcript, still ordinary editable text) and the audio is made on demand from it. Absent on text messages. */
+  voice?: true;
   /** A media message: the bytes are an `assets` row, this is the reference. `content` then holds its semantic text, as for a sticker. Absent on text messages. */
   attachment?: import("./attachment").MessageAttachment;
   /** A VEIL virtual transfer. The row ID is the stable transfer ID; no wallet or real payment is represented. */

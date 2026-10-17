@@ -108,7 +108,7 @@ test("Photos in the + panel picks several pictures; each is shrunk then sent as 
 
 test("the message list draws the stored picture, opens it large with Save, and leaves selection mode to select", () => {
   assert.match(timeline, /message\.attachment && <ImageMessage/);
-  assert.match(timeline, /message\.sticker \|\| message\.attachment \? null/);
+  assert.match(timeline, /message\.sticker \|\| message\.attachment \|\| \(message\.voice && message\.status === "complete"\) \? null : bodyText/);
   assert.match(viewer, /readMessageAttachment\(sessionId, messageId\)/);
   assert.match(viewer, /URL\.revokeObjectURL/);
   assert.match(viewer, /download=\{name\}/);
