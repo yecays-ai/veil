@@ -3,6 +3,8 @@ import { APP_IDS, type AppId } from "./app-registry";
 export type BindingSlot = {
   apiConfigId?: string | null;
   memoryApiConfigId?: string | null;
+  /** Voice name sent to the speech API for this Character; blank or null inherits. */
+  ttsVoice?: string | null;
   presetId?: string | null;
   worldBookIds?: string[];
   regexIds?: string[];
@@ -15,8 +17,10 @@ export type BindingDocument = {
   >;
 };
 export type ManagedBindingField = "memoryApiConfigId" | "apiConfigId" | "presetId" | "worldBookIds" | "regexIds";
+/** Every scalar or list a slot can hold; the Bindings page edits only the managed ones, the speech settings page edits the voice. */
+export type BindingField = ManagedBindingField | "ttsVoice";
 export type BindingScope = { characterId?: string; appId?: AppId };
-const scalarKeys = ["memoryApiConfigId", "apiConfigId", "presetId"] as const;
+const scalarKeys = ["memoryApiConfigId", "ttsVoice", "apiConfigId", "presetId"] as const;
 const listKeys = ["worldBookIds", "regexIds"] as const;
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -86,8 +90,8 @@ function compactCharacters(characters: BindingDocument["characters"]): BindingDo
 }
 
 export function setBindingField(
-  document: BindingDocument, scope: BindingScope, field: ManagedBindingField,
-  value: BindingSlot[ManagedBindingField],
+  document: BindingDocument, scope: BindingScope, field: BindingField,
+  value: BindingSlot[BindingField],
 ): BindingDocument {
   const update = (slot: BindingSlot): BindingSlot => {
     const next = { ...slot, [field]: value };

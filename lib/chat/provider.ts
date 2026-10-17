@@ -14,7 +14,8 @@ import {
   type CompletionUsage,
 } from "./request-diagnostics";
 
-export function completionUrl(baseUrl: string): string {
+/** `baseUrl` with `suffix` (an OpenAI-style endpoint path) added unless it already ends with it; the same safety rules for every endpoint. */
+export function endpointUrl(baseUrl: string, suffix: string): string {
   let url: URL;
   try {
     url = new URL(baseUrl.trim());
@@ -34,11 +35,10 @@ export function completionUrl(baseUrl: string): string {
       "Use HTTPS, or HTTP on localhost, without credentials, query parameters or a fragment.",
     );
   const path = url.pathname.replace(/\/+$/, "");
-  url.pathname = path.endsWith("/chat/completions")
-    ? path
-    : `${path}/chat/completions`;
+  url.pathname = path.endsWith(suffix) ? path : `${path}${suffix}`;
   return url.href;
 }
+export const completionUrl = (baseUrl: string) => endpointUrl(baseUrl, "/chat/completions");
 /**
  * Asks the model to answer without a reasoning phase. Only a background task whose reply is short and
  * structured should ask; the field is sent only to hosts known to define it (see `supportsThinkingSwitch`).
