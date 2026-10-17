@@ -11,9 +11,10 @@ const fresh = (limit?: number) => new VoiceCache(() => new IDBFactory(), limit);
 test("a clip is reused only for the same words, voice, model and service; the key is not part of it", async () => {
   const base = await voiceFingerprint("hello", "nova", config);
   assert.equal(base, await voiceFingerprint("hello", " nova ", config));
-  assert.equal(base, await voiceFingerprint("hello", "nova", { ...config, baseUrl: "https://tts.test/other/path" }), "same service origin");
+  assert.equal(base, await voiceFingerprint("hello", "nova", { ...config, baseUrl: `${config.baseUrl}/` }), "a trailing slash is the same endpoint");
   for (const other of [await voiceFingerprint("hello!", "nova", config), await voiceFingerprint("hello", "echo", config),
-    await voiceFingerprint("hello", "nova", { ...config, model: "tts-2" }), await voiceFingerprint("hello", "nova", { ...config, baseUrl: "https://other.test/v1" })])
+    await voiceFingerprint("hello", "nova", { ...config, model: "tts-2" }), await voiceFingerprint("hello", "nova", { ...config, baseUrl: "https://other.test/v1" }),
+    await voiceFingerprint("hello", "nova", { ...config, baseUrl: "https://tts.test/other/path" })])
     assert.notEqual(other, base);
 });
 

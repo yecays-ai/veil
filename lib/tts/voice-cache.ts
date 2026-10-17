@@ -1,4 +1,4 @@
-import { ttsConfigProblem, type TtsConfig } from "./config";
+import { speechUrl, ttsConfigProblem, type TtsConfig } from "./config";
 import { synthesizeSpeech } from "./speech";
 
 /**
@@ -20,9 +20,9 @@ const done = (tx: IDBTransaction): Promise<void> => new Promise((resolve, reject
 
 /** What the audio depends on. Any change here makes an old clip unusable. The key itself is not part of it. */
 export async function voiceFingerprint(text: string, voice: string, config: Pick<TtsConfig, "baseUrl" | "model">): Promise<string> {
-  let origin = config.baseUrl.trim();
-  try { origin = new URL(origin).origin; } catch { /* an invalid URL cannot be used for speech anyway */ }
-  const bytes = new TextEncoder().encode(JSON.stringify([text, voice.trim(), config.model.trim(), origin]));
+  let endpoint = config.baseUrl.trim();
+  try { endpoint = speechUrl(endpoint); } catch { /* an invalid URL cannot be used for speech anyway */ }
+  const bytes = new TextEncoder().encode(JSON.stringify([text, voice.trim(), config.model.trim(), endpoint]));
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
