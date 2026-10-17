@@ -120,6 +120,20 @@ function withDeadline<T>(ms: number, work: Promise<T>, abort: () => void, messag
   return Promise.race([work, expired]).finally(() => clearTimeout(timer));
 }
 
+/**
+ * The provider's own short error `type` or `code` (such as `invalid_request_error`), so a refusal can be told apart.
+ * Only a short token of letters, digits and `_ . -` is kept: free text such as `message` can echo a key or the prompt and is never read out.
+ */
+async function errorReason(response: Response, abort: () => void): Promise<string> {
+  try {
+    const text = await withDeadline(3_000, response.text(), abort, "", "idle");
+    const body = JSON.parse(text.slice(0, 4096)) as { error?: { type?: unknown; code?: unknown } };
+    for (const value of [body?.error?.code, body?.error?.type])
+      if ((typeof value === "string" || typeof value === "number") && /^[A-Za-z0-9_.-]{1,40}$/.test(String(value))) return String(value);
+  } catch { /* an empty, oversized or non-JSON body gives no reason */ }
+  return "";
+}
+
 export function createOpenAITextProvider(
   timeouts: { connectMs: number; idleMs: number } = { connectMs: MODEL_CONNECT_TIMEOUT_MS, idleMs: MODEL_IDLE_TIMEOUT_MS },
 ): TextProvider {
@@ -174,10 +188,12 @@ export function createOpenAITextProvider(
       );
     }
     // Never display/log response bodies: gateways may echo Authorization keys.
-    if (!response.ok)
+    if (!response.ok) {
+      const reason = await errorReason(response, cancelRequest);
       throw new ProviderError(
-        `API request failed (HTTP ${response.status}). Check your API settings.`, "http", response.status,
+        `API request failed (HTTP ${response.status}${reason ? `, ${reason}` : ""}). Check your API settings.`, "http", response.status,
       );
+    }
     if (response.headers.get("content-type")?.includes("application/json")) {
       let data: unknown;
     try {
