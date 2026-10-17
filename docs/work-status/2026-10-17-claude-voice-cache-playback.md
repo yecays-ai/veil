@@ -10,7 +10,7 @@ Character 语音第二次播放报 "The operation is not supported"：缓存读�
 
 ## 谁在改哪里
 
-Claude；分支 `fix/voice-cache-playback`；PR 见 PR 描述（创建后补链接）。
+Claude；分支 `fix/voice-cache-playback`；PR #251（https://github.com/yecays-ai/veil/pull/251）。
 
 ## 已完成
 
