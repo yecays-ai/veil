@@ -8,6 +8,12 @@ const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, r
   value.onerror = () => reject(new Error("Voice settings could not be read or written."));
 });
 
+/** A write is done when its transaction commits, not when the request succeeds: a quota error can still abort it. */
+const committed = (tx: IDBTransaction): Promise<void> => new Promise((resolve, reject) => {
+  tx.oncomplete = () => resolve();
+  tx.onerror = tx.onabort = () => reject(new Error("Voice settings could not be read or written."));
+});
+
 /** One row in its own database, on purpose outside backup, restore and the Text API list. */
 export class TtsConfigStorage {
   private database?: Promise<IDBDatabase>;
@@ -30,12 +36,16 @@ export class TtsConfigStorage {
   }
   async save(config: TtsConfig): Promise<TtsConfig> {
     const next = normalizeTtsConfig(config), db = await this.open();
-    await request(db.transaction(STORE, "readwrite").objectStore(STORE).put(next, KEY));
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(next, KEY);
+    await committed(tx);
     return next;
   }
   async clear(): Promise<void> {
     const db = await this.open();
-    await request(db.transaction(STORE, "readwrite").objectStore(STORE).delete(KEY));
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(KEY);
+    await committed(tx);
   }
 }
 export const browserTtsConfigStorage = new TtsConfigStorage();
