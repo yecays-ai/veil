@@ -128,6 +128,10 @@ export function memoryConversation(context: PromptRuntimeContext, preset: Preset
     recent: recentGroups.map((turn) => turn.filter((message) => !currentIds.has(message.id)).map(body)).filter((turn) => turn.length),
     earlier: history.filter((message) => !currentIds.has(message.id) && !recentIds.has(message.id)).map(body) };
 }
+/** The picture a user sent, as a turn field; the engine decides later which of these the model really gets. */
+function turnImages(message: ChatMessage): Pick<PromptTurn, "images"> {
+  return message.role === "user" && message.attachment?.kind === "image" && !message.recalled ? { images: [message.attachment.assetId] } : {};
+}
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
   const transfer = transferPromptContent(message, context.character.name);
   if (transfer) return messageHistoryContentWithBody(message, transfer);
@@ -173,7 +177,7 @@ export function resolvePresetMarker(
           : promptContent(message, context);
         const at = message.recalled?.at ?? message.createdAt;
         return { role: message.role as PromptTurn["role"], content: context.time
-          ? `${historyTimestamp(at, context.time.user.timezone)}\n${body}` : body };
+          ? `${historyTimestamp(at, context.time.user.timezone)}\n${body}` : body, ...turnImages(message) };
       });
       // Only a summary whose covered messages are still unchanged is ever shown.
       return validSummary(context.summary, context.currentMessages) ? [summaryTurn(context.summary), ...turns] : turns;
@@ -273,7 +277,7 @@ export function assembleChatPrompt(
   injectSelf();
   // Pending input is request ownership, not configurable Preset content.
   const pendingTurns = pendingMessages(context)
-    .map((message) => ({ role: message.role, content: promptContent(message, context) }));
+    .map((message): PromptTurn => ({ role: message.role, content: promptContent(message, context), ...turnImages(message) }));
   messages.push(...pendingTurns);
   for (const turn of pendingTurns)
     diagnostics.push({ identifier: "pending", role: turn.role, characterLength: turn.content.length });

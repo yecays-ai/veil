@@ -81,9 +81,11 @@ export async function exportStaticBackup(source: StaticBackupSource, metadata: S
     const path = `apiConfigs[${index}]`;
     if (!item || typeof item !== "object" || Array.isArray(item)) fail("invalid-source-data", path);
     const row = item as Record<string, unknown>;
-    if (Object.keys(row).some((key) => !["id", "name", "provider", "baseUrl", "model", "apiKey"].includes(key))) fail("unsupported-source-data", path);
+    if (Object.keys(row).some((key) => !["id", "name", "provider", "baseUrl", "model", "apiKey", "imageInput", "imageLimit"].includes(key))) fail("unsupported-source-data", path);
     // Whitelist only: do not serialize the credential and do not read another config's key.
-    return { id: row.id, name: row.name, provider: row.provider, baseUrl: row.baseUrl, model: row.model };
+    return { id: row.id, name: row.name, provider: row.provider, baseUrl: row.baseUrl, model: row.model,
+      ...(row.imageInput !== undefined ? { imageInput: row.imageInput } : {}),
+      ...(row.imageLimit !== undefined ? { imageLimit: row.imageLimit } : {}) };
   });
   const data: Record<BackupDomain, unknown> = {
     foundation: snapshot.documents.foundation, appearance: snapshot.documents.appearance,

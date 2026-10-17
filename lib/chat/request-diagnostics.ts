@@ -33,6 +33,12 @@ function sessionHash(sessionId?: string) {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+/** How many pictures a request carries and roughly how many bytes they are; never their content. */
+function imageSummary(messages: readonly PromptTurn[]) {
+  const urls = messages.flatMap((message) => message.imageData ?? []);
+  return urls.length ? { imageCount: urls.length, imageBytes: urls.reduce((total, url) => total + Math.floor((url.length - url.indexOf(",") - 1) * 3 / 4), 0) } : {};
+}
+
 export function completionStartSummary(context: CompletionRequestContext, model: string,
   messages: readonly PromptTurn[], stream: boolean, timestamp = new Date().toISOString()) {
   const roles: Record<string, number> = {};
@@ -51,6 +57,7 @@ export function completionStartSummary(context: CompletionRequestContext, model:
     roleCounts: roles,
     totalCharacters,
     estimatedInputTokens: Math.ceil(totalCharacters / 4),
+    ...imageSummary(messages),
     stream,
   };
 }
@@ -65,6 +72,7 @@ export function promptSummary(context: CompletionRequestContext, model: string,
     sections: sections.map((section) => ({ ...section })),
     totalMessageCount: messages.length,
     totalCharacters: messages.reduce((total, message) => total + message.content.length, 0),
+    ...imageSummary(messages),
     ...(memory ? { memory: { ids: [...memory.ids], characterLength: memory.characterLength, outcome: memory.outcome } } : {}),
   };
 }
