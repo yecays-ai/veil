@@ -103,6 +103,16 @@ test("safe regeneration sanitizes timestamps and preserves split turn identity",
   assert.deepEqual((await storage.readSession(session.id)).messages.map((m) => m.content), ["Question", "Hello", "World"]);
 });
 
+test("regeneration preserves Favorite only on the replaced first bubble", async () => {
+  const { storage, session, document, originals } = await setup();
+  await storage.setFavorite(originals[0].id, true);
+  const engine = createChatEngine(storage, async () => document, async function* () { yield "Replacement\n\nTail"; });
+  await engine.regenerateMessage(originals[0].id);
+  const saved = (await storage.readSession(session.id)).messages.filter((message) => message.role === "assistant");
+  assert.equal(saved[0].favorite, true);
+  assert.equal(saved[1].favorite, undefined);
+});
+
 test("remaining split bubbles retain replacement eligibility after their first bubble is deleted", async () => {
   const { storage, session, document, originals } = await setup();
   await storage.deleteMessages(session.id, [originals[0].id]);

@@ -1106,6 +1106,19 @@ export class ChatStorage {
     }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
   }
 
+  /** Saves or unsaves a message without changing conversation ordering or generated content. */
+  async setFavorite(id: string, favorite: boolean): Promise<ChatMessage> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const existing: ChatMessage | undefined = await request(table.get(id));
+      if (!existing || existing.role === "system" || existing.recalled) throw new Error("This message cannot be favorited.");
+      const next: ChatMessage = { ...existing };
+      if (favorite) next.favorite = true; else delete next.favorite;
+      await request(table.put(next));
+      return next;
+    }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
+  }
+
   async recallMessage(id: string, by: "user" | "assistant", scope?: PersistenceWriteScope, expectedSessionId?: string): Promise<ChatMessage> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
@@ -1137,6 +1150,7 @@ export class ChatStorage {
       delete next.attachment;
       delete next.voice;
       delete next.imageGen;
+      delete next.favorite;
       await request(table.put(next));
       await deleteAttachmentAssets(tx, [message]);
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
@@ -1914,11 +1928,14 @@ export class ChatStorage {
       delete firstBase.attachment;
       delete firstBase.voice;
       delete firstBase.imageGen;
+      const favorite = firstBase.favorite;
+      delete firstBase.favorite;
       const sentAt = Date.now();
       const generated: ChatMessage[] = entries.map((part, index) => ({
         ...firstBase, sentAt, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
         content: part.content, ...(part.sticker ? { sticker: part.sticker } : {}), ...(part.voice ? { voice: true as const } : {}), ...(part.imageGen ? { imageGen: part.imageGen } : {}), status: "complete", outcome, finishReason, error: undefined,
         attemptFor: undefined, attemptMode: undefined, failureStage: undefined,
+        ...(index === 0 && favorite ? { favorite: true } : {}),
         // Each reply records only its own request; a regenerated or continued part never inherits an older one.
         memoryRefs: memoryRefs?.slice(0, MEMORY_REF_LIMIT),
         order: first.order + index,

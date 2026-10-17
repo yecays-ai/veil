@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { IDBFactory } from "fake-indexeddb";
 import { JSDOM } from "jsdom";
 import { act, createElement } from "react";
@@ -78,24 +79,30 @@ async function checkUniverseList() {
       createElement(FoundationProvider, null, createElement(MessagesHome)))));
     const links = () => [...dom.window.document.querySelectorAll(".conversation-row")].map((el) => el.getAttribute("href"));
     await waitFor(() => links().length === 3 && dom.window.document.body.textContent!.includes("Ghost"));
-    const click = async (group: string, label: string) => {
-      const button = [...dom.window.document.querySelectorAll<HTMLButtonElement>(`[role="group"][aria-label="${group}"] button`)].find((b) => b.textContent === label)!;
-      assert.ok(button, `missing ${group} / ${label}`);
+    const click = async (_group: string, label: string) => {
+      const button = [...dom.window.document.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Conversation filters"] button')].find((b) => b.textContent === label)!;
+      assert.ok(button, `missing Conversation filters / ${label}`);
       await act(async () => button.click());
     };
-    await click("Universe", "Spider-Man"); assert.deepEqual(links(), ["/messages/a"]);
+    const filters = [...dom.window.document.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Conversation filters"] button')];
+    assert.deepEqual(filters.map((button) => button.textContent), ["All", "Private", "Groups", "Spider-Man", "Call of Duty"]);
+    assert.equal(dom.window.document.querySelectorAll('[role="group"]').length, 1, "all filters share one wrapping row");
+    assert.match(readFileSync("app/messages/chat.css", "utf8"), /Conversation filters\"] button \{[^}]*white-space:\s*normal/);
+    const pressed = (label: string) => filters.find((button) => button.textContent === label)!.getAttribute("aria-pressed");
+    await click("", "Private"); assert.equal(pressed("Private"), "true");
+    await click("", "Spider-Man"); assert.equal(pressed("Private"), "true", "type remains selected while universe narrows the list");
+    assert.deepEqual(links(), ["/messages/a"]);
     // A hidden world's new message still refreshes storage and sorting.
     rows = rows.map((r) => r.id === "session-b" ? { ...r, updatedAt: 50, lastMessagePreview: "Ghost new message", unreadCount: 1 } : r);
     await act(async () => { listener!({ domain: "messages", sessionId: "session-b" }); await settle(); });
     assert.deepEqual(links(), ["/messages/a"]);
-    await click("Universe", "All"); assert.equal(links()[0], "/messages/b"); assert.equal(links().length, 3);
+    await click("", "All"); assert.equal(links()[0], "/messages/b"); assert.equal(links().length, 3);
     assert.match(dom.window.document.body.textContent!, /Ghost new message/);
-    await click("Universe", "Call of Duty"); assert.equal(links().length, 2);
-    await click("Conversation type", "Private"); assert.deepEqual(links(), ["/messages/b"]);
-    await click("Conversation type", "Groups"); assert.deepEqual(links(), ["/messages/group/group"]);
-    await click("Universe", "Spider-Man"); assert.equal(links().length, 0);
-    await click("Universe", "All"); assert.deepEqual(links(), ["/messages/group/group"]);
-    await click("Conversation type", "All"); assert.equal(links().length, 3);
+    await click("", "Call of Duty"); assert.equal(links().length, 2);
+    await click("", "Private"); assert.deepEqual(links(), ["/messages/b"]);
+    await click("", "Groups"); assert.deepEqual(links(), ["/messages/group/group"]);
+    await click("", "Spider-Man"); assert.equal(links().length, 0);
+    await click("", "All"); assert.equal(links().length, 3);
     // A new page starts at All and reloads the same globally stored sessions.
     await act(async () => root!.unmount());
     root = createRoot(dom.window.document.getElementById("root")!);
@@ -115,4 +122,4 @@ async function checkUniverseList() {
   }
 }
 
-test("mounted global Chats filters Universe and type independently, updates hidden worlds, and reopens at All", checkUniverseList);
+test("mounted global Chats combines both filter sets into one wrapping row, updates hidden worlds, and reopens at All", checkUniverseList);

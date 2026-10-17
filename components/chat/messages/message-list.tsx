@@ -25,7 +25,7 @@ type GroupedMessage = { message: ChatMessage; showTimestamp: boolean; isGroupSta
 
 /** The message timeline is presentation-only; ChatRoom retains session, overlay and generation coordination. */
 export function MessageList({
-  characterId, groupedMessages, messages, selectedIds, activeMessageId, highlightedMessageId, multiSelect, typing, typingBeforeId,
+  characterId, groupedMessages, messages, selectedIds, activeMessageId, highlightedMessageId, transcribedMessageId, multiSelect, typing, typingBeforeId,
   typingIndicator, character, userName, streamOnline, generationActive, regexGroups, lastVisibleMessageId, lifeMode,
   onOpenActions, onToggleSelected, onClearHighlight, onRegenerate,
   onPointerDownMessage, onContextMenuMessage, onTransferAction, onGiftAction,
@@ -36,6 +36,7 @@ export function MessageList({
   selectedIds: ReadonlySet<string>;
   activeMessageId?: string;
   highlightedMessageId: string | null;
+  transcribedMessageId: string | null;
   multiSelect: boolean;
   typing: boolean;
   typingBeforeId?: string;
@@ -110,8 +111,8 @@ export function MessageList({
                   {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
                   {message.attachment?.kind === "image" && <ImageMessage message={message} multiSelect={multiSelect} />}
                   {message.imageGen && !message.attachment && <ImageRequest message={message} multiSelect={multiSelect} />}
-                  {message.attachment?.kind === "audio" && <AudioMessage message={message} multiSelect={multiSelect} />}
-                  {message.voice && message.status === "complete" && <VoiceMessage key={message.content} message={message} text={bodyText} characterId={characterId} multiSelect={multiSelect} />}
+                  {message.attachment?.kind === "audio" && <AudioMessage message={message} multiSelect={multiSelect} showText={transcribedMessageId === message.id} />}
+                  {message.voice && message.status === "complete" && <VoiceMessage key={message.content} message={message} text={bodyText} characterId={characterId} multiSelect={multiSelect} showText={transcribedMessageId === message.id} />}
                   {message.sticker || message.attachment || message.imageGen || (message.voice && message.status === "complete") ? null : bodyText}
                 </p>
               </div>}

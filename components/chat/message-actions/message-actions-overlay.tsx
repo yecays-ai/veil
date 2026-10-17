@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, CircleCheck, Copy, Pencil, Plus, Quote, RotateCcw, Trash2, Undo2, type LucideIcon } from "lucide-react";
+import { Brain, CircleCheck, Copy, Download, FileText, Pencil, Plus, Quote, RotateCcw, Star, Trash2, Undo2, type LucideIcon } from "lucide-react";
 import { useEffect, useState, type RefObject } from "react";
 import { canReactTo } from "../../../lib/chat/reactions";
 import { getMessageActions } from "../../../lib/chat/message-action-registry";
@@ -12,7 +12,7 @@ import { ReactionBar, ReactionPickerSheet } from "../reaction-bar";
 
 export function MessageActionsOverlay({ activeMessage, messages, generationActive, revealPending, actionMenuRef, reactionBarRef,
   reactionPickerOpen, onClose, onPickReaction, onOpenReactionPicker, onCopy, onEdit, onQuote, onMemory, onSelect, onDelete,
-  onRegenerate, onRecall, onRunRegisteredAction }: {
+  onRegenerate, onRecall, onRunRegisteredAction, onTranscribe, onFavorite, onDownload }: {
   activeMessage: ChatMessage | null;
   messages: readonly ChatMessage[];
   generationActive: boolean;
@@ -32,6 +32,9 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
   onRegenerate: () => void;
   onRecall: () => void;
   onRunRegisteredAction: (id: string) => void;
+  onTranscribe: () => void;
+  onFavorite: () => void;
+  onDownload: () => void;
 }) {
   const [recallNow, setRecallNow] = useState(activeMessage?.sentAt ?? 0);
   const recallCandidate = activeMessage?.role === "user" && activeMessage.status === "sent" && !generationActive;
@@ -44,6 +47,7 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
   }, [recallCandidate, activeMessage?.id, activeMessage?.sentAt]);
   if (!activeMessage) return null;
   const recallAllowed = canRecallMessage(activeMessage, "user", recallNow) && !generationActive;
+  const voiceMessage = activeMessage.voice === true || activeMessage.attachment?.kind === "audio";
   return <>
     <button className="chat-context-backdrop" data-message-overlay="" aria-label="Close message actions" onClick={onClose} />
     {canReactTo(activeMessage) && <ReactionBar barRef={reactionBarRef} current={activeMessage.reactions?.user}
@@ -52,15 +56,24 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
     <div ref={actionMenuRef} tabIndex={-1} data-message-overlay="" className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
       style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(event) => event.stopPropagation()}>
       <div className="chat-message-actions-grid">
+        {voiceMessage ? <>
+          <Action label="Transcribe" icon={FileText} onClick={onTranscribe} />
+          <Action label={activeMessage.favorite ? "Unfavorite" : "Favorite"} icon={Star} onClick={onFavorite} />
+          <Action label="Download" icon={Download} onClick={onDownload} />
+          <Action label="Delete" icon={Trash2} danger onClick={onDelete} />
+          {activeMessage.role === "user" && <Action label="Recall" icon={Undo2} disabled={!recallAllowed} onClick={onRecall} />}
+        </> : <>
         <Action label="Copy" icon={Copy} disabled={hasGeneratedContent(activeMessage)} onClick={onCopy} />
         <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || isFixedMessage(activeMessage) || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onEdit} />
         <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onQuote} />
         <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={onMemory} />
         <Action label="Select" icon={CircleCheck} onClick={onSelect} />
-        <Action label="Recall" icon={Undo2} disabled={!recallAllowed} onClick={onRecall} />
+        {activeMessage.role === "user" ? <Action label="Recall" icon={Undo2} disabled={!recallAllowed} onClick={onRecall} />
+          : activeMessage.role === "assistant" ? <Action label={activeMessage.favorite ? "Unfavorite" : "Favorite"} icon={Star} onClick={onFavorite} /> : null}
         <Action label="Delete" icon={Trash2} danger onClick={onDelete} />
         <Action label="Regenerate" icon={RotateCcw} disabled={!canRegenerateTurn(messages, activeMessage.id) || generationActive || revealPending} onClick={onRegenerate} />
         {getMessageActions(activeMessage).map((action) => <Action key={action.id} label={action.label} icon={Plus} onClick={() => onRunRegisteredAction(action.id)} />)}
+        </>}
       </div>
     </div>
   </>;

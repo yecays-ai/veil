@@ -146,11 +146,12 @@ export function MessagesHome() {
     <RootAppHeader title="" className="messages-header" rightAction={<button className="messages-add-button" type="button" aria-label="New chat" title="New chat" aria-expanded={menuOpen} onClick={() => setMenuOpen((current) => !current)}><CirclePlus /></button>} />
     <h1 className="messages-large-title">Chats</h1>
     <label className="messages-search"><Search /><input type="search" aria-label="Search chats" placeholder="Search chats..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-    <div className="messages-filters" role="group" aria-label="Conversation type">{(["all", "private", "groups"] as const).map((item) =>
-      <button key={item} type="button" aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
-    <div className="messages-filters" role="group" aria-label="Universe">
-      <button type="button" aria-pressed={universeFilter === "all"} onClick={() => setUniverseFilter("all")}>All</button>
-      {allUniverses(document).map((u) => <button key={u.id} type="button" aria-pressed={universeFilter === u.id} onClick={() => setUniverseFilter(u.id)}>{u.name}</button>)}
+    <div className="messages-filters" role="group" aria-label="Conversation filters">
+      {(["all", "private", "groups"] as const).map((item) =>
+        <button key={item} type="button" aria-pressed={filter === item && (item !== "all" || universeFilter === "all")}
+          onClick={() => { setFilter(item); if (item === "all") setUniverseFilter("all"); }}>{item[0].toUpperCase() + item.slice(1)}</button>)}
+      {allUniverses(document).map((u) => <button key={u.id} type="button" aria-pressed={universeFilter === u.id}
+        onClick={() => setUniverseFilter(u.id)}>{u.name}</button>)}
     </div>
     {error && <p role="alert" className="chat-notice">{error}</p>}
     {!loaded ? !error && <p className="chat-notice">Loading conversations…</p> : visible.length > 0 &&

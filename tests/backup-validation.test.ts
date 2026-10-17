@@ -9,7 +9,8 @@ const validate = (fixture: Fixture) => validateBackupPackage(JSON.stringify(fixt
 const failure = (code: string) => (error: unknown) => error instanceof BackupValidationError && error.code === code;
 
 test("full simulated package preserves identities, ordering, remarks, Presence and explicit Binding semantics", async () => {
-  const data = backupData(), fixture = await packageFixture(data);
+  const data = backupData(); data.chat.messages[1].favorite = true;
+  const fixture = await packageFixture(data);
   const savedFiles = [...fixture.files].map(([path, bytes]) => [path, [...bytes]]);
   const savedManifest = structuredClone(fixture.manifest);
   const first = await validate(fixture), second = await validate(fixture);
@@ -19,6 +20,12 @@ test("full simulated package preserves identities, ordering, remarks, Presence a
   assert.deepEqual(fixture.manifest, savedManifest);
   assert.deepEqual([...fixture.files].map(([path, bytes]) => [path, [...bytes]]), savedFiles);
   assert.equal(Object.hasOwn(first.data.apiConfigs[0], "apiKey"), false);
+});
+
+test("backup validation rejects a recalled message that still carries Favorite", async () => {
+  const data = backupData();
+  data.chat.messages[1] = { ...data.chat.messages[1], content: "", favorite: true, recalled: { at: 10, by: "assistant" } };
+  await assert.rejects(validate(await packageFixture(data)), failure("invalid-data"));
 });
 
 test("empty environment retains absent documents instead of materializing defaults", async () => {
@@ -301,3 +308,4 @@ test("generation is always listed first among unexpected fields, even past the f
   await assert.rejects(validate(await packageFixture(data)), (e: unknown) =>
     e instanceof BackupValidationError && e.detail === "unexpected-field:generation,a1,a2,a3,a4");
 });
+

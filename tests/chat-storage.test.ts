@@ -33,6 +33,20 @@ test("concurrent direct opens reuse one conversation for a Character", async () 
   assert.equal((await first.listSessions()).length, 1);
 });
 
+test("message favorites persist and can be cleared without altering message content", async () => {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const session = await storage.openSession("peter");
+  const sent = await storage.send(session.id, "A saved voice transcript");
+  await storage.setFavorite(sent.id, true);
+  const saved = (await storage.readSession(session.id)).messages[0];
+  assert.equal(saved.favorite, true);
+  assert.equal(saved.content, sent.content);
+  await storage.setFavorite(sent.id, false);
+  const cleared = (await storage.readSession(session.id)).messages[0];
+  assert.equal(cleared.favorite, undefined);
+  assert.equal(cleared.content, sent.content);
+});
+
 test("scoped notifications avoid unrelated session, background and profile reads", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const first = await storage.openSession("peter");
