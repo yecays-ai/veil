@@ -102,13 +102,15 @@ export function TtsSettings() {
               onChange={(e) => update({ region: e.target.value === "cn" ? "cn" as MinimaxRegion : undefined })}>
               {MINIMAX_REGIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </Select>
-            <span className="settings-hint">Mainland China and international accounts are separate services with separate keys. Pick the one your key was made in.</span>
+            <span className="settings-hint">Mainland China and international accounts are separate services with separate keys. Pick the one your key was made in. MiniMax speech is made by VEIL’s server, which uses your key for that one request only and does not keep it or the text.</span>
           </label>
         )}
-        <label>{provider === "openai" ? "Base URL" : "Base URL override (advanced, usually empty)"}
-          <Input type="url" required={provider === "openai"} placeholder={provider === "openai" ? "https://api.example.com/v1" : provider === "minimax" ? (MINIMAX_REGIONS.find((item) => item.id === draft.region) ?? MINIMAX_REGIONS[0]).host : DEFAULT_TTS_BASE_URL[provider]}
-            value={draft.baseUrl} disabled={!saved || !!busy} onChange={(e) => update({ baseUrl: e.target.value })} />
-        </label>
+        {provider !== "minimax" && (
+          <label>{provider === "openai" ? "Base URL" : "Base URL override (advanced, usually empty)"}
+            <Input type="url" required={provider === "openai"} placeholder={provider === "openai" ? "https://api.example.com/v1" : DEFAULT_TTS_BASE_URL[provider]}
+              value={draft.baseUrl} disabled={!saved || !!busy} onChange={(e) => update({ baseUrl: e.target.value })} />
+          </label>
+        )}
         <label>API Key
           <Input type="password" required autoComplete="new-password" value={draft.apiKey} disabled={!saved || !!busy}
             onChange={(e) => update({ apiKey: e.target.value })} />
