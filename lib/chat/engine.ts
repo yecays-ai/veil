@@ -31,7 +31,7 @@ import { canRecallMessage } from "./recall";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
 import { characterActionApplier, splitActions, VOICE_TEXT_MAX, type ActionApplier } from "../presence/actions";
-import { takeVoiceMarker } from "./attachment";
+import { takeVoiceMarker, unwrapVoiceMarkers } from "./attachment";
 import { characterMayReact, reactionTarget, userReactionNotes } from "./reactions";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
@@ -349,7 +349,7 @@ export function createChatEngine(
         const visible = splitActions(rawContent).text;
         // The silence tag is held back, so a Character that stays quiet never flashes text.
         if (proactive && maybeSilence(visible)) continue;
-        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(visible, true), status: "streaming" },
+        await storage.updateReply(assistant.id, { content: sanitizeHistoryTimestamps(unwrapVoiceMarkers(visible), true), status: "streaming" },
           undefined, attempt.id, controller.signal);
       }
       controller.signal.throwIfAborted();

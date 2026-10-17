@@ -10,16 +10,16 @@
 
 ## 谁在改哪里
 
-Claude；分支 `fix/voice-marker-echo`；PR 见 PR 页面。改动：`lib/chat/attachment.ts`（`takeVoiceMarker`）、`lib/chat/engine.ts`（回复收尾处）、`tests/chat-voice.test.ts`。
+Claude；分支 `fix/voice-marker-echo`；PR #255（https://github.com/yecays-ai/veil/pull/255）。改动：`lib/chat/attachment.ts`（`takeVoiceMarker`）、`lib/chat/engine.ts`（回复收尾处）、`tests/chat-voice.test.ts`。
 
 ## 已完成
 
-- 检查：`chat-voice` 11（含新增 1 项：有语音、无语音、已有语音动作三种情况）、`chat-user-voice` 11、`voice-message-ui` 4 项通过；`npm run typecheck` 通过；改动文件 eslint 无输出；未运行 build 与全量 `npm test`。
+- 检查：`chat-voice` 12（新增 2 项：有语音、无语音、已有语音动作、多个标记；流式草稿只显示话）、`chat-user-voice` 11、`voice-message-ui` 4 项通过；`npm run typecheck` 通过；改动文件 eslint 无输出；未运行 build 与全量 `npm test`。
 
 ## 尚未验证
 
 - 原因是推断：#250 让历史里的角色语音写成该标记，模型照着写进了文字；没有拿到当时发给模型的提示词，也没有在真机复现。
-- 流式输出时标记可能短暂出现，完成后才被取出。
+- 流式输出时完整的标记只显示里面的话（中途停止或失败也不留方括号）；还没写完的半个标记会短暂出现。
 
 ## 下一步
 
