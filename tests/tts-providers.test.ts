@@ -93,6 +93,12 @@ test("relay: it refuses anything but a well-formed request, another site's page,
   assert.deepEqual(await send(auth, { ...good, text: "" }), { status: 400, calls: 0 });
   assert.deepEqual(await send(auth, { ...good, text: "x".repeat(5000) }), { status: 400, calls: 0 });
   assert.deepEqual(await send(auth, "not json"), { status: 400, calls: 0 });
+  assert.deepEqual(await send(auth, JSON.stringify({ ...good, text: "hi", pad: "x".repeat(40_000) })), { status: 400, calls: 0 }, "an oversized body is refused");
+  let pulled = 0;
+  const endless = new ReadableStream<Uint8Array>({ pull(controller) { pulled++; controller.enqueue(new Uint8Array(8192)); } });
+  const streamed = await relayMinimaxSpeech(new Request("https://veil.test/api/tts/minimax", { method: "POST", headers: auth, body: endless, duplex: "half" } as RequestInit), { fetchImpl: (async () => { throw new Error("no call"); }) as unknown as typeof fetch });
+  assert.equal(streamed.status, 400);
+  assert.ok(pulled < 20, "reading stops at the limit instead of consuming the whole stream");
   assert.deepEqual(await send({ ...auth, Origin: "https://other.test" }, good), { status: 403, calls: 0 });
   assert.equal((await send({ ...auth, Origin: "https://veil.test" }, good)).status, 200);
 });

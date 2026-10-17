@@ -15,7 +15,7 @@ export type RelayFailure = { category: "config" | "auth" | "rate-limit" | "http"
 const STATUS: Record<RelayFailure["category"], number> = { config: 400, auth: 401, "rate-limit": 429, http: 502, timeout: 504, network: 502, "invalid-audio": 502 };
 const fail = (failure: RelayFailure) => Response.json(failure, { status: STATUS[failure.category], headers: { "Cache-Control": "no-store" } });
 
-async function readBounded(response: Response, limit: number): Promise<Uint8Array | null> {
+async function readBounded(response: Pick<Response, "headers" | "body">, limit: number): Promise<Uint8Array | null> {
   const declared = Number(response.headers.get("content-length"));
   if (Number.isFinite(declared) && declared > limit) { void response.body?.cancel().catch(() => {}); return null; }
   const reader = response.body?.getReader();
@@ -49,10 +49,9 @@ type Input = { region: MinimaxRegion; model: string; voice: string; text: string
 async function parse(request: Request): Promise<Input | null> {
   const key = /^Bearer (\S+)$/.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
   if (!key || key.length > 1024) return null;
-  const declared = Number(request.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > MAX_REQUEST_BYTES) return null;
   let raw: unknown;
-  try { const body = await request.text(); if (body.length > MAX_REQUEST_BYTES) return null; raw = JSON.parse(body); } catch { return null; }
+  // Read in pieces and stop at the limit, so a body without a length cannot be buffered whole.
+  try { const bytes = await readBounded(request, MAX_REQUEST_BYTES); if (!bytes) return null; raw = JSON.parse(new TextDecoder().decode(bytes)); } catch { return null; }
   if (!raw || typeof raw !== "object") return null;
   const { region, model, voice, text } = raw as Record<string, unknown>;
   if (region !== "global" && region !== "cn") return null;

@@ -10,7 +10,7 @@ MiniMax TTS 改走 VEIL 服务端 relay（待审查）。
 
 ## 谁在改哪里
 
-Claude；分支 `feat/minimax-relay`；PR 见 PR 页面；涉及 `app/api/tts/minimax/route.ts`、`lib/tts/minimax-relay.ts`、`lib/tts/speech.ts`、`lib/tts/config.ts`、`components/settings/tts-settings.tsx`、`tests/tts-providers.test.ts`、`tests/voice-cache.test.ts`。
+Claude；分支 `feat/minimax-relay`；PR #246（https://github.com/yecays-ai/veil/pull/246）；涉及 `app/api/tts/minimax/route.ts`、`lib/tts/minimax-relay.ts`、`lib/tts/speech.ts`、`lib/tts/config.ts`、`components/settings/tts-settings.tsx`、`tests/tts-providers.test.ts`、`tests/voice-cache.test.ts`。
 
 ## 已完成
 
