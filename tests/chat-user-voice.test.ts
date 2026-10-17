@@ -143,6 +143,15 @@ test("transcription makes one multipart request with the model, and returns the 
   assert.equal((seen[0].init.headers as Record<string, string>).Authorization, "Bearer sk-test");
 });
 
+test("a recording that cannot be read makes no request and fails as a TtsError", async () => {
+  let calls = 0;
+  const fetchImpl = (async () => { calls++; return new Response("{}"); }) as typeof fetch;
+  const broken = clip();
+  broken.arrayBuffer = () => Promise.reject(new Error("unreadable"));
+  await assert.rejects(transcribeAudio(config, broken, new AbortController().signal, { fetchImpl }), (e) => e instanceof TtsError && e.category === "invalid-audio");
+  assert.equal(calls, 0);
+});
+
 test("transcription fails without a speech-to-text model, on a rejected key, on empty text and on a stop", async () => {
   const never = (async () => { throw new Error("must not be called"); }) as typeof fetch;
   await assert.rejects(transcribeAudio({ ...config, sttModel: "" }, clip(), new AbortController().signal, { fetchImpl: never }), (e) => e instanceof TtsError && e.category === "config");
