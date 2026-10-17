@@ -69,7 +69,7 @@ test("the engine saves an image message that interrupts an unrevealed reply; the
   const sentBefore = (await storage.readSession(session.id)).messages;
   const last = sentBefore.at(-1)!;
   const image = await engine.sendImage(session.id, { blob: blobOf("image/png", 1234), width: 30, height: 20 }, undefined, { discardUnrevealed: [last.id] });
-  assert.deepEqual(image.attachment && [image.attachment.width, image.attachment.height, image.attachment.bytes], [30, 20, 1234]);
+  assert.deepEqual(image.attachment && [(image.attachment as { width: number }).width, (image.attachment as { height: number }).height, image.attachment.bytes], [30, 20, 1234]);
   const { messages } = await storage.readSession(session.id);
   assert.equal(messages.some((m) => m.id === last.id), false, "the unshown reply is dropped like for a sticker");
   assert.equal(messages.at(-1)!.id, image.id);
@@ -107,8 +107,8 @@ test("Photos in the + panel picks several pictures; each is shrunk then sent as 
 });
 
 test("the message list draws the stored picture, opens it large with Save, and leaves selection mode to select", () => {
-  assert.match(timeline, /message\.attachment && <ImageMessage/);
-  assert.match(timeline, /message\.sticker \|\| message\.attachment \? null/);
+  assert.match(timeline, /message\.attachment\?\.kind === "image" && <ImageMessage/);
+  assert.match(timeline, /message\.sticker \|\| message\.attachment \|\| message\.imageGen \|\| \(message\.voice && message\.status === "complete"\) \? null : bodyText/);
   assert.match(viewer, /readMessageAttachment\(sessionId, messageId\)/);
   assert.match(viewer, /URL\.revokeObjectURL/);
   assert.match(viewer, /download=\{name\}/);

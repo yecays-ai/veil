@@ -43,7 +43,7 @@ export function ImageViewer({ url, name, onClose }: { url: string; name: string;
 
 /** An image message's picture. Its box has the picture's proportions before the bytes load, so the list does not jump. */
 export function ImageMessage({ message, multiSelect }: { message: ChatMessage; multiSelect: boolean }) {
-  const attachment = message.attachment;
+  const attachment = message.attachment?.kind === "image" ? message.attachment : undefined;
   const url = useAttachmentUrl(message.sessionId, message.id, attachment?.assetId);
   const [open, setOpen] = useState(false);
   if (!attachment) return null;

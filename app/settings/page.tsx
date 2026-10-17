@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { Archive, BookOpen, Brain, GitBranch, Regex, SlidersHorizontal, Volume2 } from "lucide-react";
+import { Archive, BookOpen, Brain, GitBranch, Regex, SlidersHorizontal, Image as ImageIcon, Volume2 } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -27,6 +27,13 @@ export default function Page() {
             description: "Speech service and Character voices",
             href: "/settings/tts",
             icon: <Volume2 size={20} />,
+          },
+          {
+            id: "images",
+            label: "Images",
+            description: "Image service for pictures a Character sends",
+            href: "/settings/images",
+            icon: <ImageIcon size={20} />,
           },
         ]}
       />

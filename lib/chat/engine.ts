@@ -40,8 +40,11 @@ import { applyRegex } from "../regex-engine";
 import { loadWeatherState } from "../weather";
 import type { Coordinates, WeatherState } from "../participant-config";
 import { logPromptSummary, type CompletionSource, type CompletionRequestContext } from "./request-diagnostics";
-import { browserStickerStorage, resolveStickerChoice, stickerMenu, type StickerChoice } from "./sticker-storage";
+import { browserStickerStorage, resolveStickerChoice, stickerMenu, takeBareStickerCode, type StickerChoice } from "./sticker-storage";
 import type { MessageSticker } from "./sticker-message";
+import { browserTtsConfigStorage } from "../tts/config-storage";
+import { ttsConfigProblem } from "../tts/config";
+import { browserImageSource, recordImageFailure, startImageJob, type ImageSource } from "../imagegen/job";
 import { startGenerationPersistence, type GenerationPersistenceOutcome } from "./persistence-diagnostics";
 
 /** Records when a Character's reply was committed, for Last Seen. Resolves once saved. */
@@ -88,6 +91,10 @@ export type StickerSource = {
   menu(characterId: string): Promise<StickerChoice[]>;
   resolve(characterId: string, choices: readonly StickerChoice[], code: string): Promise<MessageSticker | null>;
 };
+/** Speech counts as set up when this device has a usable Voice config; without one the Character is never offered a voice bubble. */
+export const browserVoiceAvailable = (): Promise<boolean> => typeof window === "undefined" ? Promise.resolve(false)
+  : browserTtsConfigStorage.load().then((config) => ttsConfigProblem(config) === null);
+
 export const browserStickerSource: StickerSource = {
   menu: async (characterId) => typeof window === "undefined" ? [] : stickerMenu(await browserStickerStorage.load(), characterId),
   resolve: async (characterId, choices, code) =>
@@ -131,8 +138,13 @@ export function createChatEngine(
   memories: MemoryLoader = loadMemory,
   states: StateLoader = loadCharacterState,
   stickerSource: StickerSource = browserStickerSource,
+  voiceAvailable: () => Promise<boolean> = browserVoiceAvailable,
+  images: ImageSource = browserImageSource,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
+  const makePicture = (message: ChatMessage, character: Character) => startImageJob(message,
+    { appearance: character.appearance, avatar: character.avatar }, images,
+    (id, picture, prompt) => storage.completeGeneratedImage(id, picture.blob, picture.width, picture.height, prompt));
   const recentlyRecalledOwn = new Map<string, { messageId: string; content: string }>();
   let stopSequence = 0;
   const lastStop = new Map<string, number>();
@@ -273,7 +285,14 @@ export function createChatEngine(
         ? await awaited(stickerSource.menu(character.characterId).catch((): StickerChoice[] => []), controller.signal) : [];
       const recallCandidates = ownState && source !== "continue" ? batch.messages.filter((message) => canRecallMessage(message, "assistant", now().getTime()))
         .map(({ id, content }) => ({ id, content })) : [];
-      const offered = ownState ? { ...ownState, ...(choices.length ? { stickers: choices } : {}), ...(recallCandidates.length ? { recallCandidates } : {}) } : ownState;
+      // A voice bubble is offered only where speech is set up, and not twice in a row, like a sticker.
+      const canVoice = !!ownState && source !== "continue" && !previousReply?.voice
+        && await awaited(voiceAvailable().catch(() => false), controller.signal);
+      // A picture is offered only where an image service is set up, and not twice in a row.
+      const canImage = !!ownState && source !== "continue" && !previousReply?.imageGen && !previousReply?.attachment
+        && await awaited(images.config().then((config) => !!config, () => false), controller.signal);
+      const offered = ownState ? { ...ownState, ...(choices.length ? { stickers: choices } : {}), ...(recallCandidates.length ? { recallCandidates } : {}),
+        ...(canVoice ? { canVoice: true } : {}), ...(canImage ? { canImage: true } : {}) } : ownState;
       const memory = await awaited(memoryRead, controller.signal);
       await storage.generationStage(sessionId, attempt.id, "provider");
       if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
@@ -318,18 +337,28 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       await storage.generationStage(sessionId, attempt.id, "finalizing");
       controller.signal.throwIfAborted();
-      const { text: replyText, actions } = splitActions(rawContent);
+      const split = splitActions(rawContent);
+      const actions = split.actions;
+      let replyText = split.text;
       // The Character's choice is checked against the library as it is now; an unknown or no longer bound code is dropped.
-      const sticker = actions?.sticker && choices.length
+      let sticker = actions?.sticker && choices.length
         ? await awaited(stickerSource.resolve(character.characterId, choices, actions.sticker).catch(() => null), controller.signal) : null;
-      if (proactive && !sticker && isSilence(replyText)) {
+      // No sticker came through the action line: a code alone on a line of the text, one offered this turn, is the same choice.
+      const bare = !sticker && choices.length ? takeBareStickerCode(replyText, choices) : null;
+      if (bare) {
+        const found = await awaited(stickerSource.resolve(character.characterId, choices, bare.code).catch(() => null), controller.signal);
+        if (found) { sticker = found; replyText = bare.text; }
+      }
+      const voice = canVoice && actions?.voice ? actions.voice : undefined;
+      const image = canImage && actions?.image ? actions.image : undefined;
+      if (proactive && !sticker && !voice && !image && isSilence(replyText)) {
         // The attempt stays counted; nothing is left in the conversation and nothing is retried.
         await storage.discardReply(sessionId, attempt.id, assistant.id, before!);
         return null;
       }
       const completed = await storage.finalizeReply(assistant.id, sanitizeHistoryTimestamps(replyText), activation.nextState,
         (part) => applyRegex(part, regexGroups, "assistant", "stored", { character: character.name, user: document.user.name }),
-        attempt.id, finishReason, controller.signal, undefined, memory.refs, sticker ?? undefined);
+        attempt.id, finishReason, controller.signal, undefined, memory.refs, sticker ?? undefined, voice, image);
       persisted = "committed";
       // Last Seen only: a failure here can neither undo the committed reply nor delay it.
       void Promise.resolve().then(() => recordSent(target.characterId, now().getTime()))
@@ -338,6 +367,10 @@ export function createChatEngine(
       const { reactToUser, ...ownChanges } = actions ?? {};
       const recallTarget = actions?.recallMessageId ? batch.messages.find((message) => message.id === actions.recallMessageId && message.role === "assistant") : undefined;
       delete ownChanges.sticker; // chat data, saved with the reply itself
+      delete ownChanges.voice;
+      delete ownChanges.image;
+      // The picture is made after the reply is committed and is not part of the attempt: stopping or failing it never touches the reply.
+      for (const placeholder of completed) if (placeholder.imageGen) void makePicture(placeholder, character);
       // A change to its own day names a code from this reply's list; only a code it was offered is swapped for a row ID.
       if (ownChanges.life) {
         const choice = offered?.lifeChoices?.find((item) => item.code === ownChanges.life!.target);
@@ -422,6 +455,25 @@ export function createChatEngine(
       options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
       await discardUnrevealed(sessionId, options?.discardUnrevealed);
       return storage.sendImage(sessionId, image.blob, image.width, image.height, quoteMessageId, options?.interject === true);
+    },
+    sendVoice: async (sessionId: string, voice: { blob: Blob; durationMs: number; transcript: string }, quoteMessageId?: string,
+      options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
+      await discardUnrevealed(sessionId, options?.discardUnrevealed);
+      return storage.sendVoice(sessionId, voice.blob, voice.durationMs, voice.transcript, quoteMessageId, options?.interject === true);
+    },
+    /** Asks again for a picture that was not made, optionally with new words; the placeholder shows the result. */
+    retryImage: async (sessionId: string, messageId: string, prompt?: string) => {
+      try {
+        const { session, messages } = await storage.readSession(sessionId);
+        let message = messages.find((item) => item.id === messageId);
+        if (!session || !message?.imageGen || message.attachment) return;
+        if (prompt !== undefined && prompt.trim() !== message.imageGen.prompt) {
+          if (!await storage.setImagePrompt(messageId, prompt)) return;
+          message = { ...message, imageGen: { ...message.imageGen, prompt: prompt.trim() } };
+        }
+        const character = (await foundation()).characters.find((item) => item.characterId === session.characterId);
+        if (character) void makePicture(message, character);
+      } catch (error) { recordImageFailure(messageId, error); } // the caller does not wait for this, so the placeholder shows it
     },
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */

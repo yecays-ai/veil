@@ -13,6 +13,9 @@ import { MessageFooter } from "../message-footer";
 import { QuoteBubble } from "../quote-bubble";
 import { StickerImage } from "../sticker-image";
 import { ImageMessage } from "./image-message";
+import { AudioMessage } from "./audio-message";
+import { ImageRequest } from "./image-request";
+import { VoiceMessage } from "./voice-message";
 import { TransferCard, TransferResultCard } from "../transfers/transfer-card";
 import type { TransferAction } from "../../../lib/chat/transfer";
 import { GiftCard, GiftResultCard } from "../gifts/gift-card";
@@ -22,11 +25,12 @@ type GroupedMessage = { message: ChatMessage; showTimestamp: boolean; isGroupSta
 
 /** The message timeline is presentation-only; ChatRoom retains session, overlay and generation coordination. */
 export function MessageList({
-  groupedMessages, messages, selectedIds, activeMessageId, highlightedMessageId, multiSelect, typing, typingBeforeId,
+  characterId, groupedMessages, messages, selectedIds, activeMessageId, highlightedMessageId, multiSelect, typing, typingBeforeId,
   typingIndicator, character, userName, streamOnline, generationActive, regexGroups, lastVisibleMessageId, lifeMode,
   onOpenActions, onToggleSelected, onClearHighlight, onRegenerate,
   onPointerDownMessage, onContextMenuMessage, onTransferAction, onGiftAction,
 }: {
+  characterId: string;
   groupedMessages: readonly GroupedMessage[];
   messages: readonly ChatMessage[];
   selectedIds: ReadonlySet<string>;
@@ -59,6 +63,9 @@ export function MessageList({
       const visibleText = visibleReplyText(message, streamOnline);
       const parsed = message.role === "assistant" ? parseQuotedReply(visibleText) : { content: visibleText, preview: null };
       const quotePreview = message.quote?.preview ?? parsed.preview;
+      const bodyText = message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
+        ? applyRegex(parsed.content, regexGroups, message.role, "display", { character: character.name, user: userName }) : parsed.content) ||
+        (message.status === "streaming" && generationActive ? "…" : "");
       const selected = selectedIds.has(message.id);
       const highlighted = highlightedMessageId === message.id;
       const badges = reactionBadges(message);
@@ -93,7 +100,7 @@ export function MessageList({
                   {badges.map((emoji, index) => <span key={index} className="chat-reaction-badge" data-emoji={emoji}
                     data-side={index === 0 && message.reactions?.character ? "character" : "user"} role="img" aria-label={`Reaction ${emoji}`} />)}
                 </span>}
-                <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : message.attachment ? " chat-bubble-image" : ""}`}
+                <p className={`chat-bubble chat-bubble-role-${message.role} chat-markdown${message.sticker ? " chat-bubble-sticker" : message.attachment?.kind === "image" ? " chat-bubble-image" : ""}`}
                   onAnimationEnd={() => { if (highlighted) onClearHighlight(message.id); }}
                   onPointerDown={onPointerDownMessage}
                   onContextMenu={onContextMenuMessage}
@@ -101,10 +108,11 @@ export function MessageList({
                   {quotePreview !== null && quotePreview !== undefined && <QuoteBubble preview={quotePreview}
                     author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
                   {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
-                  {message.attachment && <ImageMessage message={message} multiSelect={multiSelect} />}
-                  {message.sticker || message.attachment ? null : message.status === "error" || message.status === "cancelled" ? "Generation attempt" : (parsed.content && (message.role === "user" || message.role === "assistant")
-                    ? applyRegex(parsed.content, regexGroups, message.role, "display", { character: character.name, user: userName }) : parsed.content) ||
-                    (message.status === "streaming" && generationActive ? "…" : "")}
+                  {message.attachment?.kind === "image" && <ImageMessage message={message} multiSelect={multiSelect} />}
+                  {message.imageGen && !message.attachment && <ImageRequest message={message} multiSelect={multiSelect} />}
+                  {message.attachment?.kind === "audio" && <AudioMessage message={message} multiSelect={multiSelect} />}
+                  {message.voice && message.status === "complete" && <VoiceMessage key={message.content} message={message} text={bodyText} characterId={characterId} multiSelect={multiSelect} />}
+                  {message.sticker || message.attachment || message.imageGen || (message.voice && message.status === "complete") ? null : bodyText}
                 </p>
               </div>}
             <MessageFooter messageId={message.id} />

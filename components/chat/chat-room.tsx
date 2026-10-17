@@ -25,6 +25,7 @@ import {
   selectMessageRange,
 } from "../../lib/chat/message-actions";
 import { ChatPlusPanel } from "./chat-plus-panel";
+import { VoiceRecorderPanel } from "./voice-recorder-panel";
 import { StickerPanel } from "./sticker-panel";
 import { StickerManager } from "./sticker-manager";
 import type { MessageSticker } from "../../lib/chat/sticker-message";
@@ -179,7 +180,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [generating, setGenerating] = useState(false);
   const generationActive = generating || !!session?.generation;
   const [error, setError] = useState("");
-  const [panel, setPanel] = useState<null | "plus" | "stickers">(null);
+  const [panel, setPanel] = useState<null | "plus" | "stickers" | "voice">(null);
   const [stickerManagerOpen, setStickerManagerOpen] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
   const [failedDraft, setFailedDraft] = useState<{ sessionId: string; content: string; quote: ChatMessage | null; editVersion: number } | null>(null);
@@ -574,6 +575,24 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       if (mounted.current && (current === sessionId || current === undefined)) { sendingLock.current = false; setSending(false); }
     }
   }
+  /** A recorded voice message: one message with the recording and its words; the quote, if any, goes with it. */
+  async function sendVoice(recording: { blob: Blob; durationMs: number }, transcript: string) {
+    if (!session || session.characterId !== characterId || sendingLock.current || loadError) throw new Error("The voice message was not sent.");
+    const interject = session.lifeMode === true && (generationActive || chatEngine.isGenerating(session.id));
+    if (!interject && (generationActive || chatEngine.isGenerating(session.id))) throw new Error("Wait for the reply to finish first.");
+    const sessionId = session.id, quote = quotingMessage;
+    sendingLock.current = true;
+    setSending(true);
+    setError("");
+    try {
+      nearBottom.current = { characterId, sessionId, value: true };
+      await chatEngine.sendVoice(sessionId, { ...recording, transcript }, quote?.id, { interject, discardUnrevealed: hiddenReplyIds(sessionId) });
+      if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === quote?.id ? null : current);
+    } finally {
+      const current = currentSessionId.current;
+      if (mounted.current && (current === sessionId || current === undefined)) { sendingLock.current = false; setSending(false); }
+    }
+  }
   /** Each picked picture is shrunk and sent as its own message; the quote, if any, goes with the first. */
   async function sendImages(files: readonly File[]) {
     if (!files.length || !session || session.characterId !== characterId || sendingLock.current || loadError) return;
@@ -787,6 +806,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {!framePublished && loadingNotice && <p className="chat-notice" role="status">{loadingNotice}</p>}
         {empty && <p className="chat-empty-state">No messages yet</p>}
         {framePublished && <MessageList
+          characterId={characterId}
           groupedMessages={groupedMessages}
           messages={messages}
           selectedIds={selectedIds}
@@ -907,8 +927,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {/* The + panel stays up behind the system picker; the picker closing (a choice or a cancel) puts the composer back. */}
         <input ref={photoInput} hidden type="file" multiple accept={ATTACHMENT_IMAGE_MIMES.join(",")} aria-label="Choose photos"
           onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; setPanel(null); void sendImages(files); }} />
-        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onPhotos={() => photoInput.current?.click()} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onPhotos={() => photoInput.current?.click()} onVoice={() => setPanel("voice")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
           onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
+        {panel === "voice" && <VoiceRecorderPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError}
+          onSend={sendVoice} onClose={() => setPanel(null)} />}
         {panel === "stickers" && <StickerPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>
