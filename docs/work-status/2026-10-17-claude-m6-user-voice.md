@@ -2,7 +2,7 @@
 
 更新人：Claude
 更新时间：2026-10-17T07:10Z（UTC）
-发现范围：2026-10-17T07:05Z 查看 yecays-ai/veil 远端；M5（#238）尚未合并，本分支暂叠在 M5 之上，合并后会改基到 main。没有其它打开的 PR，无重叠路径。
+发现范围：2026-10-17T07:15Z 查看 yecays-ai/veil 远端，base 为 origin/main 6ddf1a9f618df4d7477e66404126be4fc6013fe3（含 M1–M5）；没有其它打开的 PR，无重叠路径。
 
 ## 当前任务
 
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 feat/m6-user-voice；PR：见本分支在 GitHub 上的 PR（开 PR 后补链接）。涉及：lib/chat/attachment.ts（`MessageAttachment` 变成 image / audio 两种）、lib/chat/{storage,engine,message-kind,voice-recorder(新)}.ts、lib/tts/{config,transcribe(新)}.ts、components/chat/{voice-recorder-panel(新),chat-plus-panel,chat-room}.tsx、components/chat/messages/{audio-message(新),message-list,image-message,voice-message}.tsx、components/settings/tts-settings.tsx、app/messages/chat.css、tests/{chat-user-voice,voice-recorder-ui}.test.ts（新）及两处断言更新。
+Claude；分支 feat/m6-user-voice；PR：https://github.com/yecays-ai/veil/pull/239。涉及：lib/chat/attachment.ts（`MessageAttachment` 变成 image / audio 两种）、lib/chat/{storage,engine,message-kind,voice-recorder(新)}.ts、lib/tts/{config,transcribe(新)}.ts、components/chat/{voice-recorder-panel(新),chat-plus-panel,chat-room}.tsx、components/chat/messages/{audio-message(新),message-list,image-message,voice-message}.tsx、components/settings/tts-settings.tsx、app/messages/chat.css、tests/{chat-user-voice,voice-recorder-ui}.test.ts（新）及两处断言更新。
 
 ## 做法
 
@@ -30,4 +30,4 @@ Claude；分支 feat/m6-user-voice；PR：见本分支在 GitHub 上的 PR（开
 
 ## 下一步
 
-M5 合并后改基到 main、开 PR；之后做 M7（AI 生图）。
+合并后做 M7（AI 生图）。
