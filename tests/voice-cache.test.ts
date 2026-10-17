@@ -104,3 +104,13 @@ test("a MiniMax Character voice is requested once; the second play comes from th
   assert.equal((await voiceAudio(source, cache, { synthesize, locks: undefined })).size, 3);
   assert.deepEqual(urls, ["https://api.minimaxi.com/v1/t2a_v2"], "one request to MiniMax, none for the replay");
 });
+
+test("a cached clip comes back as an in-memory copy with the same bytes and an audio type", async () => {
+  const cache = fresh();
+  await cache.put("m1", "fp", new Blob([new Uint8Array([1, 2, 3])]));
+  const saved = await cache.get("m1", "fp");
+  assert.deepEqual([...new Uint8Array(await saved!.arrayBuffer())], [1, 2, 3]);
+  assert.equal(saved!.type, "audio/mpeg", "an untyped stored clip is played as mp3");
+  await cache.put("m2", "fp", clip(4, 9));
+  assert.equal((await cache.get("m2", "fp"))?.type, "audio/mpeg");
+});

@@ -28,6 +28,14 @@ export async function voiceFingerprint(text: string, voice: string, config: Pick
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/**
+ * A clip read back from IndexedDB is a file-backed blob; iOS Safari can refuse to play one ("The operation is not supported").
+ * Copying it into memory gives the player the same kind of blob a freshly made clip is.
+ */
+async function playable(stored: Blob): Promise<Blob> {
+  return new Blob([await stored.arrayBuffer()], { type: stored.type || "audio/mpeg" });
+}
+
 export class VoiceCache {
   private database?: Promise<IDBDatabase>;
   constructor(private factory: () => IDBFactory = () => window.indexedDB, private limit = VOICE_CACHE_LIMIT_BYTES) {}
@@ -51,7 +59,7 @@ export class VoiceCache {
     if (row.fingerprint !== fingerprint) { store.delete(messageId); await done(tx); return null; }
     store.put({ ...row, usedAt: Date.now() });
     await done(tx);
-    return row.blob;
+    return playable(row.blob);
   }
   /** Stores a clip, then drops the least recently played ones until the cache fits its cap. */
   async put(messageId: string, fingerprint: string, blob: Blob): Promise<void> {
