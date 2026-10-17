@@ -222,3 +222,44 @@ test("stickers cannot be tapped while a reply is generating (outside Life Mode) 
   assert.match(room, /<StickerPanel disabled=\{\(generationActive && session\?\.lifeMode !== true\) \|\| sending \|\| !!loadError\}/);
   assert.match(readFileSync("components/chat/sticker-panel.tsx", "utf8"), /disabled=\{disabled\} onClick/);
 });
+
+test("a code alone on a line of the text, offered this turn, becomes the sticker and leaves the text", async () => {
+  const app = await setup();
+  const messages = await app.ask("hi", "Hello there.\nS02");
+  const replies = assistants(messages);
+  assert.deepEqual(replies.map((message) => message.content), ["Hello there.", "[你发送了一个表情包：蜘蛛侠｜贴贴]"]);
+  assert.equal(replies[1].sticker?.packId, "p2");
+  assert.ok(replies.every((message) => !/S02/.test(message.content.replace(/\[你发送了一个表情包[^\]]*\]/, ""))));
+  const only = await setup();
+  const alone = assistants(await only.ask("hi", "S01"));
+  assert.equal(alone.length, 1);
+  assert.equal(alone[0].sticker?.packId, "p1");
+});
+
+test("a bare code that was not offered, or is not a line of its own, stays as written", async () => {
+  const app = await setup();
+  let messages = await app.ask("one", "Text.\nS77");
+  assert.deepEqual(assistants(messages).map((message) => [message.content, message.sticker]), [["Text.\nS77", undefined]]);
+  messages = await app.ask("two", "编号 S01 不是它。\nS01是第一个");
+  assert.ok(assistants(messages).slice(1).every((message) => !message.sticker && message.content.includes("S01")));
+  const none = await setup(() => emptyStickerDocument());
+  messages = await none.ask("x", "Text.\nS01");
+  assert.deepEqual(assistants(messages).map((message) => [message.content, message.sticker]), [["Text.\nS01", undefined]]);
+});
+
+test("a sticker in the action line is the only one: a bare code beside it is not sent twice or removed", async () => {
+  const app = await setup();
+  const messages = await app.ask("hi", `Hi.\nS01\n${tag('{"sticker":"S02"}')}`);
+  const replies = assistants(messages);
+  assert.equal(replies.filter((message) => message.sticker).length, 1);
+  assert.equal(replies.find((message) => message.sticker)?.sticker?.packId, "p2");
+  assert.equal(replies[0].content, "Hi.\nS01");
+});
+
+test("a bare code is checked against the library at save time like any choice", async () => {
+  let current = doc;
+  const app = await setup(() => doc, () => current);
+  current = setPackCharacter(doc, "p1", "simulated-character", false);
+  const messages = await app.ask("hi", "Text.\nS01");
+  assert.deepEqual(assistants(messages).map((message) => [message.content, message.sticker]), [["Text.\nS01", undefined]]);
+});
