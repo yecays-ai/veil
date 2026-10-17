@@ -1,4 +1,4 @@
-import { MINIMAX_RELAY_PATH, providerOf, speechEndpoint, ttsConfigProblem, TTS_PROVIDERS, TTS_TEXT_LIMIT, type TtsConfig, type TtsProvider } from "./config";
+import { providerOf, speechEndpoint, ttsConfigProblem, TTS_PROVIDERS, TTS_TEXT_LIMIT, type TtsConfig, type TtsProvider } from "./config";
 
 /** `cors`: the service answers (a plain probe reached it) but the browser would not let this request through. `network`: it could not be reached at all. */
 export type TtsErrorCategory = "config" | "network" | "cors" | "auth" | "rate-limit" | "http" | "timeout" | "invalid-audio";
@@ -124,31 +124,32 @@ async function openaiSpeech(call: Call): Promise<Blob> {
 }
 
 /**
- * MiniMax goes through VEIL's own server (`minimax-relay.ts`), never straight from the browser. The relay does the
- * `t2a_v2` call and answers with the MP3, or with a category (and MiniMax's status or code) and nothing else.
- * Preview and Character voice messages both end up here.
+ * MiniMax `t2a_v2`, called straight from the browser like the other providers. The answer is JSON: `base_resp` carries
+ * MiniMax's own status code and `data.audio` the MP3 as hex. Only the numeric code is kept; `status_msg` is never shown.
  */
 async function minimaxSpeech(call: Call): Promise<Blob> {
-  const relay = { provider: "minimax" as const, host: "VEIL server" };
   let response: Response;
   try {
-    response = await post(call, MINIMAX_RELAY_PATH, { Authorization: `Bearer ${call.config.apiKey.trim()}` },
-      { region: call.config.region ?? "global", model: call.config.model.trim(), voice: call.voice, text: call.text });
-  } catch { call.stop.throwIfAborted(); throw new TtsError(call.timedOut() ? "timeout" : "network", call.timedOut() ? "timeout" : "network", undefined, relay); }
-  if (!response.ok) {
-    let failure: { category?: unknown; status?: unknown; code?: unknown } | null = null;
-    try { failure = await response.json(); } catch { /* not the relay's answer */ }
-    const info = infoOf(call, typeof failure?.code === "number" ? failure.code : undefined);
-    const status = typeof failure?.status === "number" ? failure.status : undefined;
-    const category = failure?.category;
-    if (category === "auth" || category === "rate-limit" || category === "timeout" || category === "network" || category === "invalid-audio") throw new TtsError(category, category, undefined, info);
-    if (category === "http") throw new TtsError("http", "http", status, info);
-    if (category === "config") throw new TtsError("The voice request was not accepted. Check the Model, voice ID and Region.", "config");
-    // Not the relay's own answer (the route missing or the platform refusing): say it was VEIL's server.
-    throw new TtsError("http", "http", response.status, { ...info, host: relay.host });
+    response = await post(call, speechEndpoint(call.config), { Authorization: `Bearer ${call.config.apiKey.trim()}` },
+      { model: call.config.model.trim(), text: call.text, stream: false, output_format: "hex", voice_setting: { voice_id: call.voice },
+        audio_setting: { format: "mp3", sample_rate: 32000, bitrate: 128000, channel: 1 } });
+  } catch { throw await failedFetch(call); }
+  if (!response.ok) throw httpFailure(call, response.status);
+  const bytes = await readBounded(response, TTS_MAX_AUDIO_BYTES * 2 + 64 * 1024, call);
+  let body: { data?: { audio?: unknown } | null; base_resp?: { status_code?: unknown } } | null;
+  try { body = JSON.parse(new TextDecoder().decode(bytes)); } catch { throw invalidAudio(call); }
+  const code = body?.base_resp?.status_code;
+  if (typeof code === "number" && code !== 0) {
+    if (code === 1004) throw new TtsError("auth", "auth", undefined, infoOf(call, code));
+    if (code === 1002 || code === 1039) throw new TtsError("rate-limit", "rate-limit", undefined, infoOf(call, code));
+    if (code === 1001) throw new TtsError("timeout", "timeout", undefined, infoOf(call, code));
+    throw new TtsError("http", "http", undefined, infoOf(call, code));
   }
-  const bytes = await readBounded(response, TTS_MAX_AUDIO_BYTES, call);
-  return audioOf(new Blob([bytes], { type: "audio/mpeg" }), call);
+  const hex = body?.data?.audio;
+  if (typeof hex !== "string" || !hex || hex.length % 2 || hex.length > TTS_MAX_AUDIO_BYTES * 2 || !/^[0-9a-f]+$/i.test(hex)) throw invalidAudio(call, typeof code === "number" ? code : undefined);
+  const audio = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < audio.length; i++) audio[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return audioOf(new Blob([audio], { type: "audio/mpeg" }), call);
 }
 
 /** ElevenLabs `text-to-speech/{voice_id}`: the answer is the MP3 itself. */
