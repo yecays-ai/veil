@@ -76,12 +76,14 @@ export const attachmentPreview = (attachment: Pick<MessageAttachment, "kind">) =
 export const UNTRANSCRIBED_VOICE_CONTENT = "[用户发送了一条语音消息]";
 
 /**
- * How a message reads to the model. A voice message from the user is marked as one, so the model knows it was spoken
- * and not typed; the stored `content` (the transcript) is unchanged. Without words yet it says so and invents none.
+ * How a message reads to the model. A voice message is marked as one, from the user and from the Character alike, so the
+ * model knows it was spoken and not typed; the stored `content` (the transcript) is unchanged. A user voice without
+ * words yet says so and invents none.
  */
 export function modelFacingContent(
-  message: { role: string; attachment?: { kind: string; untranscribed?: true } }, text: string,
+  message: { role: string; voice?: true; attachment?: { kind: string; untranscribed?: true } }, text: string,
 ): string {
+  if (message.role === "assistant" && message.voice) return `[你发送了一条语音消息：${text}]`;
   if (message.role !== "user" || message.attachment?.kind !== "audio") return text;
   return message.attachment.untranscribed ? "[用户发送了一条语音消息，其中的话还没有转成文字]" : `[用户发送了一条语音消息：${text}]`;
 }

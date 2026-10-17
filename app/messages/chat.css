@@ -1342,11 +1342,13 @@ html[data-messages-nav="back"]::view-transition-new(messages-route) { animation:
 
 /* Voice message control row. Transcripts are opened from the message action menu. */
 .chat-voice { display: flex; flex-direction: column; gap: 6px; min-width: 160px; }
-.chat-voice-row { display: flex; align-items: center; gap: 8px; min-height: 22px; }
-.chat-bubble .chat-voice-button { flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0 !important; border: 0 !important; border-radius: 0; background: transparent !important; color: #a7a7ad !important; cursor: pointer; }
+/* One text line tall (the bubble's own 1.5 line-height), so a voice bubble is as high as a one-line message. */
+.chat-voice-row { display: flex; align-items: center; gap: 8px; height: 1.5em; }
+/* `min-height: 0` beats the generic `.chat-app button` 40px, which made the whole bubble a thick card. */
+.chat-bubble .chat-voice-button { flex: none; display: grid; place-items: center; width: 20px; height: 20px; min-height: 0; padding: 0 !important; border: 0 !important; border-radius: 0; background: transparent !important; color: #a7a7ad !important; cursor: pointer; }
 .chat-voice-button svg { width: 16px; height: 16px; }
 .chat-voice-button svg.lucide-play { fill: currentColor; stroke-width: 1; }
-.chat-voice-wave { display: inline-flex; align-items: center; gap: 3px; height: 18px; }
+.chat-voice-wave { display: inline-flex; align-items: center; gap: 3px; height: 16px; }
 .chat-voice-wave i { display: block; width: 3px; height: 40%; border-radius: 2px; background: currentColor; opacity: 0.45; }
 .chat-voice-wave i:nth-child(2n) { height: 75%; }
 .chat-voice-wave i:nth-child(3) { height: 100%; }
