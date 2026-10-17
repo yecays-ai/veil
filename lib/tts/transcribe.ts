@@ -2,6 +2,24 @@ import { sttSettings, transcriptionUrl, type TtsConfig } from "./config";
 import { TtsError, ttsErrorMessage } from "./speech";
 
 export const STT_TIMEOUT_MS = 60_000;
+const PROBE_MS = 8000;
+
+/**
+ * A request that never got an answer: a browser reports "blocked by CORS" and "could not connect" the same way, so one key-less,
+ * body-less no-cors request to the service's origin tells them apart. It runs once, only after a failure.
+ */
+async function unreachable(baseUrl: string, fetchImpl: typeof fetch, stop: AbortSignal): Promise<TtsError> {
+  const url = new URL(transcriptionUrl(baseUrl)), info = { provider: "openai" as const, host: url.host };
+  const probe = new AbortController(), abort = () => probe.abort(), timer = setTimeout(abort, PROBE_MS);
+  stop.addEventListener("abort", abort, { once: true });
+  try {
+    await fetchImpl(`${url.origin}/`, { method: "GET", mode: "no-cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal: probe.signal });
+    return new TtsError("cors", "cors", undefined, info);
+  } catch {
+    stop.throwIfAborted();
+    return new TtsError("network", "network", undefined, info);
+  } finally { clearTimeout(timer); stop.removeEventListener("abort", abort); }
+}
 
 /**
  * One OpenAI-compatible `/audio/transcriptions` request for a recording the person just made: no retry, no cache.
@@ -11,6 +29,7 @@ export async function transcribeAudio(
   config: TtsConfig, recording: Blob, signal: AbortSignal,
   options: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
 ): Promise<string> {
+  const fetchImpl = options.fetchImpl ?? fetch;
   const stt = sttSettings(config);
   if ("problem" in stt) throw new TtsError(stt.problem, "config");
   const network = new AbortController();
@@ -24,13 +43,13 @@ export async function transcribeAudio(
     form.append("model", stt.model);
     let response: Response;
     try {
-      response = await (options.fetchImpl ?? fetch)(transcriptionUrl(stt.baseUrl), {
+      response = await fetchImpl(transcriptionUrl(stt.baseUrl), {
         method: "POST", signal: network.signal, credentials: "omit", referrerPolicy: "no-referrer",
         headers: { Authorization: `Bearer ${stt.apiKey}` }, body: form,
       });
     } catch {
       signal.throwIfAborted();
-      throw timedOut ? new TtsError("timeout", "timeout") : new TtsError("network", "network");
+      throw timedOut ? new TtsError("timeout", "timeout") : await unreachable(stt.baseUrl, fetchImpl, signal);
     }
     if (!response.ok) throw new TtsError("http", response.status === 401 || response.status === 403 ? "auth"
       : response.status === 429 ? "rate-limit" : "http", response.status);
@@ -50,6 +69,9 @@ export async function transcribeAudio(
 export function sttErrorMessage(error: unknown): string {
   if (!(error instanceof TtsError)) return "Could not write out the words. Try again.";
   if (error.category === "config") return error.message;
+  const host = error.info?.host;
+  if (host && error.category === "network") return `The speech-to-text request failed and the service (${host}) did not answer a plain check either. Check your connection and the Speech-to-text Base URL.`;
+  if (host && error.category === "cors") return `The speech-to-text request failed although the service (${host}) answered a plain check, most likely because this browser blocked it (CORS).`;
   return ttsErrorMessage(error).replace("voice service", "speech-to-text service").replace("Voice settings", "Voice settings (Speech-to-text)")
     .replace("make the voice", "write out the words").replace("playable audio", "any words");
 }
