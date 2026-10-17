@@ -1374,16 +1374,35 @@ export class ChatStorage {
     }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null).then((sessionId) => sessionId !== null);
   }
   /** Changes what a picture that has not been made yet asks for (the retry's new words). False when it is no longer waiting. */
-  setImagePrompt(messageId: string, prompt: string): Promise<boolean> {
+  async setImagePrompt(messageId: string, prompt: string, scope?: PersistenceWriteScope): Promise<boolean> {
     const text = prompt.trim();
-    if (!text || Array.from(text).length > IMAGE_PROMPT_MAX) return Promise.reject(new Error(`Describe the picture in ${IMAGE_PROMPT_MAX} characters or fewer.`));
+    if (!text || Array.from(text).length > IMAGE_PROMPT_MAX) throw new Error(`Describe the picture in ${IMAGE_PROMPT_MAX} characters or fewer.`);
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(messageId)), ["messages"]);
+      if (!target) return false;
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(target.sessionId, owned);
+        if (!view.session) return false;
+        // Like an edit, the new words replace what a Memory source or the summary saw of this message.
+        return invalidateChatSources(this.sourceMemory!, view.session, view.messages.filter((m) => m.id === messageId && m.content !== generatedImageContent(text)),
+          () => this.setImagePrompt(messageId, text, owned), owned);
+      });
+    }
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("messages");
       const message: ChatMessage | undefined = await request(table.get(messageId));
       if (!message || !message.imageGen || message.attachment || message.recalled) return null;
-      await request(table.put({ ...message, content: generatedImageContent(text), imageGen: { ...message.imageGen, prompt: text } }));
+      const content = generatedImageContent(text);
+      await request(table.put({ ...message, content, imageGen: { ...message.imageGen, prompt: text } }));
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(message.sessionId));
+      // A summary that covers this message would keep the old words, so it is discarded and rebuilt later.
+      const staleSummary = !!session?.summary && message.content !== content && message.order <= session.summary.throughOrder;
+      if (session && (session.lastMessageId === messageId || staleSummary))
+        await request(sessions.put({ ...session, ...(session.lastMessageId === messageId ? { lastMessagePreview: listPreview({ ...message, content }) } : {}),
+          ...(staleSummary ? { summary: undefined } : {}) }));
       return message.sessionId;
-    }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null).then((sessionId) => sessionId !== null);
+    }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null, undefined, scope).then((sessionId) => sessionId !== null);
   }
   /** A recording from the user: saved like a sent message with its bytes as an asset it owns; `content` is its transcript, which must not be empty. */
   sendVoice(sessionId: string, blob: Blob, durationMs: number, transcript: string, quoteMessageId?: string, interject = false): Promise<ChatMessage> {

@@ -32,4 +32,4 @@ Claude；分支 feat/m7-ai-image；PR：https://github.com/yecays-ai/veil/pull/2
 
 ## 下一步
 
-开 PR，合并后同步测试链接，整理验收清单。
+等 CodeRabbit 与 CI 通过后合并，然后同步测试链接，整理验收清单。

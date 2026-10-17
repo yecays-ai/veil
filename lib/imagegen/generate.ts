@@ -6,6 +6,8 @@ export class ImageGenError extends Error {
 }
 export const IMAGEGEN_TIMEOUT_MS = 180_000;
 export const IMAGEGEN_MAX_BYTES = 25 * 1024 * 1024;
+/** The JSON that carries a picture as base64 is about a third larger than the picture. */
+const IMAGEGEN_MAX_RESPONSE_BYTES = Math.ceil(IMAGEGEN_MAX_BYTES * 4 / 3) + 1024 * 1024;
 
 /** What the person is told. Response bodies are never shown or logged: gateways may echo the key. */
 export function imageGenErrorMessage(error: unknown): string {
@@ -37,6 +39,27 @@ function bytesFromBase64(value: string): Blob {
   const binary = atob(value), bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index);
   return new Blob([bytes]);
+}
+
+/** The body of a response, read in pieces so that one larger than `limit` is dropped without being held whole. */
+async function readBounded(response: Response, limit: number): Promise<Uint8Array<ArrayBuffer>> {
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > limit) { void response.body?.cancel().catch(() => {}); throw new ImageGenError("invalid-image", "invalid-image"); }
+  const reader = response.body?.getReader();
+  if (!reader) throw new ImageGenError("invalid-image", "invalid-image");
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) { void reader.cancel().catch(() => {}); throw new ImageGenError("invalid-image", "invalid-image"); }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return bytes;
 }
 
 /**
@@ -80,7 +103,8 @@ export async function generateImage(
     if (!response.ok) throw new ImageGenError("http", response.status === 401 || response.status === 403 ? "auth"
       : response.status === 429 ? "rate-limit" : "http", response.status);
     let body: unknown;
-    try { body = await response.json(); } catch { throw failed(); }
+    try { body = JSON.parse(new TextDecoder().decode(await readBounded(response, IMAGEGEN_MAX_RESPONSE_BYTES))); }
+    catch (error) { if (error instanceof ImageGenError) throw error; throw failed(); }
     const first = (body as { data?: { b64_json?: unknown; url?: unknown }[] } | null)?.data?.[0];
     let blob: Blob | null = null;
     if (typeof first?.b64_json === "string" && first.b64_json) {
@@ -89,7 +113,7 @@ export async function generateImage(
       try {
         const picture = await fetchImpl(first.url, { method: "GET", signal: network.signal, credentials: "omit", referrerPolicy: "no-referrer" });
         if (!picture.ok) throw new ImageGenError("http", "http", picture.status);
-        blob = await picture.blob();
+        blob = new Blob([await readBounded(picture, IMAGEGEN_MAX_BYTES)]);
       } catch (error) { if (error instanceof ImageGenError) throw error; throw failed(); }
     }
     if (!blob || !blob.size || blob.size > IMAGEGEN_MAX_BYTES) throw new ImageGenError("invalid-image", "invalid-image");

@@ -44,7 +44,7 @@ import { browserStickerStorage, resolveStickerChoice, stickerMenu, type StickerC
 import type { MessageSticker } from "./sticker-message";
 import { browserTtsConfigStorage } from "../tts/config-storage";
 import { ttsConfigProblem } from "../tts/config";
-import { browserImageSource, startImageJob, type ImageSource } from "../imagegen/job";
+import { browserImageSource, recordImageFailure, startImageJob, type ImageSource } from "../imagegen/job";
 import { startGenerationPersistence, type GenerationPersistenceOutcome } from "./persistence-diagnostics";
 
 /** Records when a Character's reply was committed, for Last Seen. Resolves once saved. */
@@ -455,15 +455,17 @@ export function createChatEngine(
     },
     /** Asks again for a picture that was not made, optionally with new words; the placeholder shows the result. */
     retryImage: async (sessionId: string, messageId: string, prompt?: string) => {
-      const { session, messages } = await storage.readSession(sessionId);
-      let message = messages.find((item) => item.id === messageId);
-      if (!session || !message?.imageGen || message.attachment) return;
-      if (prompt !== undefined && prompt.trim() !== message.imageGen.prompt) {
-        if (!await storage.setImagePrompt(messageId, prompt)) return;
-        message = { ...message, imageGen: { ...message.imageGen, prompt: prompt.trim() } };
-      }
-      const character = (await foundation()).characters.find((item) => item.characterId === session.characterId);
-      if (character) void makePicture(message, character);
+      try {
+        const { session, messages } = await storage.readSession(sessionId);
+        let message = messages.find((item) => item.id === messageId);
+        if (!session || !message?.imageGen || message.attachment) return;
+        if (prompt !== undefined && prompt.trim() !== message.imageGen.prompt) {
+          if (!await storage.setImagePrompt(messageId, prompt)) return;
+          message = { ...message, imageGen: { ...message.imageGen, prompt: prompt.trim() } };
+        }
+        const character = (await foundation()).characters.find((item) => item.characterId === session.characterId);
+        if (character) void makePicture(message, character);
+      } catch (error) { recordImageFailure(messageId, error); } // the caller does not wait for this, so the placeholder shows it
     },
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */

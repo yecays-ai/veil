@@ -35,6 +35,11 @@ export function imageJobStatus(messageId: string): string {
 }
 /** Stops every running job and forgets failures: the page is going away or the data is being replaced. */
 export function stopImageJobs() { for (const controller of running.values()) controller.abort(); running.clear(); failures.clear(); notify(); }
+/** Keeps what went wrong before a job could start (reading the message, saving the new words) where the placeholder shows it. */
+export function recordImageFailure(messageId: string, error: unknown) {
+  failures.set(messageId, error instanceof Error && !(error instanceof ImageGenError) ? error.message : imageGenErrorMessage(error));
+  notify();
+}
 export function stopImageJob(messageId: string) { running.get(messageId)?.abort(); }
 
 /** A reference picture only from a stored picture (a data URL): nothing is fetched from the network for it. */

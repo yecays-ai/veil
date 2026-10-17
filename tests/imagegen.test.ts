@@ -11,7 +11,7 @@ import { BackupValidationError } from "../lib/backup/format";
 import { createChatEngine } from "./chat-engine-fixture";
 import { backupData, packageFixture } from "./backup-fixture";
 import { ImageGenConfigStorage, imageGenConfigProblem, normalizeImageGenConfig } from "../lib/imagegen/config";
-import { generateImage, ImageGenError, sniffImageType } from "../lib/imagegen/generate";
+import { generateImage, IMAGEGEN_MAX_BYTES, ImageGenError, sniffImageType } from "../lib/imagegen/generate";
 import { imageJobStatus, pictureRequest, referencePicture, startImageJob, stopImageJobs, type ImageSource } from "../lib/imagegen/job";
 import type { TextProvider } from "../lib/chat/provider";
 import type { ChatMessage } from "../lib/chat/types";
@@ -295,4 +295,42 @@ test("a backup keeps a waiting picture request and refuses a malformed one", asy
   assert.equal(ok.data.chat.messages.find((m) => m.imageGen)?.imageGen?.prompt, "a lake");
   for (const bad of [{ prompt: "", character: false }, { prompt: "x", character: "yes" }, { prompt: "x", character: false, extra: 1 }, { prompt: "a".repeat(401), character: true }, "a lake"])
     await assert.rejects(check(bad), (error) => error instanceof BackupValidationError && error.detail === "image-request-invalid");
+});
+
+test("a response or a downloaded picture larger than the limit is dropped while it is read", async () => {
+  const chunk = new Uint8Array(1024 * 1024);
+  const endless = () => { let sent = 0, cancelled = false; return { cancelled: () => cancelled, response: new Response(new ReadableStream<Uint8Array>({
+    pull(controller) { sent += 1; controller.enqueue(chunk); if (sent > 80) controller.close(); }, cancel() { cancelled = true; } })) }; };
+  const big = endless();
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: (async () => big.response) as typeof fetch }),
+    (e) => e instanceof ImageGenError && e.category === "invalid-image");
+  assert.equal(big.cancelled(), true, "the rest is not downloaded");
+  const picture = endless();
+  const viaUrl = (async (url: string) => url.endsWith("/images/generations")
+    ? new Response(JSON.stringify({ data: [{ url: "https://cdn.test/a.png" }] })) : picture.response) as typeof fetch;
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: viaUrl }), (e) => e instanceof ImageGenError && e.category === "invalid-image");
+  assert.equal(picture.cancelled(), true);
+  const declared = (async () => new Response("{}", { headers: { "content-length": String(IMAGEGEN_MAX_BYTES * 3) } })) as typeof fetch;
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: declared }), (e) => e instanceof ImageGenError && e.category === "invalid-image");
+});
+
+test("asking again with words that cannot be saved shows the reason on the placeholder", async () => {
+  stopImageJobs();
+  const app = await engineApp(true, []);
+  const fresh = await placeholder(app.storage);
+  await app.engine.retryImage(fresh.session.id, fresh.done[1].id, "x".repeat(IMAGE_PROMPT_MAX + 5));
+  assert.match(imageJobStatus(fresh.done[1].id), /^error:Describe the picture/);
+});
+
+test("new words for a picture also discard a summary that covered the old ones", async () => {
+  const storage = setupStorage();
+  const { session, done } = await placeholder(storage);
+  const raw = storage as unknown as { transaction: (mode: string, work: (tx: IDBTransaction) => Promise<unknown>) => Promise<unknown> };
+  await raw.transaction("readwrite", async (tx) => {
+    const row = await new Promise<Record<string, unknown>>((resolve) => { const r = tx.objectStore("sessions").get(session.id); r.onsuccess = () => resolve(r.result); });
+    tx.objectStore("sessions").put({ ...row, summary: { text: "old", throughOrder: 99, digest: "d", updatedAt: 1 } });
+  });
+  assert.equal((await storage.readSession(session.id)).session.summary?.text, "old");
+  assert.equal(await storage.setImagePrompt(done[1].id, "new words"), true);
+  assert.equal((await storage.readSession(session.id)).session.summary, undefined);
 });
