@@ -1326,3 +1326,12 @@ html[data-messages-nav="back"]::view-transition-new(messages-route) { animation:
 .chat-voice-record { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: 20px; border: 0; background: var(--accent, #2f7d5b); color: #fff; font: inherit; }
 .chat-voice-record:disabled { opacity: 0.5; }
 .chat-voice-record svg { width: 18px; height: 18px; }
+
+.chat-image-request { display: flex; flex-direction: column; gap: 6px; min-width: 180px; }
+.chat-image-request-row { display: inline-flex; align-items: center; gap: 6px; }
+.chat-image-request-row svg { width: 18px; height: 18px; }
+.chat-image-request-row[aria-busy="true"] svg { animation: chat-voice-bounce 1s ease-in-out infinite; }
+.chat-image-request-text { opacity: 0.8; font-size: 0.9em; }
+.chat-image-request textarea { width: 100%; min-height: 56px; resize: vertical; font: inherit; padding: 6px; border-radius: 8px; border: 1px solid currentColor; background: transparent; color: inherit; }
+.chat-image-request-actions { display: flex; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .chat-image-request-row[aria-busy="true"] svg { animation: none; } }

@@ -178,7 +178,7 @@ test("the + button opens the panel: stickers, transfers, and gifts work while re
 
 test("a sticker message draws only the picture, is saved without a reply request, and cannot be edited or copied as text", () => {
   assert.match(timeline, /message\.sticker && <StickerImage/);
-  assert.match(timeline, /message\.sticker \|\| message\.attachment \|\| \(message\.voice && message\.status === "complete"\) \? null : bodyText/);
+  assert.match(timeline, /message\.sticker \|\| message\.attachment \|\| message\.imageGen \|\| \(message\.voice && message\.status === "complete"\) \? null : bodyText/);
   assert.match(timeline, /const bodyText = message\.status === "error"/);
   const sendStickerStart = room.indexOf("async function sendSticker(");
   const sendSticker = room.slice(sendStickerStart, room.indexOf("\n  async function reply", sendStickerStart));

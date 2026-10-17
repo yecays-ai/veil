@@ -14,6 +14,7 @@ import { QuoteBubble } from "../quote-bubble";
 import { StickerImage } from "../sticker-image";
 import { ImageMessage } from "./image-message";
 import { AudioMessage } from "./audio-message";
+import { ImageRequest } from "./image-request";
 import { VoiceMessage } from "./voice-message";
 import { TransferCard, TransferResultCard } from "../transfers/transfer-card";
 import type { TransferAction } from "../../../lib/chat/transfer";
@@ -108,9 +109,10 @@ export function MessageList({
                     author={message.quote ? (message.quote.role === "user" ? "You" : character.name) : undefined} />}
                   {message.sticker && <StickerImage className="chat-sticker-image" url={message.sticker.url} name={message.sticker.name} />}
                   {message.attachment?.kind === "image" && <ImageMessage message={message} multiSelect={multiSelect} />}
+                  {message.imageGen && !message.attachment && <ImageRequest message={message} multiSelect={multiSelect} />}
                   {message.attachment?.kind === "audio" && <AudioMessage message={message} multiSelect={multiSelect} />}
                   {message.voice && message.status === "complete" && <VoiceMessage key={message.content} message={message} text={bodyText} characterId={characterId} multiSelect={multiSelect} />}
-                  {message.sticker || message.attachment || (message.voice && message.status === "complete") ? null : bodyText}
+                  {message.sticker || message.attachment || message.imageGen || (message.voice && message.status === "complete") ? null : bodyText}
                 </p>
               </div>}
             <MessageFooter messageId={message.id} />
