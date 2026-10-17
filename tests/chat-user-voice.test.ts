@@ -59,6 +59,9 @@ test("the model is told a user message is a voice message, in the current turn a
   assert.equal(modelFacingContent({ role: "user", attachment: { kind: "audio", untranscribed: true } }, UNTRANSCRIBED_VOICE_CONTENT).includes("还没有转成文字"), true);
   assert.equal(modelFacingContent({ role: "user" }, "typed"), "typed");
   assert.equal(modelFacingContent({ role: "assistant", attachment: { kind: "audio" } }, "spoken by the character"), "spoken by the character");
+  assert.equal(modelFacingContent({ role: "assistant", voice: true }, "早安"), "[你发送了一条语音消息：早安]", "the Character's own voice is marked the same way");
+  assert.equal(modelFacingContent({ role: "assistant" }, "typed"), "typed");
+  assert.equal(modelFacingContent({ role: "user", voice: true }, "typed"), "typed", "only the Character's voice flag counts");
   assert.equal(modelFacingContent({ role: "user", attachment: { kind: "image" } }, "a photo"), "a photo");
 });
 

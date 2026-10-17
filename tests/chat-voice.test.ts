@@ -125,3 +125,14 @@ test("backup accepts a voice flag only on a plain assistant message", async () =
     (error) => error instanceof BackupValidationError && error.detail === "voice-invalid", "a recalled message keeps no voice");
   await assert.rejects(withFlag((message) => { message.voice = "yes"; }));
 });
+
+test("the Character's own voice reads to the model as a voice message in later history, while the stored words stay plain", async () => {
+  const app = await setup();
+  await app.ask("hi", `${tag('{"voice":"早安，今天也要加油。"}')}`);
+  await app.ask("again", "Plain reply.");
+  const last = app.prompts.at(-1)!;
+  assert.match(last, /\[你发送了一条语音消息：早安，今天也要加油。\]/);
+  const stored = assistants((await app.storage.readSession(app.session.id)).messages).find((message) => message.voice)!;
+  assert.equal(stored.content, "早安，今天也要加油。", "the database keeps the plain words");
+  assert.equal(listPreview(stored), "[语音] 早安，今天也要加油。", "and the list and bubble never show the marker");
+});

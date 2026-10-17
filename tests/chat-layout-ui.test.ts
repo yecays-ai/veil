@@ -279,3 +279,8 @@ test("Messages navigation slides a complete, opaque chat page and keeps the leav
   assert.match(css, /\.messages-route-frame\s*\{[^}]*background:\s*var\(--theme-background\)/);
   assert.match(css, /data-messages-nav="back"\]::view-transition-old\(messages-route\)\s*\{[^}]*z-index:\s*1/);
 });
+
+test("a voice bubble is one text line tall: the play button drops the generic 40px minimum and the row has a fixed line height", () => {
+  assert.match(css, /\.chat-bubble \.chat-voice-button\s*\{[^}]*min-height:\s*0;/);
+  assert.match(css, /\.chat-voice-row\s*\{[^}]*height:\s*1\.5em;/);
+});
