@@ -63,5 +63,8 @@ const PREVIEW: Record<MessageAttachment["kind"], string> = { image: "[图片]", 
 export const attachmentContent = (sender: "user" | "assistant", attachment: { kind: "image" }) =>
   CONTENT[attachment.kind][sender];
 
+/** The semantic text of a picture the Character took, with what it asked for so the Character remembers what the picture shows. */
+export const generatedImageContent = (prompt: string) => `[你发送了一张照片:${prompt}]`;
+
 /** Short preview for the Chats list and for quotes. */
 export const attachmentPreview = (attachment: Pick<MessageAttachment, "kind">) => PREVIEW[attachment.kind];

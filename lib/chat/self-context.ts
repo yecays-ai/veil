@@ -56,6 +56,8 @@ export type SelfState = {
   stickers?: StickerChoice[];
   /** Speech is set up on this device, so this reply may carry a voice bubble. */
   canVoice?: boolean;
+  /** An image service is set up on this device, so this reply may carry a picture. */
+  canImage?: boolean;
 };
 export type ReactionState = { canReact: boolean; notes: UserReactionNote[] };
 
@@ -137,10 +139,10 @@ function remarkLines(state: SelfState): string[] {
   return state.remark ? [`Background, needs no response: the remark the user has saved for you is ${quoted(state.remark)}. Mention it only when it fits naturally.`] : [];
 }
 
-function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false, day: readonly (LifeChoice & { when: string })[] = [], canKeepsake = false, canVoice = false): string[] {
+function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false, day: readonly (LifeChoice & { when: string })[] = [], canKeepsake = false, canVoice = false, canImage = false): string[] {
   const canRecall = recallCandidates.length > 0;
   const own = !!allow && (allow.situation || allow.signature || allow.note);
-  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift && !day.length && !canKeepsake && !canVoice) return [];
+  if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift && !day.length && !canKeepsake && !canVoice && !canImage) return [];
   const fields = [
     allow?.signature ? `"signature": your new signature text ("" clears it)` : null,
     allow?.note ? `"userNote": what you now call the user, a short nickname or note ("" clears it)` : null,
@@ -148,6 +150,7 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     canReact ? `"reactToUser": one emoji, a reaction to the user's message you are replying to` : null,
     stickers.length ? `"sticker": exactly one code from your sticker list below` : null,
     canVoice ? `"voice": exactly what you say aloud, one or two short spoken sentences` : null,
+    canImage ? `"image": {"prompt": what the picture shows, in one or two plain sentences, "character": true or false}` : null,
     canRecall ? `"recallMessageId": exact ID of one of your own messages listed below to withdraw it` : null,
     canTransfer ? `"transfer": {"recipient":"user","amount":number,"note":string} to send a VEIL virtual transfer; "transferAction":{"messageId":string,"action":"receive"|"decline"|"return"} to process a transfer addressed to you` : null,
     day.length ? `"life": {"action": "delay"|"cancel"|"replace"|"detail", "target": a code from your day list below, "minutes": 5-240 (delay), "title": new short title (replace), "moment": one small thing that happened (detail)}` : null,
@@ -168,6 +171,7 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     ...(canTransfer ? ["VEIL transfers are virtual chat gestures with no real money or payment. You may send one when it fits. For a transfer addressed to you, wait, talk first, or decide later; use its exact message ID from the conversation to receive or decline a pending transfer, or return one already received. Never claim a real payment occurred."] : []),
     ...(canGift ? ["You may send a VEIL virtual gift card with an icon and your own short description when it fits the conversation. Its custom text is the gesture's description, even when it mentions money. Gifts never move real money, bank balances, purchases, property, deliveries or inventory. You can joke and respond in character without asking the user to explain that the feature is virtual. For a gift addressed to you, you may talk first or decide later, then accept or decline using the exact gift message ID. Execute acceptance or refusal with giftAction, never by narrating clicks or actions in plain text."] : []),
     ...(canVoice ? ["You may send one voice message, the way a person sometimes sends a voice message instead of typing: it is your own voice saying the words in \"voice\", after your text or instead of text. Only when speaking truly fits the moment (warmth, a greeting, something said better aloud); most replies need no voice. Write it as natural speech, with no emoji, links or formatting. The user hears these words, so never repeat them in your text."] : []),
+    ...(canImage ? ["You may send one picture, the way a person sends a photo in a chat: after your text or instead of text. Only when a picture truly fits the moment; most replies need none. Two kinds. (1) A picture with yourself in it (a selfie, your outfit, what you look like right now): set \"character\" to true; your look is added for you, so describe only the pose, clothes, place and mood. (2) A picture of your surroundings or something you are doing (your meal, desk, window, the street): set \"character\" to false and do not put yourself in it. Choose per picture; do not default to showing yourself. Describe it as a photo you took, never mention the picture generator, and do not describe the same picture again in your text."] : []),
     ...(stickers.length ? ["You may send one of your own stickers, the way a person sends a sticker in a chat: after your text, or instead of text (then write no text before the line). Only when it truly fits the moment; most replies need no sticker. Each entry is pack name｜sticker name, so you know whose picture it is. Use only these codes, never invent one:",
       ...stickers.map((choice) => `${choice.code} = ${choice.label}`)] : []),
     `To change, end the reply with one line <${ACTION_TAG}>{JSON}</${ACTION_TAG}> using only these optional fields: ${fields.join("; ")}. VEIL removes this line before anyone sees the reply; never mention it.`];
@@ -189,7 +193,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
     ...(state.userReactions ?? []).map((note) => `Background, needs no response: the user reacted ${note.emoji} to your message ${quoted(note.preview)}.`),
-    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift, state.lifeChoices, !!state.canKeepsake, !!state.canVoice),
+    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift, state.lifeChoices, !!state.canKeepsake, !!state.canVoice, !!state.canImage),
   ].filter((line): line is string => line !== null);
   if (!lines.length) return null;
   return ["Your own state (VEIL runtime facts, not message content):", ...lines,

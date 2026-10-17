@@ -22,6 +22,7 @@ import { canRecallMessage, isPendingUserMessage } from "./recall";
 import { splitAssistantReply } from "./reply-splitter";
 import { attemptsAllow, recentAttempts } from "./proactive";
 import { quoteMessage } from "./quote";
+import { IMAGE_PROMPT_MAX } from "../presence/actions";
 import { canReactTo, isReactionEmoji, withReaction, type ReactionSide } from "./reactions";
 import { historyEligible, summaryDigest, SUMMARY_CHARACTERS } from "./summary";
 import { historyFingerprint, type WorldBookActivationState } from "../worldbook-activation";
@@ -29,7 +30,7 @@ import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
 import { isMessageSticker, stickerContent, type MessageSticker } from "./sticker-message";
-import { ATTACHMENT_AUDIO_MIMES, ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_AUDIO_BYTES, MAX_VOICE_RECORDING_MS, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
+import { generatedImageContent, ATTACHMENT_AUDIO_MIMES, ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_AUDIO_BYTES, MAX_VOICE_RECORDING_MS, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
 import { isCardMessage, listPreview } from "./message-kind";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
@@ -1049,7 +1050,7 @@ export class ChatStorage {
       if (existing.recalled) throw new Error("A recalled message cannot be edited.");
       if (isCardMessage(existing)) throw new Error("Special message cards cannot be edited.");
       if (existing.sticker) throw new Error("表情包不能编辑。");
-      if (existing.attachment) throw new Error("Media messages cannot be edited.");
+      if (existing.attachment || existing.imageGen) throw new Error("Media messages cannot be edited.");
       const current: ChatSession = await request(tx.objectStore("sessions").get(existing.sessionId));
       if (current.generation) throw new Error("A reply is in progress. Stop it before editing this conversation.");
       if (existing.status === "streaming")
@@ -1114,6 +1115,7 @@ export class ChatStorage {
       // A withdrawn message keeps nothing of what it carried.
       delete next.attachment;
       delete next.voice;
+      delete next.imageGen;
       await request(table.put(next));
       await deleteAttachmentAssets(tx, [message]);
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
@@ -1349,6 +1351,59 @@ export class ChatStorage {
     catch (error) { return Promise.reject(error); }
     return this.send(sessionId, attachmentContent("user", { kind: "image" }), quoteMessageId, undefined, undefined, interject,
       { blob, width, height });
+  }
+  /**
+   * The picture the Character made, stored in place of its placeholder: the asset and the attachment are written in one
+   * transaction. Returns false (and stores nothing) when the message is gone, was recalled, is no longer waiting for a picture, or now asks for other words than the ones this picture was made from.
+   */
+  completeGeneratedImage(messageId: string, blob: Blob, width: number, height: number, expectedPrompt?: string): Promise<boolean> {
+    let attachment: MessageAttachment;
+    try { attachment = imageAttachment(blob, width, height, crypto.randomUUID()); }
+    catch (error) { return Promise.reject(error); }
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const message: ChatMessage | undefined = await request(table.get(messageId));
+      if (!message || message.role !== "assistant" || !message.imageGen || message.attachment || message.recalled
+        || (expectedPrompt !== undefined && message.imageGen.prompt !== expectedPrompt)) return null;
+      await request(tx.objectStore("assets").add({ id: attachment.assetId, blob, createdAt: Date.now() } satisfies ChatImageAsset));
+      const next: ChatMessage = { ...message, attachment };
+      delete next.imageGen;
+      await request(table.put(next));
+      const session: ChatSession | undefined = await request(tx.objectStore("sessions").get(message.sessionId));
+      if (session?.lastMessageId === messageId) await request(tx.objectStore("sessions").put({ ...session, lastMessagePreview: listPreview(next) }));
+      return message.sessionId;
+    }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null).then((sessionId) => sessionId !== null);
+  }
+  /** Changes what a picture that has not been made yet asks for (the retry's new words). False when it is no longer waiting. */
+  async setImagePrompt(messageId: string, prompt: string, scope?: PersistenceWriteScope): Promise<boolean> {
+    const text = prompt.trim();
+    if (!text || Array.from(text).length > IMAGE_PROMPT_MAX) throw new Error(`Describe the picture in ${IMAGE_PROMPT_MAX} characters or fewer.`);
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(messageId)), ["messages"]);
+      if (!target) return false;
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(target.sessionId, owned);
+        if (!view.session) return false;
+        // Like an edit, the new words replace what a Memory source or the summary saw of this message.
+        return invalidateChatSources(this.sourceMemory!, view.session, view.messages.filter((m) => m.id === messageId && m.content !== generatedImageContent(text)),
+          () => this.setImagePrompt(messageId, text, owned), owned);
+      });
+    }
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const message: ChatMessage | undefined = await request(table.get(messageId));
+      if (!message || !message.imageGen || message.attachment || message.recalled) return null;
+      const content = generatedImageContent(text);
+      await request(table.put({ ...message, content, imageGen: { ...message.imageGen, prompt: text } }));
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(message.sessionId));
+      // A summary that covers this message would keep the old words, so it is discarded and rebuilt later.
+      const staleSummary = !!session?.summary && message.content !== content && message.order <= session.summary.throughOrder;
+      if (session && (session.lastMessageId === messageId || staleSummary))
+        await request(sessions.put({ ...session, ...(session.lastMessageId === messageId ? { lastMessagePreview: listPreview({ ...message, content }) } : {}),
+          ...(staleSummary ? { summary: undefined } : {}) }));
+      return message.sessionId;
+    }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null, undefined, scope).then((sessionId) => sessionId !== null);
   }
   /** A recording from the user: saved like a sent message with its bytes as an asset it owns; `content` is its transcript, which must not be empty. */
   sendVoice(sessionId: string, blob: Blob, durationMs: number, transcript: string, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
@@ -1771,7 +1826,7 @@ export class ChatStorage {
   }
   async finalizeReply(id: string, content: string, worldBookState?: WorldBookActivationState,
     transformPart: (part: string) => string = (part) => part, attemptId?: string, finishReason?: string, signal?: AbortSignal, scope?: PersistenceWriteScope,
-    memoryRefs?: MemoryRef[], sticker?: MessageSticker, voice?: string): Promise<ChatMessage[]> {
+    memoryRefs?: MemoryRef[], sticker?: MessageSticker, voice?: string, image?: { prompt: string; character: boolean }): Promise<ChatMessage[]> {
     if (this.sourceMemory && !scope) {
       const draft = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
       if (!draft) throw new Error("Generation attempt is no longer active.");
@@ -1779,7 +1834,7 @@ export class ChatStorage {
       try {
         // New replies and continuations append content; they do not replace cited evidence.
         if (draft.attemptMode !== "regenerate") return await this.sourceMemory.withShared(async (owned) => {
-          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs, sticker, voice);
+          const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs, sticker, voice, image);
           finalized = true; return result;
         });
         return await this.sourceMemory.withExclusive(async (owned) => {
@@ -1788,7 +1843,7 @@ export class ChatStorage {
         const targets = draft.attemptMode === "regenerate" && draft.attemptFor ? assistantTurn(view.messages, draft.attemptFor) : [];
         return invalidateChatSources(this.sourceMemory!, view.session, targets,
           async () => {
-            const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs, sticker, voice);
+            const result = await this.finalizeReply(id, content, worldBookState, transformPart, attemptId, finishReason, signal, owned, memoryRefs, sticker, voice, image);
             finalized = true; return result;
           }, owned);
       }, { signal }); } finally {
@@ -1799,10 +1854,12 @@ export class ChatStorage {
     const parts = splitAssistantReply(content).map(transformPart).map((part) => part.trim()).filter(Boolean);
     // The Character's voice is ordinary text said aloud: it passes the same rules as the text parts and follows them.
     const spoken = voice ? transformPart(voice).trim() : "";
-    if (!parts.length && !sticker && !spoken) throw new Error("The API returned no reply text.");
+    if (!parts.length && !sticker && !spoken && !image) throw new Error("The API returned no reply text.");
     // The Character's voice and sticker are its own last bubbles, after any text.
-    const entries: { content: string; sticker?: MessageSticker; voice?: true }[] = parts.map((content) => ({ content }));
+    const entries: { content: string; sticker?: MessageSticker; voice?: true; imageGen?: { prompt: string; character: boolean } }[] = parts.map((content) => ({ content }));
     if (spoken) entries.push({ content: spoken, voice: true });
+    // The picture is made after the reply is saved: its bubble starts as a placeholder that holds what was asked for.
+    if (image) entries.push({ content: generatedImageContent(image.prompt), imageGen: image });
     if (sticker) entries.push({ content: stickerContent("assistant", sticker), sticker });
     let owned: string | undefined;
     const completed = await this.transaction("readwrite", async (tx) => {
@@ -1835,10 +1892,11 @@ export class ChatStorage {
       delete firstBase.sticker;
       delete firstBase.attachment;
       delete firstBase.voice;
+      delete firstBase.imageGen;
       const sentAt = Date.now();
       const generated: ChatMessage[] = entries.map((part, index) => ({
         ...firstBase, sentAt, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
-        content: part.content, ...(part.sticker ? { sticker: part.sticker } : {}), ...(part.voice ? { voice: true as const } : {}), status: "complete", outcome, finishReason, error: undefined,
+        content: part.content, ...(part.sticker ? { sticker: part.sticker } : {}), ...(part.voice ? { voice: true as const } : {}), ...(part.imageGen ? { imageGen: part.imageGen } : {}), status: "complete", outcome, finishReason, error: undefined,
         attemptFor: undefined, attemptMode: undefined, failureStage: undefined,
         // Each reply records only its own request; a regenerated or continued part never inherits an older one.
         memoryRefs: memoryRefs?.slice(0, MEMORY_REF_LIMIT),
