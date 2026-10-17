@@ -128,9 +128,9 @@ export function memoryConversation(context: PromptRuntimeContext, preset: Preset
     recent: recentGroups.map((turn) => turn.filter((message) => !currentIds.has(message.id)).map(body)).filter((turn) => turn.length),
     earlier: history.filter((message) => !currentIds.has(message.id) && !recentIds.has(message.id)).map(body) };
 }
-/** The picture a message carries, as a turn field; the engine decides later which of these the model really gets. */
+/** The picture a user sent, as a turn field; the engine decides later which of these the model really gets. */
 function turnImages(message: ChatMessage): Pick<PromptTurn, "images"> {
-  return message.attachment?.kind === "image" && !message.recalled ? { images: [message.attachment.assetId] } : {};
+  return message.role === "user" && message.attachment?.kind === "image" && !message.recalled ? { images: [message.attachment.assetId] } : {};
 }
 function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
   const transfer = transferPromptContent(message, context.character.name);

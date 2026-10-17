@@ -118,6 +118,28 @@ test("Text API old editor reports conflict, keeps its draft and can reopen the l
   } finally { await app.cleanup(); }
 });
 
+test("Text API image input settings are saved and shown again when the editor is reopened", async () => {
+  const app = await mounted();
+  try {
+    await app.render(createElement(app.TextApiSettings));
+    await app.wait(() => !!app.container.querySelector(".settings-config-card"));
+    await app.click(app.container.querySelector<HTMLButtonElement>(".settings-config-card")!);
+    assert.equal(app.container.querySelector("select option[value='3']"), null, "the count appears only once the switch is on");
+    await app.click(app.container.querySelector<HTMLInputElement>('input[aria-label="Model accepts images"]')!);
+    const count = app.container.querySelector<HTMLSelectElement>("select option[value='3']")!.parentElement as HTMLSelectElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")!.set!.call(count, "3");
+      count.dispatchEvent(new window.Event("change", { bubbles: true }));
+    });
+    await app.submit(); await app.wait(() => !app.container.querySelector("#text-api-editor"));
+    const saved = await app.api.getApiConfig(config.id);
+    assert.deepEqual([saved?.imageInput, saved?.imageLimit], [true, 3]);
+    await app.click(app.container.querySelector<HTMLButtonElement>(".settings-config-card")!);
+    assert.equal(app.container.querySelector<HTMLInputElement>('input[aria-label="Model accepts images"]')!.checked, true);
+    assert.equal(app.container.querySelector<HTMLSelectElement>("select option[value='3']")!.parentElement!.querySelector<HTMLOptionElement>("option:checked")!.value, "3");
+  } finally { await app.cleanup(); }
+});
+
 test("Text API failed save keeps the draft, retries explicitly, and needs no post-write list read", async () => {
   const app = await mounted();
   try {

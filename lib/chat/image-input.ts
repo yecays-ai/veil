@@ -39,7 +39,9 @@ export async function loadPromptImages(
       signal.throwIfAborted();
       const blob = await read(id).catch(() => null);
       signal.throwIfAborted();
-      if (blob?.type.startsWith("image/")) imageData.push(await dataUrl(blob));
+      if (!blob?.type.startsWith("image/")) continue;
+      try { imageData.push(await dataUrl(blob)); }
+      catch (error) { signal.throwIfAborted(); void error; } // unreadable bytes: this picture stays words only
     }
     out.push(imageData.length ? { ...rest, imageData } : rest);
   }

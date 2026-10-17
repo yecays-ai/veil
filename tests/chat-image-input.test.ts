@@ -5,6 +5,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createChatEngine, TEST_API_CONFIG } from "./chat-engine-fixture";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { imageInputLimit, type ApiConfig } from "../lib/api-config";
+import { assembleChatPrompt } from "../lib/chat/prompt";
 import { loadPromptImages, newestImageTurns } from "../lib/chat/image-input";
 import { createOpenAITextProvider, wireMessages } from "../lib/chat/provider";
 import { completionStartSummary, promptSummary } from "../lib/chat/request-diagnostics";
@@ -163,4 +164,20 @@ test("backup keeps the image settings of an API, accepts older rows without them
   await assert.rejects(check({ imageInput: "yes" }));
   await assert.rejects(check({ imageInput: true, imageLimit: 5 }));
   await assert.rejects(check({ apiKey: "secret" }), "a credential is still refused");
+});
+
+test("a picture the assistant carries is not sent, and bytes that cannot be converted leave only the text", async () => {
+  const { storage, engine } = setup({ ...TEST_API_CONFIG, imageInput: true });
+  const session = await storage.openSession("a");
+  await engine.sendImage(session.id, { blob: blobOf("image/png", 20), width: 4, height: 3 });
+  const rows = (await storage.readSession(session.id)).messages;
+  assert.equal(rows.length, 1);
+  const document = defaultFoundation();
+  document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
+  const asAssistant = rows.map((message) => ({ ...message, role: "assistant" as const, status: "complete" as const }));
+  const built = assembleChatPrompt(document, document.characters[0], asAssistant, []);
+  assert.equal(built.messages.some((turn) => turn.images), false);
+  const broken = { type: "image/png", arrayBuffer: () => Promise.reject(new Error("io")) } as unknown as Blob;
+  const [turn] = await loadPromptImages([{ role: "user", content: "x", images: ["a"] }], async () => broken, new AbortController().signal);
+  assert.deepEqual(turn, { role: "user", content: "x" });
 });
