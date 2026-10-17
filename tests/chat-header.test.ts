@@ -46,16 +46,16 @@ regressionContract("chat.header-keeps-identity", "render-lifecycle",
       bindings: browserBindingStorage.load,
       regex: browserRegexStorage.load,
     };
+    const foundation = normalizeFoundation({ characters: [{ characterId: "peter", name: "Peter" }] });
     let releaseFoundation!: () => void;
     const foundationGate = new Promise<void>((resolve) => { releaseFoundation = resolve; });
-    browserFoundationStorage.load = async () => {
-      await foundationGate;
-      return normalizeFoundation({ characters: [{ characterId: "peter", name: "Peter" }] });
-    };
+    browserFoundationStorage.load = async () => foundation;
     browserContactStorage.load = async () => ({ version: 1, contacts: [] }) as never;
     browserBindingStorage.load = async () => ({ global: {}, characters: {} }) as never;
     browserRegexStorage.load = async () => ({ groups: [] }) as never;
     const session = await chatStorage.openSession("peter");
+    // Session creation needs its Character's ownership. Delay only the subsequent UI load.
+    browserFoundationStorage.load = async () => { await foundationGate; return foundation; };
     const container = dom.window.document.getElementById("root")!;
     const root = createRoot(container);
     try {

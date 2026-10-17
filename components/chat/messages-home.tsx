@@ -1,4 +1,5 @@
 "use client";
+import { allUniverses, sessionUniverseId } from "../../lib/universe";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CirclePlus, MessageCircle, Search, Users } from "lucide-react";
@@ -28,6 +29,7 @@ export function MessagesHome() {
   const [snapshot] = useState(() => lastSessionList(chatStorage));
   const [sessions, setSessions] = useState<ChatSession[]>(snapshot ?? []), [loaded, setLoaded] = useState(snapshot !== null);
   const [error, setError] = useState(""), [query, setQuery] = useState(""), [filter, setFilter] = useState<Filter>("all");
+  const [universeFilter, setUniverseFilter] = useState("all");
   const [menuOpen, setMenuOpen] = useState(false);
   const [openRowId, setOpenRowId] = useState<string | null>(null);
   const [draggingRowId, setDraggingRowId] = useState<string | null>(null);
@@ -127,6 +129,7 @@ export function MessagesHome() {
     }
   }
   const visible = sessions.filter((session) => {
+    if (universeFilter !== "all" && sessionUniverseId(document, session) !== universeFilter) return false;
     const group = session.type === "group";
     if ((filter === "groups" && !group) || (filter === "private" && group)) return false;
     const search = query.trim().toLocaleLowerCase();
@@ -143,8 +146,13 @@ export function MessagesHome() {
     <RootAppHeader title="" className="messages-header" rightAction={<button className="messages-add-button" type="button" aria-label="New chat" title="New chat" aria-expanded={menuOpen} onClick={() => setMenuOpen((current) => !current)}><CirclePlus /></button>} />
     <h1 className="messages-large-title">Chats</h1>
     <label className="messages-search"><Search /><input type="search" aria-label="Search chats" placeholder="Search chats..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-    <div className="messages-filters" role="group" aria-label="Conversation type">{(["all", "private", "groups"] as const).map((item) =>
-      <button key={item} type="button" aria-pressed={filter === item} onClick={() => setFilter(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</div>
+    <div className="messages-filters" role="group" aria-label="Conversation filters">
+      {(["all", "private", "groups"] as const).map((item) =>
+        <button key={item} type="button" aria-pressed={filter === item && (item !== "all" || universeFilter === "all")}
+          onClick={() => { setFilter(item); if (item === "all") setUniverseFilter("all"); }}>{item[0].toUpperCase() + item.slice(1)}</button>)}
+      {allUniverses(document).map((u) => <button key={u.id} type="button" aria-pressed={universeFilter === u.id}
+        onClick={() => setUniverseFilter(u.id)}>{u.name}</button>)}
+    </div>
     {error && <p role="alert" className="chat-notice">{error}</p>}
     {!loaded ? !error && <p className="chat-notice">Loading conversations…</p> : visible.length > 0 &&
       <div className="conversation-list">{visible.map((session) => { const group = session.type === "group", character = characters.get(session.characterId);

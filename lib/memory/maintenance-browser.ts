@@ -1,3 +1,4 @@
+import { universeForCharacter } from "../universe";
 import { browserApiConfigStorage } from "../api-config-storage";
 import { browserBindingStorage } from "../binding-storage";
 import { browserDocumentStorage } from "../core-document-storage";
@@ -40,7 +41,7 @@ export function startBrowserMaintenance(): () => void {
         (id) => browserApiConfigStorage.getApiConfig(id, scope));
       // Only hashed by the runner: it tells a paused too-large range that the Character, Backstory or profile changed.
       return { config, timezone: foundation.user.timezone ?? undefined, budget: JSON.stringify([character.backstory, foundation.user.name]), context: JSON.stringify({ name: character.name, characterId, personality: character.personality,
-        speakingStyle: character.speakingStyle, user: foundation.user.name, worldSetting: foundation.universe.worldSetting }) };
+        speakingStyle: character.speakingStyle, user: foundation.user.name, worldSetting: universeForCharacter(foundation, character).worldSetting }) };
     } };
   // What this page already looked at (or failed to summarize) is not read or sent again until the chat or summary changes.
   const looked = new Map<string, string>();

@@ -1,3 +1,6 @@
+import { browserFoundationStorage } from "../foundation-storage";
+import { characterUniverseId } from "../universe";
+import { UNIVERSE_ID, type FoundationDocument } from "../foundation-types";
 import { browserMemoryStorage } from "../memory/instance";
 import { invalidateChatSources } from "../memory/source-invalidation";
 import { allocateMemorySequence, memoryBirth } from "../memory/sequence";
@@ -30,7 +33,7 @@ import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
 import { isMessageSticker, stickerContent, type MessageSticker } from "./sticker-message";
-import { generatedImageContent, ATTACHMENT_AUDIO_MIMES, ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_AUDIO_BYTES, MAX_VOICE_RECORDING_MS, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
+import { generatedImageContent, UNTRANSCRIBED_VOICE_CONTENT, ATTACHMENT_AUDIO_MIMES, ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_AUDIO_BYTES, MAX_VOICE_RECORDING_MS, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
 import { isCardMessage, listPreview } from "./message-kind";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
@@ -80,13 +83,13 @@ function imageAttachment(blob: Blob, width: number, height: number, assetId: str
 }
 
 /** The attachment a message gets for this recording, or the reason it is refused. */
-function audioAttachment(blob: Blob, durationMs: number, assetId: string): MessageAttachment {
+function audioAttachment(blob: Blob, durationMs: number, assetId: string, untranscribed = false): MessageAttachment {
   const mime = blob.type.split(";")[0].trim().toLowerCase();
   if (!ATTACHMENT_AUDIO_MIMES.includes(mime)) throw new Error("This recording's format is not supported.");
   if (!blob.size || blob.size > MAX_ATTACHMENT_AUDIO_BYTES) throw new Error("Voice messages must be 10 MiB or smaller.");
   const ms = Math.round(durationMs);
   if (!Number.isSafeInteger(ms) || ms < 1 || ms > MAX_VOICE_RECORDING_MS) throw new Error("This recording's length could not be read.");
-  return { kind: "audio", assetId, mime, durationMs: ms, bytes: blob.size };
+  return { kind: "audio", assetId, mime, durationMs: ms, bytes: blob.size, ...(untranscribed ? { untranscribed: true as const } : {}) };
 }
 
 function directSessionFor(sessions: ChatSession[], characterId: string) {
@@ -235,7 +238,19 @@ export class ChatStorage {
     private locks: () => LockManager | undefined = () => globalThis.navigator?.locks,
     private writeGate: PersistenceWriteGate = browserPersistenceWriteGate,
     private memoryTracking: boolean | (() => boolean) = maintenanceEnabled,
-    private sourceMemory?: import("../memory/storage").MemoryStorage) {}
+    private sourceMemory?: import("../memory/storage").MemoryStorage,
+    private foundation?: () => Promise<FoundationDocument>) {}
+  private async universeForMembers(ids: readonly string[]): Promise<string> {
+    if (!this.foundation) return UNIVERSE_ID;
+    const document = await this.foundation();
+    const worlds = ids.map((id) => {
+      const character = document.characters.find((c) => c.characterId === id);
+      if (!character) throw new Error("Character not found.");
+      return characterUniverseId(character);
+    });
+    if (!worlds.length || worlds.some((id) => id !== worlds[0])) throw new Error("Choose contacts from the same Universe.");
+    return worlds[0];
+  }
   private tracking(): boolean { return typeof this.memoryTracking === "function" ? this.memoryTracking() : this.memoryTracking; }
   private sequence(session: ChatSession, message: ChatMessage): ChatMessage {
     return this.tracking() && session.type !== "group" ? allocateMemorySequence(session, message) : message;
@@ -687,31 +702,37 @@ export class ChatStorage {
       return changed;
     }, ["sessions"], (changed) => changed.map((sessionId) => ({ domain: "session" as const, sessionId })), undefined, scope);
   }
-  createGroupSession(participantIds: readonly string[], title: string): Promise<ChatSession> {
+  async createGroupSession(participantIds: readonly string[], title: string): Promise<ChatSession> {
     const members = [...new Set(participantIds.filter(Boolean))];
     if (members.length < 2) return Promise.reject(new Error("Choose at least two contacts."));
     const name = title.trim().slice(0, 100);
     if (!name) return Promise.reject(new Error("Group name is required."));
+    const universeId = await this.universeForMembers(members);
     return this.transaction("readwrite", async (tx) => {
-      const session: ChatSession = { id: crypto.randomUUID(), characterId: members[0], type: "group",
+      const session: ChatSession = { universeId, id: crypto.randomUUID(), characterId: members[0], type: "group",
         participantIds: members, title: name, updatedAt: 0,
         autoReplyOnKeyboardDismiss: false, streamOnline: false, nextOrder: 1 };
       await request(tx.objectStore("sessions").add(session));
       return session;
     }, STORES, (session) => ({ domain: "session", sessionId: session.id }));
   }
-  openSession(characterId: string): Promise<ChatSession> {
+  async openSession(characterId: string): Promise<ChatSession> {
     if (!characterId)
       return Promise.reject(new Error("Character is required."));
+    const universeId = await this.universeForMembers([characterId]);
     let created = false;
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("sessions");
       const sessions: ChatSession[] = await request(table.getAll());
       const direct = directSessionFor(sessions, characterId);
-      if (direct) return direct;
+      if (direct) {
+        if (direct.universeId && direct.universeId !== universeId) throw new Error("Conversation Universe mismatch.");
+        return direct;
+      }
       const session: ChatSession = {
         id: crypto.randomUUID(),
         characterId,
+        universeId,
         updatedAt: 0,
         autoReplyOnKeyboardDismiss: false,
         streamOnline: false,
@@ -1085,6 +1106,19 @@ export class ChatStorage {
     }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
   }
 
+  /** Saves or unsaves a message without changing conversation ordering or generated content. */
+  async setFavorite(id: string, favorite: boolean): Promise<ChatMessage> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const existing: ChatMessage | undefined = await request(table.get(id));
+      if (!existing || existing.role === "system" || existing.recalled) throw new Error("This message cannot be favorited.");
+      const next: ChatMessage = { ...existing };
+      if (favorite) next.favorite = true; else delete next.favorite;
+      await request(table.put(next));
+      return next;
+    }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
+  }
+
   async recallMessage(id: string, by: "user" | "assistant", scope?: PersistenceWriteScope, expectedSessionId?: string): Promise<ChatMessage> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));
@@ -1116,6 +1150,7 @@ export class ChatStorage {
       delete next.attachment;
       delete next.voice;
       delete next.imageGen;
+      delete next.favorite;
       await request(table.put(next));
       await deleteAttachmentAssets(tx, [message]);
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
@@ -1405,13 +1440,48 @@ export class ChatStorage {
       return message.sessionId;
     }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null, undefined, scope).then((sessionId) => sessionId !== null);
   }
-  /** A recording from the user: saved like a sent message with its bytes as an asset it owns; `content` is its transcript, which must not be empty. */
-  sendVoice(sessionId: string, blob: Blob, durationMs: number, transcript: string, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
-    const text = transcript.trim().slice(0, VOICE_TRANSCRIPT_MAX);
-    if (!text) return Promise.reject(new Error("Add the words of this voice message first."));
+  /**
+   * A recording from the user, saved at once like a sent message with its bytes as an asset it owns. Its words are not
+   * known yet: `content` is a stand-in until `completeVoiceTranscript` writes them.
+   */
+  sendVoice(sessionId: string, blob: Blob, durationMs: number, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
     try { audioAttachment(blob, durationMs, "pending"); }
     catch (error) { return Promise.reject(error); }
-    return this.send(sessionId, text, quoteMessageId, undefined, undefined, interject, { blob, durationMs });
+    return this.send(sessionId, UNTRANSCRIBED_VOICE_CONTENT, quoteMessageId, undefined, undefined, interject, { blob, durationMs, untranscribed: true });
+  }
+  /**
+   * The words of a voice message, written where its stand-in was. Returns false (and stores nothing) when the message is
+   * gone, was recalled, or already has its words. Like an edit, it replaces what a summary or a Memory source saw.
+   */
+  async completeVoiceTranscript(messageId: string, transcript: string, scope?: PersistenceWriteScope): Promise<boolean> {
+    const text = transcript.trim().slice(0, VOICE_TRANSCRIPT_MAX);
+    if (!text) throw new Error("There are no words to save.");
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(messageId)), ["messages"]);
+      if (!target) return false;
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(target.sessionId, owned);
+        if (!view.session) return false;
+        return invalidateChatSources(this.sourceMemory!, view.session, view.messages.filter((m) => m.id === messageId && m.content !== text),
+          () => this.completeVoiceTranscript(messageId, text, owned), owned);
+      });
+    }
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const message: ChatMessage | undefined = await request(table.get(messageId));
+      if (!message || message.role !== "user" || message.attachment?.kind !== "audio" || !message.attachment.untranscribed || message.recalled) return null;
+      const attachment = { ...message.attachment };
+      delete attachment.untranscribed;
+      const next: ChatMessage = { ...message, content: text, attachment };
+      await request(table.put(next));
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(message.sessionId));
+      const staleSummary = !!session?.summary && message.order <= session.summary.throughOrder;
+      if (session && (session.lastMessageId === messageId || staleSummary))
+        await request(sessions.put({ ...session, ...(session.lastMessageId === messageId ? { lastMessagePreview: listPreview(next) } : {}),
+          ...(staleSummary ? { summary: undefined } : {}) }));
+      return message.sessionId;
+    }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null, undefined, scope).then((sessionId) => sessionId !== null);
   }
   /** The bytes of one message's attachment. Null unless that message belongs to this conversation and still has them. */
   readMessageAttachment(sessionId: string, messageId: string): Promise<Blob | null> {
@@ -1587,7 +1657,7 @@ export class ChatStorage {
    * A reply that already finished is never touched; then this is an ordinary send.
    */
   async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker,
-    interject = false, media?: { blob: Blob; width: number; height: number } | { blob: Blob; durationMs: number }): Promise<ChatMessage> {
+    interject = false, media?: { blob: Blob; width: number; height: number } | { blob: Blob; durationMs: number; untranscribed?: true }): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
     if (content.length > 12000)
@@ -1626,7 +1696,7 @@ export class ChatStorage {
       // The asset and the message that owns it are written in this one transaction: neither can exist without the other.
       let attachment: MessageAttachment | undefined;
       if (media) {
-        attachment = "durationMs" in media ? audioAttachment(media.blob, media.durationMs, crypto.randomUUID())
+        attachment = "durationMs" in media ? audioAttachment(media.blob, media.durationMs, crypto.randomUUID(), media.untranscribed === true)
           : imageAttachment(media.blob, media.width, media.height, crypto.randomUUID());
         await request(tx.objectStore("assets").add({ id: attachment.assetId, blob: media.blob, createdAt: sentAt } satisfies ChatImageAsset));
       }
@@ -1893,11 +1963,14 @@ export class ChatStorage {
       delete firstBase.attachment;
       delete firstBase.voice;
       delete firstBase.imageGen;
+      const favorite = firstBase.favorite;
+      delete firstBase.favorite;
       const sentAt = Date.now();
       const generated: ChatMessage[] = entries.map((part, index) => ({
         ...firstBase, sentAt, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
         content: part.content, ...(part.sticker ? { sticker: part.sticker } : {}), ...(part.voice ? { voice: true as const } : {}), ...(part.imageGen ? { imageGen: part.imageGen } : {}), status: "complete", outcome, finishReason, error: undefined,
         attemptFor: undefined, attemptMode: undefined, failureStage: undefined,
+        ...(index === 0 && favorite ? { favorite: true } : {}),
         // Each reply records only its own request; a regenerated or continued part never inherits an older one.
         memoryRefs: memoryRefs?.slice(0, MEMORY_REF_LIMIT),
         order: first.order + index,
@@ -1930,4 +2003,4 @@ export class ChatStorage {
     return completed;
   }
 }
-export const chatStorage = new ChatStorage(undefined, undefined, undefined, undefined, browserMemoryStorage);
+export const chatStorage = new ChatStorage(undefined, undefined, undefined, undefined, browserMemoryStorage, () => browserFoundationStorage.load());

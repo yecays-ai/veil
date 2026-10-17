@@ -1,3 +1,4 @@
+import { allUniverses } from "./universe";
 import { browserPersistenceWriteGate, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "./backup/persistence-write-gate";
 import { withoutCharacterBindings, type BindingDocument } from "./bindings";
 import { browserBindingStorage } from "./binding-storage";
@@ -66,7 +67,7 @@ export async function previewCharacterDeletion(foundation: FoundationDocument, c
     contact: contacts.contacts.some((contact) => contact.characterId === characterId),
     widgets: countHereThereReferences(theme, characterId),
     bindings: characterId in bindings.characters,
-    relations: foundation.universe.relations.filter((r) => r.characterAId === characterId || r.characterBId === characterId).length,
+    relations: allUniverses(foundation).flatMap((u) => u.relations).filter((r) => r.characterAId === characterId || r.characterBId === characterId).length,
   };
 }
 

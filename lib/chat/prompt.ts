@@ -1,3 +1,4 @@
+import { universeForCharacter } from "../universe";
 import { statePromptEntries, STATE_AUTHORITY, type StateView } from "../memory/state-runtime";
 import type { Character, FoundationDocument, ProfileBasics } from "../foundation-types";
 import { createBuiltinPreset, type Preset, type PresetMarker } from "../preset";
@@ -14,6 +15,7 @@ import type { MemoryConversation, MemoryContextMessage } from "../memory/context
 import { transferPromptContent } from "./transfer";
 import { giftPromptContent } from "./gift";
 import { hasGeneratedContent } from "./message-kind";
+import { modelFacingContent } from "./attachment";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -39,7 +41,7 @@ function profile(value: ProfileBasics) {
   }).filter(([, item]) => item !== null && item !== undefined && item !== ""));
 }
 function directRelations({ foundation, character }: PromptRuntimeContext) {
-  return foundation.universe.relations
+  return universeForCharacter(foundation, character).relations
     .filter((relation) => relation.characterAId === character.characterId ||
       relation.characterBId === character.characterId)
     .flatMap((relation) => {
@@ -142,7 +144,8 @@ function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
     ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt",
       { character: context.character.name, user: context.foundation.user.name })
     : message.content;
-  return messageHistoryContentWithBody(message, body);
+  // A voice message from the user is told to the model as one; the stored transcript stays as it is.
+  return messageHistoryContentWithBody(message, modelFacingContent(message, body));
 }
 
 export function resolvePresetMarker(
@@ -153,8 +156,8 @@ export function resolvePresetMarker(
     case "user":
       return JSON.stringify({ ...profile(context.foundation.user), aboutMe: context.foundation.user.aboutMe });
     case "universe":
-      return JSON.stringify({ name: context.foundation.universe.name,
-        worldSetting: context.foundation.universe.worldSetting });
+      return JSON.stringify({ name: universeForCharacter(context.foundation, context.character).name,
+        worldSetting: universeForCharacter(context.foundation, context.character).worldSetting });
     case "world-info-before":
       return context.worldInfo?.before.map((item) => item.entry.content).join("\n\n") || null;
     case "world-info-after":

@@ -55,9 +55,11 @@ test("storage rejects a stale Recall and clears the body for a fresh sent messag
   assert.equal((await storage.readSession(session.id)).messages.find((message) => message.id === stale.id)?.content, "too old");
 
   const fresh = await storage.send(session.id, "withdraw this");
+  await storage.setFavorite(fresh.id, true);
   const recalled = await storage.recallMessage(fresh.id, "user", undefined, session.id);
   assert.equal(recalled.content, "");
   assert.equal(recalled.recalled?.by, "user");
+  assert.equal(recalled.favorite, undefined, "recalled messages do not retain a Favorite marker");
   assert.equal(recalled.sentAt, fresh.sentAt);
 });
 

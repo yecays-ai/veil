@@ -1,4 +1,5 @@
 export type ChatSession = {
+  universeId?: string;
   id: string;
   /**
    * Direct chat: its Character. Group chat: the first member, or "" once no member remains (a group
@@ -103,6 +104,8 @@ export type ChatMessage = {
   memoryRefs?: MemoryRef[];
   /** One emoji per side. Absent until someone reacts, and removed again when the last one is cleared. */
   reactions?: import("./reactions").MessageReactions;
+  /** User-saved message marker. */
+  favorite?: true;
   /** A sticker message: `content` then holds its semantic text (for search, summaries, Memory and the prompt), not bubble text. Absent on text messages. */
   sticker?: import("./sticker-message").MessageSticker;
   /** The Character spoke this message: `content` is what it says (its transcript, still ordinary editable text) and the audio is made on demand from it. Absent on text messages. */

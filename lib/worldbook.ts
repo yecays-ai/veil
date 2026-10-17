@@ -1,3 +1,4 @@
+import { UNIVERSE_ID } from "./foundation-types";
 export type WorldBookEntry = {
   id: string;
   name: string;
@@ -15,6 +16,7 @@ export type WorldBookEntry = {
   delay: number;
 };
 export type WorldBook = {
+  universeId?: string;
   id: string;
   name: string;
   description: string;
@@ -68,6 +70,7 @@ export function normalizeWorldBook(value: unknown, id: string = crypto.randomUUI
   const entries = Array.isArray(value.entries) ? value.entries : Object.values(value.entries ?? {});
   return {
     id,
+    universeId: typeof value.universeId === "string" && value.universeId.trim() ? value.universeId : UNIVERSE_ID,
     name: typeof value.name === "string" && value.name.trim() ? value.name.trim() : "Imported WorldBook",
     description: typeof value.description === "string" ? value.description : "",
     enabled: typeof value.enabled === "boolean" ? value.enabled : value.disable !== true,
@@ -81,7 +84,8 @@ export function validateWorldBookDocument(value: unknown): WorldBookDocument {
     throw new Error("Saved WorldBook data has an unsupported format.");
   const bookIds = new Set<string>();
   const books = value.books.map((item) => {
-    if (!record(item) || !onlyKeys(item, ["id", "name", "description", "enabled", "entries"]) ||
+    if (!record(item) || !onlyKeys(item, ["id", "universeId", "name", "description", "enabled", "entries"]) ||
+      (item.universeId !== undefined && (typeof item.universeId !== "string" || !item.universeId.trim())) ||
       typeof item.id !== "string" || !item.id || bookIds.has(item.id) ||
         typeof item.name !== "string" || !item.name.trim() || typeof item.description !== "string" ||
         typeof item.enabled !== "boolean" || !Array.isArray(item.entries))
@@ -113,13 +117,13 @@ function parseJson(json: string): unknown {
   try { return JSON.parse(json); }
   catch { throw new Error("WorldBook JSON could not be read."); }
 }
-export function importWorldBook(document: WorldBookDocument, json: string): WorldBookDocument {
+export function importWorldBook(document: WorldBookDocument, json: string, universeId: string = UNIVERSE_ID): WorldBookDocument {
   const raw = parseJson(json);
   // Tavern exports often wrap the book in `data` or export an entries map directly.
   const source = record(raw) && record(raw.data) && raw.entries === undefined ? raw.data : raw;
   if (!record(source) || source.entries === undefined)
     throw new Error("WorldBook JSON has an unsupported structure.");
-  return validateWorldBookDocument({ ...document, books: [...document.books, normalizeWorldBook(source)] });
+  return validateWorldBookDocument({ ...document, books: [...document.books, { ...normalizeWorldBook(source), universeId }] });
 }
 export function importWorldBookEntry(document: WorldBookDocument, bookId: string, json: string, replaceId?: string): WorldBookDocument {
   const raw = parseJson(json);

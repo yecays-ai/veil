@@ -1,5 +1,5 @@
-import { transcriptionUrl, ttsConfigProblem, type TtsConfig } from "./config";
-import { TtsError } from "./speech";
+import { sttSettings, transcriptionUrl, type TtsConfig } from "./config";
+import { TtsError, ttsErrorMessage } from "./speech";
 
 export const STT_TIMEOUT_MS = 60_000;
 
@@ -11,9 +11,8 @@ export async function transcribeAudio(
   config: TtsConfig, recording: Blob, signal: AbortSignal,
   options: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
 ): Promise<string> {
-  const problem = ttsConfigProblem(config);
-  if (problem) throw new TtsError(problem, "config");
-  if (!config.sttModel?.trim()) throw new TtsError("Add a Speech-to-text model in your Voice settings.", "config");
+  const stt = sttSettings(config);
+  if ("problem" in stt) throw new TtsError(stt.problem, "config");
   const network = new AbortController();
   const forwardStop = () => network.abort(signal.reason);
   if (signal.aborted) forwardStop(); else signal.addEventListener("abort", forwardStop, { once: true });
@@ -22,12 +21,12 @@ export async function transcribeAudio(
   try {
     const form = new FormData();
     form.append("file", recording, `voice.${recording.type.includes("mp4") ? "m4a" : recording.type.includes("ogg") ? "ogg" : "webm"}`);
-    form.append("model", config.sttModel!.trim());
+    form.append("model", stt.model);
     let response: Response;
     try {
-      response = await (options.fetchImpl ?? fetch)(transcriptionUrl(config.baseUrl), {
+      response = await (options.fetchImpl ?? fetch)(transcriptionUrl(stt.baseUrl), {
         method: "POST", signal: network.signal, credentials: "omit", referrerPolicy: "no-referrer",
-        headers: { Authorization: `Bearer ${config.apiKey.trim()}` }, body: form,
+        headers: { Authorization: `Bearer ${stt.apiKey}` }, body: form,
       });
     } catch {
       signal.throwIfAborted();
@@ -45,4 +44,12 @@ export async function transcribeAudio(
     clearTimeout(timer);
     signal.removeEventListener("abort", forwardStop);
   }
+}
+
+/** What the person is told when the words of a recording could not be written out; response bodies are never shown. */
+export function sttErrorMessage(error: unknown): string {
+  if (!(error instanceof TtsError)) return "Could not write out the words. Try again.";
+  if (error.category === "config") return error.message;
+  return ttsErrorMessage(error).replace("voice service", "speech-to-text service").replace("Voice settings", "Voice settings (Speech-to-text)")
+    .replace("make the voice", "write out the words").replace("playable audio", "any words");
 }

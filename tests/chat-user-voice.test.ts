@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
-import { isMessageAttachment, MAX_VOICE_RECORDING_MS } from "../lib/chat/attachment";
+import { isMessageAttachment, MAX_VOICE_RECORDING_MS, modelFacingContent, UNTRANSCRIBED_VOICE_CONTENT } from "../lib/chat/attachment";
 import { hasGeneratedContent, isFixedMessage, listPreview } from "../lib/chat/message-kind";
 import { startVoiceRecording, VoiceRecordError } from "../lib/chat/voice-recorder";
 import { transcribeAudio } from "../lib/tts/transcribe";
@@ -21,37 +21,51 @@ test("an audio attachment is exactly five valid fields; images keep their six", 
   assert.equal(isMessageAttachment({ ...ok, bytes: 11 * 1024 * 1024 }), false);
 });
 
-test("a recorded voice message keeps its recording as an owned asset and its words as content", async () => {
+test("a recorded voice message is saved at once with a stand-in, and the words are written in place later", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("a");
-  const sent = await storage.sendVoice(session.id, clip(), 4321.6, "  see you at six  ");
+  const sent = await storage.sendVoice(session.id, clip(), 4321.6);
   assert.equal(sent.role, "user");
-  assert.equal(sent.content, "see you at six");
-  assert.deepEqual(sent.attachment && { ...sent.attachment, assetId: "x" }, { kind: "audio", assetId: "x", mime: "audio/webm", durationMs: 4322, bytes: 2048 });
+  assert.equal(sent.content, UNTRANSCRIBED_VOICE_CONTENT);
+  assert.deepEqual(sent.attachment && { ...sent.attachment, assetId: "x" }, { kind: "audio", assetId: "x", mime: "audio/webm", durationMs: 4322, bytes: 2048, untranscribed: true });
   assert.equal((await storage.readMessageAttachment(session.id, sent.id))?.size, 2048);
-  assert.equal(listPreview(sent), "[语音] see you at six");
-  assert.equal(hasGeneratedContent(sent), false, "the words are real text");
-  assert.equal(isFixedMessage(sent), true, "but the message is not edited");
+  assert.equal(await storage.completeVoiceTranscript(sent.id, "  see you at six  "), true);
+  const done = (await storage.readSession(session.id)).messages[0];
+  assert.equal(done.content, "see you at six");
+  assert.deepEqual(done.attachment && { ...done.attachment, assetId: "x" }, { kind: "audio", assetId: "x", mime: "audio/webm", durationMs: 4322, bytes: 2048 });
+  assert.equal(listPreview(done), "[语音] see you at six");
+  assert.equal(hasGeneratedContent(done), false, "the words are real text");
+  assert.equal(isFixedMessage(done), true, "but the message is not edited");
+  assert.equal(await storage.completeVoiceTranscript(sent.id, "again"), false, "words are written once");
   await assert.rejects(storage.editMessage(sent.id, "other"), /Media messages cannot be edited/);
   await storage.deleteMessages(session.id, [sent.id]);
   assert.equal(await storage.readMessageAttachment(session.id, sent.id), null, "deleting the message deletes its recording");
+  assert.equal(await storage.completeVoiceTranscript(sent.id, "late"), false, "a deleted message gets no words");
 });
 
-test("a recording without words, in an unknown format, too big or with no real length is refused and leaves nothing", async () => {
+test("a recording in an unknown format, too big or with no real length is refused and leaves nothing", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("a");
-  await assert.rejects(storage.sendVoice(session.id, clip(), 1000, "   "), /words/);
-  await assert.rejects(storage.sendVoice(session.id, clip("audio/mpeg"), 1000, "hi"), /format/);
-  await assert.rejects(storage.sendVoice(session.id, clip("audio/webm", 11 * 1024 * 1024), 1000, "hi"), /10 MiB/);
-  await assert.rejects(storage.sendVoice(session.id, clip(), 0, "hi"), /length/);
-  await assert.rejects(storage.sendVoice(session.id, clip(), MAX_VOICE_RECORDING_MS + 1, "hi"), /length/);
+  await assert.rejects(storage.sendVoice(session.id, clip("audio/mpeg"), 1000), /format/);
+  await assert.rejects(storage.sendVoice(session.id, clip("audio/webm", 11 * 1024 * 1024), 1000), /10 MiB/);
+  await assert.rejects(storage.sendVoice(session.id, clip(), 0), /length/);
+  await assert.rejects(storage.sendVoice(session.id, clip(), MAX_VOICE_RECORDING_MS + 1), /length/);
   assert.equal((await storage.readSession(session.id)).messages.length, 0);
+});
+
+test("the model is told a user message is a voice message, in the current turn and in history", () => {
+  const voice = { role: "user", attachment: { kind: "audio" } } as const;
+  assert.equal(modelFacingContent(voice, "see you at six"), "[用户发送了一条语音消息：see you at six]");
+  assert.equal(modelFacingContent({ role: "user", attachment: { kind: "audio", untranscribed: true } }, UNTRANSCRIBED_VOICE_CONTENT).includes("还没有转成文字"), true);
+  assert.equal(modelFacingContent({ role: "user" }, "typed"), "typed");
+  assert.equal(modelFacingContent({ role: "assistant", attachment: { kind: "audio" } }, "spoken by the character"), "spoken by the character");
+  assert.equal(modelFacingContent({ role: "user", attachment: { kind: "image" } }, "a photo"), "a photo");
 });
 
 test("the Photos list never includes a voice recording", async () => {
   const storage = new ChatStorage(() => new IDBFactory());
   const session = await storage.openSession("a");
-  await storage.sendVoice(session.id, clip(), 1000, "hi");
+  await storage.sendVoice(session.id, clip(), 1000);
   const listed = await storage.listSessionImages("a", 10);
   assert.deepEqual(listed?.images, []);
 });

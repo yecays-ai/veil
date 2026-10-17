@@ -1,4 +1,5 @@
 "use client";
+import { allUniverses, createUniverse, universeView, editUniverse } from "../lib/universe";
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -21,6 +22,7 @@ import { RelationshipCanvas } from "./relationship-canvas";
 import { UI_COPY as U } from "../lib/ui-copy";
 import { Avatar } from "./profile-view";
 import { PageShell } from "./page-shell";
+import { confirmDiscard } from "./leave-guard";
 
 function RelationForm({
   document,
@@ -28,12 +30,18 @@ function RelationForm({
   save,
   cancel,
   remove,
+  disabled,
+  onDirtyChange,
+  onBusyChange,
 }: {
   document: FoundationDocument;
   id: string | null;
   save: (input: RelationInput) => Promise<void>;
   cancel: () => void;
   remove: () => Promise<void>;
+  disabled: boolean;
+  onDirtyChange: (dirty: boolean) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const existing = document.universe.relations.find((r) => r.id === id);
   const form = useRef<HTMLFormElement>(null);
@@ -53,6 +61,11 @@ function RelationForm({
   );
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const [baseline] = useState(() => JSON.stringify(draft));
+  const dirty = JSON.stringify(draft) !== baseline;
+  useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  useEffect(() => { onBusyChange(busy); return () => onBusyChange(false); }, [busy, onBusyChange]);
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -81,7 +94,7 @@ function RelationForm({
       }}
     >
       <h2>{existing ? C.relations.edit : C.relations.create}</h2>
-      <fieldset disabled={busy}>
+      <fieldset disabled={busy || disabled}>
         {(["characterAId", "characterBId"] as const).map((key, index) => (
           <label key={key}>
             {index ? C.relations.b : C.relations.a}
@@ -161,7 +174,7 @@ function RelationForm({
                 maxLength={12000}
                 value={draft[key] ?? ""}
                 onChange={(event) =>
-                  setDraft({ ...draft, [key]: event.target.value })
+                  setDraft({ ...draft, [key]: event.target.value || null })
                 }
               />
               {index < 2 && (
@@ -193,11 +206,22 @@ function RelationForm({
 }
 
 export function UniversePage() {
-  const { document, ready, commit } = useFoundation();
+  const { document: foundation, ready, commit: commitFoundation } = useFoundation();
+  const [selected, setSelected] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("id") ?? "");
+  const selectedId = allUniverses(foundation).some((u) => u.id === selected) ? selected : foundation.universe.id;
+  const document = universeView(foundation, selectedId);
+  const commit = (update: (view: FoundationDocument) => FoundationDocument) => commitFoundation((d) => editUniverse(d, selectedId, update));
+  const [newName, setNewName] = useState("");
   const [editor, setEditor] = useState<string | null | undefined>(undefined);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
-  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoDraft, setInfoDraft] = useState<{ name: string; worldSetting: string } | null>(null);
+  const editingInfo = infoDraft !== null;
+  const infoDirty = infoDraft !== null && (infoDraft.name !== document.universe.name || infoDraft.worldSetting !== (document.universe.worldSetting ?? ""));
+  const [relationDirty, setRelationDirty] = useState(false);
+  const [relationBusy, setRelationBusy] = useState(false);
+  const dirty = infoDirty || relationDirty;
+  function closeEditors() { setInfoDraft(null); setEditor(undefined); setRelationDirty(false); }
   const page = useRef<HTMLElement>(null);
   if (!ready)
     return (
@@ -223,7 +247,7 @@ export function UniversePage() {
         ),
       );
       setNotice("");
-      setEditingInfo(false);
+      setInfoDraft(null);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
     } finally {
@@ -236,9 +260,25 @@ export function UniversePage() {
       backHref="/"
       backLabel="Back to Home"
       bodyClassName="foundation-page"
+      guardLeave={dirty}
       rightAction={<Link href="/characters">{C.universe.characters}</Link>}
     >
-      <section ref={page}>
+      <label>Universe<select value={selectedId} disabled={busy || relationBusy} onChange={(event) => {
+        if (busy || relationBusy || event.target.value === selectedId || !confirmDiscard(dirty)) return;
+        setSelected(event.target.value); closeEditors(); setNotice("");
+      }}>
+        {allUniverses(foundation).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select></label>
+      <form className="foundation-form" onSubmit={async (event) => {
+        event.preventDefault();
+        if (busy || relationBusy || !confirmDiscard(dirty)) return;
+        setBusy(true); setNotice("");
+        try { const saved = await commitFoundation((d) => createUniverse(d, newName)); setSelected(saved.universes!.at(-1)!.id); setNewName(""); closeEditors(); }
+        catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
+        finally { setBusy(false); }
+      }}><label>New Universe<input required maxLength={100} disabled={busy || relationBusy} value={newName} onChange={(event) => setNewName(event.target.value)} /></label>
+        <button disabled={busy || relationBusy}>Create Universe</button></form>
+      <section ref={page} key={selectedId}>
         <header className="universe-header">
           <span className="section-eyebrow">{C.universe.title}</span>
           <h1>{document.universe.name}</h1>
@@ -246,7 +286,7 @@ export function UniversePage() {
             <p>{document.universe.worldSetting}</p>
           )}
           {!editingInfo && (
-            <button onClick={() => setEditingInfo(true)}>
+            <button disabled={busy || relationBusy} onClick={() => setInfoDraft({ name: document.universe.name, worldSetting: document.universe.worldSetting ?? "" })}>
               {C.common.edit}
             </button>
           )}
@@ -265,7 +305,8 @@ export function UniversePage() {
                   name="universe-name"
                   required
                   maxLength={100}
-                  defaultValue={document.universe.name}
+                  value={infoDraft!.name}
+                  onChange={(event) => setInfoDraft({ ...infoDraft!, name: event.target.value })}
                 />
               </label>
               <label>
@@ -274,12 +315,13 @@ export function UniversePage() {
                   autoComplete="off"
                   maxLength={12000}
                   name="world-setting"
-                  defaultValue={document.universe.worldSetting ?? ""}
+                  value={infoDraft!.worldSetting}
+                  onChange={(event) => setInfoDraft({ ...infoDraft!, worldSetting: event.target.value })}
                 />
               </label>
               <div className="foundation-actions">
                 <button>{C.common.save}</button>
-                <button type="button" onClick={() => setEditingInfo(false)}>
+                <button type="button" onClick={() => setInfoDraft(null)}>
                   {C.common.cancel}
                 </button>
               </div>
@@ -314,6 +356,9 @@ export function UniversePage() {
             key={editor ?? "new"}
             document={document}
             id={editor}
+            disabled={busy}
+            onDirtyChange={setRelationDirty}
+            onBusyChange={setRelationBusy}
             cancel={() => setEditor(undefined)}
             save={async (input) => {
               await commit((d) => saveRelation(d, input, editor ?? undefined));
