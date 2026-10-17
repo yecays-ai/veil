@@ -56,7 +56,7 @@ test("MiniMax: the browser only talks to VEIL; the server makes the one MiniMax 
   const blob = await synthesizeSpeech({ ...minimax, region: "cn" }, { text: " hi ", voice: "my-clone" }, never, { fetchImpl });
   assert.equal(browser.length, 1);
   assert.equal(browser[0].url, "/api/tts/minimax", "a same-origin path, not a MiniMax host");
-  assert.equal(browser[0].init.credentials, "same-origin", "VEIL's own cookies go along, so a protected preview does not redirect it away");
+  assert.equal(browser[0].init.credentials, "same-origin", "VEIL's own cookies go along, so a protected preview does not answer it with its own 401");
   assert.equal(String(browser[0].init.body).includes("sk-secret"), false, "the key is in a header, not the body or URL");
   assert.equal((browser[0].init.headers as Record<string, string>).Authorization, "Bearer sk-secret");
   assert.equal(server.length, 1);
@@ -227,4 +227,52 @@ test("relay: nothing about a request is written to the console, success or failu
       await synthesizeSpeech(minimax, { text: "secret words", voice: "v" }, never, { fetchImpl: viaRelay(upstream).fetchImpl }).catch(() => {});
   } finally { for (const [name, original] of originals) console[name] = original; }
   assert.deepEqual(seen, []);
+});
+
+/**
+ * A browser's own `fetch` throws "Illegal invocation" when it is called as a method of another object, which is how a
+ * fetch kept on the `Call` object (`call.fetchImpl(...)`) was once called. This stand-in has the same rule, so any
+ * provider written that way fails here as it does in a browser; the other tests' plain mocks cannot tell.
+ */
+function hostBoundFetch(answer: () => Response | Promise<Response>, seen: { url: string; mode?: RequestMode }[] = []) {
+  return (async function (this: unknown, url: string, init: RequestInit) {
+    if (this !== undefined && this !== globalThis) throw new TypeError("Failed to execute 'fetch' on 'Window': Illegal invocation");
+    seen.push({ url, mode: init.mode });
+    return answer();
+  }) as unknown as typeof fetch;
+}
+
+test("every provider sends its request with a fetch that must not be called as a method", async () => {
+  const mp3 = () => new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "audio/mpeg" } });
+  const openai: TtsConfig = { baseUrl: "https://tts.test/v1", apiKey: "k", model: "tts-1", voice: "nova" };
+  for (const config of [openai, minimax, eleven]) {
+    const seen: { url: string }[] = [];
+    const blob = await synthesizeSpeech(config, { text: "hi", voice: "v" }, never, { fetchImpl: hostBoundFetch(mp3, seen) });
+    assert.equal(seen.length, 1, `${config.provider ?? "openai"} made its one request`);
+    assert.deepEqual([...new Uint8Array(await blob.arrayBuffer())], [1, 2, 3]);
+  }
+});
+
+test("the failure probe also calls fetch as a plain function, so an unreachable-but-live host is told apart from a refusal", async () => {
+  const seen: { url: string; mode?: RequestMode }[] = [];
+  const answers = [() => { throw new TypeError("Load failed"); }, () => new Response(null)];
+  const fetchImpl = hostBoundFetch(() => answers.shift()!(), seen);
+  const error = await failure(synthesizeSpeech(eleven, { text: "x", voice: "v" }, never, { fetchImpl }));
+  assert.equal(error.category, "cors", "the probe reached the host");
+  assert.deepEqual(seen.map((call) => call.mode), [undefined, "no-cors"]);
+});
+
+test("the host-bound stand-in does reject a method call, so the two tests above would fail on the old code", async () => {
+  const holder = { fetchImpl: hostBoundFetch(() => new Response(null)) };
+  await assert.rejects(Promise.resolve().then(() => holder.fetchImpl("https://x.test", {})), /Illegal invocation/);
+});
+
+test("only the relay request carries cookies: the third-party providers are still called with credentials omitted", async () => {
+  const mp3 = () => new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "audio/mpeg" } });
+  const openai: TtsConfig = { baseUrl: "https://tts.test/v1", apiKey: "k", model: "tts-1", voice: "nova" };
+  for (const config of [openai, eleven]) {
+    const { calls, fetchImpl } = recorder(mp3);
+    await synthesizeSpeech(config, { text: "hi", voice: "v" }, never, { fetchImpl });
+    assert.equal(calls[0].init.credentials, "omit", `${config.provider ?? "openai"} gets no cookies`);
+  }
 });

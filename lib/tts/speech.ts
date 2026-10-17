@@ -55,7 +55,8 @@ async function failedFetch(call: Call): Promise<TtsError> {
   const stop = () => probe.abort(), timer = setTimeout(stop, PROBE_MS);
   call.stop.addEventListener("abort", stop, { once: true });
   try {
-    await call.fetchImpl(`https://${info.host}/`, { method: "GET", mode: "no-cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal: probe.signal });
+    const { fetchImpl } = call; // a local, not `call.fetchImpl(...)`: the browser's own `fetch` throws "Illegal invocation" when called as a method of another object
+    await fetchImpl(`https://${info.host}/`, { method: "GET", mode: "no-cors", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", signal: probe.signal });
     return new TtsError("cors", "cors", undefined, info);
   } catch {
     call.stop.throwIfAborted();
@@ -102,9 +103,11 @@ const audioOf = (blob: Blob, call: Call): Blob => {
     throw invalidAudio(call);
   return type.startsWith("audio/") ? blob : new Blob([blob], { type: "audio/mpeg" });
 };
-const post = (call: Call, url: string, headers: Record<string, string>, body: unknown, credentials: RequestCredentials = "omit") =>
-  call.fetchImpl(url, { method: "POST", signal: call.signal, credentials, referrerPolicy: "no-referrer",
+const post = (call: Call, url: string, headers: Record<string, string>, body: unknown, credentials: RequestCredentials = "omit") => {
+  const { fetchImpl } = call; // see `failedFetch`: never call it as `call.fetchImpl(...)`
+  return fetchImpl(url, { method: "POST", signal: call.signal, credentials, referrerPolicy: "no-referrer",
     headers: { "Content-Type": "application/json", ...headers }, body: JSON.stringify(body) });
+};
 
 /** OpenAI-compatible `/audio/speech`. */
 async function openaiSpeech(call: Call): Promise<Blob> {
@@ -131,7 +134,7 @@ async function minimaxSpeech(call: Call): Promise<Blob> {
   try {
     response = await post(call, MINIMAX_RELAY_PATH, { Authorization: `Bearer ${call.config.apiKey.trim()}` },
       { region: call.config.region ?? "global", model: call.config.model.trim(), voice: call.voice, text: call.text },
-      // VEIL's own origin, so its own cookies may go: a deployment behind a sign-in (a Vercel preview) rejects a request without them by redirecting off-site, which a browser reports as a failed fetch.
+      // VEIL's own origin, so its own cookies may go: a deployment behind a sign-in (a Vercel preview) answers a request without them with its own 401, before VEIL's route runs.
       "same-origin");
   } catch { call.stop.throwIfAborted(); throw new TtsError(call.timedOut() ? "timeout" : "network", call.timedOut() ? "timeout" : "network", undefined, relay); }
   if (!response.ok) {
