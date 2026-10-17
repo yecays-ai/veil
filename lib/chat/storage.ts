@@ -1927,11 +1927,14 @@ export class ChatStorage {
       delete firstBase.attachment;
       delete firstBase.voice;
       delete firstBase.imageGen;
+      const favorite = firstBase.favorite;
+      delete firstBase.favorite;
       const sentAt = Date.now();
       const generated: ChatMessage[] = entries.map((part, index) => ({
         ...firstBase, sentAt, id: index === 0 ? first.id : crypto.randomUUID(), turnId, attemptId: owned,
         content: part.content, ...(part.sticker ? { sticker: part.sticker } : {}), ...(part.voice ? { voice: true as const } : {}), ...(part.imageGen ? { imageGen: part.imageGen } : {}), status: "complete", outcome, finishReason, error: undefined,
         attemptFor: undefined, attemptMode: undefined, failureStage: undefined,
+        ...(index === 0 && favorite ? { favorite: true } : {}),
         // Each reply records only its own request; a regenerated or continued part never inherits an older one.
         memoryRefs: memoryRefs?.slice(0, MEMORY_REF_LIMIT),
         order: first.order + index,

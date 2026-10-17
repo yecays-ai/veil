@@ -148,7 +148,7 @@ export function MessagesHome() {
     <label className="messages-search"><Search /><input type="search" aria-label="Search chats" placeholder="Search chats..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
     <div className="messages-filters" role="group" aria-label="Conversation filters">
       {(["all", "private", "groups"] as const).map((item) =>
-        <button key={item} type="button" aria-pressed={filter === item && universeFilter === "all"}
+        <button key={item} type="button" aria-pressed={filter === item && (item !== "all" || universeFilter === "all")}
           onClick={() => { setFilter(item); if (item === "all") setUniverseFilter("all"); }}>{item[0].toUpperCase() + item.slice(1)}</button>)}
       {allUniverses(document).map((u) => <button key={u.id} type="button" aria-pressed={universeFilter === u.id}
         onClick={() => setUniverseFilter(u.id)}>{u.name}</button>)}

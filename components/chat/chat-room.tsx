@@ -999,7 +999,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               if (!blob) { showFeedback("Play the voice message once before downloading it."); return; }
               const url = URL.createObjectURL(blob), link = window.document.createElement("a");
               const base = (character?.name || "Character").replace(/[\\/:*?\"<>|]/g, "-").trim() || "Character";
-              const extension = blob.type === "audio/mp4" ? "m4a" : blob.type === "audio/ogg" ? "ogg" : blob.type === "audio/webm" ? "webm" : "mp3";
+              const mime = blob.type.split(";")[0].trim().toLowerCase();
+              const extension = mime === "audio/mp4" ? "m4a" : mime === "audio/ogg" ? "ogg" : mime === "audio/webm" ? "webm" : "mp3";
               link.href = url; link.download = `${base}-voice-${Date.now()}.${extension}`;
               link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
             } catch (reason) { setError(reason instanceof Error ? reason.message : "Voice could not be downloaded."); }

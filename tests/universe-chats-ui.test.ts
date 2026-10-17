@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { IDBFactory } from "fake-indexeddb";
 import { JSDOM } from "jsdom";
 import { act, createElement } from "react";
@@ -86,7 +87,11 @@ async function checkUniverseList() {
     const filters = [...dom.window.document.querySelectorAll<HTMLButtonElement>('[role="group"][aria-label="Conversation filters"] button')];
     assert.deepEqual(filters.map((button) => button.textContent), ["All", "Private", "Groups", "Spider-Man", "Call of Duty"]);
     assert.equal(dom.window.document.querySelectorAll('[role="group"]').length, 1, "all filters share one wrapping row");
-    await click("", "Spider-Man"); assert.deepEqual(links(), ["/messages/a"]);
+    assert.match(readFileSync("app/messages/chat.css", "utf8"), /Conversation filters\"] button \{[^}]*white-space:\s*normal/);
+    const pressed = (label: string) => filters.find((button) => button.textContent === label)!.getAttribute("aria-pressed");
+    await click("", "Private"); assert.equal(pressed("Private"), "true");
+    await click("", "Spider-Man"); assert.equal(pressed("Private"), "true", "type remains selected while universe narrows the list");
+    assert.deepEqual(links(), ["/messages/a"]);
     // A hidden world's new message still refreshes storage and sorting.
     rows = rows.map((r) => r.id === "session-b" ? { ...r, updatedAt: 50, lastMessagePreview: "Ghost new message", unreadCount: 1 } : r);
     await act(async () => { listener!({ domain: "messages", sessionId: "session-b" }); await settle(); });

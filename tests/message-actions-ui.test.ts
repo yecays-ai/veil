@@ -44,3 +44,8 @@ test("Character messages use Favorite, user messages keep Recall, and voice expo
   assert.match(css, /grid-template-columns:\s*repeat\(4,/);
   assert.match(css, /width:\s*min\(360px, 92%\)/);
 });
+
+test("voice downloads derive the file extension from the normalized audio MIME type", () => {
+  assert.match(room, /const mime = blob\.type\.split\(";"\)\[0\]\.trim\(\)\.toLowerCase\(\)/);
+  assert.match(room, /mime === "audio\/webm" \? "webm"/);
+});
