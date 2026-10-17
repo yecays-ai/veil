@@ -9,7 +9,6 @@ import { chatStorage } from "../lib/chat/storage";
 import { browserFoundationStorage } from "../lib/foundation-storage";
 import { normalizeFoundation } from "../lib/foundation-types";
 
-const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 async function waitFor(check: () => boolean) {
   const deadline = Date.now() + 2000;
