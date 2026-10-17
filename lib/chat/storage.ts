@@ -29,7 +29,7 @@ import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
 import { isMessageSticker, stickerContent, type MessageSticker } from "./sticker-message";
-import { ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
+import { ATTACHMENT_AUDIO_MIMES, ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_AUDIO_BYTES, MAX_VOICE_RECORDING_MS, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
 import { isCardMessage, listPreview } from "./message-kind";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
@@ -66,6 +66,7 @@ function globalProfileRecord(
     hereThereEnabled: change.hereThereEnabled ?? (current?.hereThereEnabled !== false),
     nextCommentAt: change.nextCommentAt !== undefined ? change.nextCommentAt : finiteOrNull(current?.nextCommentAt) };
 }
+export const VOICE_TRANSCRIPT_MAX = 1000;
 const MAX_CHAT_IMAGE_BYTES = 25 * 1024 * 1024;
 
 /** The attachment a message gets for this image, or the reason it is refused. */
@@ -75,6 +76,16 @@ function imageAttachment(blob: Blob, width: number, height: number, assetId: str
   const valid = [width, height].every((edge) => Number.isSafeInteger(edge) && edge >= 1 && edge <= MAX_ATTACHMENT_IMAGE_EDGE);
   if (!valid) throw new Error("This image's size could not be read.");
   return { kind: "image", assetId, mime: blob.type, width, height, bytes: blob.size };
+}
+
+/** The attachment a message gets for this recording, or the reason it is refused. */
+function audioAttachment(blob: Blob, durationMs: number, assetId: string): MessageAttachment {
+  const mime = blob.type.split(";")[0].trim().toLowerCase();
+  if (!ATTACHMENT_AUDIO_MIMES.includes(mime)) throw new Error("This recording's format is not supported.");
+  if (!blob.size || blob.size > MAX_ATTACHMENT_AUDIO_BYTES) throw new Error("Voice messages must be 10 MiB or smaller.");
+  const ms = Math.round(durationMs);
+  if (!Number.isSafeInteger(ms) || ms < 1 || ms > MAX_VOICE_RECORDING_MS) throw new Error("This recording's length could not be read.");
+  return { kind: "audio", assetId, mime, durationMs: ms, bytes: blob.size };
 }
 
 function directSessionFor(sessions: ChatSession[], characterId: string) {
@@ -582,7 +593,7 @@ export class ChatStorage {
           const at = cursor.result;
           if (!at) { resolve(); return; }
           const message = at.value as ChatMessage;
-          if (message.attachment && !message.recalled) images.push({ messageId: message.id, attachment: message.attachment, order: message.order });
+          if (message.attachment?.kind === "image" && !message.recalled) images.push({ messageId: message.id, attachment: message.attachment, order: message.order });
           at.continue();
         };
       });
@@ -1339,6 +1350,14 @@ export class ChatStorage {
     return this.send(sessionId, attachmentContent("user", { kind: "image" }), quoteMessageId, undefined, undefined, interject,
       { blob, width, height });
   }
+  /** A recording from the user: saved like a sent message with its bytes as an asset it owns; `content` is its transcript, which must not be empty. */
+  sendVoice(sessionId: string, blob: Blob, durationMs: number, transcript: string, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
+    const text = transcript.trim().slice(0, VOICE_TRANSCRIPT_MAX);
+    if (!text) return Promise.reject(new Error("Add the words of this voice message first."));
+    try { audioAttachment(blob, durationMs, "pending"); }
+    catch (error) { return Promise.reject(error); }
+    return this.send(sessionId, text, quoteMessageId, undefined, undefined, interject, { blob, durationMs });
+  }
   /** The bytes of one message's attachment. Null unless that message belongs to this conversation and still has them. */
   readMessageAttachment(sessionId: string, messageId: string): Promise<Blob | null> {
     return this.transaction("readonly", async (tx) => {
@@ -1513,7 +1532,7 @@ export class ChatStorage {
    * A reply that already finished is never touched; then this is an ordinary send.
    */
   async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker,
-    interject = false, media?: { blob: Blob; width: number; height: number }): Promise<ChatMessage> {
+    interject = false, media?: { blob: Blob; width: number; height: number } | { blob: Blob; durationMs: number }): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
     if (content.length > 12000)
@@ -1552,7 +1571,8 @@ export class ChatStorage {
       // The asset and the message that owns it are written in this one transaction: neither can exist without the other.
       let attachment: MessageAttachment | undefined;
       if (media) {
-        attachment = imageAttachment(media.blob, media.width, media.height, crypto.randomUUID());
+        attachment = "durationMs" in media ? audioAttachment(media.blob, media.durationMs, crypto.randomUUID())
+          : imageAttachment(media.blob, media.width, media.height, crypto.randomUUID());
         await request(tx.objectStore("assets").add({ id: attachment.assetId, blob: media.blob, createdAt: sentAt } satisfies ChatImageAsset));
       }
       const message: ChatMessage = {
