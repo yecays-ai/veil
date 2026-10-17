@@ -52,12 +52,14 @@ test("two named partitions persist ownership, scoped relations and rename withou
   assert.equal(deleted.user.name, document.user.name);
 });
 
-test("global sessions retain both worlds, sort on new messages, preserve group ownership after all members leave", async () => {
+test("global sessions retain both worlds, sort on new messages, preserve group ownership after all members leave", async (t) => {
+  let now = 1_700_000_000_000;
+  t.mock.method(Date, "now", () => now);
   const { document, peter, ghost, soap, worlds, storage } = setup();
   const a = await storage.openSession(peter.characterId), b = await storage.openSession(ghost.characterId);
   assert.equal(a.universeId, worlds[0].id); assert.equal(b.universeId, worlds[1].id);
   assert.equal((await storage.openSession(peter.characterId)).id, a.id);
-  await storage.send(a.id, "hello Peter"); await storage.send(b.id, "hello Ghost");
+  await storage.send(a.id, "hello Peter"); now += 1000; await storage.send(b.id, "hello Ghost");
   assert.equal((await storage.listSessions()).length, 2);
   assert.equal(sortChatSessions(await storage.listSessions())[0].id, b.id);
   assert.deepEqual((await storage.readSession(a.id)).messages.map((m) => m.content), ["hello Peter"]);
@@ -166,4 +168,48 @@ test("a partial WorldBook backup needs no Foundation; a present Foundation still
   await assert.rejects(check(), (error: unknown) => (error as { code: string }).code === "cross-character-reference");
   data.foundation = normalizeFoundation({ universe: { id: "partial-world", name: "Partial world" } });
   assert.equal((await check()).data.worldbooks?.books.length, 1);
+});
+
+function primaryBackup() {
+  const data = backupData(); data.foundation = normalizeFoundation({ universe: { id: "stored-primary", name: "Primary" } });
+  data.appearance = null; data.contacts = null; data.bindings = null; data.presence = null; data.worldbooks = null;
+  data.chat = { sessions: [], messages: [], chatSettings: [], worldBookStates: [] };
+  data.memory = { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] };
+  return data;
+}
+
+test("legacy WorldBook backup ownership defaults to the stored primary and still rejects explicit foreign ids", async () => {
+  const data = primaryBackup();
+  const book = normalizeWorldBook({ name: "Legacy book" }); delete book.universeId;
+  data.worldbooks = { version: 1, books: [book] };
+  const check = async () => { const pkg = await packageFixture(data); return validateBackupPackage(JSON.stringify(pkg.manifest), pkg.files); };
+  assert.equal((await check()).data.worldbooks?.books[0].id, book.id);
+  book.universeId = "unknown";
+  await assert.rejects(check(), (error: unknown) => (error as { code: string }).code === "cross-character-reference");
+});
+
+test("legacy WorldBook runtime ownership matches Settings under a nondefault primary without leaking to another world", async () => {
+  const document = normalizeFoundation({ universe: { id: "stored-primary", name: "Primary" }, universes: [{ id: "cod", name: "COD" }],
+    characters: [{ characterId: "peter", name: "Peter" }, { characterId: "ghost", name: "Ghost", universeId: "cod" }], runtime: { timeAware: false } });
+  const legacy = normalizeWorldBook({ name: "Legacy", entries: [{ content: "LEGACY_PRIMARY_BOOK", constant: true }] }); delete legacy.universeId;
+  const cod = normalizeWorldBook({ name: "COD", universeId: "cod", entries: [{ content: "EXPLICIT_COD_BOOK", constant: true }] });
+  const storage = new ChatStorage(() => new IDBFactory(), undefined, undefined, false, undefined, async () => document);
+  const prompts: string[] = [];
+  const engine = createChatEngine(storage, async () => document, async function* (_c, turns) { prompts.push(turns.map((t) => t.content).join("\n")); yield "Hello"; },
+    undefined, undefined, async () => ({ version: 1, books: [legacy, cod] }), undefined,
+    async () => ({ global: { worldBookIds: [legacy.id, cod.id] }, characters: {} }), undefined, undefined, async () => {}, async () => undefined, async () => {});
+  for (const id of ["peter", "ghost"]) { const session = await storage.openSession(id); await storage.send(session.id, "hi"); await engine.requestReply(session.id); }
+  assert.match(prompts[0], /LEGACY_PRIMARY_BOOK/); assert.doesNotMatch(prompts[0], /EXPLICIT_COD_BOOK/);
+  assert.match(prompts[1], /EXPLICIT_COD_BOOK/); assert.doesNotMatch(prompts[1], /LEGACY_PRIMARY_BOOK/);
+});
+
+test("empty legacy groups stay in the stored primary filter and validate in backups", async () => {
+  const data = primaryBackup(); const document = data.foundation!;
+  const group = { id: "empty-group", characterId: "", type: "group" as const, participantIds: [], title: "Empty group",
+    updatedAt: 1, autoReplyOnKeyboardDismiss: false, nextOrder: 1 };
+  assert.equal(sessionUniverseId(document, group), "stored-primary");
+  assert.equal(sessionUniverseId(document, { ...group, universeId: "explicit" }), "explicit");
+  data.chat.sessions = [group];
+  const pkg = await packageFixture(data);
+  assert.equal((await validateBackupPackage(JSON.stringify(pkg.manifest), pkg.files)).data.chat.sessions.length, 1);
 });

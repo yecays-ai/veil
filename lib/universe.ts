@@ -15,7 +15,7 @@ export function sessionUniverseId(document: FoundationDocument, session: ChatSes
   if (session.universeId) return session.universeId;
   const members = session.type === "group" ? session.participantIds ?? [] : [session.characterId];
   // Minimal default for old internal empty-group fixtures; new groups always retain their own id.
-  if (!members.length) return UNIVERSE_ID;
+  if (!members.length) return document.universe.id;
   const ids = members.map((id) => document.characters.find((c) => c.characterId === id)).map((c) => c ? characterUniverseId(c) : null);
   return ids.length && ids[0] && ids.every((id) => id === ids[0]) ? ids[0] : null;
 }

@@ -1,5 +1,4 @@
 import { allUniverses, characterUniverseId, sessionUniverseId } from "../universe";
-import { UNIVERSE_ID } from "../foundation-types";
 import { SUMMARY_CHARACTERS } from "../chat/summary";
 import { memorySourceHash } from "../memory/source-hash";
 import { sourceInvalidationValid } from "../memory/source-hash";
@@ -503,8 +502,9 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
   data.foundation?.characters.forEach((row, index) => image(row.avatar, `foundation.characters[${index}]`));
   image(data.foundation?.user.avatar, "foundation.user");
   if (data.foundation) {
+    const primaryId = data.foundation.universe.id;
     const universeIds = new Set(allUniverses(data.foundation).map((u) => u.id));
-    data.worldbooks?.books.forEach((book, index) => check(universeIds.has(book.universeId ?? UNIVERSE_ID), `worldbooks[${index}]`, "cross-character-reference"));
+    data.worldbooks?.books.forEach((book, index) => check(universeIds.has(book.universeId ?? primaryId), `worldbooks[${index}]`, "cross-character-reference"));
   }
   data.contacts?.contacts.forEach((row, index) => character(row.characterId, `contacts[${index}]`));
   data.presence?.characters.forEach((row, index) => character(row.characterId, `presence[${index}]`));

@@ -1,12 +1,12 @@
 # STATUS — 2026-10-17-codex-multi-universe
 
 更新人：Codex
-更新时间：2026-10-17T19:08:09+08:00
+更新时间：2026-10-17T19:19:00+08:00
 发现范围：GitHub API latest main `8c6e9532d4368bdde617fa054147372e835ffaba`；open PR（含 draft）为空；remote branches 13 条，未发现本工单分支。读取 main 的 `AGENTS.md`、`docs/AUDIT_LEDGER.md`、README storage map、Chat Core 与 work-status 约定。未把历史记录当作当前并行施工授权。
 
 ## 当前任务
 
-6 条 CodeRabbit 审查已逐项核实并修复，待新 head 复审：新增 P1，多 Universe 数据分区与全局 Chats。总账 ID：新增。只解决创建/命名、角色归属、隔离与全局列表筛选。验收话：Peter/Ghost 同时可聊，All 同时可见，筛选互相独立，生成上下文不串世界。做完划掉本工单；不做 Character API/Model binding、语音实机、正式旧数据迁移、Universe 删除/角色迁移或工作区切换。通过相关回归后停止扩展。
+原 6 条 CodeRabbit 审查与复审追加的 3 条 diff 外意见已核实并修复，待最终 head 复审：新增 P1，多 Universe 数据分区与全局 Chats。总账 ID：新增。只解决创建/命名、角色归属、隔离与全局列表筛选。验收话：Peter/Ghost 同时可聊，All 同时可见，筛选互相独立，生成上下文不串世界。做完划掉本工单；不做 Character API/Model binding、语音实机、正式旧数据迁移、Universe 删除/角色迁移或工作区切换。通过相关回归后停止扩展。
 
 ## 谁在改哪里
 
@@ -35,8 +35,9 @@ Codex；`feat/multi-universe`；base 为以上 main；[PR #242](https://github.c
 - Minor / discussion_r4302202067：WorldBook selection 从当前 Foundation 验证，失效时同步回退；列表、新建、导入、排序使用同一个验证后 ID；测试覆盖延迟 load 与后续刷新。
 - Minor / discussion_r4302202075：无 Foundation 的 partial backup 允许 WorldBooks；有 Foundation 时仍严格检查 Universe membership。
 - Minor / discussion_r4302202077：additional IDs 先按 ownership 同样的 trim/长度规则 normalize，再去重/匹配；测试覆盖空白、重复、primary 重复、超长截断碰撞与幂等。
-- 新增 17 项行为回归（3 个存储/备份 + 14 个挂载 UI）；其中前 13 项在原 head 上先 Red，再 Green，另补 clean/revert/failure 分支。
-- Node v24.19.0：29 个相关测试文件 / 283 项测试全部通过，零跳过；测试编译、typecheck、改动文件 ESLint 通过；webpack production build 完成 28 页。此前全量 2,192 项属于上一施工 head，不冒充本轮完整重跑。
+- 原 6 threads 已由 coderabbitai[bot] 在 db8c3b1 自动 resolved；该 head 复审于 2026-10-17T19:16:25+08:00 另提出 3 条 diff 外意见，均有效。最小修复：缺失 WorldBook Universe 的备份校验/回复读取和缺失 Universe 的空群聊统一回退到实际 stored primary，明确 ownership 不变。新增 3 项测试先 Red 后 Green，覆盖备份、模型 prompt 隔离、群聊筛选解析和备份。不是正式迁移系统。
+- 新增合计 20 项行为回归（前一修复 17 项、本次 3 项）；前一修复新增 17 项行为回归（3 个存储/备份 + 14 个挂载 UI）；其中前 13 项在原 head 上先 Red，再 Green，另补 clean/revert/failure 分支。
+- Node v24.19.0：29 个相关测试文件 / 286 项测试全部通过，零跳过；测试编译、typecheck、改动文件 ESLint 通过；webpack production build 完成 28 页。此前全量 2,192 项属于上一施工 head，不冒充本轮完整重跑。
 
 ## 尚未验证
 
@@ -45,4 +46,4 @@ Codex；`feat/multi-universe`；base 为以上 main；[PR #242](https://github.c
 
 ## 下一步
 
-更新 PR，逐线程提供修复与测试证据，等待新 head 的 CodeRabbit 最终结果并核对所有有效 thread resolved。按用户要求不合并。
+更新 PR，逐线程提供修复与测试证据，等待最终 head 的 CodeRabbit 最终结果，核对原 6 thread 继续 resolved 且新增 diff 外意见得到确认。按用户要求不合并。
