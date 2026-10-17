@@ -487,6 +487,14 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       window.removeEventListener("orientationchange", update);
     };
   }, [ready]);
+  // Closing the system picker without choosing fires `cancel` on the input; React has no prop for it.
+  useEffect(() => {
+    const input = photoInput.current;
+    if (!input) return;
+    const close = () => setPanel(null);
+    input.addEventListener("cancel", close);
+    return () => input.removeEventListener("cancel", close);
+  }, [ready]);
   // A sticker has no known size until its picture loads, so the list that scrolled to the new message ends up short of the
   // bottom once it does. While the reader is at the latest message, follow the picture's own growth.
   useEffect(() => {
@@ -896,9 +904,10 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             <SendHorizontal aria-hidden="true" />
           </button>
         </div>
+        {/* The + panel stays up behind the system picker; the picker closing (a choice or a cancel) puts the composer back. */}
         <input ref={photoInput} hidden type="file" multiple accept={ATTACHMENT_IMAGE_MIMES.join(",")} aria-label="Choose photos"
-          onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; void sendImages(files); }} />
-        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onPhotos={() => { setPanel(null); photoInput.current?.click(); }} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
+          onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; setPanel(null); void sendImages(files); }} />
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onPhotos={() => photoInput.current?.click()} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
           onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
         {panel === "stickers" && <StickerPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}

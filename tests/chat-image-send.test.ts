@@ -114,3 +114,79 @@ test("the message list draws the stored picture, opens it large with Save, and l
   assert.match(viewer, /download=\{name\}/);
   assert.match(viewer, /if \(multiSelect\) return;/);
 });
+
+test("Photos keeps the + panel up behind the system picker and puts the composer back when the picker closes", () => {
+  const photos = room.match(/onPhotos=\{[^}]*\}/)![0];
+  assert.doesNotMatch(photos, /setPanel/, "the panel is not collapsed before the picker opens");
+  assert.match(photos, /photoInput\.current\?\.click\(\)/);
+  const input = room.match(/<input ref=\{photoInput\}[\s\S]*?\/>/)![0];
+  assert.match(input, /setPanel\(null\); void sendImages\(files\)/, "a choice closes the panel, then sends");
+  assert.match(room, /input\.addEventListener\("cancel", close\)/, "cancelling the picker closes it too");
+  assert.match(room, /input\.removeEventListener\("cancel", close\)/);
+});
+
+test("the Shared Media list is the conversation's own newest pictures, and disappears with the message", async () => {
+  const { storage } = setup();
+  assert.equal(await storage.listSessionImages("a", 8), null, "no conversation yet");
+  assert.equal((await storage.listSessions()).length, 0, "looking does not create one");
+  const session = await storage.openSession("a");
+  const other = await storage.openSession("b");
+  const first = await storage.sendImage(session.id, blobOf("image/png", 10), 4, 3);
+  await storage.send(session.id, "text in between");
+  const second = await storage.sendImage(session.id, blobOf("image/png", 20), 4, 3);
+  const third = await storage.sendImage(session.id, blobOf("image/png", 30), 4, 3);
+  await storage.sendImage(other.id, blobOf("image/png", 40), 4, 3);
+  let listed = await storage.listSessionImages("a", 8);
+  assert.equal(listed?.sessionId, session.id);
+  assert.deepEqual(listed?.images.map((image) => image.messageId), [third.id, second.id, first.id], "newest first, only this conversation");
+  assert.deepEqual((await storage.listSessionImages("a", 2))?.images.map((image) => image.messageId), [third.id, second.id]);
+  await storage.deleteMessages(session.id, [second.id]);
+  assert.deepEqual((await storage.listSessionImages("a", 8))?.images.map((image) => image.messageId), [third.id, first.id]);
+  await storage.recallMessage(third.id, "user");
+  listed = await storage.listSessionImages("a", 8);
+  assert.deepEqual(listed?.images.map((image) => image.messageId), [first.id], "a recalled picture is gone from the list");
+  assert.equal(await storage.readMessageAttachment(session.id, third.id), null);
+});
+
+test("Contact Info shows the chat's pictures, opens them large, and drops a picture whose bytes are gone", () => {
+  const info = readFileSync("components/contact-info.tsx", "utf8");
+  const media = readFileSync("components/contact-shared-media.tsx", "utf8");
+  assert.match(info, /<ContactSharedMedia characterId=/);
+  assert.match(media, /chatStorage\.listSessionImages\(characterId, SHARED_MEDIA_LIMIT\)/);
+  assert.match(media, /if \(url === false\) return null;/);
+  assert.match(media, /<ImageViewer /);
+  assert.match(media, /affectsChatSession\(change, sessionId\)/, "the list follows deletes and recalls");
+  assert.match(media, /return \(\) => \{ current = false; unsubscribe\(\); \}/);
+  assert.doesNotMatch(media, /new ChatStorage|indexedDB|createObjectStore/, "no media library of its own");
+});
+
+async function withoutAsset(factory: IDBFactory, assetId: string) {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const open = factory.open("veil-chat-v2"); open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("assets", "readwrite"); tx.objectStore("assets").delete(assetId);
+    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+test("a message whose picture bytes are gone does not take one of the Shared Media places", async () => {
+  const factory = new IDBFactory(), storage = new ChatStorage(() => factory);
+  const session = await storage.openSession("a");
+  const kept = await storage.sendImage(session.id, blobOf("image/png", 10), 4, 3);
+  const lost = await storage.sendImage(session.id, blobOf("image/png", 20), 4, 3);
+  await withoutAsset(factory, lost.attachment!.assetId);
+  assert.deepEqual((await storage.listSessionImages("a", 1))?.images.map((image) => image.messageId), [kept.id],
+    "limit 1 still returns the older picture that exists");
+  await withoutAsset(factory, kept.attachment!.assetId);
+  assert.deepEqual((await storage.listSessionImages("a", 8))?.images, [], "only lost pictures: nothing listed, so the page can say there are no photos");
+});
+
+test("a failed Shared Media read says so with a Try again instead of claiming there are no photos", () => {
+  const media = readFileSync("components/contact-shared-media.tsx", "utf8");
+  assert.match(media, /failed: true/);
+  assert.match(media, /if \(ready\.failed\) return[\s\S]*?Photos could not be loaded\.[\s\S]*?Try again/);
+  assert.ok(media.indexOf("ready.failed") < media.indexOf("No photos yet."), "the failure is checked before the empty message");
+  assert.match(media, /\[characterId, attempt\]/, "Try again reloads");
+});

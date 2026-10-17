@@ -112,7 +112,7 @@ test("Contact Info route structure has real actions and honest placeholders with
   assert.match(info, /disabled title="Call unavailable"/);
   assert.match(info, /disabled title="Video unavailable"/);
   assert.match(info, /<button type="button" disabled>Block Contact/);
-  assert.match(info, /\[0, 1, 2, 3\]\.map/);
+  assert.match(info, /<ContactSharedMedia characterId=\{character\.characterId\} \/>/);
   assert.match(info, /href=\{`\/social\//);
   assert.match(info, /className="contact-hero-background-trigger" aria-label="Change Hero Background"/);
   assert.match(info, /className="contact-hero-name-input" aria-label="Contact name"/);

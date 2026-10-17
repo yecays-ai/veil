@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, MessageCircle, Phone, Video, UserRound, Plus } from "lucide-react";
+import { ChevronLeft, MessageCircle, Phone, Video, UserRound } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useFoundation } from "./foundation-provider";
 import { useContacts } from "./use-contacts";
 import { Avatar } from "./profile-view";
 import { CharacterPresenceLine } from "./presence";
 import { ContactMemoryCards } from "./contact-memory-cards";
+import { ContactSharedMedia } from "./contact-shared-media";
 import { ImageCropDialog } from "./image-crop-dialog";
 import { readImage } from "../lib/theme-storage";
 import { chatStorage } from "../lib/chat/storage";
@@ -181,9 +182,7 @@ export function ContactInfo({ characterId, returnSource, pending = false }: {
       {error && !deleteOpen && <p className="contact-error" role="alert">{error}</p>}
       <section className="contact-info-section" aria-labelledby="shared-media-title">
         <h2 id="shared-media-title">Shared Media</h2>
-        <div className="contact-media-placeholders" aria-label="Shared Media unavailable">
-          {[0, 1, 2, 3].map((slot) => <div className="contact-media-slot" key={slot} aria-hidden="true">{slot === 0 && <Plus />}</div>)}
-        </div>
+        <ContactSharedMedia characterId={character.characterId} />
       </section>
       <ContactMemoryCards character={character} disabled={pending || !!draft} />
       <section className="contact-info-section" aria-labelledby="relationship-title">

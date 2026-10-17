@@ -48,6 +48,8 @@ async function fixture() {
   };
   for (const name of ["window", "document", "navigator", "HTMLElement", "localStorage", "Event"] as const) install(name, dom.window[name]);
   install("self", dom.window); install("IS_REACT_ACT_ENVIRONMENT", true);
+  // Contact Info's Shared Media listens to chat storage; an open BroadcastChannel would keep the test process alive.
+  install("BroadcastChannel", undefined);
   // Regex and WorldBook saves are serialised through Web Locks, which jsdom does not provide.
   Object.defineProperty(dom.window.navigator, "locks", { configurable: true, value: {
     request: async (_key: string, _options: unknown, callback: (lock: object) => unknown) => callback({}) } });
