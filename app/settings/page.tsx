@@ -1,7 +1,7 @@
 import { PageShell } from "../../components/page-shell";
 import { CardGrid } from "../../components/settings/ui/card-grid";
 import { RuntimeSettings } from "../../components/settings/runtime-settings";
-import { Archive, BookOpen, Brain, GitBranch, Regex, SlidersHorizontal } from "lucide-react";
+import { Archive, BookOpen, Brain, GitBranch, Regex, SlidersHorizontal, Volume2 } from "lucide-react";
 export default function Page() {
   return (
     <PageShell
@@ -20,6 +20,13 @@ export default function Page() {
             description: "Providers and models for your conversations",
             href: "/settings/text-api",
             icon: "Aa",
+          },
+          {
+            id: "tts",
+            label: "Voice (TTS)",
+            description: "Speech service and Character voices",
+            href: "/settings/tts",
+            icon: <Volume2 size={20} />,
           },
         ]}
       />
