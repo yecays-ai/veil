@@ -163,9 +163,9 @@ test("a speech-to-text request that never gets an answer names its host and tell
   assert.equal(calls[1].init.credentials, "omit");
   assert.equal(calls[1].init.body, undefined);
   assert.equal((calls[1].init.headers as unknown), undefined, "the probe carries no key");
-  assert.equal(sttErrorMessage(cors), "The speech-to-text service is reachable (api.example.com) but this browser blocked the request (CORS), so VEIL cannot call it directly.");
+  assert.equal(sttErrorMessage(cors), "The speech-to-text request failed although the service (api.example.com) answered a plain check, most likely because this browser blocked it (CORS).");
   const down = (async () => { throw new TypeError("Load failed"); }) as typeof fetch;
   const network = await transcribeAudio(config, clip(), stopless, { fetchImpl: down }).catch((error) => error);
   assert.ok(network instanceof TtsError && network.category === "network");
-  assert.equal(sttErrorMessage(network), "The speech-to-text service could not be reached (api.example.com). Check your connection and the Speech-to-text Base URL.");
+  assert.equal(sttErrorMessage(network), "The speech-to-text request failed and the service (api.example.com) did not answer a plain check either. Check your connection and the Speech-to-text Base URL.");
 });

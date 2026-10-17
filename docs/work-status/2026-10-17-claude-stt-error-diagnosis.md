@@ -14,7 +14,7 @@ Claude；分支 `fix/stt-error-diagnosis`；PR #253（https://github.com/yecays-
 
 ## 已完成
 
-- `transcribeAudio` 请求失败后，向同一服务的 origin 发一次 GET（no-cors、不带密钥、不带请求体、8 秒上限），能到达则为 cors，否则 network；错误文字带主机名。请求体、地址、超时、HTTP 错误分类都不变。
+- `transcribeAudio` 请求失败后，向同一服务的 origin 发一次 GET（no-cors、不带密钥、不带请求体、8 秒上限），能到达则为 cors，否则 network；错误文字带主机名，措辞只说"探测到了/没探测到"，不把原因说成确定（cors 写作 most likely）。请求体、地址、超时、HTTP 错误分类都不变。
 - 检查（代码版本为本分支首个提交，基于 main 0fa0cf3）：`chat-user-voice` 11（含新增 1 项）、`chat-voice` 10、`voice-message-ui` 4、`tts-providers` 19 项通过；`npm run typecheck` 通过；`npm run lint` 0 错误（3 个已有警告）；未运行 build 与全量 `npm test`。
 
 ## 尚未验证

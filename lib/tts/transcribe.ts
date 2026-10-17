@@ -70,8 +70,8 @@ export function sttErrorMessage(error: unknown): string {
   if (!(error instanceof TtsError)) return "Could not write out the words. Try again.";
   if (error.category === "config") return error.message;
   const host = error.info?.host;
-  if (host && error.category === "network") return `The speech-to-text service could not be reached (${host}). Check your connection and the Speech-to-text Base URL.`;
-  if (host && error.category === "cors") return `The speech-to-text service is reachable (${host}) but this browser blocked the request (CORS), so VEIL cannot call it directly.`;
+  if (host && error.category === "network") return `The speech-to-text request failed and the service (${host}) did not answer a plain check either. Check your connection and the Speech-to-text Base URL.`;
+  if (host && error.category === "cors") return `The speech-to-text request failed although the service (${host}) answered a plain check, most likely because this browser blocked it (CORS).`;
   return ttsErrorMessage(error).replace("voice service", "speech-to-text service").replace("Voice settings", "Voice settings (Speech-to-text)")
     .replace("make the voice", "write out the words").replace("playable audio", "any words");
 }
