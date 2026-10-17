@@ -90,3 +90,17 @@ test("another tab's request is awaited through a lock and its saved clip is used
 test("an unusable config is refused before anything is made", async () => {
   await assert.rejects(voiceAudio({ messageId: "m", text: "x", voice: "v", config: { ...config, apiKey: "" } }, fresh()), /API Key/);
 });
+
+test("a MiniMax Character voice goes through the relay path once; the second play comes from the local cache", async () => {
+  resetVoiceSweepForTests();
+  const { synthesizeSpeech } = await import("../lib/tts/speech");
+  const urls: string[] = [];
+  const fetchImpl = (async (url: string) => { urls.push(url); return new Response(new Uint8Array([1, 2, 3]), { headers: { "Content-Type": "audio/mpeg" } }); }) as unknown as typeof fetch;
+  const synthesize = ((c: TtsConfig, i: { text: string; voice: string }, s: AbortSignal) => synthesizeSpeech(c, i, s, { fetchImpl })) as never;
+  const minimax: TtsConfig = { provider: "minimax", region: "cn", baseUrl: "", apiKey: "k", model: "speech-2.8-hd", voice: "peter" };
+  const source = { messageId: "m", text: "hi", voice: "peter", config: minimax };
+  const cache = fresh();
+  assert.equal((await voiceAudio(source, cache, { synthesize, locks: undefined })).size, 3);
+  assert.equal((await voiceAudio(source, cache, { synthesize, locks: undefined })).size, 3);
+  assert.deepEqual(urls, ["/api/tts/minimax"], "one request to VEIL's own server, none to MiniMax, none for the replay");
+});
