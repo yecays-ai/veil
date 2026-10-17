@@ -1,7 +1,7 @@
 # STATUS — 2026-10-17-claude-voice-providers
 
 更新人：Claude
-更新时间：2026-10-17T15:25:00+00:00
+更新时间：2026-10-17T15:40:00+00:00
 发现范围：2026-10-17T15:23Z 通过 GitHub REST 查询 `yecays-ai/veil` 的 open PR（含草稿）：无；base 为 `origin/main` 1be5654155ef44a1d993ff08e2702a9400f04118。
 
 ## 当前任务
@@ -10,7 +10,7 @@ Voice Provider 扩展（MiniMax / ElevenLabs）+ 用户语音的模型语义 + �
 
 ## 谁在改哪里
 
-Claude；分支 `feat/voice-providers`；PR 尚未创建。涉及 `lib/tts/*`、`lib/chat/{attachment,storage,engine,prompt,message-kind,transcription-job}.ts`、`lib/memory/{summary,maintenance}-input.ts`、`components/chat/*`（chat-room、use-voice-mode、audio-message、chat-plus-panel）、`components/settings/tts-settings.tsx`、`app/messages/chat.css` 与对应测试。
+Claude；分支 `feat/voice-providers`；PR：https://github.com/yecays-ai/veil/pull/244 。涉及 `lib/tts/*`、`lib/chat/{attachment,storage,engine,prompt,message-kind,transcription-job}.ts`、`lib/memory/{summary,maintenance}-input.ts`、`components/chat/*`（chat-room、use-voice-mode、audio-message、chat-plus-panel）、`components/settings/tts-settings.tsx`、`app/messages/chat.css` 与对应测试。
 
 ## 已完成
 
@@ -24,4 +24,4 @@ Claude；分支 `feat/voice-providers`；PR 尚未创建。涉及 `lib/tts/*`、
 
 ## 下一步
 
-开 PR，等 CI 与 CodeRabbit，处理评论后合并，再同步测试链接分支。
+已按 CodeRabbit 首轮意见修复并推送；CI 通过且线程答复后合并，再同步测试链接分支。

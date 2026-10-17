@@ -118,6 +118,8 @@ test("speech-to-text is its own service: OpenAI-compatible falls back to the voi
   const openai: TtsConfig = { baseUrl: "https://tts.test/v1", apiKey: "k", model: "tts-1", voice: "", sttModel: "whisper-1" };
   assert.deepEqual(sttSettings(openai), { baseUrl: "https://tts.test/v1", apiKey: "k", model: "whisper-1" });
   assert.deepEqual(sttSettings({ ...openai, sttBaseUrl: "https://stt.test/v1", sttApiKey: "s" }), { baseUrl: "https://stt.test/v1", apiKey: "s", model: "whisper-1" });
+  assert.ok("problem" in sttSettings({ ...openai, sttBaseUrl: "https://stt.test/v1" }), "a URL alone does not borrow the voice key");
+  assert.ok("problem" in sttSettings({ ...openai, sttApiKey: "s" }), "a key alone does not go to the voice address");
   assert.ok("problem" in sttSettings({ ...minimax, sttModel: "whisper-1" }), "the MiniMax key is not an STT key");
   assert.deepEqual(sttSettings({ ...eleven, sttModel: "whisper-1", sttBaseUrl: "https://stt.test/v1", sttApiKey: "s" }), { baseUrl: "https://stt.test/v1", apiKey: "s", model: "whisper-1" });
   assert.ok("problem" in sttSettings(openai.baseUrl ? { ...openai, sttModel: "" } : openai));

@@ -71,3 +71,8 @@ test("without a speech-to-text service the message is kept and the failure says 
   assert.match(transcriptionStatus(sent.id), /^error:/);
   assert.equal((await storage.readSession(session.id)).messages.length, 1);
 });
+
+test("Retry on a message in a session that cannot be read does not reject", async () => {
+  const { engine } = setup(async () => "x");
+  await engine.retryTranscription("missing-session", "missing-message");
+});

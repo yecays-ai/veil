@@ -70,9 +70,11 @@ export function resolveVoice(
 export function sttSettings(config: TtsConfig): { baseUrl: string; apiKey: string; model: string } | { problem: string } {
   const model = config.sttModel?.trim() ?? "";
   if (!model) return { problem: "Add a Speech-to-text model in your Voice settings." };
-  const shared = providerOf(config) === "openai";
-  const baseUrl = config.sttBaseUrl?.trim() || (shared ? config.baseUrl.trim() : "");
-  const apiKey = config.sttApiKey?.trim() || (shared ? config.apiKey.trim() : "");
+  // The voice settings are reused only when no STT address or key is set; a partial override never borrows the other half.
+  const ownUrl = config.sttBaseUrl?.trim() ?? "", ownKey = config.sttApiKey?.trim() ?? "";
+  const shared = providerOf(config) === "openai" && !ownUrl && !ownKey;
+  const baseUrl = shared ? config.baseUrl.trim() : ownUrl;
+  const apiKey = shared ? config.apiKey.trim() : ownKey;
   if (!baseUrl || !apiKey) return { problem: "Add a Speech-to-text Base URL and API Key in your Voice settings." };
   try { transcriptionUrl(baseUrl); } catch (error) { return { problem: error instanceof Error ? error.message : "Enter a valid Speech-to-text Base URL." }; }
   return { baseUrl, apiKey, model };

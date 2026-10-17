@@ -483,8 +483,10 @@ export function createChatEngine(
     },
     /** Tries again to write out a voice message whose words are missing. */
     retryTranscription: async (sessionId: string, messageId: string) => {
-      const message = (await storage.readSession(sessionId)).messages.find((item) => item.id === messageId);
-      if (message?.role === "user" && message.attachment?.kind === "audio" && message.attachment.untranscribed && !message.recalled) void transcribe(message);
+      try {
+        const message = (await storage.readSession(sessionId)).messages.find((item) => item.id === messageId);
+        if (message?.role === "user" && message.attachment?.kind === "audio" && message.attachment.untranscribed && !message.recalled) void transcribe(message);
+      } catch { /* The message keeps showing Retry. */ }
     },
     /** Asks again for a picture that was not made, optionally with new words; the placeholder shows the result. */
     retryImage: async (sessionId: string, messageId: string, prompt?: string) => {

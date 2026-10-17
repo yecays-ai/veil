@@ -6,6 +6,7 @@ import { act, createElement } from "react";
 import type { Recording } from "../lib/chat/voice-recorder";
 
 async function mounted() {
+  let holdMic: Promise<void> | null = null;
   const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
   const saved = new Map<string, PropertyDescriptor | undefined>(), trackStops: number[] = [], sent: Recording[] = [];
   const stream = { getTracks: () => [{ stop: () => trackStops.push(1) }] };
@@ -16,7 +17,7 @@ async function mounted() {
     start() { this.state = "recording"; }
     stop() { this.state = "inactive"; this.ondataavailable?.({ data: new Blob([new Uint8Array(64)], { type: "audio/webm" }) }); this.onstop?.(new Event("stop")); }
   }
-  Object.defineProperty(dom.window.navigator, "mediaDevices", { configurable: true, value: { getUserMedia: async () => stream } });
+  Object.defineProperty(dom.window.navigator, "mediaDevices", { configurable: true, value: { getUserMedia: async () => { if (holdMic) await holdMic; return stream; } } });
   for (const [name, value] of Object.entries({ window: dom.window, self: dom.window, document: dom.window.document, navigator: dom.window.navigator,
     HTMLElement: dom.window.HTMLElement, IS_REACT_ACT_ENVIRONMENT: true, MediaRecorder: FakeRecorder })) {
     saved.set(name, Object.getOwnPropertyDescriptor(globalThis, name));
@@ -36,6 +37,7 @@ async function mounted() {
       createElement("button", { id: "keys", onClick: voice.exit }, "keys"),
       createElement("button", { id: "bar", onClick: voice.tap }, label),
       createElement("button", { id: "cancel", onClick: voice.cancel }, "cancel"),
+      createElement("button", { id: "resend", onClick: () => void voice.resend() }, voice.unsent ? "unsent" : "none"),
       createElement("p", { id: "error" }, voice.error));
   }
   const container = dom.window.document.getElementById("root")!, root = createRoot(container);
@@ -51,7 +53,8 @@ async function mounted() {
     loader._load = originalLoad; dom.window.close();
     for (const [name, descriptor] of saved) if (descriptor) Object.defineProperty(globalThis, name, descriptor); else Reflect.deleteProperty(globalThis, name);
   };
-  return { el, click, wait, cleanup, sent, trackStops, fail: () => { failNext = true; } };
+  return { el, click, wait, cleanup, sent, trackStops, fail: (on = true) => { failNext = on; },
+    holdMic: () => { let open!: () => void; holdMic = new Promise<void>((resolve) => { open = resolve; }); return () => { holdMic = null; open(); }; } };
 }
 
 test("Voice mode: the microphone only enters voice mode; the bar then records, and a second tap sends and stays ready", async () => {
@@ -112,6 +115,12 @@ test("Voice mode: a failed save is reported and the bar is ready again", async (
     await app.click("bar");
     await app.wait(() => app.el("error").textContent === "save failed");
     assert.equal(app.el("bar").textContent, "Tap to Record");
+    assert.equal(app.el("resend").textContent, "unsent", "the recording is kept for another try");
+    app.fail(false);
+    await app.click("resend");
+    await app.wait(() => app.sent.length === 1);
+    assert.equal(app.el("resend").textContent, "none");
+    assert.equal(app.el("error").textContent, "");
   } finally { await app.cleanup(); }
 });
 
@@ -123,4 +132,19 @@ test("Voice mode: leaving while recording releases the microphone", async () => 
   await app.cleanup();
   assert.equal(app.trackStops.length, 1);
   assert.equal(app.sent.length, 0);
+});
+
+test("Voice mode: leaving voice mode while the microphone is starting releases it when it arrives", async () => {
+  const app = await mounted();
+  try {
+    const release = app.holdMic();
+    await app.click("mic");
+    await app.click("bar");
+    await app.click("keys");
+    assert.equal(app.el("bar").textContent, "Message...");
+    release();
+    await app.wait(() => app.trackStops.length === 1);
+    assert.equal(app.el("bar").textContent, "Message...", "no recording starts after the person left");
+    assert.equal(app.sent.length, 0);
+  } finally { await app.cleanup(); }
 });
