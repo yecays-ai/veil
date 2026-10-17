@@ -5,7 +5,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { isMessageAttachment, MAX_VOICE_RECORDING_MS, modelFacingContent, UNTRANSCRIBED_VOICE_CONTENT } from "../lib/chat/attachment";
 import { hasGeneratedContent, isFixedMessage, listPreview } from "../lib/chat/message-kind";
 import { startVoiceRecording, VoiceRecordError } from "../lib/chat/voice-recorder";
-import { transcribeAudio } from "../lib/tts/transcribe";
+import { sttErrorMessage, transcribeAudio } from "../lib/tts/transcribe";
 import { TtsError } from "../lib/tts/speech";
 import { normalizeTtsConfig } from "../lib/tts/config";
 
@@ -149,4 +149,23 @@ test("transcription fails without a speech-to-text model, on a rejected key, on 
 test("the speech-to-text model is optional and saved with the Voice settings only when set", () => {
   assert.deepEqual(normalizeTtsConfig({ baseUrl: "b", apiKey: "k", model: "m" }), { baseUrl: "b", apiKey: "k", model: "m", voice: "" });
   assert.equal(normalizeTtsConfig({ sttModel: " whisper-1 " }).sttModel, "whisper-1");
+});
+
+test("a speech-to-text request that never gets an answer names its host and tells CORS from no connection", async () => {
+  const stopless = new AbortController().signal;
+  const calls: { url: string; init: RequestInit }[] = [];
+  // The real request fails; the key-less probe to the same origin reaches it: the browser blocked the request.
+  const blocked = (async (url: string, init: RequestInit) => { calls.push({ url, init }); if (init.mode === "no-cors") return new Response(""); throw new TypeError("Load failed"); }) as typeof fetch;
+  const cors = await transcribeAudio(config, clip(), stopless, { fetchImpl: blocked }).catch((error) => error);
+  assert.ok(cors instanceof TtsError && cors.category === "cors");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].url, "https://api.example.com/");
+  assert.equal(calls[1].init.credentials, "omit");
+  assert.equal(calls[1].init.body, undefined);
+  assert.equal((calls[1].init.headers as unknown), undefined, "the probe carries no key");
+  assert.equal(sttErrorMessage(cors), "The speech-to-text service is reachable (api.example.com) but this browser blocked the request (CORS), so VEIL cannot call it directly.");
+  const down = (async () => { throw new TypeError("Load failed"); }) as typeof fetch;
+  const network = await transcribeAudio(config, clip(), stopless, { fetchImpl: down }).catch((error) => error);
+  assert.ok(network instanceof TtsError && network.category === "network");
+  assert.equal(sttErrorMessage(network), "The speech-to-text service could not be reached (api.example.com). Check your connection and the Speech-to-text Base URL.");
 });
