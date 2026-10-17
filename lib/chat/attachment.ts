@@ -19,6 +19,8 @@ export type AudioAttachment = {
   mime: string;
   durationMs: number;
   bytes: number;
+  /** Set while the message has no transcript yet (its words are being written out, or that failed); `content` is then only a stand-in. */
+  untranscribed?: true;
 };
 export type MessageAttachment = ImageAttachment | AudioAttachment;
 
@@ -41,7 +43,8 @@ export function isMessageAttachment(value: unknown): value is MessageAttachment 
   const attachment = value as Record<string, unknown>;
   if (typeof attachment.assetId !== "string" || !ASSET_ID.test(attachment.assetId)
     || typeof attachment.mime !== "string" || !isPositiveInteger(attachment.bytes)) return false;
-  if (attachment.kind === "audio") return Object.keys(attachment).length === 5
+  if (attachment.kind === "audio") return Object.keys(attachment).length === (attachment.untranscribed === undefined ? 5 : 6)
+    && (attachment.untranscribed === undefined || attachment.untranscribed === true)
     && ATTACHMENT_AUDIO_MIMES.includes(attachment.mime) && attachment.bytes <= MAX_ATTACHMENT_AUDIO_BYTES
     && isPositiveInteger(attachment.durationMs) && attachment.durationMs <= MAX_VOICE_RECORDING_MS;
   return Object.keys(attachment).length === 6 && attachment.kind === "image"
@@ -68,3 +71,17 @@ export const generatedImageContent = (prompt: string) => `[你发送了一张照
 
 /** Short preview for the Chats list and for quotes. */
 export const attachmentPreview = (attachment: Pick<MessageAttachment, "kind">) => PREVIEW[attachment.kind];
+
+/** What a voice message from the user holds as `content` until its words are known. */
+export const UNTRANSCRIBED_VOICE_CONTENT = "[用户发送了一条语音消息]";
+
+/**
+ * How a message reads to the model. A voice message from the user is marked as one, so the model knows it was spoken
+ * and not typed; the stored `content` (the transcript) is unchanged. Without words yet it says so and invents none.
+ */
+export function modelFacingContent(
+  message: { role: string; attachment?: { kind: string; untranscribed?: true } }, text: string,
+): string {
+  if (message.role !== "user" || message.attachment?.kind !== "audio") return text;
+  return message.attachment.untranscribed ? "[用户发送了一条语音消息，其中的话还没有转成文字]" : `[用户发送了一条语音消息：${text}]`;
+}

@@ -2,6 +2,7 @@ import { STATE_MAINTENANCE_RULES } from "./state-maintenance";
 import { effectiveCharacterStates } from "./state-foundation";
 import { ongoingDue } from "./ongoing";
 import type { ChatMessage, PromptTurn } from "../chat/types";
+import { modelFacingContent } from "../chat/attachment";
 import { explicitMemoryRequest } from "./explicit-request";
 import { historyTimestamp } from "../chat/time-context";
 import type { MemoryProgressProtocol } from "./progress";
@@ -149,7 +150,7 @@ const visibleMessages = (messages: MaintenanceSnapshot["messages"]) => {
     // More than half redacted: the rest is not worth a request and is not sent. The batch is not lost for it.
     if (clean.removed * 2 > m.content.length) { omitted++; redacted += clean.removed; return []; }
     redacted += clean.removed;
-    return [{ ...m, content: clean.text, explicit: m.role === "user" && explicitMemoryRequest(m.content) }];
+    return [{ ...m, content: modelFacingContent(m, clean.text), explicit: m.role === "user" && explicitMemoryRequest(m.content) }];
   });
   return { visible, redacted, omitted };
 };

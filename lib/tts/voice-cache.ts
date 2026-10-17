@@ -1,4 +1,4 @@
-import { speechUrl, ttsConfigProblem, type TtsConfig } from "./config";
+import { providerOf, speechEndpoint, ttsConfigProblem, type TtsConfig } from "./config";
 import { synthesizeSpeech } from "./speech";
 
 /**
@@ -19,10 +19,12 @@ const done = (tx: IDBTransaction): Promise<void> => new Promise((resolve, reject
 });
 
 /** What the audio depends on. Any change here makes an old clip unusable. The key itself is not part of it. */
-export async function voiceFingerprint(text: string, voice: string, config: Pick<TtsConfig, "baseUrl" | "model">): Promise<string> {
+export async function voiceFingerprint(text: string, voice: string, config: Pick<TtsConfig, "baseUrl" | "model" | "provider">): Promise<string> {
   let endpoint = config.baseUrl.trim();
-  try { endpoint = speechUrl(endpoint); } catch { /* an invalid URL cannot be used for speech anyway */ }
-  const bytes = new TextEncoder().encode(JSON.stringify([text, voice.trim(), config.model.trim(), endpoint]));
+  try { endpoint = speechEndpoint(config); } catch { /* an invalid URL cannot be used for speech anyway */ }
+  // OpenAI-compatible clips keep the fingerprint they always had; another provider is part of it.
+  const provider = providerOf(config);
+  const bytes = new TextEncoder().encode(JSON.stringify([text, voice.trim(), config.model.trim(), endpoint, ...(provider === "openai" ? [] : [provider])]));
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 

@@ -33,7 +33,7 @@ import { normalizeBackgroundBlur } from "./types";
 import { acquireGenerationLock } from "./generation-lock";
 import { assistantTurn, canContinueTurn, canRegenerateTurn } from "./turns";
 import { isMessageSticker, stickerContent, type MessageSticker } from "./sticker-message";
-import { generatedImageContent, ATTACHMENT_AUDIO_MIMES, ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_AUDIO_BYTES, MAX_VOICE_RECORDING_MS, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
+import { generatedImageContent, UNTRANSCRIBED_VOICE_CONTENT, ATTACHMENT_AUDIO_MIMES, ATTACHMENT_IMAGE_MIMES, MAX_ATTACHMENT_AUDIO_BYTES, MAX_VOICE_RECORDING_MS, MAX_ATTACHMENT_IMAGE_BYTES, MAX_ATTACHMENT_IMAGE_EDGE, attachmentContent, type MessageAttachment } from "./attachment";
 import { isCardMessage, listPreview } from "./message-kind";
 import { assertExclusivePersistenceScope, browserPersistenceWriteGate, runPersistenceWrite, withPersistenceWriteScope, type PersistenceWriteGate, type PersistenceWriteScope } from "../backup/persistence-write-gate";
 import { canApplyTransferAction, normalizeTransferAmount, normalizeTransferNote, transferEventContent, transferMessageContent,
@@ -83,13 +83,13 @@ function imageAttachment(blob: Blob, width: number, height: number, assetId: str
 }
 
 /** The attachment a message gets for this recording, or the reason it is refused. */
-function audioAttachment(blob: Blob, durationMs: number, assetId: string): MessageAttachment {
+function audioAttachment(blob: Blob, durationMs: number, assetId: string, untranscribed = false): MessageAttachment {
   const mime = blob.type.split(";")[0].trim().toLowerCase();
   if (!ATTACHMENT_AUDIO_MIMES.includes(mime)) throw new Error("This recording's format is not supported.");
   if (!blob.size || blob.size > MAX_ATTACHMENT_AUDIO_BYTES) throw new Error("Voice messages must be 10 MiB or smaller.");
   const ms = Math.round(durationMs);
   if (!Number.isSafeInteger(ms) || ms < 1 || ms > MAX_VOICE_RECORDING_MS) throw new Error("This recording's length could not be read.");
-  return { kind: "audio", assetId, mime, durationMs: ms, bytes: blob.size };
+  return { kind: "audio", assetId, mime, durationMs: ms, bytes: blob.size, ...(untranscribed ? { untranscribed: true as const } : {}) };
 }
 
 function directSessionFor(sessions: ChatSession[], characterId: string) {
@@ -1440,13 +1440,48 @@ export class ChatStorage {
       return message.sessionId;
     }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null, undefined, scope).then((sessionId) => sessionId !== null);
   }
-  /** A recording from the user: saved like a sent message with its bytes as an asset it owns; `content` is its transcript, which must not be empty. */
-  sendVoice(sessionId: string, blob: Blob, durationMs: number, transcript: string, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
-    const text = transcript.trim().slice(0, VOICE_TRANSCRIPT_MAX);
-    if (!text) return Promise.reject(new Error("Add the words of this voice message first."));
+  /**
+   * A recording from the user, saved at once like a sent message with its bytes as an asset it owns. Its words are not
+   * known yet: `content` is a stand-in until `completeVoiceTranscript` writes them.
+   */
+  sendVoice(sessionId: string, blob: Blob, durationMs: number, quoteMessageId?: string, interject = false): Promise<ChatMessage> {
     try { audioAttachment(blob, durationMs, "pending"); }
     catch (error) { return Promise.reject(error); }
-    return this.send(sessionId, text, quoteMessageId, undefined, undefined, interject, { blob, durationMs });
+    return this.send(sessionId, UNTRANSCRIBED_VOICE_CONTENT, quoteMessageId, undefined, undefined, interject, { blob, durationMs, untranscribed: true });
+  }
+  /**
+   * The words of a voice message, written where its stand-in was. Returns false (and stores nothing) when the message is
+   * gone, was recalled, or already has its words. Like an edit, it replaces what a summary or a Memory source saw.
+   */
+  async completeVoiceTranscript(messageId: string, transcript: string, scope?: PersistenceWriteScope): Promise<boolean> {
+    const text = transcript.trim().slice(0, VOICE_TRANSCRIPT_MAX);
+    if (!text) throw new Error("There are no words to save.");
+    if (this.sourceMemory && !scope) {
+      const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(messageId)), ["messages"]);
+      if (!target) return false;
+      return this.sourceMemory.withExclusive(async (owned) => {
+        const view = await this.readMemorySources(target.sessionId, owned);
+        if (!view.session) return false;
+        return invalidateChatSources(this.sourceMemory!, view.session, view.messages.filter((m) => m.id === messageId && m.content !== text),
+          () => this.completeVoiceTranscript(messageId, text, owned), owned);
+      });
+    }
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const message: ChatMessage | undefined = await request(table.get(messageId));
+      if (!message || message.role !== "user" || message.attachment?.kind !== "audio" || !message.attachment.untranscribed || message.recalled) return null;
+      const attachment = { ...message.attachment };
+      delete attachment.untranscribed;
+      const next: ChatMessage = { ...message, content: text, attachment };
+      await request(table.put(next));
+      const sessions = tx.objectStore("sessions");
+      const session: ChatSession | undefined = await request(sessions.get(message.sessionId));
+      const staleSummary = !!session?.summary && message.order <= session.summary.throughOrder;
+      if (session && (session.lastMessageId === messageId || staleSummary))
+        await request(sessions.put({ ...session, ...(session.lastMessageId === messageId ? { lastMessagePreview: listPreview(next) } : {}),
+          ...(staleSummary ? { summary: undefined } : {}) }));
+      return message.sessionId;
+    }, STORES, (sessionId) => sessionId ? { domain: "messages", sessionId } : null, undefined, scope).then((sessionId) => sessionId !== null);
   }
   /** The bytes of one message's attachment. Null unless that message belongs to this conversation and still has them. */
   readMessageAttachment(sessionId: string, messageId: string): Promise<Blob | null> {
@@ -1622,7 +1657,7 @@ export class ChatStorage {
    * A reply that already finished is never touched; then this is an ordinary send.
    */
   async send(sessionId: string, content: string, quoteMessageId?: string, attemptId?: string, sticker?: MessageSticker,
-    interject = false, media?: { blob: Blob; width: number; height: number } | { blob: Blob; durationMs: number }): Promise<ChatMessage> {
+    interject = false, media?: { blob: Blob; width: number; height: number } | { blob: Blob; durationMs: number; untranscribed?: true }): Promise<ChatMessage> {
     if (!content.trim())
       return Promise.reject(new Error("Write a message first."));
     if (content.length > 12000)
@@ -1661,7 +1696,7 @@ export class ChatStorage {
       // The asset and the message that owns it are written in this one transaction: neither can exist without the other.
       let attachment: MessageAttachment | undefined;
       if (media) {
-        attachment = "durationMs" in media ? audioAttachment(media.blob, media.durationMs, crypto.randomUUID())
+        attachment = "durationMs" in media ? audioAttachment(media.blob, media.durationMs, crypto.randomUUID(), media.untranscribed === true)
           : imageAttachment(media.blob, media.width, media.height, crypto.randomUUID());
         await request(tx.objectStore("assets").add({ id: attachment.assetId, blob: media.blob, createdAt: sentAt } satisfies ChatImageAsset));
       }

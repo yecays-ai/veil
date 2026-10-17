@@ -5,11 +5,14 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
 import {
   ChevronLeft,
   ChevronRight,
+  Keyboard,
+  Mic,
   Plus,
   SendHorizontal,
   Search,
   Sparkles,
   Square,
+  X,
 } from "lucide-react";
 import { useFoundation } from "../foundation-provider";
 import { chatEngine } from "../../lib/chat/engine";
@@ -25,7 +28,8 @@ import {
   selectMessageRange,
 } from "../../lib/chat/message-actions";
 import { ChatPlusPanel } from "./chat-plus-panel";
-import { VoiceRecorderPanel } from "./voice-recorder-panel";
+import { useVoiceMode } from "./use-voice-mode";
+import { clock } from "./messages/voice-message";
 import { StickerPanel } from "./sticker-panel";
 import { StickerManager } from "./sticker-manager";
 import type { MessageSticker } from "../../lib/chat/sticker-message";
@@ -184,7 +188,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [generating, setGenerating] = useState(false);
   const generationActive = generating || !!session?.generation;
   const [error, setError] = useState("");
-  const [panel, setPanel] = useState<null | "plus" | "stickers" | "voice">(null);
+  const voice = useVoiceMode({ disabled: (generationActive && session?.lifeMode !== true) || sending || !!loadError, onSend: sendVoice });
+  const [panel, setPanel] = useState<null | "plus" | "stickers">(null);
   const [stickerManagerOpen, setStickerManagerOpen] = useState(false);
   const photoInput = useRef<HTMLInputElement>(null);
   const [failedDraft, setFailedDraft] = useState<{ sessionId: string; content: string; quote: ChatMessage | null; editVersion: number } | null>(null);
@@ -580,8 +585,8 @@ export function ChatRoom({ characterId }: { characterId: string }) {
       if (mounted.current && (current === sessionId || current === undefined)) { sendingLock.current = false; setSending(false); }
     }
   }
-  /** A recorded voice message: one message with the recording and its words; the quote, if any, goes with it. */
-  async function sendVoice(recording: { blob: Blob; durationMs: number }, transcript: string) {
+  /** A recorded voice message: one message with the recording, whose words are written out afterwards; the quote, if any, goes with it. */
+  async function sendVoice(recording: { blob: Blob; durationMs: number }) {
     if (!session || session.characterId !== characterId || sendingLock.current || loadError) throw new Error("The voice message was not sent.");
     const interject = session.lifeMode === true && (generationActive || chatEngine.isGenerating(session.id));
     if (!interject && (generationActive || chatEngine.isGenerating(session.id))) throw new Error("Wait for the reply to finish first.");
@@ -591,7 +596,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
     setError("");
     try {
       nearBottom.current = { characterId, sessionId, value: true };
-      await chatEngine.sendVoice(sessionId, { ...recording, transcript }, quote?.id, { interject, discardUnrevealed: hiddenReplyIds(sessionId) });
+      await chatEngine.sendVoice(sessionId, recording, quote?.id, { interject, discardUnrevealed: hiddenReplyIds(sessionId) });
       if (mounted.current && currentSessionId.current === sessionId) setQuotingMessage((current) => current?.id === quote?.id ? null : current);
     } finally {
       const current = currentSessionId.current;
@@ -840,9 +845,11 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           onGiftAction={(id, action) => void gifts.act(id, action)}
         />}
       </div>
-      {(error || loadError) && (
+      {(error || voice.error || loadError) && (
         <p role="alert" className="chat-notice chat-error">
-          {error || loadError}
+          {error || voice.error || loadError}
+          {voice.unsent && !error && <button type="button" aria-label="Send voice message again" disabled={sending || !!loadError}
+            onClick={() => void voice.resend()}>Send again</button>}
           {/* Keep retries scoped to the session that produced the saved draft. */}
           {/* eslint-disable-next-line react-hooks/refs */}
           {failedDraft?.sessionId === currentSessionId.current && failedDraft && <button type="button"
@@ -892,10 +899,23 @@ export function ChatRoom({ characterId }: { characterId: string }) {
             value={draft}
             disabled={!session || !!loadError}
             placeholder="Message…"
+            aria-hidden={voice.mode !== "off" || undefined} tabIndex={voice.mode !== "off" ? -1 : undefined} data-voice-mode={voice.mode !== "off" || undefined}
             onFocus={() => setPanel(null)}
             onChange={(e) => { draftEditVersion.current += 1; setDraft(e.target.value); }}
           />
-          <span className="chat-voice-slot" aria-hidden="true" />
+          {voice.mode !== "off" && (
+            <button type="button" className="chat-voice-bar" data-recording={voice.mode === "recording" || undefined}
+              disabled={voice.mode === "ready" && ((generationActive && session?.lifeMode !== true) || sending || !!loadError)}
+              onPointerDown={(e) => e.preventDefault()} onClick={voice.tap}>
+              {voice.mode === "recording" ? `Recording… ${clock(voice.elapsed / 1000)}` : "Tap to Record"}
+            </button>
+          )}
+          <button type="button" className="chat-voice-slot" disabled={!session || !!loadError || voice.mode === "recording"}
+            aria-label={voice.mode === "off" ? "Record a voice message" : "Back to typing"} title={voice.mode === "off" ? "Record a voice message" : "Back to typing"}
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={() => { if (voice.mode === "off") { composer.current?.blur(); setPanel(null); voice.enter(); } else { voice.exit(); } }}>
+            {voice.mode === "off" ? <Mic aria-hidden="true" /> : <Keyboard aria-hidden="true" />}
+          </button>
         </div>
         <div className="chat-composer-actions chat-input-actions">
           {generationActive || revealState?.pending ? (
@@ -919,24 +939,29 @@ export function ChatRoom({ characterId }: { characterId: string }) {
               <Sparkles aria-hidden="true" />
             </button>
           ) : null}
+          {voice.mode === "recording" ? (
+            <button type="button" className="chat-composer-icon chat-send" aria-label="Cancel" title="Cancel"
+              onPointerDown={(e) => e.preventDefault()} onClick={voice.cancel}>
+              <X aria-hidden="true" />
+            </button>
+          ) : (
           <button
             type="submit"
             className="chat-composer-icon chat-send"
             aria-label="Send"
             title="Send"
             onPointerDown={(e) => e.preventDefault()}
-            disabled={!session || (generationActive && session.lifeMode !== true) || sending || !draft.trim() || !!loadError}
+            disabled={!session || (generationActive && session.lifeMode !== true) || sending || !draft.trim() || !!loadError || voice.mode !== "off"}
           >
             <SendHorizontal aria-hidden="true" />
           </button>
+          )}
         </div>
         {/* The + panel stays up behind the system picker; the picker closing (a choice or a cancel) puts the composer back. */}
         <input ref={photoInput} hidden type="file" multiple accept={ATTACHMENT_IMAGE_MIMES.join(",")} aria-label="Choose photos"
           onChange={(event) => { const files = Array.from(event.target.files ?? []); event.target.value = ""; setPanel(null); void sendImages(files); }} />
-        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onPhotos={() => photoInput.current?.click()} onVoice={() => setPanel("voice")} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
+        {panel === "plus" && <ChatPlusPanel onStickers={() => setPanel("stickers")} onPhotos={() => photoInput.current?.click()} onTransfer={() => { setPanel(null); transfers.setComposerOpen(true); }}
           onGift={() => { setPanel(null); gifts.setComposerOpen(true); }} />}
-        {panel === "voice" && <VoiceRecorderPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError}
-          onSend={sendVoice} onClose={() => setPanel(null)} />}
         {panel === "stickers" && <StickerPanel disabled={(generationActive && session?.lifeMode !== true) || sending || !!loadError} onSend={(sticker) => void sendSticker(sticker)}
           onManage={() => { setPanel(null); setStickerManagerOpen(true); }} />}
       </form>

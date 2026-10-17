@@ -46,6 +46,7 @@ import type { MessageSticker } from "./sticker-message";
 import { browserTtsConfigStorage } from "../tts/config-storage";
 import { ttsConfigProblem } from "../tts/config";
 import { browserImageSource, recordImageFailure, startImageJob, type ImageSource } from "../imagegen/job";
+import { browserSpeechSource, startTranscription, type SpeechSource } from "./transcription-job";
 import { startGenerationPersistence, type GenerationPersistenceOutcome } from "./persistence-diagnostics";
 
 /** Records when a Character's reply was committed, for Last Seen. Resolves once saved. */
@@ -141,11 +142,23 @@ export function createChatEngine(
   stickerSource: StickerSource = browserStickerSource,
   voiceAvailable: () => Promise<boolean> = browserVoiceAvailable,
   images: ImageSource = browserImageSource,
+  speech: SpeechSource = browserSpeechSource,
 ) {
   const active = new Map<string, { controller: AbortController; id?: string }>();
   const makePicture = (message: ChatMessage, character: Character) => startImageJob(message,
     { appearance: character.appearance, avatar: character.avatar }, images,
     (id, picture, prompt) => storage.completeGeneratedImage(id, picture.blob, picture.width, picture.height, prompt));
+  // Voice messages whose words are still being written out; a reply waits for them so the Character reads what was said.
+  const transcribing = new Map<string, Set<Promise<void>>>();
+  const transcribe = (message: Pick<ChatMessage, "id" | "sessionId">) => {
+    const job = startTranscription(message.id, speech, () => storage.readMessageAttachment(message.sessionId, message.id),
+      (text) => storage.completeVoiceTranscript(message.id, text));
+    const jobs = transcribing.get(message.sessionId) ?? new Set<Promise<void>>();
+    transcribing.set(message.sessionId, jobs);
+    jobs.add(job);
+    void job.finally(() => { jobs.delete(job); if (!jobs.size && transcribing.get(message.sessionId) === jobs) transcribing.delete(message.sessionId); });
+    return job;
+  };
   const recentlyRecalledOwn = new Map<string, { messageId: string; content: string }>();
   let stopSequence = 0;
   const lastStop = new Map<string, number>();
@@ -227,6 +240,8 @@ export function createChatEngine(
             if (!current) controller.abort();
           }).catch(() => { controller.abort(); });
       });
+      const writing = transcribing.get(sessionId);
+      if (writing?.size) await awaited(Promise.allSettled([...writing]), controller.signal);
       if (draft?.content.trim()) {
         await awaited(sendMessage(sessionId, draft.content, draft.quoteMessageId, attempt.id, controller.signal).then(() => {
           draftSaved = true;
@@ -458,10 +473,20 @@ export function createChatEngine(
       await discardUnrevealed(sessionId, options?.discardUnrevealed);
       return storage.sendImage(sessionId, image.blob, image.width, image.height, quoteMessageId, options?.interject === true);
     },
-    sendVoice: async (sessionId: string, voice: { blob: Blob; durationMs: number; transcript: string }, quoteMessageId?: string,
+    /** A recording from the user is saved at once; its words are written out in the background and a reply waits for them. */
+    sendVoice: async (sessionId: string, voice: { blob: Blob; durationMs: number }, quoteMessageId?: string,
       options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
       await discardUnrevealed(sessionId, options?.discardUnrevealed);
-      return storage.sendVoice(sessionId, voice.blob, voice.durationMs, voice.transcript, quoteMessageId, options?.interject === true);
+      const message = await storage.sendVoice(sessionId, voice.blob, voice.durationMs, quoteMessageId, options?.interject === true);
+      void transcribe(message);
+      return message;
+    },
+    /** Tries again to write out a voice message whose words are missing. */
+    retryTranscription: async (sessionId: string, messageId: string) => {
+      try {
+        const message = (await storage.readSession(sessionId)).messages.find((item) => item.id === messageId);
+        if (message?.role === "user" && message.attachment?.kind === "audio" && message.attachment.untranscribed && !message.recalled) void transcribe(message);
+      } catch { /* The message keeps showing Retry. */ }
     },
     /** Asks again for a picture that was not made, optionally with new words; the placeholder shows the result. */
     retryImage: async (sessionId: string, messageId: string, prompt?: string) => {

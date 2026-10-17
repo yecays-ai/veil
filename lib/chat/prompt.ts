@@ -15,6 +15,7 @@ import type { MemoryConversation, MemoryContextMessage } from "../memory/context
 import { transferPromptContent } from "./transfer";
 import { giftPromptContent } from "./gift";
 import { hasGeneratedContent } from "./message-kind";
+import { modelFacingContent } from "./attachment";
 
 export type MemorySlot = { entries: readonly string[] };
 export const emptyMemorySlot = (): MemorySlot => ({ entries: [] });
@@ -143,7 +144,8 @@ function promptContent(message: ChatMessage, context: PromptRuntimeContext) {
     ? applyRegex(message.content, context.regexGroups ?? [], message.role, "prompt",
       { character: context.character.name, user: context.foundation.user.name })
     : message.content;
-  return messageHistoryContentWithBody(message, body);
+  // A voice message from the user is told to the model as one; the stored transcript stays as it is.
+  return messageHistoryContentWithBody(message, modelFacingContent(message, body));
 }
 
 export function resolvePresetMarker(

@@ -1,4 +1,5 @@
 import { historyTimestamp } from "../chat/time-context";
+import { modelFacingContent } from "../chat/attachment";
 import { SUMMARY_CHARACTERS, type SummaryPlan } from "../chat/summary";
 import type { PromptTurn } from "../chat/types";
 import { sensitiveMemoryText } from "./maintenance-input";
@@ -17,7 +18,7 @@ const OMITTED = "(message omitted: it may contain a secret)";
 export function buildSummaryInput(plan: Extract<SummaryPlan, { kind: "due" }>, character: { context: string; timezone?: string }): PromptTurn[] {
   const data = { character: character.context, previousSummary: plan.previous ?? null,
     messages: plan.chunk.map((m) => ({ role: m.role, time: historyTimestamp(m.createdAt, character.timezone || "UTC"),
-      content: sensitiveMemoryText(m.content) ? OMITTED : m.content })) };
+      content: sensitiveMemoryText(m.content) ? OMITTED : modelFacingContent(m, m.content) })) };
   return [{ role: "system", content: SUMMARY_SYSTEM_PROMPT }, { role: "user", content: JSON.stringify(data) }];
 }
 

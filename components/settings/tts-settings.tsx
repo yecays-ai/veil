@@ -4,13 +4,14 @@ import { PageShell } from "../page-shell";
 import { useBindings } from "../use-bindings";
 import { useFoundation } from "../foundation-provider";
 import { Alert } from "./ui/feedback";
-import { Input } from "./ui/form";
+import { Input, Select } from "./ui/form";
 import { setBindingField, resolveScopeBindings } from "../../lib/bindings";
 import { browserTtsConfigStorage } from "../../lib/tts/config-storage";
-import { EMPTY_TTS_CONFIG, resolveVoice, ttsConfigProblem, type TtsConfig } from "../../lib/tts/config";
+import { DEFAULT_TTS_BASE_URL, EMPTY_TTS_CONFIG, providerOf, resolveVoice, ttsConfigProblem, TTS_PROVIDERS, type TtsConfig, type TtsProvider } from "../../lib/tts/config";
 import { synthesizeSpeech, ttsErrorMessage } from "../../lib/tts/speech";
 
 const SAMPLE = "你好，这是一条试听。Hello, this is a preview.";
+const MODEL_HINT: Record<TtsProvider, string> = { openai: "tts-1", minimax: "speech-2.8-hd", elevenlabs: "eleven_multilingual_v2" };
 
 export function TtsSettings() {
   const { bindings, ready: bindingsReady, error: bindingError, commit } = useBindings();
@@ -38,6 +39,7 @@ export function TtsSettings() {
     return () => { mounted.current = false; request.current?.abort(); stopPlayback(); };
   }, [stopPlayback]);
 
+  const provider = providerOf(draft);
   const unchanged = !!saved && JSON.stringify(saved) === JSON.stringify(draft);
   const update = (patch: Partial<TtsConfig>) => { setDraft((current) => ({ ...current, ...patch })); setNotice(""); setError(""); };
   async function run(action: string, work: () => Promise<void>) {
@@ -88,25 +90,41 @@ export function TtsSettings() {
     <PageShell className="settings-app" title="Voice (TTS)" backHref="/settings" backLabel="Back to Settings">
       {!saved && !error && <Alert>Loading Voice settings…</Alert>}
       <form className="settings-editor" autoComplete="off" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-        <label>Base URL
-          <Input type="url" required placeholder="https://api.example.com/v1" value={draft.baseUrl} disabled={!saved || !!busy}
-            onChange={(e) => update({ baseUrl: e.target.value })} />
+        <label>Provider
+          <Select value={provider} disabled={!saved || !!busy}
+            onChange={(e) => { const next = e.target.value as TtsProvider; update({ provider: next === "openai" ? undefined : next, baseUrl: "" }); }}>
+            {TTS_PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </Select>
+        </label>
+        <label>{provider === "openai" ? "Base URL" : "Base URL (optional)"}
+          <Input type="url" required={provider === "openai"} placeholder={provider === "openai" ? "https://api.example.com/v1" : DEFAULT_TTS_BASE_URL[provider]}
+            value={draft.baseUrl} disabled={!saved || !!busy} onChange={(e) => update({ baseUrl: e.target.value })} />
         </label>
         <label>API Key
           <Input type="password" required autoComplete="new-password" value={draft.apiKey} disabled={!saved || !!busy}
             onChange={(e) => update({ apiKey: e.target.value })} />
         </label>
         <label>Model
-          <Input required placeholder="tts-1" value={draft.model} disabled={!saved || !!busy}
+          <Input required placeholder={MODEL_HINT[provider]} value={draft.model} disabled={!saved || !!busy}
             onChange={(e) => update({ model: e.target.value })} />
         </label>
-        <label>Default voice
-          <Input placeholder="alloy" value={draft.voice} disabled={!saved || !!busy}
+        <label>{provider === "openai" ? "Default voice" : "Default voice ID"}
+          <Input placeholder={provider === "openai" ? "alloy" : "voice_id from your account"} value={draft.voice} disabled={!saved || !!busy}
             onChange={(e) => update({ voice: e.target.value })} />
         </label>
-        <label>Speech-to-text model (optional)
+        <strong>Speech-to-text (optional)</strong>
+        <p className="settings-hint">Writes out the voice messages you record. It is an OpenAI-compatible service of its own{provider === "openai" ? "; leave the address and key empty to use the service above" : ""}.</p>
+        <label>Model
           <Input placeholder="whisper-1" value={draft.sttModel ?? ""} disabled={!saved || !!busy}
             onChange={(e) => update({ sttModel: e.target.value })} />
+        </label>
+        <label>Base URL
+          <Input type="url" placeholder="https://api.example.com/v1" value={draft.sttBaseUrl ?? ""} disabled={!saved || !!busy}
+            onChange={(e) => update({ sttBaseUrl: e.target.value })} />
+        </label>
+        <label>API Key
+          <Input type="password" autoComplete="new-password" value={draft.sttApiKey ?? ""} disabled={!saved || !!busy}
+            onChange={(e) => update({ sttApiKey: e.target.value })} />
         </label>
         <div className="settings-action-row">
           <button className="settings-button" type="submit" disabled={!saved || !!busy || unchanged}>{busy === "Saving…" ? busy : "Save"}</button>
@@ -128,7 +146,7 @@ export function TtsSettings() {
             return (
               <div key={character.characterId} className="settings-action-row">
                 <label>{character.name}
-                  <Input placeholder={resolveVoice({ ttsVoice: globalVoice }, draft)} value={shown} disabled={!bindingsReady}
+                  <Input placeholder={resolveVoice({ ttsVoice: globalVoice }, draft) || "voice ID"} value={shown} disabled={!bindingsReady}
                     onChange={(e) => setVoices((rows) => ({ ...rows, [character.characterId]: e.target.value }))}
                     onBlur={() => { if (voices[character.characterId] !== undefined) void saveVoice(character.characterId, voices[character.characterId]); }} />
                 </label>
