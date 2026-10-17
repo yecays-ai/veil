@@ -1,0 +1,192 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+import { IDBFactory } from "fake-indexeddb";
+import { ChatStorage } from "../lib/chat/storage";
+import { createChatEngine } from "./chat-engine-fixture";
+import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
+import { CHAT_IMAGE_LONG_EDGE, CHAT_IMAGE_TARGET_BYTES, encodeWithinTarget, fitWithin, keepsOriginal, type ImageEncoder } from "../lib/chat/image-compress";
+
+const blobOf = (type: string, size: number) => new Blob([new Uint8Array(size)], { type });
+
+test("a picture is scaled to a 2048 long edge, keeping its proportions and never enlarged", () => {
+  assert.deepEqual(fitWithin(4096, 2048), { width: 2048, height: 1024 });
+  assert.deepEqual(fitWithin(1000, 4000), { width: 512, height: 2048 });
+  assert.deepEqual(fitWithin(800, 600), { width: 800, height: 600 });
+  assert.deepEqual(fitWithin(5000, 1), { width: 2048, height: 1 });
+  assert.equal(CHAT_IMAGE_LONG_EDGE, 2048);
+});
+
+test("a small picture keeps its own bytes (so a GIF keeps moving); a big or oversized one is re-encoded", () => {
+  assert.equal(keepsOriginal("image/gif", 200_000, 400, 300), true);
+  assert.equal(keepsOriginal("image/png", CHAT_IMAGE_TARGET_BYTES, 2048, 100), true);
+  assert.equal(keepsOriginal("image/png", CHAT_IMAGE_TARGET_BYTES + 1, 100, 100), false);
+  assert.equal(keepsOriginal("image/jpeg", 10_000, 2049, 100), false);
+  assert.equal(keepsOriginal("image/svg+xml", 100, 10, 10), false);
+  assert.equal(keepsOriginal("image/heic", 100, 10, 10), false);
+});
+
+test("encoding takes the largest, best size that fits ~1 MB, WebP first and JPEG where WebP cannot be made", async () => {
+  const calls: string[] = [];
+  const roomy: ImageEncoder = async (w, h, type, quality) => { calls.push(`${w}x${h} ${type} ${quality}`); return blobOf(type, 900_000); };
+  const first = await encodeWithinTarget(4000, 3000, roomy);
+  assert.deepEqual([first.width, first.height, first.blob.type], [2048, 1536, "image/webp"]);
+  assert.equal(calls.length, 1);
+
+  const noWebp: ImageEncoder = async (_w, _h, type) => type === "image/webp" ? blobOf("image/png", 10) : blobOf(type, 500_000);
+  assert.equal((await encodeWithinTarget(1000, 1000, noWebp)).blob.type, "image/jpeg", "a browser that answers with another type is not trusted");
+
+  const sizes = new Map<string, number>();
+  const stingy: ImageEncoder = async (w, _h, type, quality) => {
+    const bytes = Math.round(w * 700 * quality); sizes.set(`${w} ${quality}`, bytes); return blobOf(type, bytes);
+  };
+  const shrunk = await encodeWithinTarget(2000, 2000, stingy);
+  assert.ok(shrunk.blob.size <= CHAT_IMAGE_TARGET_BYTES);
+  assert.ok(shrunk.width < 2000 || shrunk.blob.size < CHAT_IMAGE_TARGET_BYTES);
+});
+
+test("a picture that cannot be made small enough is refused rather than stored large", async () => {
+  await assert.rejects(encodeWithinTarget(3000, 3000, async (_w, _h, type) => blobOf(type, CHAT_IMAGE_TARGET_BYTES + 1)), /太大/);
+  await assert.rejects(encodeWithinTarget(3000, 3000, async () => null), /太大/);
+});
+
+function setup() {
+  const storage = new ChatStorage(() => new IDBFactory());
+  const document = defaultFoundation(); document.runtime.timeAware = false;
+  document.characters = [{ characterId: "a", ...normalizeCharacterInput({ name: "A" }) }];
+  const prompts: { role: string; content: unknown }[][] = [];
+  const engine = createChatEngine(storage, async () => document,
+    async function* (_config, prompt) { prompts.push([...prompt] as never); yield "nice picture"; },
+    undefined, undefined, undefined, undefined, undefined, undefined, undefined, async () => {}, async () => undefined);
+  return { storage, engine, prompts };
+}
+
+test("the engine saves an image message that interrupts an unrevealed reply; the model sees only its semantic text", async () => {
+  const { storage, engine, prompts } = setup();
+  const session = await storage.openSession("a");
+  await storage.send(session.id, "hello");
+  await engine.requestReply(session.id);
+  const sentBefore = (await storage.readSession(session.id)).messages;
+  const last = sentBefore.at(-1)!;
+  const image = await engine.sendImage(session.id, { blob: blobOf("image/png", 1234), width: 30, height: 20 }, undefined, { discardUnrevealed: [last.id] });
+  assert.deepEqual(image.attachment && [image.attachment.width, image.attachment.height, image.attachment.bytes], [30, 20, 1234]);
+  const { messages } = await storage.readSession(session.id);
+  assert.equal(messages.some((m) => m.id === last.id), false, "the unshown reply is dropped like for a sticker");
+  assert.equal(messages.at(-1)!.id, image.id);
+  assert.equal(messages.at(-1)!.role, "user");
+  assert.equal((await storage.readMessageAttachment(session.id, image.id))?.size, 1234);
+  await engine.requestReply(session.id);
+  const prompt = prompts.at(-1)!;
+  assert.ok(prompt.some((turn) => turn.content === "[用户发送了一张图片]"));
+  assert.ok(prompt.every((turn) => typeof turn.content === "string"), "nothing but text reaches the provider in M2");
+});
+
+test("an image the storage refuses leaves no message behind", async () => {
+  const { storage, engine } = setup();
+  const session = await storage.openSession("a");
+  await assert.rejects(engine.sendImage(session.id, { blob: blobOf("image/svg+xml", 10), width: 5, height: 5 }));
+  await assert.rejects(engine.sendImage(session.id, { blob: blobOf("image/png", 10), width: 0, height: 5 }));
+  assert.equal((await storage.readSession(session.id)).messages.length, 0);
+});
+
+const room = readFileSync("components/chat/chat-room.tsx", "utf8");
+const plus = readFileSync("components/chat/chat-plus-panel.tsx", "utf8");
+const timeline = readFileSync("components/chat/messages/message-list.tsx", "utf8");
+const viewer = readFileSync("components/chat/messages/image-message.tsx", "utf8");
+
+test("Photos in the + panel picks several pictures; each is shrunk then sent as its own message through the engine", () => {
+  assert.doesNotMatch(plus, /label: "Photos"/, "Photos is no longer a Coming Soon placeholder");
+  assert.match(plus, /onClick=\{onPhotos\}/);
+  assert.match(room, /type="file" multiple accept=\{ATTACHMENT_IMAGE_MIMES\.join/);
+  const start = room.indexOf("async function sendImages(");
+  const body = room.slice(start, room.indexOf("\n  async function reply", start));
+  assert.match(body, /compressChatImage\(file\)/);
+  assert.match(body, /chatEngine\.sendImage\(/);
+  assert.doesNotMatch(body, /requestReply|beginReply/, "sending a picture does not ask for a reply");
+  assert.match(body, /sendingLock\.current/);
+});
+
+test("the message list draws the stored picture, opens it large with Save, and leaves selection mode to select", () => {
+  assert.match(timeline, /message\.attachment && <ImageMessage/);
+  assert.match(timeline, /message\.sticker \|\| message\.attachment \? null/);
+  assert.match(viewer, /readMessageAttachment\(sessionId, messageId\)/);
+  assert.match(viewer, /URL\.revokeObjectURL/);
+  assert.match(viewer, /download=\{name\}/);
+  assert.match(viewer, /if \(multiSelect\) return;/);
+});
+
+test("Photos keeps the + panel up behind the system picker and puts the composer back when the picker closes", () => {
+  const photos = room.match(/onPhotos=\{[^}]*\}/)![0];
+  assert.doesNotMatch(photos, /setPanel/, "the panel is not collapsed before the picker opens");
+  assert.match(photos, /photoInput\.current\?\.click\(\)/);
+  const input = room.match(/<input ref=\{photoInput\}[\s\S]*?\/>/)![0];
+  assert.match(input, /setPanel\(null\); void sendImages\(files\)/, "a choice closes the panel, then sends");
+  assert.match(room, /input\.addEventListener\("cancel", close\)/, "cancelling the picker closes it too");
+  assert.match(room, /input\.removeEventListener\("cancel", close\)/);
+});
+
+test("the Shared Media list is the conversation's own newest pictures, and disappears with the message", async () => {
+  const { storage } = setup();
+  assert.equal(await storage.listSessionImages("a", 8), null, "no conversation yet");
+  assert.equal((await storage.listSessions()).length, 0, "looking does not create one");
+  const session = await storage.openSession("a");
+  const other = await storage.openSession("b");
+  const first = await storage.sendImage(session.id, blobOf("image/png", 10), 4, 3);
+  await storage.send(session.id, "text in between");
+  const second = await storage.sendImage(session.id, blobOf("image/png", 20), 4, 3);
+  const third = await storage.sendImage(session.id, blobOf("image/png", 30), 4, 3);
+  await storage.sendImage(other.id, blobOf("image/png", 40), 4, 3);
+  let listed = await storage.listSessionImages("a", 8);
+  assert.equal(listed?.sessionId, session.id);
+  assert.deepEqual(listed?.images.map((image) => image.messageId), [third.id, second.id, first.id], "newest first, only this conversation");
+  assert.deepEqual((await storage.listSessionImages("a", 2))?.images.map((image) => image.messageId), [third.id, second.id]);
+  await storage.deleteMessages(session.id, [second.id]);
+  assert.deepEqual((await storage.listSessionImages("a", 8))?.images.map((image) => image.messageId), [third.id, first.id]);
+  await storage.recallMessage(third.id, "user");
+  listed = await storage.listSessionImages("a", 8);
+  assert.deepEqual(listed?.images.map((image) => image.messageId), [first.id], "a recalled picture is gone from the list");
+  assert.equal(await storage.readMessageAttachment(session.id, third.id), null);
+});
+
+test("Contact Info shows the chat's pictures, opens them large, and drops a picture whose bytes are gone", () => {
+  const info = readFileSync("components/contact-info.tsx", "utf8");
+  const media = readFileSync("components/contact-shared-media.tsx", "utf8");
+  assert.match(info, /<ContactSharedMedia characterId=/);
+  assert.match(media, /chatStorage\.listSessionImages\(characterId, SHARED_MEDIA_LIMIT\)/);
+  assert.match(media, /if \(url === false\) return null;/);
+  assert.match(media, /<ImageViewer /);
+  assert.match(media, /affectsChatSession\(change, sessionId\)/, "the list follows deletes and recalls");
+  assert.match(media, /return \(\) => \{ current = false; unsubscribe\(\); \}/);
+  assert.doesNotMatch(media, /new ChatStorage|indexedDB|createObjectStore/, "no media library of its own");
+});
+
+async function withoutAsset(factory: IDBFactory, assetId: string) {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const open = factory.open("veil-chat-v2"); open.onsuccess = () => resolve(open.result); open.onerror = () => reject(open.error);
+  });
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("assets", "readwrite"); tx.objectStore("assets").delete(assetId);
+    tx.oncomplete = () => resolve(); tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+}
+
+test("a message whose picture bytes are gone does not take one of the Shared Media places", async () => {
+  const factory = new IDBFactory(), storage = new ChatStorage(() => factory);
+  const session = await storage.openSession("a");
+  const kept = await storage.sendImage(session.id, blobOf("image/png", 10), 4, 3);
+  const lost = await storage.sendImage(session.id, blobOf("image/png", 20), 4, 3);
+  await withoutAsset(factory, lost.attachment!.assetId);
+  assert.deepEqual((await storage.listSessionImages("a", 1))?.images.map((image) => image.messageId), [kept.id],
+    "limit 1 still returns the older picture that exists");
+  await withoutAsset(factory, kept.attachment!.assetId);
+  assert.deepEqual((await storage.listSessionImages("a", 8))?.images, [], "only lost pictures: nothing listed, so the page can say there are no photos");
+});
+
+test("a failed Shared Media read says so with a Try again instead of claiming there are no photos", () => {
+  const media = readFileSync("components/contact-shared-media.tsx", "utf8");
+  assert.match(media, /failed: true/);
+  assert.match(media, /if \(ready\.failed\) return[\s\S]*?Photos could not be loaded\.[\s\S]*?Try again/);
+  assert.ok(media.indexOf("ready.failed") < media.indexOf("No photos yet."), "the failure is checked before the empty message");
+  assert.match(media, /\[characterId, attempt\]/, "Try again reloads");
+});

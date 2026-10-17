@@ -6,6 +6,7 @@ import { canReactTo } from "../../../lib/chat/reactions";
 import { getMessageActions } from "../../../lib/chat/message-action-registry";
 import { canRegenerateTurn } from "../../../lib/chat/turns";
 import { canRecallMessage } from "../../../lib/chat/recall";
+import { hasGeneratedContent, isFixedMessage } from "../../../lib/chat/message-kind";
 import type { ChatMessage } from "../../../lib/chat/types";
 import { ReactionBar, ReactionPickerSheet } from "../reaction-bar";
 
@@ -51,8 +52,8 @@ export function MessageActionsOverlay({ activeMessage, messages, generationActiv
     <div ref={actionMenuRef} tabIndex={-1} data-message-overlay="" className="chat-message-actions ctx-menu" role="menu" aria-label="Message actions"
       style={{ left: 0, top: 0, visibility: "hidden" }} onPointerDown={(event) => event.stopPropagation()}>
       <div className="chat-message-actions-grid">
-        <Action label="Copy" icon={Copy} disabled={!!activeMessage.sticker} onClick={onCopy} />
-        <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || !!activeMessage.sticker || !!activeMessage.transfer || !!activeMessage.transferEvent || !!activeMessage.gift || !!activeMessage.giftEvent || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onEdit} />
+        <Action label="Copy" icon={Copy} disabled={hasGeneratedContent(activeMessage)} onClick={onCopy} />
+        <Action label="Edit" icon={Pencil} disabled={activeMessage.role === "system" || isFixedMessage(activeMessage) || generationActive || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onEdit} />
         <Action label="Quote" icon={Quote} disabled={activeMessage.role === "system" || activeMessage.status === "error" || activeMessage.status === "cancelled"} onClick={onQuote} />
         <Action label="Memory" icon={Brain} disabled={activeMessage.role !== "assistant"} onClick={onMemory} />
         <Action label="Select" icon={CircleCheck} onClick={onSelect} />

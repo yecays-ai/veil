@@ -29,6 +29,8 @@ async function app(hasContacts = true) {
   for (const name of ["window", "document", "navigator", "HTMLElement", "Event"] as const) install(name, dom.window[name]);
   install("self", dom.window);
   install("IS_REACT_ACT_ENVIRONMENT", true);
+  // Contact Info's Shared Media listens to chat storage; an open BroadcastChannel would keep the test process alive.
+  install("BroadcastChannel", undefined);
   dom.window.HTMLDialogElement.prototype.showModal = function () { this.open = true; };
   const loader = Module as unknown as { _load: (request: string, ...rest: unknown[]) => unknown };
   const originalLoad = loader._load;

@@ -1219,6 +1219,15 @@
 .chat-turn-user .chat-bubble.chat-bubble-sticker { padding: 0 !important; background: transparent !important; border: 0 !important; }
 .chat-sticker-image { display: block; max-width: min(160px, 46vw); max-height: 160px; object-fit: contain; }
 .chat-bubble-sticker .sticker-missing { width: auto; height: auto; padding: 12px 14px; border-radius: 24px; background: var(--theme-surface); }
+.chat-bubble.chat-bubble-image,
+.chat-turn-user .chat-bubble.chat-bubble-image { padding: 0 !important; background: transparent !important; border: 0 !important; overflow: hidden; line-height: 0; border-radius: 16px; }
+.chat-bubble .chat-image-button, .chat-image-frame, .chat-image-missing { display: block; width: min(240px, 62vw); max-height: 320px; padding: 0 !important; border: 0 !important; border-radius: 16px; overflow: hidden; background: var(--theme-surface) !important; cursor: zoom-in; }
+.chat-image-missing { display: flex; align-items: center; justify-content: center; min-height: 80px; font-size: 13px; line-height: 1.4; cursor: default; }
+.chat-image-message { display: block; width: 100%; height: 100%; object-fit: contain; }
+.chat-image-viewer { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.88); }
+.chat-image-viewer > img { max-width: 100vw; max-height: 100dvh; object-fit: contain; }
+.chat-image-viewer-bar { position: absolute; top: max(12px, env(safe-area-inset-top)); right: 12px; display: flex; gap: 8px; align-items: center; }
+.chat-image-viewer-bar a, .chat-image-viewer-bar button { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 14px; border: 0; border-radius: 22px; background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 14px; text-decoration: none; cursor: pointer; }
 
 /* The library: a sheet over the whole chat. */
 .sticker-manager {

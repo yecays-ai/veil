@@ -51,6 +51,8 @@ async function mountedApp() {
   install("ResizeObserver", class { observe() {} disconnect() {} });
   install("IS_REACT_ACT_ENVIRONMENT", true);
   install("self", dom.window);
+  // Contact Info's Shared Media listens to chat storage; an open BroadcastChannel would keep the test process alive.
+  install("BroadcastChannel", undefined);
   // Stylesheets are bundler concerns; the compiled test runtime loads them as empty modules.
   const loader = Module as unknown as { _load: (request: string, ...rest: unknown[]) => unknown };
   const originalLoad = loader._load;

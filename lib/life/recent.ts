@@ -1,5 +1,5 @@
-import type { PresenceSituation } from "../presence/compute";
-import { lifeMomentRevealAt, type LifeActivity, type LifeState } from "./activity";
+import { localDayWindow, type PresenceSituation } from "../presence/compute";
+import { lifeLive, lifeMomentRevealAt, type LifeActivity, type LifeState } from "./activity";
 
 export const LIFE_RECENT_WINDOW_MS = 12 * 60 * 60_000;
 export const LIFE_RECENT_LIMIT = 4;
@@ -30,7 +30,7 @@ export function recentLife(life: LifeState | undefined, situations: readonly Pre
   const covers = situations.filter((item) => item.startsAt < now).map((item): [number, number] => [item.startsAt, Math.min(item.endsAt, now)]);
   const since = now - windowMs;
   const pieces: Piece[] = [
-    ...(life?.activities ?? []).filter((item) => item.endsAt <= now && item.endsAt > since).flatMap((item) => subtract(item, [...covers, [-Infinity, since]])),
+    ...lifeLive(life?.activities ?? []).filter((item) => item.endsAt <= now && item.endsAt > since).flatMap((item) => subtract(item, [...covers, [-Infinity, since]])),
     ...situations.flatMap((item): Piece[] => {
       const reason = item.reason?.trim();
       return reason && item.endsAt <= now && item.endsAt > now - windowMs && item.endsAt - Math.max(item.startsAt, since) >= MIN_PIECE_MS
@@ -51,4 +51,16 @@ export function recentLife(life: LifeState | undefined, situations: readonly Pre
     if (moment) seen.add(moment);
     return { title, startsAt, endsAt, ...(moment ? { moment } : {}) };
   });
+}
+
+export const LIFE_AHEAD_LIMIT = 5;
+/**
+ * The Character's own concrete plans for the rest of today, in order: day-plan rows that have not started and begin
+ * before its local day ends. Only titles and times are given, never a Moment (nothing has happened yet), and the
+ * Routine's generic rhythm is not a plan. Cancelled rows are not plans.
+ */
+export function aheadLife(life: LifeState | undefined, now: number, timezone: string | null, limit = LIFE_AHEAD_LIMIT): LifeRecentEntry[] {
+  const end = localDayWindow(now, timezone).endsAt;
+  return lifeLive(life?.activities ?? []).filter((item) => item.origin === "plan" && item.startsAt > now && item.startsAt < end)
+    .slice(0, Math.max(0, limit)).map(({ title, startsAt, endsAt }) => ({ title, startsAt, endsAt }));
 }

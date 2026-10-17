@@ -171,6 +171,11 @@ export function createChatEngine(
     return storage.send(sessionId, applyRegex(content, groups, "user", "stored",
       { character: character?.name, user: document.user.name }), quoteMessageId, attemptId, undefined, interject);
   }
+  /** Bubbles the user never saw are removed before their new message is stored. A refusal never blocks the message itself. */
+  async function discardUnrevealed(sessionId: string, ids: readonly string[] | undefined) {
+    if (!ids?.length) return;
+    try { await storage.discardUnrevealedTail(sessionId, ids); } catch { /* The message is still sent; the bubbles stay as they are. */ }
+  }
   async function hasUnansweredUserTurn(sessionId: string) {
     try { return (await storage.readSession(sessionId)).messages.some((m) => m.role === "user" && !m.requestedBy); }
     catch { return true; } // Cannot tell: keep the recorded outcome rather than hide a possible pending turn.
@@ -326,6 +331,11 @@ export function createChatEngine(
       const { reactToUser, ...ownChanges } = actions ?? {};
       const recallTarget = actions?.recallMessageId ? batch.messages.find((message) => message.id === actions.recallMessageId && message.role === "assistant") : undefined;
       delete ownChanges.sticker; // chat data, saved with the reply itself
+      // A change to its own day names a code from this reply's list; only a code it was offered is swapped for a row ID.
+      if (ownChanges.life) {
+        const choice = offered?.lifeChoices?.find((item) => item.code === ownChanges.life!.target);
+        if (choice) ownChanges.life = { ...ownChanges.life, target: choice.id }; else delete ownChanges.life;
+      }
       if (Object.keys(ownChanges).length && source !== "continue") await Promise.resolve()
         .then(() => applyActions(target.characterId, ownChanges, now().getTime(), completed[0].id))
         .then((result) => { if (result && result.recalledMessageId && recallTarget?.content) recentlyRecalledOwn.set(sessionId, { messageId: result.recalledMessageId, content: recallTarget.content }); })
@@ -391,12 +401,21 @@ export function createChatEngine(
      * `interject` (Life Mode): sending while the Character is still writing gives that reply up silently; the attempt sees
      * it no longer owns the conversation, stops, and leaves no marker. A real failure or the user's Stop is unaffected.
      */
-    send: (sessionId: string, content: string, quoteMessageId?: string, options?: { interject?: boolean }) =>
-      sendMessage(sessionId, content, quoteMessageId, undefined, undefined, options?.interject === true),
+    send: async (sessionId: string, content: string, quoteMessageId?: string, options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
+      await discardUnrevealed(sessionId, options?.discardUnrevealed);
+      return sendMessage(sessionId, content, quoteMessageId, undefined, undefined, options?.interject === true);
+    },
     /** The user's sticker: saved as a sent message like Send; a reply is still requested separately. */
     /** Like `send`, a Life Mode sticker may interject and give up the unfinished reply. */
-    sendSticker: (sessionId: string, sticker: MessageSticker, quoteMessageId?: string, options?: { interject?: boolean }) =>
-      storage.sendSticker(sessionId, sticker, quoteMessageId, options?.interject === true),
+    sendSticker: async (sessionId: string, sticker: MessageSticker, quoteMessageId?: string, options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
+      await discardUnrevealed(sessionId, options?.discardUnrevealed);
+      return storage.sendSticker(sessionId, sticker, quoteMessageId, options?.interject === true);
+    },
+    sendImage: async (sessionId: string, image: { blob: Blob; width: number; height: number }, quoteMessageId?: string,
+      options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
+      await discardUnrevealed(sessionId, options?.discardUnrevealed);
+      return storage.sendImage(sessionId, image.blob, image.width, image.height, quoteMessageId, options?.interject === true);
+    },
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
     initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),

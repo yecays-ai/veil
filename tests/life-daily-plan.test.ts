@@ -96,11 +96,90 @@ test("local-day windows remain non-overlapping across a daylight-saving transiti
   assert.ok(activities.every((item) => item.endsAt > item.startsAt));
 });
 
-test("a later Routine edit does not rewrite an already projected stretch", () => {
+test("a later Routine edit keeps what has begun and lets the rest follow the new status", () => {
+  const now = mondayNoon + HOUR;   // 13:00, inside the 09:00–17:00 busy block
   const original = reconcileProjectedLife(undefined, presence(), mondayNoon);
   const changed = presence({ routine: { defaultStatus: "away", jitterMinutes: 0, blocks: [] } });
-  const next = reconcileProjectedLife(original, changed, mondayNoon + HOUR);
-  assert.deepEqual(next.activities.filter((item) => item.startsAt < mondayNoon + DAY),
-    original.activities.filter((item) => item.startsAt < mondayNoon + DAY));
+  const next = reconcileProjectedLife(original, changed, now);
+  const finished = original.activities.filter((item) => item.endsAt <= now);
+  assert.ok(finished.length > 0);
+  assert.deepEqual(next.activities.slice(0, finished.length), finished, "finished activities are never rewritten");
+  const running = original.activities.find((item) => item.startsAt <= now && now < item.endsAt)!;
+  const cut = next.activities.find((item) => item.id === running.id)!;
+  assert.equal(cut.startsAt, running.startsAt);
+  assert.equal(cut.endsAt, now, "the running activity is cut where the edit happened");
+  const here = next.activities.find((item) => item.startsAt <= now && now < item.endsAt)!;
+  assert.equal(here.title, "Out and about", "the current activity agrees with the new status");
+  assert.equal(next.activities.some((item) => item.title === "Working" && item.startsAt >= now), false, "the old plan is gone");
+  assert.equal(next.activities.some((item, index) => index > 0 && item.startsAt < next.activities[index - 1].endsAt), false);
+  assert.deepEqual(reconcileProjectedLife(next, changed, now + 60_000).activities, next.activities, "settling again changes nothing");
 });
 
+test("an unrevealed Moment of a cut activity is dropped and a revealed one stays", () => {
+  const changed = presence({ routine: { defaultStatus: "away", jitterMinutes: 0, blocks: [] } });
+  let original = reconcileProjectedLife(undefined, presence(), mondayNoon);
+  for (let day = 1; day < 40 && !original.activities.some((item) => item.moment && item.startsAt > mondayNoon); day++)
+    original = reconcileProjectedLife(undefined, presence(), mondayNoon + day * DAY);
+  const withMoment = original.activities.filter((item) => item.moment && item.startsAt > original.reconciledAt - DAY);
+  assert.ok(withMoment.length > 0, "fixture needs a Moment");
+  for (const item of withMoment) {
+    const before = reconcileProjectedLife(original, changed, item.startsAt + 1000);
+    assert.equal(before.activities.find((row) => row.id === item.id)?.moment, undefined, "not yet happened, so it is not kept");
+    const after = reconcileProjectedLife(original, changed, item.endsAt - 1000);
+    assert.equal(after.activities.find((row) => row.id === item.id)?.moment, item.moment, "already revealed, so it stays");
+  }
+});
+
+test("a Situation set after the day was settled replaces the rest of it without rewriting the past", () => {
+  const now = mondayNoon + HOUR;
+  const original = reconcileProjectedLife(undefined, presence(), now);
+  const withSituation = presence({ situations: [{ status: "away", reason: "Hospital visit", startsAt: now, endsAt: now + 3 * HOUR }] });
+  const next = reconcileProjectedLife(original, withSituation, now + 60_000);
+  const finished = original.activities.filter((item) => item.endsAt <= now);
+  assert.deepEqual(next.activities.slice(0, finished.length), finished);
+  const here = next.activities.find((item) => item.startsAt <= now + 60_000 && now + 60_000 < item.endsAt)!;
+  assert.equal(here.title, "Hospital visit");
+  assert.equal(next.activities.some((item, index) => index > 0 && item.startsAt < next.activities[index - 1].endsAt), false);
+});
+
+test("a new Situation that spans recorded time keeps the part still ahead", () => {
+  const stored = reconcileLifeActivities(undefined, [{ id: "old", occurrenceKey: "old", kind: "work", title: "Old", startsAt: mondayNoon - 3 * HOUR,
+    endsAt: mondayNoon - 2 * HOUR }], mondayNoon - 2 * HOUR);
+  const withSituation = presence({ routine: null, situations: [{ status: "away", reason: "Trip", startsAt: mondayNoon - 4 * HOUR, endsAt: mondayNoon + 4 * HOUR }] });
+  const next = reconcileProjectedLife(stored, withSituation, mondayNoon);
+  assert.equal(next.activities.find((item) => item.id === "old")?.title, "Old");
+  const ahead = next.activities.find((item) => item.startsAt <= mondayNoon && mondayNoon < item.endsAt);
+  assert.equal(ahead?.title, "Trip");
+  assert.equal(ahead?.endsAt, mondayNoon + 4 * HOUR);
+  assert.equal(next.activities.some((item, index) => index > 0 && item.startsAt < next.activities[index - 1].endsAt), false);
+});
+
+test("a planned stretch that has not started follows a changed status in wording and keeps its identity", () => {
+  const original = reconcileProjectedLife(undefined, presence(), mondayNoon);   // Tuesday 09:00–17:00 is "Working" (busy)
+  const tuesdayWork = original.activities.find((item) => item.title === "Working" && item.startsAt > mondayNoon)!;
+  const focus = presence({ routine: { defaultStatus: "online", jitterMinutes: 0, blocks: [
+    { days: [0, 1, 2, 3, 4, 5, 6], startMinute: 0, endMinute: 8 * 60, status: "offline" },
+    { days: [1, 2, 3, 4, 5], startMinute: 9 * 60, endMinute: 17 * 60, status: "dnd" }] } });
+  const next = reconcileProjectedLife(original, focus, mondayNoon + 60_000);
+  const row = next.activities.find((item) => item.id === tuesdayWork.id)!;
+  assert.equal(row.title, "Focused time");
+  assert.equal(row.occurrenceKey, tuesdayWork.occurrenceKey);
+});
+
+test("a running stretch whose status wording changes is cut now and continues with the new wording", () => {
+  const original = reconcileProjectedLife(undefined, presence(), mondayNoon);
+  const focus = presence({ routine: { defaultStatus: "online", jitterMinutes: 0, blocks: [
+    { days: [0, 1, 2, 3, 4, 5, 6], startMinute: 0, endMinute: 8 * 60, status: "offline" },
+    { days: [1, 2, 3, 4, 5], startMinute: 9 * 60, endMinute: 17 * 60, status: "dnd" }] } });
+  const now = mondayNoon + HOUR;   // 13:00, inside the 09:00–17:00 block that was "Working"
+  const running = original.activities.find((item) => item.startsAt <= now && now < item.endsAt)!;
+  assert.equal(running.title, "Working");
+  const next = reconcileProjectedLife(original, focus, now);
+  assert.equal(next.activities.find((item) => item.id === running.id)?.title, "Working", "what already happened keeps its wording");
+  assert.equal(next.activities.find((item) => item.id === running.id)?.endsAt, now);
+  const here = next.activities.find((item) => item.startsAt <= now && now < item.endsAt)!;
+  assert.equal(here.title, "Focused time");
+  assert.equal(here.endsAt, running.endsAt);
+  assert.equal(next.activities.some((item, index) => index > 0 && item.startsAt < next.activities[index - 1].endsAt), false);
+  assert.deepEqual(reconcileProjectedLife(next, focus, now + 60_000).activities, next.activities, "settling again changes nothing");
+});

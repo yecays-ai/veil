@@ -1,4 +1,5 @@
 import { browserFoundationStorage } from "../foundation-storage";
+import { ensureDayPlan } from "../life/day-plan";
 import { browserPresenceStorage, presenceRecord } from "../presence/storage";
 import { chatEngine } from "./engine";
 import { chatStorage } from "./storage";
@@ -19,6 +20,8 @@ export function startBrowserProactive(): () => void {
         return character ? selfState(character, undefined, presenceRecord(presence, characterId), now, null, false, false).status : undefined;
       },
       isGenerating: (id) => chatEngine.isGenerating(id),
+      // Today's plan first, so the message can draw on it. At most one request a day per Character (the plan's own claim).
+      prepare: (characterId) => ensureDayPlan(characterId),
       initiate: (id) => chatEngine.initiate(id),
       now: Date.now,
     }, alive);

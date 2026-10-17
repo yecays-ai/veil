@@ -40,12 +40,12 @@
 | worldbooks | 1 | WorldBookDocument 或 null；Book 数量 |
 | contacts | 1 | ContactDocument 或 null；Contact 数量，含备注变更和内联背景 |
 | presence | 1 | 当前 main PresenceDocument 或 null；Character 记录数量 |
-| chat | 1 | `{sessions,messages,chatSettings,worldBookStates}`；四个数组记录数之和 |
+| chat | 2 | `{sessions,messages,chatSettings,worldBookStates}`；四个数组记录数之和。版本 2 起消息可带 `attachment`（引用 chat 图片域的一个资产）；版本 1 的包仍可读取，但其消息不得带 `attachment` |
 | apiConfigs | 1 | `{id,name,provider,baseUrl,model}[]`；配置数量；禁止 `apiKey` 和额外字段 |
 
 这些版本不是数据库名称后缀，也不是 IndexedDB 内部版本。API Key 排除是配置字段契约，并不声称能发现或清除用户在聊天正文、自由文本或 URL 中自行写入的秘密。
 
-图片条目包括 `domain/id/path/bytes/sha256/mime/createdAt`；域只能为 appearance 或 chat。保留原 ID；appearance ID 必须等于字节的 SHA-256，chat 保留原始 ID。相同 ID 可在两个图片域中分别存在。图片字节不重新编码、不执行浏览器解码；哈希证明传输完整性，不证明图片可显示。头像和 Contacts 内联图片继续留在原文档内。
+图片条目包括 `domain/id/path/bytes/sha256/mime/createdAt`；域只能为 appearance 或 chat。保留原 ID；appearance ID 必须等于字节的 SHA-256，chat 保留原始 ID。相同 ID 可在两个图片域中分别存在。chat 图片可被会话壁纸、全局壁纸或消息的 `attachment` 引用；一个资产只能被一条消息引用，且不能同时是壁纸（删除消息会删除它的资产）。消息引用的资产不在包内时只给出 `missing-attachment` 警告，消息保留、不阻断恢复。图片字节不重新编码、不执行浏览器解码；哈希证明传输完整性，不证明图片可显示。头像和 Contacts 内联图片继续留在原文档内。
 
 当前防资源耗尽边界：清单最多 4 MiB、单域 JSON 最多 128 MiB、包内声明文件总量最多 1 GiB、图片最多 10,000 个、JSON 嵌套最多 64 层。超限明确失败；这些是当前校验实现上限，不是用户数据裁剪规则。全站导出前若真实规模超过上限，另行评估并调整，不静默丢记录。该接口不是流式实现，实际 iPhone 可承受规模尚未测试。
 

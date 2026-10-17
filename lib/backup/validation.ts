@@ -21,9 +21,10 @@ import { memoryBatchActive, validMemoryProgress } from "../memory/progress-types
 import type { ChatMessage } from "../chat/types";
 import { isMessageReactions } from "../chat/reactions";
 import { isMessageSticker } from "../chat/sticker-message";
+import { isMessageAttachment } from "../chat/attachment";
 import { parseBackupJson } from "./json";
 import {
-  BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, BackupValidationError,
+  BACKUP_SCHEMA, BACKUP_VERSION, BACKUP_DOMAIN_VERSIONS, BACKUP_READABLE_DOMAIN_VERSIONS, BackupValidationError,
   type BackupManifest, type BackupDomain, type BackupData, type BackupWarning, type ValidatedBackup,
 } from "./format";
 
@@ -106,7 +107,7 @@ export function parseBackupManifest(text: string): BackupManifest {
     check(typeof section.domain === "string" && Object.hasOwn(BACKUP_DOMAIN_VERSIONS, section.domain), path, "unsupported-domain");
     check(!domains.has(section.domain), path, "duplicate-domain"); domains.add(section.domain);
     check((section.version === BACKUP_DOMAIN_VERSIONS[section.domain as BackupDomain]
-      || (section.domain === "memory" && section.version === 1)), path, "unsupported-domain-version");
+      || section.version === BACKUP_READABLE_DOMAIN_VERSIONS[section.domain as BackupDomain]), path, "unsupported-domain-version");
     check(integer(section.records), path);
     file(section, path);
     check((section.bytes as number) <= MAX_JSON_BYTES, path, "size-limit");
@@ -125,7 +126,7 @@ export function parseBackupManifest(text: string): BackupManifest {
   return raw as unknown as BackupManifest;
 }
 
-function validateChat(value: unknown) {
+function validateChat(value: unknown, version: number) {
   const fields = ["sessions", "messages", "chatSettings", "worldBookStates"];
   keys(value, fields, fields, "chat");
   unique(value.sessions, "id", "chat.sessions"); unique(value.messages, "id", "chat.messages");
@@ -186,9 +187,10 @@ function validateChat(value: unknown) {
       owners.set(row[field], row.sessionId);
     }
   });
+  const attachmentAssets = new Set<string>();
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "sentAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "sentAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "attachment", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -216,6 +218,14 @@ function validateChat(value: unknown) {
     }
     check(row.reactions === undefined || (isMessageReactions(row.reactions) && (row.role === "user" || row.role === "assistant")), path);
     check(row.sticker === undefined || (isMessageSticker(row.sticker) && (row.role === "user" || row.role === "assistant")), path);
+    if (row.attachment !== undefined) {
+      // A message owns its asset one-to-one (the asset is deleted with the message), and a recalled one keeps nothing.
+      check(version >= 2 && isMessageAttachment(row.attachment) && (row.role === "user" || row.role === "assistant")
+        && row.sticker === undefined && row.transfer === undefined && row.transferEvent === undefined
+        && row.gift === undefined && row.giftEvent === undefined && row.recalled === undefined, path, "invalid-data", "attachment-invalid");
+      check(!attachmentAssets.has(row.attachment.assetId), path, "duplicate-id", "attachment-asset-shared");
+      attachmentAssets.add(row.attachment.assetId);
+    }
     if (row.transfer !== undefined) {
       keys(row.transfer, ["amount", "note", "sender", "recipient", "status"], ["amount", "note", "sender", "recipient", "status"], path);
       const transfer = row.transfer;
@@ -422,7 +432,7 @@ function validateMemory(value: unknown, version: number) {
 
 function validateDomain(domain: BackupDomain, value: unknown, version: number): number {
   if (domain === "chat") {
-    validateChat(value);
+    validateChat(value, version);
     const chat = value as BackupData["chat"];
     return chat.sessions.length + chat.messages.length + chat.chatSettings.length + chat.worldBookStates.length;
   }
@@ -490,8 +500,17 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
       check(assets.has(`chat:${row.globalChatBackgroundImage}`), `chat.chatSettings[${index}]`, "missing-asset");
   });
   const messages = new Set(data.chat.messages.map((row) => row.id));
+  const wallpapers = new Set([...data.chat.sessions.map((row) => row.backgroundImage),
+    ...data.chat.chatSettings.map((row) => "globalChatBackgroundImage" in row ? row.globalChatBackgroundImage : undefined)].filter(Boolean));
   data.chat.messages.forEach((row, index) => {
-    if (row.quote && !messages.has(row.quote.messageId)) warnings.push({ code: "missing-quote", path: `chat.messages[${index}]` });
+    const path = `chat.messages[${index}]`;
+    if (row.quote && !messages.has(row.quote.messageId)) warnings.push({ code: "missing-quote", path });
+    if (row.attachment) {
+      // Deleting a message deletes its asset, so an asset a wallpaper also uses would be taken from it.
+      check(!wallpapers.has(row.attachment.assetId), path, "duplicate-id", "attachment-asset-shared");
+      // The message stays and shows its media as unavailable; the rest of the backup is not held back.
+      if (!assets.has(`chat:${row.attachment.assetId}`)) warnings.push({ code: "missing-attachment", path });
+    }
   });
   // Memory keeps pointers, not chat text. A message may have been deleted since, so a missing message is allowed;
   // a session must still exist unless a cleanup intent for it is pending. Nothing is invented to satisfy this.
