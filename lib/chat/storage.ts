@@ -1354,16 +1354,17 @@ export class ChatStorage {
   }
   /**
    * The picture the Character made, stored in place of its placeholder: the asset and the attachment are written in one
-   * transaction. Returns false (and stores nothing) when the message is gone, was recalled, or is no longer waiting for a picture.
+   * transaction. Returns false (and stores nothing) when the message is gone, was recalled, is no longer waiting for a picture, or now asks for other words than the ones this picture was made from.
    */
-  completeGeneratedImage(messageId: string, blob: Blob, width: number, height: number): Promise<boolean> {
+  completeGeneratedImage(messageId: string, blob: Blob, width: number, height: number, expectedPrompt?: string): Promise<boolean> {
     let attachment: MessageAttachment;
     try { attachment = imageAttachment(blob, width, height, crypto.randomUUID()); }
     catch (error) { return Promise.reject(error); }
     return this.transaction("readwrite", async (tx) => {
       const table = tx.objectStore("messages");
       const message: ChatMessage | undefined = await request(table.get(messageId));
-      if (!message || message.role !== "assistant" || !message.imageGen || message.attachment || message.recalled) return null;
+      if (!message || message.role !== "assistant" || !message.imageGen || message.attachment || message.recalled
+        || (expectedPrompt !== undefined && message.imageGen.prompt !== expectedPrompt)) return null;
       await request(tx.objectStore("assets").add({ id: attachment.assetId, blob, createdAt: Date.now() } satisfies ChatImageAsset));
       const next: ChatMessage = { ...message, attachment };
       delete next.imageGen;

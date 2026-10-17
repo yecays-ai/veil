@@ -66,7 +66,7 @@ export function pictureRequest(imageGen: NonNullable<ChatMessage["imageGen"]>, s
  */
 export function startImageJob(
   message: Pick<ChatMessage, "id" | "imageGen">, subject: PictureSubject, source: ImageSource,
-  store: (messageId: string, picture: ChatImage) => Promise<boolean>,
+  store: (messageId: string, picture: ChatImage, prompt: string) => Promise<boolean>,
 ): Promise<void> {
   const imageGen = message.imageGen;
   if (!imageGen || running.has(message.id)) return Promise.resolve();
@@ -81,7 +81,7 @@ export function startImageJob(
       const picture = await source.generate(config, pictureRequest(imageGen, subject), controller.signal);
       const shrunk = await source.process(picture);
       controller.signal.throwIfAborted();
-      await store(message.id, shrunk);
+      await store(message.id, shrunk, imageGen.prompt);
     } catch (error) {
       if (!controller.signal.aborted) failures.set(message.id, error instanceof Error && !(error instanceof ImageGenError) ? error.message : imageGenErrorMessage(error));
     } finally {

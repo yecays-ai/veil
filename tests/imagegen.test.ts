@@ -334,3 +334,12 @@ test("new words for a picture also discard a summary that covered the old ones",
   assert.equal(await storage.setImagePrompt(done[1].id, "new words"), true);
   assert.equal((await storage.readSession(session.id)).session.summary, undefined);
 });
+
+test("a picture made from the old words is not stored once the words were changed", async () => {
+  const storage = setupStorage();
+  const { done } = await placeholder(storage);
+  await storage.setImagePrompt(done[1].id, "new words");
+  assert.equal(await storage.completeGeneratedImage(done[1].id, png(), 3, 3, "my noodles"), false);
+  assert.equal((await storage.readSession(done[1].sessionId)).messages.find((m) => m.id === done[1].id)?.attachment, undefined);
+  assert.equal(await storage.completeGeneratedImage(done[1].id, png(), 3, 3, "new words"), true);
+});

@@ -144,7 +144,7 @@ export function createChatEngine(
   const active = new Map<string, { controller: AbortController; id?: string }>();
   const makePicture = (message: ChatMessage, character: Character) => startImageJob(message,
     { appearance: character.appearance, avatar: character.avatar }, images,
-    (id, picture) => storage.completeGeneratedImage(id, picture.blob, picture.width, picture.height));
+    (id, picture, prompt) => storage.completeGeneratedImage(id, picture.blob, picture.width, picture.height, prompt));
   const recentlyRecalledOwn = new Map<string, { messageId: string; content: string }>();
   let stopSequence = 0;
   const lastStop = new Map<string, number>();
