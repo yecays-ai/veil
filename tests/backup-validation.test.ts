@@ -22,6 +22,12 @@ test("full simulated package preserves identities, ordering, remarks, Presence a
   assert.equal(Object.hasOwn(first.data.apiConfigs[0], "apiKey"), false);
 });
 
+test("backup validation rejects a recalled message that still carries Favorite", async () => {
+  const data = backupData();
+  data.chat.messages[1] = { ...data.chat.messages[1], content: "", favorite: true, recalled: { at: 10, by: "assistant" } };
+  await assert.rejects(validate(await packageFixture(data)), failure("invalid-data"));
+});
+
 test("empty environment retains absent documents instead of materializing defaults", async () => {
   const data: BackupData = { foundation: null, appearance: null, bindings: null, presets: null, regex: null,
     worldbooks: null, contacts: null, presence: null, apiConfigs: [], memory: { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] }, chat: { sessions: [], messages: [], chatSettings: [], worldBookStates: [] } };
@@ -302,3 +308,4 @@ test("generation is always listed first among unexpected fields, even past the f
   await assert.rejects(validate(await packageFixture(data)), (e: unknown) =>
     e instanceof BackupValidationError && e.detail === "unexpected-field:generation,a1,a2,a3,a4");
 });
+
