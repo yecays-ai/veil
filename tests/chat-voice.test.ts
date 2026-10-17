@@ -3,6 +3,7 @@ import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
 import { ChatStorage } from "../lib/chat/storage";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
+import { unwrapVoiceMarkers } from "../lib/chat/attachment";
 import { selfState } from "../lib/chat/self-context";
 import { splitActions, VOICE_TEXT_MAX } from "../lib/presence/actions";
 import { listPreview } from "../lib/chat/message-kind";
@@ -135,4 +136,20 @@ test("the Character's own voice reads to the model as a voice message in later h
   const stored = assistants((await app.storage.readSession(app.session.id)).messages).find((message) => message.voice)!;
   assert.equal(stored.content, "早安，今天也要加油。", "the database keeps the plain words");
   assert.equal(listPreview(stored), "[语音] 早安，今天也要加油。", "and the list and bubble never show the marker");
+});
+
+test("a history voice marker typed as text becomes the voice, or plain words when no voice is offered", async () => {
+  const marker = "[你发送了一条语音消息：晚安，快睡。]";
+  const on = await setup();
+  assert.deepEqual(assistants(await on.ask("hi", `Fine.\n${marker}`)).map((message) => [message.content, message.voice]), [["Fine.", undefined], ["晚安，快睡。", true]]);
+  const off = await setup(false);
+  assert.deepEqual(assistants(await off.ask("hi", `Fine.\n${marker}`)).map((message) => [message.content, message.voice]), [["Fine.\n晚安，快睡。", undefined]]);
+  const both = await setup();
+  assert.deepEqual(assistants(await both.ask("hi", `${marker}\n${tag('{"voice":"真的晚安"}')}`)).map((message) => [message.content, message.voice]), [["真的晚安", true]]);
+});
+
+test("several copied markers are all taken out, and a streaming draft shows only their words", async () => {
+  const both = await setup();
+  assert.deepEqual(assistants(await both.ask("hi", "[你发送了一条语音消息：晚安]\nOk.\n[你发送了一条语音消息：快睡]")).map((message) => [message.content, message.voice]), [["Ok.", undefined], ["晚安 快睡", true]]);
+  assert.equal(unwrapVoiceMarkers("Fine.\n[你发送了一条语音消息： 晚安 ]\n[你发送了一条语"), "Fine.\n晚安\n[你发送了一条语");
 });
