@@ -1150,6 +1150,7 @@ export class ChatStorage {
       delete next.attachment;
       delete next.voice;
       delete next.imageGen;
+      delete next.favorite;
       await request(table.put(next));
       await deleteAttachmentAssets(tx, [message]);
       const all: ChatMessage[] = await request(table.index("sessionId").getAll(message.sessionId));
