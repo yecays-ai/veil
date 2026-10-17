@@ -40,7 +40,7 @@ import { applyRegex } from "../regex-engine";
 import { loadWeatherState } from "../weather";
 import type { Coordinates, WeatherState } from "../participant-config";
 import { logPromptSummary, type CompletionSource, type CompletionRequestContext } from "./request-diagnostics";
-import { browserStickerStorage, resolveStickerChoice, stickerMenu, type StickerChoice } from "./sticker-storage";
+import { browserStickerStorage, resolveStickerChoice, stickerMenu, takeBareStickerCode, type StickerChoice } from "./sticker-storage";
 import type { MessageSticker } from "./sticker-message";
 import { browserTtsConfigStorage } from "../tts/config-storage";
 import { ttsConfigProblem } from "../tts/config";
@@ -329,10 +329,18 @@ export function createChatEngine(
       controller.signal.throwIfAborted();
       await storage.generationStage(sessionId, attempt.id, "finalizing");
       controller.signal.throwIfAborted();
-      const { text: replyText, actions } = splitActions(rawContent);
+      const split = splitActions(rawContent);
+      const actions = split.actions;
+      let replyText = split.text;
       // The Character's choice is checked against the library as it is now; an unknown or no longer bound code is dropped.
-      const sticker = actions?.sticker && choices.length
+      let sticker = actions?.sticker && choices.length
         ? await awaited(stickerSource.resolve(character.characterId, choices, actions.sticker).catch(() => null), controller.signal) : null;
+      // No sticker came through the action line: a code alone on a line of the text, one offered this turn, is the same choice.
+      const bare = !sticker && choices.length ? takeBareStickerCode(replyText, choices) : null;
+      if (bare) {
+        const found = await awaited(stickerSource.resolve(character.characterId, choices, bare.code).catch(() => null), controller.signal);
+        if (found) { sticker = found; replyText = bare.text; }
+      }
       const voice = canVoice && actions?.voice ? actions.voice : undefined;
       if (proactive && !sticker && !voice && isSilence(replyText)) {
         // The attempt stays counted; nothing is left in the conversation and nothing is retried.

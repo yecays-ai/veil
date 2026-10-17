@@ -164,6 +164,21 @@ export function resolveStickerChoice(document: StickerDocument, characterId: str
   return pack && sticker ? toMessageSticker(pack, sticker) : null;
 }
 
+/**
+ * Tolerance for a Character that writes a code on a line of its own instead of in the action line: the last line that is
+ * exactly one of the codes offered this turn is taken as the choice and removed from the text. Anything else stays as written.
+ */
+export function takeBareStickerCode(text: string, choices: readonly StickerChoice[]): { text: string; code: string } | null {
+  const lines = text.split("\n");
+  for (let index = lines.length - 1; index >= 0; index--) {
+    const code = lines[index].trim();
+    if (!choices.some((choice) => choice.code === code)) continue;
+    lines.splice(index, 1);
+    return { text: lines.join("\n").trim(), code };
+  }
+  return null;
+}
+
 // ── Storage: one document, written whole, coordinated like Presence and Contacts. ──
 
 const WRITE_ATTEMPTS = 3;
