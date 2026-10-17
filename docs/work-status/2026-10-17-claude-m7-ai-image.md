@@ -2,7 +2,7 @@
 
 更新人：Claude
 更新时间：2026-10-17T07:50Z（UTC）
-发现范围：2026-10-17T07:40Z 查看 yecays-ai/veil 远端，base 为 origin/main 6ddf1a9f618df4d7477e66404126be4fc6013fe3（含 M1–M5）；M6（#239）尚未合并，本分支暂叠在 M6 之上，合并后改基到 main。没有其它打开的 PR，无重叠路径。
+发现范围：2026-10-17 查看 yecays-ai/veil 远端，base 为 origin/main 4820816b7538caaacf40faf6d1fd50dc495af79c（含 M1–M6）；没有其它打开的 PR，无重叠路径。
 
 ## 当前任务
 
@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 feat/m7-ai-image；PR：PR_URL_PLACEHOLDER。涉及：lib/imagegen/{config,generate,job}.ts（新）、lib/device-config-storage.ts（新，TTS 与 Image 设置共用的单行设备存储；lib/tts/config-storage.ts 改为它的子类，行为与错误文案不变）、lib/chat/{types,attachment,storage,engine,self-context,message-kind}.ts、lib/presence/actions.ts、lib/backup/validation.ts、components/chat/messages/{image-request(新),message-list}.tsx、components/settings/image-gen-settings.tsx（新）、app/settings/{images/page.tsx(新),page.tsx}、app/messages/chat.css、tests/{imagegen,image-request-ui}.test.ts（新）及两处源码断言更新。
+Claude；分支 feat/m7-ai-image；PR：https://github.com/yecays-ai/veil/pull/240。涉及：lib/imagegen/{config,generate,job}.ts（新）、lib/device-config-storage.ts（新，TTS 与 Image 设置共用的单行设备存储；lib/tts/config-storage.ts 改为它的子类，行为与错误文案不变）、lib/chat/{types,attachment,storage,engine,self-context,message-kind}.ts、lib/presence/actions.ts、lib/backup/validation.ts、components/chat/messages/{image-request(新),message-list}.tsx、components/settings/image-gen-settings.tsx（新）、app/settings/{images/page.tsx(新),page.tsx}、app/messages/chat.css、tests/{imagegen,image-request-ui}.test.ts（新）及两处源码断言更新。
 
 ## 做法
 
@@ -32,4 +32,4 @@ Claude；分支 feat/m7-ai-image；PR：PR_URL_PLACEHOLDER。涉及：lib/imageg
 
 ## 下一步
 
-M6 合并后改基到 main，开 PR；合并后同步测试链接，整理验收清单。
+开 PR，合并后同步测试链接，整理验收清单。
