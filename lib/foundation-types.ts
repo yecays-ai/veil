@@ -206,7 +206,10 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
   const raw = record(value),
     world = record(raw.universe);
   const primaryId = optionalText(world.id, 100) ?? UNIVERSE_ID;
-  const extra = Array.isArray(raw.universes) ? raw.universes.map(record).filter((u, i, rows) => typeof u.id === "string" && u.id !== primaryId && rows.findIndex((v) => v.id === u.id) === i) : [];
+  const extra = Array.isArray(raw.universes) ? raw.universes.flatMap((value) => {
+    const universe = record(value), id = optionalText(universe.id, 100);
+    return id ? [{ ...universe, id }] : [];
+  }).filter((u, i, rows) => u.id !== primaryId && rows.findIndex((v) => v.id === u.id) === i) : [];
   const universeIds = new Set([primaryId, ...extra.map((u) => u.id)]);
   const characters: Character[] = [],
     seen = new Set<string>();
@@ -223,7 +226,7 @@ export function normalizeFoundation(value: unknown): FoundationDocument {
       )
         continue;
       seen.add(id);
-      const input = normalizeCharacterInput(c);
+      const input = normalizeCharacterInput({ ...c, universeId: optionalText(c.universeId, 100) ?? primaryId });
       if (!universeIds.has(input.universeId!)) continue;
       characters.push({ characterId: id, ...input });
     }

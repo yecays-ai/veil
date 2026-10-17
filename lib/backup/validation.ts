@@ -502,7 +502,10 @@ function references(data: BackupData, manifest: BackupManifest): BackupWarning[]
   }
   data.foundation?.characters.forEach((row, index) => image(row.avatar, `foundation.characters[${index}]`));
   image(data.foundation?.user.avatar, "foundation.user");
-  data.worldbooks?.books.forEach((book, index) => check(!!data.foundation && allUniverses(data.foundation).some((u) => u.id === (book.universeId ?? UNIVERSE_ID)), `worldbooks[${index}]`, "cross-character-reference"));
+  if (data.foundation) {
+    const universeIds = new Set(allUniverses(data.foundation).map((u) => u.id));
+    data.worldbooks?.books.forEach((book, index) => check(universeIds.has(book.universeId ?? UNIVERSE_ID), `worldbooks[${index}]`, "cross-character-reference"));
+  }
   data.contacts?.contacts.forEach((row, index) => character(row.characterId, `contacts[${index}]`));
   data.presence?.characters.forEach((row, index) => character(row.characterId, `presence[${index}]`));
   data.chat.sessions.forEach((row, index) => {

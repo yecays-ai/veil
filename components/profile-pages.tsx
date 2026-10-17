@@ -236,7 +236,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
             lockUniverse={!isNew}
             onDirtyChange={setFormDirty}
             initial={
-              baseline ?? character ?? { ...normalizeCharacterInput(null), name: "" }
+              baseline ?? character ?? { ...normalizeCharacterInput(null), universeId: document.universe.id, name: "" }
             }
             saveLabel={isNew ? C.characters.create : C.common.save}
             onCancel={() =>

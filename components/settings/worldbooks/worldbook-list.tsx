@@ -15,7 +15,11 @@ import { Switch } from "../ui/switch";
 export function WorldBookList() {
   const { document, error, notice, busy, loading, loadError, retry, run, change, removeBook, setNotice } = useWorldBooks();
   const { document: foundation, ready } = useFoundation();
-  const [universeId, setUniverseId] = useState(foundation.universe.id);
+  const [selection, setUniverseId] = useState(foundation.universe.id);
+  const universes = allUniverses(foundation);
+  const universeId = universes.some((u) => u.id === selection) ? selection : foundation.universe.id;
+  // Reset the remembered selection as well as the rendered value when authority changes.
+  if (selection !== universeId) setUniverseId(universeId);
   const visible = document?.books.filter((book) => (book.universeId ?? foundation.universe.id) === universeId) ?? [];
   const moveBook = (id: string, direction: number) => change((current) => {
     const indexes = current.books.flatMap((b, i) => (b.universeId ?? foundation.universe.id) === universeId ? [i] : []);
@@ -27,7 +31,7 @@ export function WorldBookList() {
   const file = useRef<HTMLInputElement>(null);
   return <PageShell className="settings-app worldbook-manager" title="WorldBooks" backHref="/settings" backLabel="Back to Settings">
     <label>Universe<select value={universeId} disabled={!ready || busy} onChange={(event) => setUniverseId(event.target.value)}>
-      {allUniverses(foundation).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+      {universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
     </select></label>
     <div className="settings-action-row worldbook-actions">
       <button className="settings-button" disabled={!document || !ready || busy} onClick={() => file.current?.click()}><Upload size={17} />Import</button>

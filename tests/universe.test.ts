@@ -14,6 +14,8 @@ import { deleteCharacterMemory } from "../lib/memory/lifecycle";
 import { createPack, setPackCharacter, packsForCharacter, emptyStickerDocument } from "../lib/chat/sticker-storage";
 import { backupData, packageFixture } from "./backup-fixture";
 import { validateBackupPackage } from "../lib/backup/validation";
+import { createIndexedDBFoundationStorage } from "../lib/foundation-storage";
+import { saveUser } from "../lib/foundation";
 
 function setup() {
   let document = saveUniverse(defaultFoundation(), "Spider-Man", "SPIDER_WORLD_SECRET");
@@ -119,4 +121,49 @@ test("backup preserves multiple Universes and refuses foreign session ownership 
   await assert.rejects(check());
   data.chat.sessions[0] = session; data.worldbooks.books[0].universeId = "missing";
   await assert.rejects(check());
+});
+
+test("legacy Character ownership follows the stored primary through load and a later transaction", async () => {
+  let raw = JSON.stringify({ universe: { id: "stored-primary", name: "Stored world" },
+    characters: [{ characterId: "legacy", name: "Legacy" }] });
+  const storage = createIndexedDBFoundationStorage({
+    read: async () => raw,
+    putIfAbsent: async (_key, value) => value,
+    replaceIfCurrent: async (_key, expected, value) => { if (raw !== expected) return false; raw = value; return true; },
+    rollbackIfCurrent: async () => false,
+  });
+  const loaded = await storage.load();
+  assert.equal(loaded.characters.length, 1);
+  assert.equal(loaded.characters[0].universeId, "stored-primary");
+  const saved = await storage.transact((d) => saveUser(d, { ...d.user, name: "Updated user" }));
+  assert.deepEqual(saved.characters, loaded.characters);
+  assert.deepEqual((await storage.load()).characters, loaded.characters);
+  assert.equal(JSON.parse(raw).characters[0].universeId, "stored-primary");
+});
+
+test("additional Universe ids normalize before deduplication and Character membership", () => {
+  const id100 = "a".repeat(100);
+  const document = normalizeFoundation({ universe: { id: " primary ", name: "Primary" }, universes: [
+    { id: " cod ", name: "First COD" }, { id: "cod", name: "Duplicate COD" },
+    { id: " primary ", name: "Duplicate primary" }, { id: " ", name: "Blank" },
+    { id: `${id100}extra`, name: "Long" }, { id: id100, name: "Duplicate long" },
+  ], characters: [{ characterId: "ghost", name: "Ghost", universeId: " cod " },
+    { characterId: "long", name: "Long", universeId: `${id100}extra` }] });
+  assert.deepEqual(allUniverses(document).map((u) => [u.id, u.name]), [["primary", "Primary"], ["cod", "First COD"], [id100, "Long"]]);
+  assert.deepEqual(document.characters.map((c) => c.universeId), ["cod", id100]);
+  assert.deepEqual(normalizeFoundation(JSON.parse(JSON.stringify(document))), document);
+});
+
+test("a partial WorldBook backup needs no Foundation; a present Foundation still validates ownership", async () => {
+  const data = backupData();
+  data.foundation = null; data.appearance = null; data.contacts = null; data.bindings = null; data.presence = null;
+  data.chat = { sessions: [], messages: [], chatSettings: [], worldBookStates: [] };
+  data.memory = { memories: [], suppressions: [], operations: [], cursors: [], backgrounds: [], states: [] };
+  data.worldbooks = { version: 1, books: [normalizeWorldBook({ name: "Partial book", universeId: "partial-world" })] };
+  const check = async () => { const pkg = await packageFixture(data); return validateBackupPackage(JSON.stringify(pkg.manifest), pkg.files); };
+  assert.equal((await check()).data.worldbooks?.books[0].universeId, "partial-world");
+  data.foundation = normalizeFoundation({ universe: { id: "other", name: "Other" } });
+  await assert.rejects(check(), (error: unknown) => (error as { code: string }).code === "cross-character-reference");
+  data.foundation = normalizeFoundation({ universe: { id: "partial-world", name: "Partial world" } });
+  assert.equal((await check()).data.worldbooks?.books.length, 1);
 });
