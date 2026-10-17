@@ -15,7 +15,7 @@ Claude；分支 `fix/stt-upload-memory-blob`；PR #254（https://github.com/yeca
 ## 已完成
 
 - `transcribeAudio` 上传前 `await recording.arrayBuffer()`（读取失败按 TtsError 的 invalid-audio 处理，不发请求），用同类型的内存 Blob 放进 FormData；请求地址、请求体字段、超时、错误分类不变。
-- 检查（代码版本为本分支首个提交，基于 main 5aea459）：`chat-user-voice` 12（含改写的 1 项、新增录音读取失败 1 项，断言录音被读入内存且上传大小/类型不变）、`chat-voice` 10、`voice-message-ui` 4 项通过；`npm run typecheck` 通过；`npm run lint` 0 错误（3 个已有警告）；未运行 build 与全量 `npm test`。
+- 检查（代码版本为本分支最新提交，基于 main 5aea459）：`chat-user-voice` 12（含改写的 1 项、新增录音读取失败 1 项，断言上传的是读入内存的那份字节且大小/类型不变）、`chat-voice` 10、`voice-message-ui` 4 项通过；`npm run typecheck` 通过；`npm run lint` 0 错误（3 个已有警告）；未运行 build 与全量 `npm test`。
 
 ## 尚未验证
 

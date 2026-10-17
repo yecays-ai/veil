@@ -127,8 +127,8 @@ test("transcription makes one multipart request with the model, and returns the 
   // The recording is read into memory first (a stored blob can fail an iPhone upload); the request carries that copy.
   const stored = clip();
   let reads = 0;
-  const arrayBuffer = stored.arrayBuffer.bind(stored);
-  stored.arrayBuffer = () => { reads++; return arrayBuffer(); };
+  const expected = new Uint8Array(2048).fill(0x5a);
+  stored.arrayBuffer = () => { reads++; return Promise.resolve(expected.buffer.slice(0) as ArrayBuffer); };
   const text = await transcribeAudio(config, stored, new AbortController().signal, { fetchImpl });
   assert.equal(reads, 1);
   assert.equal(text, "hello there");
@@ -140,6 +140,7 @@ test("transcription makes one multipart request with the model, and returns the 
   assert.ok(sent instanceof Blob);
   assert.equal(sent.size, 2048);
   assert.equal(sent.type, "audio/webm;codecs=opus");
+  assert.deepEqual(new Uint8Array(await sent.arrayBuffer()), expected);
   assert.equal((seen[0].init.headers as Record<string, string>).Authorization, "Bearer sk-test");
 });
 
