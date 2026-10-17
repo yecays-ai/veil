@@ -6,16 +6,18 @@
 
 ## 当前任务
 
+状态：待审查（CI 已通过，等 lan 真机验收）。
+
 M3：用户发的聊天图片送给模型。只做图片送模型，不做 AI 发图、TTS、语音。
 
 ## 谁在改哪里
 
-Claude；分支 feat/m3-image-to-model；PR 见 GitHub。涉及：lib/api-config.ts、lib/chat/{types,prompt,engine,provider,request-diagnostics}.ts、lib/chat/image-input.ts（新）、lib/backup/{validation,static-export}.ts、components/settings/text-api-settings.tsx、tests/chat-image-input.test.ts（新）。
+Claude；分支 feat/m3-image-to-model；PR：https://github.com/yecays-ai/veil/pull/236。涉及：lib/api-config.ts、lib/chat/{types,prompt,engine,provider,request-diagnostics}.ts、lib/chat/image-input.ts（新）、lib/backup/{validation,static-export}.ts、components/settings/text-api-settings.tsx、tests/chat-image-input.test.ts（新）。
 
 ## 做法
 
 - `ApiConfig` 新增可选 `imageInput`（默认关）和 `imageLimit`（1–4，默认 1）。旧配置没有这两个字段，视为不支持，行为不变。
-- 组装 prompt 时，带图片的消息（未撤回）在对应 turn 上记 `images`（asset id）。引擎在请求前只保留最新 N 个带图 turn，其余图片退回语义文本，再读 Blob 转成 data URL（`imageData`）。图片 id 只来自本次会话的消息，不会读到别的会话。
+- 组装 prompt 时，用户发的带图片的消息（AI 消息的附件暂不送；M7 做 AI 发图时再定）（未撤回）在对应 turn 上记 `images`（asset id）。引擎在请求前只保留最新 N 个带图 turn，其余图片退回语义文本，再读 Blob 转成 data URL（`imageData`）。图片 id 只来自本次会话的消息，不会读到别的会话。
 - 图片丢失或读取失败：该张图不发，turn 保留语义文本，不让回复失败。停止（abort）在读图过程中生效。
 - provider 发出的 messages 只含 role/content；带图 turn 展开为 `text + image_url`。引擎自己的字段不会进请求体。
 - 诊断只记图片张数和字节数，不记内容。
