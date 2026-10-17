@@ -8,10 +8,8 @@ export const TTS_PROVIDERS: readonly { id: TtsProvider; label: string }[] = [
 export const DEFAULT_TTS_BASE_URL: Record<"elevenlabs", string> = { elevenlabs: "https://api.elevenlabs.io" };
 /**
  * MiniMax runs two separate services with separate accounts and keys, so the person picks a region instead of an address.
- * The browser never calls these hosts: VEIL's own server does (`minimax-relay.ts`), and this table is the only place it takes one from.
+ * This table is the only place a MiniMax host comes from.
  */
-/** Where the browser sends MiniMax speech: VEIL's own server, never a MiniMax host. */
-export const MINIMAX_RELAY_PATH = "/api/tts/minimax";
 export type MinimaxRegion = "global" | "cn";
 export const MINIMAX_REGIONS: readonly { id: MinimaxRegion; label: string; host: string }[] = [
   { id: "global", label: "International", host: "https://api.minimax.io" }, { id: "cn", label: "Mainland China", host: "https://api.minimaxi.com" },

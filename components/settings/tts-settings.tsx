@@ -102,7 +102,7 @@ export function TtsSettings() {
               onChange={(e) => update({ region: e.target.value === "cn" ? "cn" as MinimaxRegion : undefined })}>
               {MINIMAX_REGIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
             </Select>
-            <span className="settings-hint">Mainland China and international accounts are separate services with separate keys. Pick the one your key was made in. MiniMax speech is made by VEIL’s server, which uses your key for that one request only and does not keep it or the text.</span>
+            <span className="settings-hint">Mainland China and international accounts are separate services with separate keys. Pick the one your key was made in. The key stays on this device and is sent only to MiniMax.</span>
           </label>
         )}
         {provider !== "minimax" && (
