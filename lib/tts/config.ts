@@ -4,18 +4,17 @@ export type TtsProvider = "openai" | "minimax" | "elevenlabs";
 export const TTS_PROVIDERS: readonly { id: TtsProvider; label: string }[] = [
   { id: "openai", label: "OpenAI-compatible" }, { id: "minimax", label: "MiniMax" }, { id: "elevenlabs", label: "ElevenLabs" },
 ];
-/** Where MiniMax and ElevenLabs are reached when no Base URL override is given. OpenAI-compatible has no default host. */
-export const DEFAULT_TTS_BASE_URL: Record<Exclude<TtsProvider, "openai">, string> = {
-  minimax: "https://api.minimax.io", elevenlabs: "https://api.elevenlabs.io",
-};
+/** Where ElevenLabs is reached when no Base URL override is given. OpenAI-compatible has no default host; MiniMax has its Regions. */
+export const DEFAULT_TTS_BASE_URL: Record<"elevenlabs", string> = { elevenlabs: "https://api.elevenlabs.io" };
 /**
  * MiniMax runs two separate services with separate accounts and keys, so the person picks a region instead of an address.
- * Hosts are the ones in MiniMax's own API reference: international `api.minimax.io`, mainland China `api.minimax.cn`
- * (platform.minimax.cn lists it as the T2A v2 server; the older `api.minimaxi.com` is still reachable through the Base URL override).
+ * The browser never calls these hosts: VEIL's own server does (`minimax-relay.ts`), and this table is the only place it takes one from.
  */
+/** Where the browser sends MiniMax speech: VEIL's own server, never a MiniMax host. */
+export const MINIMAX_RELAY_PATH = "/api/tts/minimax";
 export type MinimaxRegion = "global" | "cn";
 export const MINIMAX_REGIONS: readonly { id: MinimaxRegion; label: string; host: string }[] = [
-  { id: "global", label: "International", host: "https://api.minimax.io" }, { id: "cn", label: "Mainland China", host: "https://api.minimax.cn" },
+  { id: "global", label: "International", host: "https://api.minimax.io" }, { id: "cn", label: "Mainland China", host: "https://api.minimaxi.com" },
 ];
 
 /**
@@ -48,8 +47,9 @@ export function transcriptionUrl(baseUrl: string): string {
 export function speechEndpoint(config: Pick<TtsConfig, "provider" | "baseUrl" | "region">): string {
   const provider = providerOf(config);
   if (provider === "openai") return speechUrl(config.baseUrl);
-  const base = config.baseUrl.trim() || (provider === "minimax" ? MINIMAX_REGIONS.find((item) => item.id === config.region)?.host ?? DEFAULT_TTS_BASE_URL.minimax : DEFAULT_TTS_BASE_URL[provider]);
-  return endpointUrl(base, provider === "minimax" ? "/v1/t2a_v2" : "/v1/text-to-speech");
+  // MiniMax is chosen by Region alone: a Base URL saved from before Regions is ignored, never sent anywhere.
+  if (provider === "minimax") return endpointUrl(MINIMAX_REGIONS.find((item) => item.id === config.region)?.host ?? MINIMAX_REGIONS[0].host, "/v1/t2a_v2");
+  return endpointUrl(config.baseUrl.trim() || DEFAULT_TTS_BASE_URL[provider], "/v1/text-to-speech");
 }
 
 export function normalizeTtsConfig(value: unknown): TtsConfig {
