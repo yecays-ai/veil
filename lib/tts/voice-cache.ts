@@ -9,7 +9,8 @@ export const VOICE_CACHE_DATABASE = "veil-voice-cache-v1";
 export const VOICE_CACHE_LIMIT_BYTES = 64 * 1024 * 1024;
 const STORE = "audio";
 
-type Row = { messageId: string; fingerprint: string; blob: Blob; bytes: number; usedAt: number };
+/** New clips are kept as bytes (`data`); a clip saved earlier as a `blob` is still read and is replaced the next time it is made. */
+type Row = { messageId: string; fingerprint: string; data?: ArrayBuffer; type?: string; blob?: Blob; bytes: number; usedAt: number };
 const request = <T>(value: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
   value.onsuccess = () => resolve(value.result);
   value.onerror = () => reject(new Error("Voice cache could not be read or written."));
@@ -27,6 +28,12 @@ export async function voiceFingerprint(text: string, voice: string, config: Pick
   const bytes = new TextEncoder().encode(JSON.stringify([text, voice.trim(), config.model.trim(), endpoint, ...(provider === "openai" ? [] : [provider])]));
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+
+/**
+ * iOS Safari can refuse to play a file-backed blob read from IndexedDB ("The operation is not supported") or fail to read it at all,
+ * which made a saved clip look missing. Bytes are stored and the player gets an in-memory blob, the kind a fresh clip is.
+ */
+const playable = (bytes: BlobPart, type?: string) => new Blob([bytes], { type: type || "audio/mpeg" });
 
 export class VoiceCache {
   private database?: Promise<IDBDatabase>;
@@ -51,12 +58,14 @@ export class VoiceCache {
     if (row.fingerprint !== fingerprint) { store.delete(messageId); await done(tx); return null; }
     store.put({ ...row, usedAt: Date.now() });
     await done(tx);
-    return row.blob;
+    if (row.data) return playable(row.data, row.type);
+    return row.blob ? playable(await row.blob.arrayBuffer(), row.blob.type) : null;
   }
   /** Stores a clip, then drops the least recently played ones until the cache fits its cap. */
   async put(messageId: string, fingerprint: string, blob: Blob): Promise<void> {
+    const data = await blob.arrayBuffer(); // read before the transaction opens: nothing unrelated runs inside it
     const db = await this.open(), tx = db.transaction(STORE, "readwrite"), store = tx.objectStore(STORE);
-    store.put({ messageId, fingerprint, blob, bytes: blob.size, usedAt: Date.now() } satisfies Row);
+    store.put({ messageId, fingerprint, data, type: blob.type, bytes: blob.size, usedAt: Date.now() } satisfies Row);
     const rows = await request<Row[]>(store.getAll());
     let total = rows.reduce((sum, row) => sum + row.bytes, blob.size) - (rows.find((row) => row.messageId === messageId)?.bytes ?? 0);
     for (const row of rows.filter((item) => item.messageId !== messageId).sort((a, b) => a.usedAt - b.usedAt)) {
