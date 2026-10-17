@@ -22,6 +22,8 @@ export type CharacterActions = {
   reactToUser?: string;
   /** One of this reply's sticker codes (S01 …), sent as the Character's own last bubble. Checked and applied by the chat. */
   sticker?: string;
+  /** What the Character says aloud, sent as its own voice bubble after the text. Applied by the chat only when speech is set up. */
+  voice?: string;
   /** The exact ID of one of the Character's own eligible messages to withdraw after this reply is committed. */
   recallMessageId?: string;
   transfer?: { amount: number; note: string };
@@ -34,6 +36,8 @@ export type CharacterActions = {
   lifeKeepsake?: KeepsakeDraft;
 };
 export const ACTION_TAG = "veil-action";
+/** A spoken bubble is a sentence or two, not a speech; longer text is dropped, not cut. */
+export const VOICE_TEXT_MAX = 300;
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
 // Provisional, like the other Presence constants: long enough that the Character does not flap, short enough
 // that a real event can still change things the same evening.
@@ -95,6 +99,7 @@ function parseActions(json: string): CharacterActions | null {
   if (value.endSituation === "current" || value.endSituation === "all") actions.endSituation = value.endSituation;
   if (value.cancelUpcoming === true) actions.cancelUpcoming = true;
   if (isReactionEmoji(value.reactToUser)) actions.reactToUser = value.reactToUser;
+  if (typeof value.voice === "string" && value.voice.trim() && value.voice.trim().length <= VOICE_TEXT_MAX) actions.voice = value.voice.trim();
   if (typeof value.sticker === "string" && /^S\d{2,3}$/i.test(value.sticker.trim())) actions.sticker = value.sticker.trim().toUpperCase();
   if (typeof value.recallMessageId === "string" && /^[\w-]{8,80}$/.test(value.recallMessageId)) actions.recallMessageId = value.recallMessageId;
   if (isRecord(value.transfer) && value.transfer.recipient === "user" && typeof value.transfer.amount === "number" && Number.isFinite(value.transfer.amount)) {

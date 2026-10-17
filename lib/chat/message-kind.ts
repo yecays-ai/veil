@@ -21,12 +21,13 @@ export const hasGeneratedContent = (message: Pick<ChatMessage, "sticker" | "atta
 export const isFixedMessage = (message: Shape) => isCardMessage(message) || hasGeneratedContent(message);
 
 /** The one-line stand-in for a sticker or media message, or null for any other message. */
-export function mediaPreview(message: Pick<ChatMessage, "sticker" | "attachment">): string | null {
+export function mediaPreview(message: Pick<ChatMessage, "sticker" | "attachment" | "voice" | "content">): string | null {
   if (message.sticker) return stickerPreview(message.sticker);
   if (message.attachment) return attachmentPreview(message.attachment);
+  if (message.voice) return `[语音] ${message.content.slice(0, 60)}`;
   return null;
 }
 
 /** The text a Chats-list row shows for this message: its media stand-in, else the start of its text. */
-export const listPreview = (message: Pick<ChatMessage, "sticker" | "attachment" | "content">, length = 120) =>
+export const listPreview = (message: Pick<ChatMessage, "sticker" | "attachment" | "voice" | "content">, length = 120) =>
   mediaPreview(message) ?? message.content.slice(0, length);

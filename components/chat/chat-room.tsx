@@ -787,6 +787,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         {!framePublished && loadingNotice && <p className="chat-notice" role="status">{loadingNotice}</p>}
         {empty && <p className="chat-empty-state">No messages yet</p>}
         {framePublished && <MessageList
+          characterId={characterId}
           groupedMessages={groupedMessages}
           messages={messages}
           selectedIds={selectedIds}
