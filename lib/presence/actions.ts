@@ -24,6 +24,8 @@ export type CharacterActions = {
   sticker?: string;
   /** What the Character says aloud, sent as its own voice bubble after the text. Applied by the chat only when speech is set up. */
   voice?: string;
+  /** A picture the Character takes or draws and sends: `prompt` is what it shows, `character` whether the Character itself is in it (then its look and reference picture are used). Applied by the chat only when an image service is set up. */
+  image?: { prompt: string; character: boolean };
   /** The exact ID of one of the Character's own eligible messages to withdraw after this reply is committed. */
   recallMessageId?: string;
   transfer?: { amount: number; note: string };
@@ -38,6 +40,8 @@ export type CharacterActions = {
 export const ACTION_TAG = "veil-action";
 /** A spoken bubble is a sentence or two, not a speech; longer text is dropped, not cut. */
 export const VOICE_TEXT_MAX = 300;
+/** What a picture shows, in a sentence or two; longer is dropped, not cut. */
+export const IMAGE_PROMPT_MAX = 400;
 const OPEN = `<${ACTION_TAG}>`, CLOSE = `</${ACTION_TAG}>`;
 // Provisional, like the other Presence constants: long enough that the Character does not flap, short enough
 // that a real event can still change things the same evening.
@@ -100,6 +104,10 @@ function parseActions(json: string): CharacterActions | null {
   if (value.cancelUpcoming === true) actions.cancelUpcoming = true;
   if (isReactionEmoji(value.reactToUser)) actions.reactToUser = value.reactToUser;
   if (typeof value.voice === "string" && value.voice.trim() && value.voice.trim().length <= VOICE_TEXT_MAX) actions.voice = value.voice.trim();
+  if (isRecord(value.image) && typeof value.image.prompt === "string") {
+    const prompt = cleanText(value.image.prompt, IMAGE_PROMPT_MAX + 1);
+    if (prompt && Array.from(prompt).length <= IMAGE_PROMPT_MAX) actions.image = { prompt, character: value.image.character === true };
+  }
   if (typeof value.sticker === "string" && /^S\d{2,3}$/i.test(value.sticker.trim())) actions.sticker = value.sticker.trim().toUpperCase();
   if (typeof value.recallMessageId === "string" && /^[\w-]{8,80}$/.test(value.recallMessageId)) actions.recallMessageId = value.recallMessageId;
   if (isRecord(value.transfer) && value.transfer.recipient === "user" && typeof value.transfer.amount === "number" && Number.isFinite(value.transfer.amount)) {

@@ -107,6 +107,8 @@ export type ChatMessage = {
   sticker?: import("./sticker-message").MessageSticker;
   /** The Character spoke this message: `content` is what it says (its transcript, still ordinary editable text) and the audio is made on demand from it. Absent on text messages. */
   voice?: true;
+  /** A picture the Character is making: `prompt` is what it asked for, `character` whether it shows the Character itself. Present until the picture is stored as `attachment`; with no running job it means the picture failed. */
+  imageGen?: { prompt: string; character: boolean };
   /** A media message: the bytes are an `assets` row, this is the reference. `content` then holds its semantic text, as for a sticker. Absent on text messages. */
   attachment?: import("./attachment").MessageAttachment;
   /** A VEIL virtual transfer. The row ID is the stable transfer ID; no wallet or real payment is represented. */
