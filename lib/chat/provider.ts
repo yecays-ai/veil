@@ -120,14 +120,33 @@ function withDeadline<T>(ms: number, work: Promise<T>, abort: () => void, messag
   return Promise.race([work, expired]).finally(() => clearTimeout(timer));
 }
 
+const ERROR_BODY_LIMIT = 4096;
+/** The first `limit` bytes of a body, then the stream is cancelled: a misbehaving gateway cannot make this buffer more. */
+async function readHead(response: Response, limit: number): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader(), chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (total < limit) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      const chunk = value.subarray(0, limit - total);
+      chunks.push(chunk); total += chunk.byteLength;
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
+}
 /**
  * The provider's own short error `type` or `code` (such as `invalid_request_error`), so a refusal can be told apart.
  * Only a short token of letters, digits and `_ . -` is kept: free text such as `message` can echo a key or the prompt and is never read out.
  */
 async function errorReason(response: Response, abort: () => void): Promise<string> {
   try {
-    const text = await withDeadline(3_000, response.text(), abort, "", "idle");
-    const body = JSON.parse(text.slice(0, 4096)) as { error?: { type?: unknown; code?: unknown } };
+    const text = await withDeadline(3_000, readHead(response, ERROR_BODY_LIMIT), abort, "", "idle");
+    const body = JSON.parse(text) as { error?: { type?: unknown; code?: unknown } };
     for (const value of [body?.error?.code, body?.error?.type])
       if ((typeof value === "string" || typeof value === "number") && /^[A-Za-z0-9_.-]{1,40}$/.test(String(value))) return String(value);
   } catch { /* an empty, oversized or non-JSON body gives no reason */ }

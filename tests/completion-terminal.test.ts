@@ -235,5 +235,10 @@ test("an HTTP refusal names the provider's short error code but never its free t
       "API request failed (HTTP 400, invalid_request_error). Check your API settings.");
     for (const body of [JSON.stringify({ error: { code: "sk-secret has spaces" } }), JSON.stringify({ error: "plain" }), "<html>Forbidden</html>", ""])
       assert.equal(await attempt(body), "API request failed (HTTP 403). Check your API settings.");
+    // A body that never ends is read only as far as the limit, then cancelled.
+    let pulled = 0;
+    const endless = new ReadableStream<Uint8Array>({ pull(controller) { pulled += 1024; controller.enqueue(new Uint8Array(1024).fill(32)); } });
+    assert.equal(await attempt(endless), "API request failed (HTTP 403). Check your API settings.");
+    assert.ok(pulled <= 4096 + 2048, `read stopped near the limit (pulled ${pulled})`);
   } finally { globalThis.fetch = original; }
 });

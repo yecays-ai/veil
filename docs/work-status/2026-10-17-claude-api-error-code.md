@@ -14,8 +14,8 @@ Claude；分支 `fix/api-error-code`；PR #252（https://github.com/yecays-ai/ve
 
 ## 已完成
 
-- 失败时只读响应体前 4096 字符，取 `error.code` 或 `error.type`，且必须是 40 字符内的字母数字 `_ . -`，否则不显示；`message` 等自由文本从不读出（可能回显 Key 或提示词）。读取有 3 秒上限。
-- 检查（代码版本为本分支首个提交）：`completion-terminal` 11、`text-api` 5、`chat-image-input` 13 项通过（新增 1 项）；`npm run typecheck` 通过；`npm run lint` 0 错误（3 个已有警告）；未运行 build 与全量 `npm test`。
+- 失败时只读响应体前 4096 字符，取 `error.code` 或 `error.type`，且必须是 40 字符内的字母数字 `_ . -`，否则不显示；`message` 等自由文本从不读出（可能回显 Key 或提示词）。读取有 3 秒上限，并用流读取、最多读 4096 字节后取消。
+- 检查（代码版本为本分支首个提交）：`completion-terminal` 11（含新增 1 项，覆盖永不结束的响应体）、`text-api` 5、`chat-image-input` 13 项通过；`npm run typecheck` 通过；`npm run lint` 0 错误（3 个已有警告）；未运行 build 与全量 `npm test`。
 
 ## 尚未验证
 
