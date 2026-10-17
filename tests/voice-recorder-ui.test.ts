@@ -116,6 +116,9 @@ test("Voice mode: a failed save is reported and the bar is ready again", async (
     await app.wait(() => app.el("error").textContent === "save failed");
     assert.equal(app.el("bar").textContent, "Tap to Record");
     assert.equal(app.el("resend").textContent, "unsent", "the recording is kept for another try");
+    await app.click("bar");
+    assert.equal(app.el("bar").textContent, "Tap to Record", "no new recording replaces the unsent one");
+    assert.match(app.el("error").textContent!, /again/);
     app.fail(false);
     await app.click("resend");
     await app.wait(() => app.sent.length === 1);

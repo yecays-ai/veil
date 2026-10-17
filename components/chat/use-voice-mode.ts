@@ -42,7 +42,6 @@ export function useVoiceMode({ disabled, onSend }: { disabled: boolean; onSend: 
     try {
       made = await active.stop();
       await send.current(made);
-      if (mounted.current) setUnsent(null);
     } catch (reason) {
       if (made && mounted.current) setUnsent(made);
       if (mounted.current) setError(reason instanceof Error ? reason.message : "The voice message was not sent.");
@@ -59,6 +58,8 @@ export function useVoiceMode({ disabled, onSend }: { disabled: boolean; onSend: 
 
   const begin = useCallback(async () => {
     if (busy.current || recorder.current) return;
+    // A recording that failed to send is neither replaced nor dropped by a new one.
+    if (unsent) { setError("Send the voice message again, or go back to typing to discard it."); return; }
     const token = ++generation.current;
     busy.current = true; setError("");
     let active: VoiceRecorder;
@@ -79,7 +80,7 @@ export function useVoiceMode({ disabled, onSend }: { disabled: boolean; onSend: 
       setElapsed(ms);
       if (ms >= MAX_VOICE_RECORDING_MS) void finish();
     }, 200);
-  }, [finish]);
+  }, [finish, unsent]);
 
   return {
     mode, elapsed, error, unsent, resend,
