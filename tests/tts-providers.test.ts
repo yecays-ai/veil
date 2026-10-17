@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeTtsConfig, resolveVoice, speechEndpoint, sttSettings, ttsConfigProblem, type TtsConfig } from "../lib/tts/config";
-import { synthesizeSpeech, TtsError } from "../lib/tts/speech";
+import { synthesizeSpeech, TtsError, ttsErrorMessage } from "../lib/tts/speech";
 import { voiceFingerprint } from "../lib/tts/voice-cache";
 
 const never = new AbortController().signal;
@@ -123,4 +123,64 @@ test("speech-to-text is its own service: OpenAI-compatible falls back to the voi
   assert.ok("problem" in sttSettings({ ...minimax, sttModel: "whisper-1" }), "the MiniMax key is not an STT key");
   assert.deepEqual(sttSettings({ ...eleven, sttModel: "whisper-1", sttBaseUrl: "https://stt.test/v1", sttApiKey: "s" }), { baseUrl: "https://stt.test/v1", apiKey: "s", model: "whisper-1" });
   assert.ok("problem" in sttSettings(openai.baseUrl ? { ...openai, sttModel: "" } : openai));
+});
+
+test("MiniMax Region picks the official host; an old config without one stays international; the override still wins", async () => {
+  const cn: TtsConfig = { ...minimax, region: "cn" };
+  assert.equal(speechEndpoint(cn), "https://api.minimax.cn/v1/t2a_v2");
+  assert.equal(speechEndpoint(minimax), "https://api.minimax.io/v1/t2a_v2");
+  assert.equal(speechEndpoint({ ...cn, baseUrl: "https://api.minimaxi.com" }), "https://api.minimaxi.com/v1/t2a_v2");
+  assert.equal(normalizeTtsConfig({ provider: "minimax", region: "cn" }).region, "cn");
+  assert.equal("region" in normalizeTtsConfig({ provider: "minimax", region: "global" }), false);
+  assert.equal("region" in normalizeTtsConfig({ provider: "elevenlabs", region: "cn" }), false, "region belongs to MiniMax only");
+  assert.notEqual(await voiceFingerprint("hi", "v", cn), await voiceFingerprint("hi", "v", minimax), "a clip made on one region is not reused for the other");
+  const { calls, fetchImpl } = recorder(() => new Response(JSON.stringify({ data: { audio: hex([1, 2]) }, base_resp: { status_code: 0 } })));
+  await synthesizeSpeech(cn, { text: "x", voice: "v" }, never, { fetchImpl });
+  assert.equal(calls[0].url, "https://api.minimax.cn/v1/t2a_v2");
+});
+
+test("a request that never got an answer is told apart: reachable host means the browser blocked it, unreachable means network", async () => {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const build = (probeReaches: boolean) => (async (url: string, init: RequestInit) => {
+    calls.push({ url, init });
+    if (init.mode === "no-cors") { if (probeReaches) return new Response(null); throw new TypeError("Failed to fetch"); }
+    throw new TypeError("Load failed");
+  }) as unknown as typeof fetch;
+  const run = (fetchImpl: typeof fetch, config = minimax) => synthesizeSpeech(config, { text: "secret words", voice: "v" }, never, { fetchImpl }).then(() => { throw new Error("expected a failure"); }, (error) => error as TtsError);
+  const blocked = await run(build(true));
+  assert.equal(blocked.category, "cors");
+  const probe = calls.find((call) => call.init.mode === "no-cors")!;
+  assert.equal(probe.url, "https://api.minimax.io/");
+  assert.equal(probe.init.body, undefined, "the probe carries no text");
+  assert.equal(JSON.stringify(probe.init.headers ?? {}).includes("sk-secret"), false, "and no key");
+  assert.equal(probe.init.credentials, "omit");
+  const unreachable = await run(build(false), { ...minimax, region: "cn" });
+  assert.equal(unreachable.category, "network");
+  assert.match(ttsErrorMessage(unreachable), /MiniMax could not be reached from this browser \(api\.minimax\.cn\)/);
+  assert.match(ttsErrorMessage(blocked), /MiniMax is reachable \(api\.minimax\.io\) but this browser blocked the request \(CORS\)/);
+  for (const error of [blocked, unreachable]) for (const secret of ["sk-secret", "secret words"]) assert.equal(ttsErrorMessage(error).includes(secret), false);
+});
+
+test("a stop during the probe is a stop, not a network error", async () => {
+  const controller = new AbortController();
+  const fetchImpl = (async (_url: string, init: RequestInit) => {
+    if (init.mode === "no-cors") { controller.abort(new Error("stopped")); throw new TypeError("aborted"); }
+    throw new TypeError("Load failed");
+  }) as unknown as typeof fetch;
+  await assert.rejects(synthesizeSpeech(minimax, { text: "x", voice: "v" }, controller.signal, { fetchImpl }), (error) => !(error instanceof TtsError));
+});
+
+test("MiniMax errors name the service, host and the number only; the provider's own text is never shown", async () => {
+  const reply = (body: unknown, status = 200) => recorder(() => new Response(JSON.stringify(body), { status })).fetchImpl;
+  const fail = (config: TtsConfig, fetchImpl: typeof fetch) => synthesizeSpeech(config, { text: "x", voice: "v" }, never, { fetchImpl }).then(() => { throw new Error("expected a failure"); }, (error) => error as TtsError);
+  const business = await fail({ ...minimax, region: "cn" }, reply({ base_resp: { status_code: 2013, status_msg: "bad param sk-secret" } }));
+  assert.equal(business.category, "http");
+  assert.equal(ttsErrorMessage(business), "MiniMax request failed (api.minimax.cn): code 2013. Check the Model, voice ID and Region.");
+  const auth = await fail(minimax, reply({ base_resp: { status_code: 1004, status_msg: "login fail sk-secret" } }));
+  assert.match(ttsErrorMessage(auth), /^MiniMax authentication failed \(api\.minimax\.io\)\..*Region/);
+  const notFound = await fail(minimax, reply({}, 404));
+  assert.match(ttsErrorMessage(notFound), /^MiniMax request failed \(api\.minimax\.io\): HTTP 404/);
+  const bad = await fail(minimax, reply({ data: { audio: "zz" }, base_resp: { status_code: 0 } }));
+  assert.equal(ttsErrorMessage(bad), "MiniMax returned invalid audio (api.minimax.io).");
+  for (const error of [business, auth, notFound, bad]) assert.equal(ttsErrorMessage(error).includes("sk-secret"), false);
 });

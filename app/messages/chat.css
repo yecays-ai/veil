@@ -680,7 +680,7 @@
   min-width: 0;
   font: inherit;
   font-size: 16px;
-  padding: 10px 34px 10px 14px;
+  padding: 10px 46px 10px 14px;
   border: 0;
   border-radius: 20px;
   background: var(--theme-background);
@@ -700,42 +700,52 @@
   outline: none !important;
   box-shadow: none !important;
 }
-.chat-voice-slot {
+/* These sit inside the input shell, so they must beat the generic `.chat-app button` look (border, surface fill, 10px radius, padding):
+   otherwise the bar reads as a second box laid over the input and the keyboard icon gets a square of its own. */
+.chat-app .chat-input-shell button.chat-voice-slot {
   position: absolute;
-  right: 4px;
-  bottom: 3px;
+  right: 3px;
+  bottom: 0;
   z-index: 2;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  min-height: 0;
   padding: 0;
   border: 0;
-  border-radius: 50%;
+  border-radius: 21px;
   background: transparent;
   color: inherit;
+  font-size: inherit;
   opacity: 0.6;
 }
-.chat-voice-slot:disabled { opacity: 0.3; }
+.chat-app .chat-input-shell button.chat-voice-slot:disabled { opacity: 0.3; }
 .chat-voice-slot svg { width: 20px; height: 20px; }
-/* Voice mode: the bar fills the input in place; the input keeps its size underneath, so nothing around it moves. */
+/* Voice mode: the bar is the input's own content in place of the textarea; the shell keeps its size, so nothing around it moves. */
 .chat-input-shell textarea[data-voice-mode] { visibility: hidden; }
-.chat-voice-bar {
+.chat-app .chat-input-shell button.chat-voice-bar {
   position: absolute;
   inset: 0;
   z-index: 1;
-  padding: 0 44px 0 14px;
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  /* Equal padding on both sides so the label is centred in the shell; the icon sits in the right padding. */
+  padding: 0 46px;
   border: 0;
   border-radius: 21px;
   background: transparent;
   color: inherit;
   font: inherit;
   font-size: 16px;
-  text-align: left;
+  line-height: 20px;
+  text-align: center;
   font-variant-numeric: tabular-nums;
 }
-.chat-voice-bar:disabled { opacity: 0.5; }
-.chat-voice-bar[data-recording] { color: var(--theme-accent, #d33a3a); }
+.chat-app .chat-input-shell button.chat-voice-bar:disabled { opacity: 0.5; }
+.chat-app .chat-input-shell button.chat-voice-bar[data-recording] { color: var(--theme-accent, #d33a3a); }
 .chat-composer-actions {
   display: flex;
   align-items: center;

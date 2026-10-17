@@ -7,7 +7,7 @@ import { Alert } from "./ui/feedback";
 import { Input, Select } from "./ui/form";
 import { setBindingField, resolveScopeBindings } from "../../lib/bindings";
 import { browserTtsConfigStorage } from "../../lib/tts/config-storage";
-import { DEFAULT_TTS_BASE_URL, EMPTY_TTS_CONFIG, providerOf, resolveVoice, ttsConfigProblem, TTS_PROVIDERS, type TtsConfig, type TtsProvider } from "../../lib/tts/config";
+import { DEFAULT_TTS_BASE_URL, EMPTY_TTS_CONFIG, MINIMAX_REGIONS, providerOf, resolveVoice, ttsConfigProblem, TTS_PROVIDERS, type MinimaxRegion, type TtsConfig, type TtsProvider } from "../../lib/tts/config";
 import { synthesizeSpeech, ttsErrorMessage } from "../../lib/tts/speech";
 
 const SAMPLE = "你好，这是一条试听。Hello, this is a preview.";
@@ -92,12 +92,21 @@ export function TtsSettings() {
       <form className="settings-editor" autoComplete="off" onSubmit={(event) => { event.preventDefault(); void save(); }}>
         <label>Provider
           <Select value={provider} disabled={!saved || !!busy}
-            onChange={(e) => { const next = e.target.value as TtsProvider; update({ provider: next === "openai" ? undefined : next, baseUrl: "" }); }}>
+            onChange={(e) => { const next = e.target.value as TtsProvider; update({ provider: next === "openai" ? undefined : next, region: undefined, baseUrl: "" }); }}>
             {TTS_PROVIDERS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </Select>
         </label>
-        <label>{provider === "openai" ? "Base URL" : "Base URL (optional)"}
-          <Input type="url" required={provider === "openai"} placeholder={provider === "openai" ? "https://api.example.com/v1" : DEFAULT_TTS_BASE_URL[provider]}
+        {provider === "minimax" && (
+          <label>Region
+            <Select value={draft.region ?? "global"} disabled={!saved || !!busy}
+              onChange={(e) => update({ region: e.target.value === "cn" ? "cn" as MinimaxRegion : undefined })}>
+              {MINIMAX_REGIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </Select>
+            <span className="settings-hint">Mainland China and international accounts are separate services with separate keys. Pick the one your key was made in.</span>
+          </label>
+        )}
+        <label>{provider === "openai" ? "Base URL" : "Base URL override (advanced, usually empty)"}
+          <Input type="url" required={provider === "openai"} placeholder={provider === "openai" ? "https://api.example.com/v1" : provider === "minimax" ? (MINIMAX_REGIONS.find((item) => item.id === draft.region) ?? MINIMAX_REGIONS[0]).host : DEFAULT_TTS_BASE_URL[provider]}
             value={draft.baseUrl} disabled={!saved || !!busy} onChange={(e) => update({ baseUrl: e.target.value })} />
         </label>
         <label>API Key

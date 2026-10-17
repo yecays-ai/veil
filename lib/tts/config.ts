@@ -8,12 +8,23 @@ export const TTS_PROVIDERS: readonly { id: TtsProvider; label: string }[] = [
 export const DEFAULT_TTS_BASE_URL: Record<Exclude<TtsProvider, "openai">, string> = {
   minimax: "https://api.minimax.io", elevenlabs: "https://api.elevenlabs.io",
 };
+/**
+ * MiniMax runs two separate services with separate accounts and keys, so the person picks a region instead of an address.
+ * Hosts are the ones in MiniMax's own API reference: international `api.minimax.io`, mainland China `api.minimax.cn`
+ * (platform.minimax.cn lists it as the T2A v2 server; the older `api.minimaxi.com` is still reachable through the Base URL override).
+ */
+export type MinimaxRegion = "global" | "cn";
+export const MINIMAX_REGIONS: readonly { id: MinimaxRegion; label: string; host: string }[] = [
+  { id: "global", label: "International", host: "https://api.minimax.io" }, { id: "cn", label: "Mainland China", host: "https://api.minimax.cn" },
+];
 
 /**
  * The speech service of this device. The key stays on the device like a Text API key and is never part of a backup.
  * A config saved before providers existed has no `provider` and is an OpenAI-compatible service.
  */
-export type TtsConfig = { provider?: TtsProvider; baseUrl: string; apiKey: string; model: string; voice: string;
+export type TtsConfig = { provider?: TtsProvider;
+  /** MiniMax only: which of its two services the account belongs to. Absent means international. */
+  region?: MinimaxRegion; baseUrl: string; apiKey: string; model: string; voice: string;
   /** Optional speech-to-text service (`/audio/transcriptions`, OpenAI-compatible), used to write out a recorded voice message. */
   sttModel?: string;
   /** Its own address and key. Empty means the speech service above, which only an OpenAI-compatible provider can be. */
@@ -34,10 +45,10 @@ export function transcriptionUrl(baseUrl: string): string {
 }
 
 /** The address of the service's speech endpoint, without the voice that ElevenLabs puts in the path. */
-export function speechEndpoint(config: Pick<TtsConfig, "provider" | "baseUrl">): string {
+export function speechEndpoint(config: Pick<TtsConfig, "provider" | "baseUrl" | "region">): string {
   const provider = providerOf(config);
   if (provider === "openai") return speechUrl(config.baseUrl);
-  const base = config.baseUrl.trim() || DEFAULT_TTS_BASE_URL[provider];
+  const base = config.baseUrl.trim() || (provider === "minimax" ? MINIMAX_REGIONS.find((item) => item.id === config.region)?.host ?? DEFAULT_TTS_BASE_URL.minimax : DEFAULT_TTS_BASE_URL[provider]);
   return endpointUrl(base, provider === "minimax" ? "/v1/t2a_v2" : "/v1/text-to-speech");
 }
 
@@ -45,7 +56,7 @@ export function normalizeTtsConfig(value: unknown): TtsConfig {
   const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const text = (key: keyof TtsConfig) => typeof raw[key] === "string" ? (raw[key] as string).trim() : "";
   const provider = TTS_PROVIDERS.find((item) => item.id === raw.provider)?.id ?? "openai";
-  return { ...(provider !== "openai" ? { provider } : {}), baseUrl: text("baseUrl"), apiKey: text("apiKey"), model: text("model"), voice: text("voice"),
+  return { ...(provider !== "openai" ? { provider } : {}), ...(provider === "minimax" && raw.region === "cn" ? { region: "cn" as const } : {}), baseUrl: text("baseUrl"), apiKey: text("apiKey"), model: text("model"), voice: text("voice"),
     ...(text("sttModel") ? { sttModel: text("sttModel") } : {}),
     ...(text("sttBaseUrl") ? { sttBaseUrl: text("sttBaseUrl") } : {}), ...(text("sttApiKey") ? { sttApiKey: text("sttApiKey") } : {}) };
 }

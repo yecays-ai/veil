@@ -19,7 +19,7 @@ const done = (tx: IDBTransaction): Promise<void> => new Promise((resolve, reject
 });
 
 /** What the audio depends on. Any change here makes an old clip unusable. The key itself is not part of it. */
-export async function voiceFingerprint(text: string, voice: string, config: Pick<TtsConfig, "baseUrl" | "model" | "provider">): Promise<string> {
+export async function voiceFingerprint(text: string, voice: string, config: Pick<TtsConfig, "baseUrl" | "model" | "provider" | "region">): Promise<string> {
   let endpoint = config.baseUrl.trim();
   try { endpoint = speechEndpoint(config); } catch { /* an invalid URL cannot be used for speech anyway */ }
   // OpenAI-compatible clips keep the fingerprint they always had; another provider is part of it.
