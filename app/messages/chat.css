@@ -1318,3 +1318,11 @@ html[data-messages-nav="back"]::view-transition-new(messages-route) { animation:
 .chat-bubble .chat-voice-toggle { margin-left: auto; padding: 0 !important; border: 0 !important; background: transparent !important; color: inherit !important; font-size: 12px; opacity: 0.7; text-decoration: underline; cursor: pointer; }
 .chat-voice-text { white-space: pre-wrap; }
 .chat-voice-error { font-size: 12px; opacity: 0.85; }
+
+.chat-voice-recorder { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; }
+.chat-voice-recorder audio { width: 100%; }
+.chat-voice-recorder textarea { width: 100%; min-height: 64px; resize: vertical; font: inherit; padding: 8px; border-radius: 8px; border: 1px solid currentColor; background: transparent; color: inherit; }
+.chat-voice-recorder-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.chat-voice-record { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; padding: 0 16px; border-radius: 20px; border: 0; background: var(--accent, #2f7d5b); color: #fff; font: inherit; }
+.chat-voice-record:disabled { opacity: 0.5; }
+.chat-voice-record svg { width: 18px; height: 18px; }

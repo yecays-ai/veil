@@ -104,6 +104,10 @@ export function TtsSettings() {
           <Input placeholder="alloy" value={draft.voice} disabled={!saved || !!busy}
             onChange={(e) => update({ voice: e.target.value })} />
         </label>
+        <label>Speech-to-text model (optional)
+          <Input placeholder="whisper-1" value={draft.sttModel ?? ""} disabled={!saved || !!busy}
+            onChange={(e) => update({ sttModel: e.target.value })} />
+        </label>
         <div className="settings-action-row">
           <button className="settings-button" type="submit" disabled={!saved || !!busy || unchanged}>{busy === "Saving…" ? busy : "Save"}</button>
           <button className="settings-button" type="button" disabled={!saved || !!busy || !!ttsConfigProblem(draft)}

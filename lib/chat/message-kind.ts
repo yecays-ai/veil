@@ -15,14 +15,15 @@ export const isCardMessage = (message: Pick<ChatMessage, "transfer" | "transferE
 
 /** `content` is VEIL's own semantic text, not wording the sender chose: it is never edited, copied or run through user rules. */
 export const hasGeneratedContent = (message: Pick<ChatMessage, "sticker" | "attachment">) =>
-  !!(message.sticker || message.attachment);
+  !!(message.sticker || (message.attachment && message.attachment.kind !== "audio"));
 
-/** The message's body cannot be edited: a card, a sticker or a media message. */
-export const isFixedMessage = (message: Shape) => isCardMessage(message) || hasGeneratedContent(message);
+/** The message's body cannot be edited: a card, a sticker or a media message (a recorded voice keeps its transcript fixed too). */
+export const isFixedMessage = (message: Shape) => isCardMessage(message) || hasGeneratedContent(message) || !!message.attachment;
 
 /** The one-line stand-in for a sticker or media message, or null for any other message. */
 export function mediaPreview(message: Pick<ChatMessage, "sticker" | "attachment" | "voice" | "content">): string | null {
   if (message.sticker) return stickerPreview(message.sticker);
+  if (message.attachment?.kind === "audio") return `${attachmentPreview(message.attachment)} ${message.content.slice(0, 60)}`;
   if (message.attachment) return attachmentPreview(message.attachment);
   if (message.voice) return `[语音] ${message.content.slice(0, 60)}`;
   return null;

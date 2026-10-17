@@ -12,9 +12,11 @@ import { sweepVoiceCache, voiceAudio } from "../../../lib/tts/voice-cache";
 import { useBindings } from "../../use-bindings";
 
 type Phase = "idle" | "loading" | "playing" | "paused";
-const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
+export const clock = (seconds: number) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")}`;
 /** Only one voice bubble sounds at a time: starting one stops the one before it. */
 let stopSounding: (() => void) | null = null;
+/** Stops whichever voice bubble is sounding and makes `stop` the one to silence next. */
+export function claimSound(stop: () => void) { stopSounding?.(); stopSounding = stop; }
 
 /** A Character's voice bubble. The sound is made when it is first tapped, kept for later, and the words are one tap away. The list keys it by its words, so edited words start a fresh bubble. */
 export function VoiceMessage({ message, text, characterId, multiSelect }: { message: ChatMessage; text: string; characterId: string; multiSelect: boolean }) {

@@ -63,7 +63,7 @@ test("the attachment must be exactly an image reference on a user or assistant m
   const bad: [string, (data: BackupData) => void][] = [
     ["extra field", (data) => { Object.assign(data.chat.messages[2].attachment!, { url: "https://x.test/a.png" }); }],
     ["svg", (data) => { data.chat.messages[2].attachment!.mime = "image/svg+xml"; }],
-    ["no size", (data) => { data.chat.messages[2].attachment!.width = 0; }],
+    ["no size", (data) => { (data.chat.messages[2].attachment as { width: number }).width = 0; }],
     ["audio", (data) => { Object.assign(data.chat.messages[2].attachment!, { kind: "audio" }); }],
     ["system role", (data) => { data.chat.messages[2].role = "system"; }],
     ["recalled", (data) => { Object.assign(data.chat.messages[2], { content: "", recalled: { at: TEST_NOW, by: "user" } }); }],

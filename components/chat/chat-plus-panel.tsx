@@ -1,9 +1,9 @@
 "use client";
 
-import { ArrowLeftRight, Gift, Image as ImageIcon, Music, Paperclip, Smile } from "lucide-react";
+import { ArrowLeftRight, Gift, Image as ImageIcon, Mic, Music, Paperclip, Smile } from "lucide-react";
 
 /** First layer of the `+` button: message features plus disabled placeholders for later additions. */
-export function ChatPlusPanel({ onStickers, onPhotos, onTransfer, onGift }: { onStickers: () => void; onPhotos: () => void; onTransfer: () => void; onGift: () => void }) {
+export function ChatPlusPanel({ onStickers, onPhotos, onVoice, onTransfer, onGift }: { onStickers: () => void; onPhotos: () => void; onVoice: () => void; onTransfer: () => void; onGift: () => void }) {
   const soon = [
     { label: "Listen together", icon: Music }, { label: "File", icon: Paperclip },
   ];
@@ -13,6 +13,9 @@ export function ChatPlusPanel({ onStickers, onPhotos, onTransfer, onGift }: { on
     </button>
     <button type="button" role="menuitem" className="chat-plus-item" onClick={onPhotos}>
       <span className="chat-plus-icon"><ImageIcon aria-hidden="true" /></span><span>Photos</span>
+    </button>
+    <button type="button" role="menuitem" className="chat-plus-item" onClick={onVoice}>
+      <span className="chat-plus-icon"><Mic aria-hidden="true" /></span><span>Voice</span>
     </button>
     <button type="button" role="menuitem" className="chat-plus-item" onClick={onTransfer}>
       <span className="chat-plus-icon"><ArrowLeftRight aria-hidden="true" /></span><span>Transfer</span>

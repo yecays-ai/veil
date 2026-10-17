@@ -435,6 +435,11 @@ export function createChatEngine(
       await discardUnrevealed(sessionId, options?.discardUnrevealed);
       return storage.sendImage(sessionId, image.blob, image.width, image.height, quoteMessageId, options?.interject === true);
     },
+    sendVoice: async (sessionId: string, voice: { blob: Blob; durationMs: number; transcript: string }, quoteMessageId?: string,
+      options?: { interject?: boolean; discardUnrevealed?: readonly string[] }) => {
+      await discardUnrevealed(sessionId, options?.discardUnrevealed);
+      return storage.sendVoice(sessionId, voice.blob, voice.durationMs, voice.transcript, quoteMessageId, options?.interject === true);
+    },
     isGenerating: (sessionId: string) => active.has(sessionId),
     /** The Character writes first (or stays silent). One model attempt, counted against the proactive budget; no retry. */
     initiate: (sessionId: string) => generateReply(sessionId, undefined, undefined, "proactive"),
