@@ -136,3 +136,13 @@ test("the Character's own voice reads to the model as a voice message in later h
   assert.equal(stored.content, "早安，今天也要加油。", "the database keeps the plain words");
   assert.equal(listPreview(stored), "[语音] 早安，今天也要加油。", "and the list and bubble never show the marker");
 });
+
+test("a history voice marker typed as text becomes the voice, or plain words when no voice is offered", async () => {
+  const marker = "[你发送了一条语音消息：晚安，快睡。]";
+  const on = await setup();
+  assert.deepEqual(assistants(await on.ask("hi", `Fine.\n${marker}`)).map((message) => [message.content, message.voice]), [["Fine.", undefined], ["晚安，快睡。", true]]);
+  const off = await setup(false);
+  assert.deepEqual(assistants(await off.ask("hi", `Fine.\n${marker}`)).map((message) => [message.content, message.voice]), [["Fine.\n晚安，快睡。", undefined]]);
+  const both = await setup();
+  assert.deepEqual(assistants(await both.ask("hi", `${marker}\n${tag('{"voice":"真的晚安"}')}`)).map((message) => [message.content, message.voice]), [["真的晚安", true]]);
+});

@@ -30,7 +30,8 @@ import type { ChatMessage, ChatSession, MemoryRef } from "./types";
 import { canRecallMessage } from "./recall";
 import { sanitizeHistoryTimestamps } from "./timestamp-sanitizer";
 import { advanceLastSeen, browserPresenceStorage, presenceRecord, type PresenceStorage } from "../presence/storage";
-import { characterActionApplier, splitActions, type ActionApplier } from "../presence/actions";
+import { characterActionApplier, splitActions, VOICE_TEXT_MAX, type ActionApplier } from "../presence/actions";
+import { takeVoiceMarker } from "./attachment";
 import { characterMayReact, reactionTarget, userReactionNotes } from "./reactions";
 import { browserWorldBookStorage } from "../worldbook-storage";
 import { emptyWorldBookDocument, selectBoundWorldBooks, type WorldBookDocument } from "../worldbook";
@@ -366,7 +367,15 @@ export function createChatEngine(
         const found = await awaited(stickerSource.resolve(character.characterId, choices, bare.code).catch(() => null), controller.signal);
         if (found) { sticker = found; replyText = bare.text; }
       }
-      const voice = canVoice && actions?.voice ? actions.voice : undefined;
+      let voice = canVoice && actions?.voice ? actions.voice : undefined;
+      // The history marker typed as text is never shown: its words become the voice when one is offered, else plain text.
+      const echoed = takeVoiceMarker(replyText);
+      if (echoed) {
+        replyText = echoed.text;
+        if (!echoed.spoken || (actions?.voice && canVoice)) { /* nothing to add */ }
+        else if (canVoice && echoed.spoken.length <= VOICE_TEXT_MAX) voice = echoed.spoken;
+        else replyText = [replyText, echoed.spoken].filter(Boolean).join("\n");
+      }
       const image = canImage && actions?.image ? actions.image : undefined;
       if (proactive && !sticker && !voice && !image && isSilence(replyText)) {
         // The attempt stays counted; nothing is left in the conversation and nothing is retried.

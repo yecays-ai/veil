@@ -87,3 +87,15 @@ export function modelFacingContent(
   if (message.role !== "user" || message.attachment?.kind !== "audio") return text;
   return message.attachment.untranscribed ? "[用户发送了一条语音消息，其中的话还没有转成文字]" : `[用户发送了一条语音消息：${text}]`;
 }
+
+const VOICE_MARKER = /\[你发送了一条语音消息[：:]([^\]]*)\]/;
+
+/**
+ * The marker above is how history shows a spoken message, not something to type. A Character that copies it into its text
+ * would show the marker as a bubble; the words inside are taken out so the reply can speak or show them.
+ */
+export function takeVoiceMarker(text: string): { text: string; spoken: string } | null {
+  const found = VOICE_MARKER.exec(text);
+  if (!found) return null;
+  return { text: (text.slice(0, found.index) + text.slice(found.index + found[0].length)).trim(), spoken: found[1].trim() };
+}
