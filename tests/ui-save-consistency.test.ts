@@ -152,7 +152,7 @@ test("other object create/edit flows navigate to results or leave immediate cont
   assert.match(regexNew, /await change\([\s\S]*router\.replace\("\/settings\/regex"\)/);
   assert.match(regexDetail, /await change\([\s\S]*router\.push\("\/settings\/regex"\)/);
   assert.match(userProfile, /await commit\(\(d\) => saveUser\([\s\S]*setEditing\(false\)/);
-  assert.match(universe, /await commit\([\s\S]*setEditingInfo\(false\)/);
+  assert.match(universe, /await commit\([\s\S]*setInfoDraft\(null\)/);
 });
 
 test("Appearance image editing sections start collapsed without changing asset persistence", () => {
