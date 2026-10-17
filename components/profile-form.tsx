@@ -26,8 +26,12 @@ export function ProfileForm({
   onSave,
   onCancel,
   onDirtyChange,
+  universes,
+  lockUniverse = false,
 }: {
   initial: Input;
+  universes?: {id: string; name: string}[];
+  lockUniverse?: boolean;
   kind: "user" | "character";
   saveLabel?: string;
   onSave: (profile: Input) => Promise<void>;
@@ -104,6 +108,12 @@ export function ProfileForm({
             onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
           />
         </label>
+        {kind === "character" && universes && <label>Universe
+          <select required disabled={lockUniverse} value={(draft as CharacterInput).universeId ?? "veil-universe"}
+            onChange={(event) => setDraft((d) => ({ ...d, universeId: event.target.value }))}>
+            {universes.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </label>}
         {kind === "user" && <>
           <label>Presence
             <select value={draft.presence} onChange={(event) => setDraft((d) =>

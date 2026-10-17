@@ -1,4 +1,5 @@
 "use client";
+import { allUniverses, createUniverse, universeView, editUniverse } from "../lib/universe";
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -193,7 +194,12 @@ function RelationForm({
 }
 
 export function UniversePage() {
-  const { document, ready, commit } = useFoundation();
+  const { document: foundation, ready, commit: commitFoundation } = useFoundation();
+  const [selected, setSelected] = useState(() => typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("id") ?? "");
+  const selectedId = allUniverses(foundation).some((u) => u.id === selected) ? selected : foundation.universe.id;
+  const document = universeView(foundation, selectedId);
+  const commit = (update: (view: FoundationDocument) => FoundationDocument) => commitFoundation((d) => editUniverse(d, selectedId, update));
+  const [newName, setNewName] = useState("");
   const [editor, setEditor] = useState<string | null | undefined>(undefined);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -238,7 +244,17 @@ export function UniversePage() {
       bodyClassName="foundation-page"
       rightAction={<Link href="/characters">{C.universe.characters}</Link>}
     >
-      <section ref={page}>
+      <label>Universe<select value={selectedId} onChange={(event) => { setSelected(event.target.value); setEditingInfo(false); setEditor(undefined); setNotice(""); }}>
+        {allUniverses(foundation).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+      </select></label>
+      <form className="foundation-form" onSubmit={async (event) => {
+        event.preventDefault(); setBusy(true); setNotice("");
+        try { const saved = await commitFoundation((d) => createUniverse(d, newName)); setSelected(saved.universes!.at(-1)!.id); setNewName(""); setEditingInfo(false); setEditor(undefined); }
+        catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
+        finally { setBusy(false); }
+      }}><label>New Universe<input required maxLength={100} value={newName} onChange={(event) => setNewName(event.target.value)} /></label>
+        <button disabled={busy}>Create Universe</button></form>
+      <section ref={page} key={selectedId}>
         <header className="universe-header">
           <span className="section-eyebrow">{C.universe.title}</span>
           <h1>{document.universe.name}</h1>

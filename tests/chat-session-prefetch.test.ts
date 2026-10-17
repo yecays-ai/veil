@@ -1,3 +1,6 @@
+import { FOUNDATION_STORAGE_KEY } from "../lib/foundation-storage";
+import { browserDocumentStorage } from "../lib/core-document-storage";
+import { normalizeFoundation } from "../lib/foundation-types";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory } from "fake-indexeddb";
@@ -122,6 +125,7 @@ test("Chat uses a seed on its first frame, preserves it while reading, and isola
       await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
     }
   };
+  await browserDocumentStorage.putIfAbsent(FOUNDATION_STORAGE_KEY, JSON.stringify(normalizeFoundation({ characters: ["pressed", "switched", "plain"].map((characterId) => ({ characterId, name: characterId })) })));
   const pressed = await chatStorage.openSession("pressed");
   await chatStorage.send(pressed.id, "first");
   await chatStorage.send(pressed.id, "second");

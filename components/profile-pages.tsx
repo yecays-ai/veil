@@ -1,4 +1,5 @@
 "use client";
+import { allUniverses, universeForCharacter } from "../lib/universe";
 import {
   CLEANUP_STEP_LABEL, browserCleanupDeps, cleanupCharacterData, deleteCharacterWithData, previewCharacterDeletion,
   type CleanupReport, type DeletionImpact,
@@ -231,6 +232,8 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
           <ProfileForm
             key={characterId ?? "new"}
             kind="character"
+            universes={allUniverses(document)}
+            lockUniverse={!isNew}
             onDirtyChange={setFormDirty}
             initial={
               baseline ?? character ?? { ...normalizeCharacterInput(null), name: "" }
@@ -261,6 +264,7 @@ function CharacterEditor({ characterId }: { characterId?: string }) {
       ) : (
         <>
           {routineNote && <p role="status">{routineNote}</p>}
+          <p>Universe: <Link href={`/universe?id=${encodeURIComponent(universeForCharacter(document, character!).id)}`}>{universeForCharacter(document, character!).name}</Link></p>
           <ProfileView profile={character!} kind="character">
             <button onClick={() => { setBaseline(structuredClone(character!)); setEditing(true); }}>{C.common.edit}</button>
           </ProfileView>

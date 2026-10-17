@@ -1,3 +1,5 @@
+import { characterUniverseId } from "../universe";
+import { UNIVERSE_ID } from "../foundation-types";
 import { resolveBindings } from "../bindings";
 import type { BindingDocument } from "../bindings";
 import { browserBindingStorage } from "../binding-storage";
@@ -216,6 +218,7 @@ export function createChatEngine(
       const { session: target } = await awaited(storage.readSession(sessionId), controller.signal);
       before = { updatedAt: target.updatedAt, lastMessageId: target.lastMessageId, lastMessagePreview: target.lastMessagePreview };
       const prepared = await prepareGeneration(target.characterId, controller.signal);
+      if (target.universeId && target.universeId !== characterUniverseId(prepared.character)) throw new Error("Conversation Universe mismatch.");
       attempt.id = await storage.claimGeneration(sessionId, regenerateId,
         source === "continue" ? "continue" : proactive ? "initiate" : "regenerate");
       controller.signal.throwIfAborted();
@@ -240,7 +243,7 @@ export function createChatEngine(
       const { document, character, config, preset, binding } = prepared;
       const regexGroups = resolveRegexGroups(await awaited(regex(), controller.signal), binding.regexIds);
       // An explicit Binding selection decides book order; only Default All uses library order.
-      const books = selectBoundWorldBooks((await awaited(worldBooks(), controller.signal)).books, binding.worldBookIds);
+      const books = selectBoundWorldBooks((await awaited(worldBooks(), controller.signal)).books.filter((b) => (b.universeId ?? UNIVERSE_ID) === characterUniverseId(character)), binding.worldBookIds);
       // Overlap the local read with existing weather/self preparation; no retries or Memory writes.
       const memoryRead = hasSystemMemorySlot(preset)
         ? Promise.resolve().then(() => memories(character.characterId)).then(
