@@ -1106,6 +1106,19 @@ export class ChatStorage {
     }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
   }
 
+  /** Saves or unsaves a message without changing conversation ordering or generated content. */
+  async setFavorite(id: string, favorite: boolean): Promise<ChatMessage> {
+    return this.transaction("readwrite", async (tx) => {
+      const table = tx.objectStore("messages");
+      const existing: ChatMessage | undefined = await request(table.get(id));
+      if (!existing || existing.role === "system" || existing.recalled) throw new Error("This message cannot be favorited.");
+      const next: ChatMessage = { ...existing };
+      if (favorite) next.favorite = true; else delete next.favorite;
+      await request(table.put(next));
+      return next;
+    }, ["messages"], (message) => ({ domain: "messages", sessionId: message.sessionId }));
+  }
+
   async recallMessage(id: string, by: "user" | "assistant", scope?: PersistenceWriteScope, expectedSessionId?: string): Promise<ChatMessage> {
     if (this.sourceMemory && !scope) {
       const target = await this.transaction("readonly", (tx) => request<ChatMessage | undefined>(tx.objectStore("messages").get(id)));

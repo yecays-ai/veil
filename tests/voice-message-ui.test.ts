@@ -51,7 +51,7 @@ async function mounted(reply: () => Response, bindings = normalizeBindings({}, [
   const { createRoot } = await import("react-dom/client");
   const { VoiceMessage } = await import("../components/chat/messages/voice-message");
   const container = dom.window.document.getElementById("root")!, root = createRoot(container);
-  const render = (props: Partial<{ message: ChatMessage; text: string; multiSelect: boolean }> = {}) => act(async () => {
+  const render = (props: Partial<{ message: ChatMessage; text: string; multiSelect: boolean; showText: boolean }> = {}) => act(async () => {
     root.render(createElement(VoiceMessage, { message: message(), text: "早安，今天也要加油。", characterId: "a", multiSelect: false, ...props }));
   });
   await render();
@@ -92,14 +92,16 @@ test("Voice bubble: the first tap makes the sound with the default voice and pla
   assert.deepEqual(app.revoked, ["blob:clip-1"], "leaving the chat releases the sound");
 });
 
-test("Voice bubble: the Character's own voice is used, and the words show and hide on request", async () => {
+test("Voice bubble: transcript is controlled by message actions, not a button on the voice bar", async () => {
   const bindings = setBindingField(normalizeBindings({}, ["a"]), { characterId: "a" }, "ttsVoice", "onyx");
   const app = await mounted(mp3, bindings);
   try {
     assert.equal(app.container.querySelector(".chat-voice-text"), null);
-    await app.click(app.button("Text"));
+    assert.equal(app.container.querySelectorAll("button").length, 1, "the voice bar contains only playback");
+    assert.equal(app.container.textContent?.includes("Text"), false);
+    await app.render({ showText: true });
     assert.equal(app.container.querySelector(".chat-voice-text")?.textContent, "早安，今天也要加油。");
-    await app.click(app.button("Hide text"));
+    await app.render({ showText: false });
     assert.equal(app.container.querySelector(".chat-voice-text"), null);
     await app.click(app.button("Play voice message"));
     await app.wait(() => app.requests.length === 1);
@@ -122,12 +124,11 @@ test("Voice bubble: a failed request says why, makes no sound, and the next tap 
   } finally { await app.cleanup(); }
 });
 
-test("Voice bubble: while messages are being selected a tap does not play or open the words", async () => {
+test("Voice bubble: while messages are being selected a tap does not play", async () => {
   const app = await mounted(mp3);
   try {
     await app.render({ multiSelect: true });
     await app.click(app.button("Play voice message"));
-    await app.click(app.button("Text"));
     assert.equal(app.requests.length, 0);
     assert.equal(app.container.querySelector(".chat-voice-text"), null);
   } finally { await app.cleanup(); }

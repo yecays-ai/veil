@@ -9,7 +9,8 @@ const validate = (fixture: Fixture) => validateBackupPackage(JSON.stringify(fixt
 const failure = (code: string) => (error: unknown) => error instanceof BackupValidationError && error.code === code;
 
 test("full simulated package preserves identities, ordering, remarks, Presence and explicit Binding semantics", async () => {
-  const data = backupData(), fixture = await packageFixture(data);
+  const data = backupData(); data.chat.messages[1].favorite = true;
+  const fixture = await packageFixture(data);
   const savedFiles = [...fixture.files].map(([path, bytes]) => [path, [...bytes]]);
   const savedManifest = structuredClone(fixture.manifest);
   const first = await validate(fixture), second = await validate(fixture);

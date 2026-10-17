@@ -19,12 +19,11 @@ let stopSounding: (() => void) | null = null;
 export function claimSound(stop: () => void) { stopSounding?.(); stopSounding = stop; }
 
 /** A Character's voice bubble. The sound is made when it is first tapped, kept for later, and the words are one tap away. The list keys it by its words, so edited words start a fresh bubble. */
-export function VoiceMessage({ message, text, characterId, multiSelect }: { message: ChatMessage; text: string; characterId: string; multiSelect: boolean }) {
+export function VoiceMessage({ message, text, characterId, multiSelect, showText = false }: { message: ChatMessage; text: string; characterId: string; multiSelect: boolean; showText?: boolean }) {
   const { bindings } = useBindings();
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState("");
   const [seconds, setSeconds] = useState<number | null>(null);
-  const [showText, setShowText] = useState(false);
   const player = useRef<{ audio: HTMLAudioElement; url: string } | null>(null);
   const mounted = useRef(true), run = useRef(0);
   const release = () => {
@@ -78,8 +77,6 @@ export function VoiceMessage({ message, text, characterId, multiSelect }: { mess
       </button>
       <span className="chat-voice-wave" data-phase={phase} aria-hidden="true"><i /><i /><i /><i /><i /></span>
       <span className="chat-voice-time">{phase === "loading" ? "…" : seconds === null ? "Voice" : clock(seconds)}</span>
-      <button type="button" className="chat-voice-toggle" aria-expanded={showText}
-        onClick={(event) => { if (multiSelect) return; event.stopPropagation(); setShowText((open) => !open); }}>{showText ? "Hide text" : "Text"}</button>
     </span>
     {showText && <span className="chat-voice-text">{text}</span>}
     {error && <span className="chat-voice-error" aria-live="polite">{error}</span>}

@@ -66,6 +66,10 @@ import { TransferComposer } from "./transfers/transfer-composer";
 import { useTransferActions } from "./transfers/use-transfer-actions";
 import { GiftComposer } from "./gifts/gift-composer";
 import { useGiftActions } from "./gifts/use-gift-actions";
+import { browserVoiceCache, voiceFingerprint } from "../../lib/tts/voice-cache";
+import { browserTtsConfigStorage } from "../../lib/tts/config-storage";
+import { resolveVoice } from "../../lib/tts/config";
+import { resolveScopeBindings } from "../../lib/bindings";
 
 const LIFE_MODE_NOTICE = "Life Mode is on: they answer in their own time. Turn it off in Chat Info to get an answer now.";
 
@@ -225,6 +229,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectionStartId, setSelectionStartId] = useState<string | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
+  const [transcribedMessageId, setTranscribedMessageId] = useState<string | null>(null);
   const [memoryMessage, setMemoryMessage] = useState<ChatMessage | null>(null);
   const [editText, setEditText] = useState("");
   const [chatInfoOpen, setChatInfoOpen] = useState(false);
@@ -812,6 +817,7 @@ export function ChatRoom({ characterId }: { characterId: string }) {
           selectedIds={selectedIds}
           activeMessageId={activeMessage?.id}
           highlightedMessageId={highlightedMessageId}
+          transcribedMessageId={transcribedMessageId}
           multiSelect={multiSelect}
           typing={typing}
           typingBeforeId={typingBeforeId}
@@ -964,6 +970,41 @@ export function ChatRoom({ characterId }: { characterId: string }) {
         reactionPickerOpen={reactionPickerOpen} onClose={closeActions}
         onPickReaction={(emoji) => { void reactToMessage(emoji); }}
         onOpenReactionPicker={() => setReactionPickerOpen(true)} onCopy={() => void copyMessage()}
+        onTranscribe={() => {
+          if (!activeMessage) return;
+          setTranscribedMessageId((current) => current === activeMessage.id ? null : activeMessage.id);
+          closeActions();
+        }}
+        onFavorite={() => {
+          if (!activeMessage) return;
+          const message = activeMessage;
+          closeActions();
+          void chatStorage.setFavorite(message.id, !message.favorite).then(() => showFeedback(message.favorite ? "Removed from favorites" : "Favorited"))
+            .catch((reason) => setError(reason instanceof Error ? reason.message : "Favorite could not be saved."));
+        }}
+        onDownload={() => {
+          if (!activeMessage || !session || session.characterId !== characterId) return;
+          const message = activeMessage;
+          closeActions();
+          void (async () => {
+            try {
+              let blob: Blob | null = null;
+              if (message.attachment?.kind === "audio") blob = await chatStorage.readMessageAttachment(session.id, message.id);
+              else if (message.role === "assistant" && message.voice) {
+                const config = await browserTtsConfigStorage.load();
+                const voice = resolveVoice(resolveScopeBindings(bindings, { characterId }), config);
+                const fingerprint = await voiceFingerprint(message.content, voice, config);
+                blob = await browserVoiceCache.get(message.id, fingerprint);
+              }
+              if (!blob) { showFeedback("Play the voice message once before downloading it."); return; }
+              const url = URL.createObjectURL(blob), link = window.document.createElement("a");
+              const base = (character?.name || "Character").replace(/[\\/:*?\"<>|]/g, "-").trim() || "Character";
+              const extension = blob.type === "audio/mp4" ? "m4a" : blob.type === "audio/ogg" ? "ogg" : blob.type === "audio/webm" ? "webm" : "mp3";
+              link.href = url; link.download = `${base}-voice-${Date.now()}.${extension}`;
+              link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (reason) { setError(reason instanceof Error ? reason.message : "Voice could not be downloaded."); }
+          })();
+        }}
         onEdit={() => { if (!activeMessage) return; setEditingMessage(activeMessage); setEditText(activeMessage.content); closeActions(); }}
         onQuote={() => { if (!activeMessage) return; setQuotingMessage(activeMessage); closeActions(); composer.current?.focus(); }}
         onMemory={() => { if (!activeMessage) return; setMemoryMessage(activeMessage); closeActions(); }}

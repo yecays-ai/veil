@@ -192,7 +192,7 @@ function validateChat(value: unknown, version: number) {
   const attachmentAssets = new Set<string>();
   value.messages.forEach((row, index) => {
     const path = `chat.messages[${index}]`;
-    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "sentAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "sticker", "voice", "imageGen", "attachment", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
+    keys(row, ["id", "sessionId", "role", "content", "status", "createdAt", "sentAt", "order", "requestedBy", "error", "quote", "turnId", "attemptId", "attemptFor", "attemptMode", "outcome", "finishReason", "failureStage", "confirmed", "memorySequence", "memoryRefs", "reactions", "favorite", "sticker", "voice", "imageGen", "attachment", "transfer", "transferEvent", "gift", "giftEvent", "recalled"],
       ["id", "sessionId", "role", "content", "status", "createdAt", "order"], path);
     check(id(row.sessionId) && sessions.has(row.sessionId), path, "missing-session");
     check(["user", "assistant", "system"].includes(String(row.role)) && typeof row.content === "string"
@@ -219,6 +219,7 @@ function validateChat(value: unknown, version: number) {
       }
     }
     check(row.reactions === undefined || (isMessageReactions(row.reactions) && (row.role === "user" || row.role === "assistant")), path);
+    check(row.favorite === undefined || (row.favorite === true && (row.role === "user" || row.role === "assistant")), path, "invalid-data", "favorite-invalid");
     // A voice bubble is the Character's own words; the audio is made again from them and never travels in a backup.
     check(row.voice === undefined || (version >= 2 && row.voice === true && row.role === "assistant" && row.sticker === undefined && row.attachment === undefined
       && row.transfer === undefined && row.transferEvent === undefined && row.gift === undefined && row.giftEvent === undefined && row.recalled === undefined), path, "invalid-data", "voice-invalid");

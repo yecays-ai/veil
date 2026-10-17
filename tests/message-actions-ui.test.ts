@@ -28,15 +28,18 @@ test("message text selection remains native and the anchored positioning observe
   assert.match(actionHook, /window\.addEventListener\("scroll", position, true\)/);
 });
 
-test("the fixed 4 by 2 action set uses one Lucide icon family", () => {
+test("Character messages use Favorite, user messages keep Recall, and voice exposes four voice actions", () => {
   for (const mapping of [
     ["Copy", "Copy"], ["Edit", "Pencil"], ["Quote", "Quote"],
     ["Memory", "Brain"], ["Select", "CircleCheck"], ["Recall", "Undo2"],
     ["Delete", "Trash2"], ["Regenerate", "RotateCcw"],
   ]) assert.match(actions, new RegExp(`label="${mapping[0]}" icon=\\{${mapping[1]}\\}`));
-  assert.equal((actions.match(/<Action label="(?:Copy|Edit|Quote|Memory|Select|Recall|Delete|Regenerate)"/g) || []).length, 8);
   assert.match(actions, /label="Recall" icon=\{Undo2\} disabled=\{!recallAllowed\} onClick=\{onRecall\}/);
-  assert.doesNotMatch(actions, /label="Favorite"|icon=\{Bookmark\}/);
+  assert.match(actions, /activeMessage\.role === "user" \? <Action label="Recall"/);
+  assert.match(actions, /activeMessage\.role === "assistant" \? <Action label=\{activeMessage\.favorite \? "Unfavorite" : "Favorite"\}/);
+  for (const label of ["Transcribe", "Download", "Delete"]) assert.match(actions, new RegExp(`label="${label}"`));
+  assert.match(actions, /label=\{activeMessage\.favorite \? "Unfavorite" : "Favorite"\}/);
+  assert.match(actions, /const voiceMessage = activeMessage\.voice === true \|\| activeMessage\.attachment\?\.kind === "audio"/);
   assert.match(actions, /<Icon size=\{25\} strokeWidth=\{1\.75\}/);
   assert.match(css, /grid-template-columns:\s*repeat\(4,/);
   assert.match(css, /width:\s*min\(360px, 92%\)/);
