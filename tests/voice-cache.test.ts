@@ -105,12 +105,36 @@ test("a MiniMax Character voice is requested once; the second play comes from th
   assert.deepEqual(urls, ["https://api.minimaxi.com/v1/t2a_v2"], "one request to MiniMax, none for the replay");
 });
 
-test("a cached clip comes back as an in-memory copy with the same bytes and an audio type", async () => {
-  const cache = fresh();
+test("a clip is stored as bytes, not as a blob, and comes back as an in-memory audio blob", async () => {
+  const factory = new IDBFactory(), cache = new VoiceCache(() => factory);
   await cache.put("m1", "fp", new Blob([new Uint8Array([1, 2, 3])]));
+  const stored = await new Promise<Record<string, unknown>>((resolve, reject) => {
+    const opening = factory.open("veil-voice-cache-v1", 1);
+    opening.onsuccess = () => { const got = opening.result.transaction("audio").objectStore("audio").get("m1"); got.onsuccess = () => resolve(got.result); got.onerror = () => reject(got.error); };
+  });
+  assert.ok(stored.data instanceof ArrayBuffer, "the row holds bytes");
+  assert.equal(stored.blob, undefined, "and no file-backed blob");
   const saved = await cache.get("m1", "fp");
   assert.deepEqual([...new Uint8Array(await saved!.arrayBuffer())], [1, 2, 3]);
-  assert.equal(saved!.type, "audio/mpeg", "an untyped stored clip is played as mp3");
+  assert.equal(saved!.type, "audio/mpeg", "an untyped clip is played as mp3");
   await cache.put("m2", "fp", clip(4, 9));
   assert.equal((await cache.get("m2", "fp"))?.type, "audio/mpeg");
+});
+
+test("a clip saved earlier as a blob is still played, then replaced by bytes the next time it is made", async () => {
+  const factory = new IDBFactory();
+  await new Promise<void>((resolve, reject) => {
+    const opening = factory.open("veil-voice-cache-v1", 1);
+    opening.onupgradeneeded = () => { opening.result.createObjectStore("audio", { keyPath: "messageId" }); };
+    opening.onsuccess = () => {
+      const tx = opening.result.transaction("audio", "readwrite");
+      tx.objectStore("audio").put({ messageId: "old", fingerprint: "fp", blob: clip(5, 7), bytes: 5, usedAt: 1 });
+      tx.oncomplete = () => { opening.result.close(); resolve(); }; tx.onerror = () => reject(tx.error);
+    };
+  });
+  const cache = new VoiceCache(() => factory);
+  const saved = await cache.get("old", "fp");
+  assert.deepEqual([...new Uint8Array(await saved!.arrayBuffer())], [7, 7, 7, 7, 7]);
+  await cache.put("old", "fp", clip(3, 2));
+  assert.equal((await cache.get("old", "fp"))?.size, 3);
 });

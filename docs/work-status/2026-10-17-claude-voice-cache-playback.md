@@ -6,7 +6,7 @@
 
 ## 当前任务
 
-Character 语音第二次播放报 "The operation is not supported"：缓存读出的 blob 先复制成内存 blob 再给播放器（待审查，不自动合并）。
+Character 语音重播在 iPhone 上报 "The operation is not supported"，或读不出缓存而重新生成（语气变了）：缓存改存原始字节，读出来给播放器内存 blob（待审查，等 lan 真机验证再合并）。
 
 ## 谁在改哪里
 
@@ -14,12 +14,12 @@ Claude；分支 `fix/voice-cache-playback`；PR #251（https://github.com/yecays
 
 ## 已完成
 
-- `VoiceCache.get` 返回内存副本（同样的字节，type 缺失时按 audio/mpeg）。
-- 检查（代码版本为本分支首个提交）：`voice-cache` 测试通过（含新增 1 项）。typecheck/lint 见 PR 描述。
+- 新片段以字节（ArrayBuffer + type）存入原来的 `audio` 存储，不改库版本和缓存键；以前存成 blob 的旧片段仍能读，读出来转成内存 blob，下次重新生成时被字节版覆盖。字节在开事务之前读好，事务内不做别的异步工作。
+- 检查（代码版本为本分支最新提交，基于 main 0fa0cf3）：`voice-cache` 10、`chat-voice` 10、`voice-message-ui` 4 项通过；`npm run typecheck` 通过；`npm run lint` 0 错误（3 个已有警告）；未运行 build 与全量 `npm test`。
 
 ## 尚未验证
 
-- 根因是推断：第一次播放用的是刚生成的内存 blob 能响，第二次读 IndexedDB 里的 blob 就报错，符合 iOS Safari 对文件型 blob 的已知限制；沙箱没有 WebKit，只有 lan 的 iPhone 能验证。
+- 根因是推断：lan 真机上第一次（刚生成）能响，之后读缓存时有时报 not supported、有时读不出来而重新生成，符合 iOS Safari 对 IndexedDB 文件型 blob 的限制；沙箱没有 WebKit，只有 lan 的 iPhone 能验证。
 
 ## 下一步
 
