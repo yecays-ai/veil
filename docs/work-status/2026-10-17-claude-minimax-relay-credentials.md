@@ -2,7 +2,7 @@
 
 更新人：Claude
 更新时间：2026-10-17T17:30:00Z
-发现范围：基于 origin/main 4769627；改动只在 lib/tts/speech.ts 与 tests/tts-providers.test.ts。
+发现范围：2026-10-17T17:30:00Z 基于 origin/main 4769627；改动在 lib/tts/speech.ts、tests/tts-providers.test.ts 和本记录；通过 GitHub 查看了远程分支，未发现与这些路径重叠的并行 PR（沙箱无法访问预览域名）。
 
 ## 当前任务
 
@@ -10,7 +10,7 @@ relay 请求带上同源 cookie（待审查）。
 
 ## 谁在改哪里
 
-Claude；分支 `fix/minimax-relay-credentials`；PR 见 PR 页面。
+Claude；分支 `fix/minimax-relay-credentials`；PR #247（https://github.com/yecays-ai/veil/pull/247）。
 
 ## 已完成
 
