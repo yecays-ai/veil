@@ -10,7 +10,7 @@
 
 ## 谁在改哪里
 
-Claude；分支 feat/m4-tts；PR 见 GitHub 上本分支的 PR。涉及：lib/tts/{config,config-storage,speech}.ts（新）、components/settings/tts-settings.tsx（新）、app/settings/tts/page.tsx（新）、app/settings/page.tsx（加入口）、lib/bindings.ts（BindingSlot 加可选 `ttsVoice`、`BindingField`）、lib/chat/provider.ts（把 URL 校验抽成 `endpointUrl`，`completionUrl` 行为不变）、tests/{tts,tts-settings-ui}.test.ts（新）。
+Claude；分支 feat/m4-tts；PR：https://github.com/yecays-ai/veil/pull/237。涉及：lib/tts/{config,config-storage,speech}.ts（新）、components/settings/tts-settings.tsx（新）、app/settings/tts/page.tsx（新）、app/settings/page.tsx（加入口）、lib/bindings.ts（BindingSlot 加可选 `ttsVoice`、`BindingField`）、lib/chat/provider.ts（把 URL 校验抽成 `endpointUrl`，`completionUrl` 行为不变）、tests/{tts,tts-settings-ui}.test.ts（新）。
 
 ## 做法
 

@@ -119,3 +119,18 @@ test("a Character voice survives a backup round trip, and the speech key has no 
   (leaked.bindings!.global as Record<string, unknown>).ttsApiKey = "sk-secret";
   await assert.rejects(async () => { const f = await packageFixture(leaked); return validateBackupPackage(JSON.stringify(f.manifest), f.files); });
 });
+
+test("saving reports success only after the write has committed", async () => {
+  const factory = new IDBFactory(), storage = new TtsConfigStorage(() => factory);
+  await storage.load();
+  const open = factory.open("veil-tts-config-v1");
+  const db = await new Promise<IDBDatabase>((resolve) => { open.onsuccess = () => resolve(open.result); });
+  const real = db.transaction.bind(db);
+  // A transaction that aborts after its request succeeded must not look like a saved config.
+  const aborting = { ...storage, open: async () => ({ transaction: (name: string, mode?: IDBTransactionMode) => {
+    const tx = real(name, mode); if (mode === "readwrite") queueMicrotask(() => tx.abort()); return tx; } }) };
+  (storage as unknown as { open: () => Promise<unknown> }).open = aborting.open;
+  await assert.rejects(storage.save({ baseUrl: "https://tts.test/v1", apiKey: "k", model: "m", voice: "v" }), /could not be read or written/);
+  db.close();
+  assert.equal((await new TtsConfigStorage(() => factory).load()).apiKey, "");
+});
