@@ -124,14 +124,33 @@ const config = normalizeTtsConfig({ baseUrl: "https://api.example.com/v1", apiKe
 test("transcription makes one multipart request with the model, and returns the words", async () => {
   const seen: { url: string; init: RequestInit }[] = [];
   const fetchImpl = (async (url: string, init: RequestInit) => { seen.push({ url, init }); return new Response(JSON.stringify({ text: " hello there " })); }) as typeof fetch;
-  const text = await transcribeAudio(config, clip(), new AbortController().signal, { fetchImpl });
+  // The recording is read into memory first (a stored blob can fail an iPhone upload); the request carries that copy.
+  const stored = clip();
+  let reads = 0;
+  const expected = new Uint8Array(2048).fill(0x5a);
+  stored.arrayBuffer = () => { reads++; return Promise.resolve(expected.buffer.slice(0) as ArrayBuffer); };
+  const text = await transcribeAudio(config, stored, new AbortController().signal, { fetchImpl });
+  assert.equal(reads, 1);
   assert.equal(text, "hello there");
   assert.equal(seen.length, 1);
   assert.equal(seen[0].url, "https://api.example.com/v1/audio/transcriptions");
   const form = seen[0].init.body as FormData;
   assert.equal(form.get("model"), "whisper-1");
-  assert.ok(form.get("file") instanceof Blob);
+  const sent = form.get("file") as Blob;
+  assert.ok(sent instanceof Blob);
+  assert.equal(sent.size, 2048);
+  assert.equal(sent.type, "audio/webm;codecs=opus");
+  assert.deepEqual(new Uint8Array(await sent.arrayBuffer()), expected);
   assert.equal((seen[0].init.headers as Record<string, string>).Authorization, "Bearer sk-test");
+});
+
+test("a recording that cannot be read makes no request and fails as a TtsError", async () => {
+  let calls = 0;
+  const fetchImpl = (async () => { calls++; return new Response("{}"); }) as typeof fetch;
+  const broken = clip();
+  broken.arrayBuffer = () => Promise.reject(new Error("unreadable"));
+  await assert.rejects(transcribeAudio(config, broken, new AbortController().signal, { fetchImpl }), (e) => e instanceof TtsError && e.category === "invalid-audio");
+  assert.equal(calls, 0);
 });
 
 test("transcription fails without a speech-to-text model, on a rejected key, on empty text and on a stop", async () => {

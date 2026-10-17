@@ -38,8 +38,13 @@ export async function transcribeAudio(
   let timedOut = false;
   const timer = setTimeout(() => { timedOut = true; network.abort(); }, options.timeoutMs ?? STT_TIMEOUT_MS);
   try {
+    // A recording read back from IndexedDB is a file-backed blob; iOS Safari can fail a request that uploads one, so the upload is an in-memory copy.
+    let bytes: ArrayBuffer;
+    try { bytes = await recording.arrayBuffer(); }
+    catch { signal.throwIfAborted(); throw new TtsError("invalid-audio", "invalid-audio"); }
+    const upload = new Blob([bytes], { type: recording.type });
     const form = new FormData();
-    form.append("file", recording, `voice.${recording.type.includes("mp4") ? "m4a" : recording.type.includes("ogg") ? "ogg" : "webm"}`);
+    form.append("file", upload, `voice.${recording.type.includes("mp4") ? "m4a" : recording.type.includes("ogg") ? "ogg" : "webm"}`);
     form.append("model", stt.model);
     let response: Response;
     try {
