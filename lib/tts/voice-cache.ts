@@ -97,9 +97,9 @@ export const resetVoiceSweepForTests = () => { swept = false; inflight.clear(); 
 
 type Source = { messageId: string; text: string; voice: string; config: TtsConfig };
 /**
- * The audio for one voice bubble. A saved clip is reused; otherwise exactly one request is made even when the bubble
- * is tapped again or open in another tab (the same page shares the pending promise, other tabs take a lock and
- * find the clip the first one saved). The request is not tied to the bubble: leaving the page does not waste it.
+ * The audio for one voice bubble. A saved clip is reused; otherwise one request is shared within this page. Other tabs
+ * share it only when Web Locks are available and the first tab has stored the clip. The request is not tied to the
+ * bubble: leaving the page does not waste it.
  */
 export function voiceAudio(source: Source, cache: VoiceCache = browserVoiceCache,
   options: { synthesize?: typeof synthesizeSpeech; locks?: LockManager | undefined } = {}): Promise<Blob> {
