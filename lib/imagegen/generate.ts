@@ -26,7 +26,8 @@ export function imageGenErrorMessage(error: unknown): string {
     case "rate-limit": return "The image service is busy or over its limit. Try again later.";
     case "timeout": return error.stage === "download"
       ? "The picture was generated, but its download timed out. Try again to download the same picture."
-      : "The image generation service did not answer in time. Try again.";
+      : error.stage === "response" ? "The image generation service response timed out. Try again."
+        : "The image generation service did not answer in time. Try again.";
     case "network": return error.stage === "download"
       ? "The picture was generated, but VEIL could not download it. Try again to download the same picture."
       : "Could not reach the image generation service. Check the Base URL and your provider's browser/CORS support.";
@@ -37,7 +38,9 @@ export function imageGenErrorMessage(error: unknown): string {
     case "processing": return "The picture was received, but VEIL could not prepare it for chat.";
     case "storage": return "The picture was received, but VEIL could not save it in this chat.";
     case "http": return error.stage === "download"
-      ? `The picture was generated, but its download failed (HTTP ${error.httpStatus}). Try again to download the same picture.`
+      ? error.retryDownload
+        ? `The picture was generated, but its download failed (HTTP ${error.httpStatus}). Try again to download the same picture.`
+        : `The generated picture is no longer available (HTTP ${error.httpStatus}). Try again to make a new picture.`
       : `The image generation service failed (HTTP ${error.httpStatus}). Check your Image settings.`;
     default: return error.message;
   }
@@ -97,13 +100,18 @@ async function downloadImage(url: string, signal: AbortSignal, fetchImpl: typeof
       signal.throwIfAborted();
       throw new ImageGenError(timedOut ? "download-timeout" : "download-network", timedOut ? "timeout" : "network", undefined, "download", retry);
     }
-    if (!response.ok) throw new ImageGenError("download-http", "http", response.status, "download", retry);
+    const transient = response.status === 408 || response.status === 429 || (response.status >= 500 && response.status < 600);
+    if (!response.ok) throw new ImageGenError("download-http", "http", response.status, "download", transient ? retry : undefined);
     let blob: Blob;
     try { blob = new Blob([await readBounded(response, IMAGEGEN_MAX_BYTES)]); }
-    catch { signal.throwIfAborted(); throw new ImageGenError("download-invalid", "invalid-image", undefined, "download", retry); }
-    if (!blob.size || blob.size > IMAGEGEN_MAX_BYTES) throw new ImageGenError("download-invalid", "invalid-image", undefined, "download", retry);
+    catch {
+      signal.throwIfAborted();
+      if (timedOut) throw new ImageGenError("download-timeout", "timeout", undefined, "download", retry);
+      throw new ImageGenError("download-invalid", "invalid-image", undefined, "download");
+    }
+    if (!blob.size || blob.size > IMAGEGEN_MAX_BYTES) throw new ImageGenError("download-invalid", "invalid-image", undefined, "download");
     const picture = await typedPicture(blob);
-    if (!picture) throw new ImageGenError("download-invalid", "invalid-image", undefined, "download", retry);
+    if (!picture) throw new ImageGenError("download-invalid", "invalid-image", undefined, "download");
     return picture;
   } finally {
     clearTimeout(timer);
@@ -155,7 +163,11 @@ export async function generateImage(
       : response.status === 429 ? "rate-limit" : "http", response.status, "generation");
     let body: unknown;
     try { body = JSON.parse(new TextDecoder().decode(await readBounded(response, IMAGEGEN_MAX_RESPONSE_BYTES))); }
-    catch { signal.throwIfAborted(); throw new ImageGenError("invalid-response", "invalid-response", undefined, "response"); }
+    catch {
+      signal.throwIfAborted();
+      if (timedOut) throw new ImageGenError("generation-timeout", "timeout", undefined, "response");
+      throw new ImageGenError("invalid-response", "invalid-response", undefined, "response");
+    }
     const first = (body as { data?: { b64_json?: unknown; url?: unknown }[] } | null)?.data?.[0];
     if (typeof first?.b64_json === "string" && first.b64_json) {
       let blob: Blob;
