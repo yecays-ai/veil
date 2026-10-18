@@ -118,6 +118,19 @@ test("generation network, response parsing and URL download failures report dist
   });
 });
 
+test("timeouts while reading generation and download bodies keep their correct stages", async () => {
+  const stalled = (signal: AbortSignal) => new Response(new ReadableStream<Uint8Array>({
+    start(controller) { signal.addEventListener("abort", () => controller.error(new Error("timed out")), { once: true }); },
+  }));
+  const generationBody = (async (_url: string, init: RequestInit) => stalled(init.signal!)) as typeof fetch;
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: generationBody, timeoutMs: 5 }),
+    (error) => error instanceof ImageGenError && error.category === "timeout" && error.stage === "response");
+  const downloadBody = (async (url: string, init: RequestInit) => url.endsWith("/images/generations")
+    ? new Response(JSON.stringify({ data: [{ url: "https://signed.test/slow.png" }] })) : stalled(init.signal!)) as typeof fetch;
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: downloadBody, timeoutMs: 5 }),
+    (error) => error instanceof ImageGenError && error.category === "timeout" && error.stage === "download" && !!error.retryDownload);
+});
+
 test("the image action keeps a short prompt and defaults to a picture without the Character in it", () => {
   assert.deepEqual(splitActions(`ok\n${tag('{"image":{"prompt":" my desk ","character":false}}')}`).actions?.image, { prompt: "my desk", character: false });
   assert.deepEqual(splitActions(tag('{"image":{"prompt":"selfie","character":true}}')).actions?.image, { prompt: "selfie", character: true });
@@ -249,6 +262,28 @@ test("retry after a generated URL download failure downloads the same picture wi
   assert.match(imageJobStatus("same-picture"), /picture was generated.*could not download/i);
   await startImageJob(request, { appearance: null, avatar: null }, actual, store);
   assert.deepEqual({ generations, downloads, stored, status: imageJobStatus("same-picture") }, { generations: 1, downloads: 2, stored: 1, status: "idle" });
+});
+
+test("retry after a permanently unavailable generated URL starts one new generation", async () => {
+  stopImageJobs();
+  let generations = 0, downloads = 0, stored = 0;
+  const fetchImpl = (async (url: string) => {
+    if (url.endsWith("/images/generations")) {
+      generations += 1;
+      return generations === 1
+        ? new Response(JSON.stringify({ data: [{ url: "https://signed.test/expired.png?token=private" }] }))
+        : new Response(JSON.stringify({ data: [{ b64_json: b64(PNG) }] }));
+    }
+    downloads += 1;
+    return new Response(null, { status: 403 });
+  }) as typeof fetch;
+  const actual = source({ generate: (c, input, signal) => generateImage(c, input, signal, { fetchImpl }) });
+  const request = message("expired-picture");
+  const store = async () => { stored += 1; return true; };
+  await startImageJob(request, { appearance: null, avatar: null }, actual, store);
+  assert.match(imageJobStatus("expired-picture"), /no longer available.*new picture/i);
+  await startImageJob(request, { appearance: null, avatar: null }, actual, store);
+  assert.deepEqual({ generations, downloads, stored, status: imageJobStatus("expired-picture") }, { generations: 2, downloads: 1, stored: 1, status: "idle" });
 });
 
 async function engineApp(configured: boolean, requests: { prompt: string; reference: boolean }[]) {
