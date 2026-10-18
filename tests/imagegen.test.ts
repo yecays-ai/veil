@@ -264,6 +264,29 @@ test("retry after a generated URL download failure downloads the same picture wi
   assert.deepEqual({ generations, downloads, stored, status: imageJobStatus("same-picture") }, { generations: 1, downloads: 2, stored: 1, status: "idle" });
 });
 
+test("retry after a mid-stream image download failure keeps the generated URL", async () => {
+  stopImageJobs();
+  let generations = 0, downloads = 0, stored = 0;
+  const fetchImpl = (async (url: string) => {
+    if (url.endsWith("/images/generations")) {
+      generations += 1;
+      return new Response(JSON.stringify({ data: [{ url: "https://signed.test/interrupted.png?token=private" }] }));
+    }
+    downloads += 1;
+    if (downloads === 1) return new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(PNG.slice(0, 4)); controller.error(new Error("connection lost")); },
+    }));
+    return new Response(PNG);
+  }) as typeof fetch;
+  const actual = source({ generate: (c, input, signal) => generateImage(c, input, signal, { fetchImpl }) });
+  const request = message("interrupted-picture");
+  const store = async () => { stored += 1; return true; };
+  await startImageJob(request, { appearance: null, avatar: null }, actual, store);
+  assert.match(imageJobStatus("interrupted-picture"), /generated.*could not download/i);
+  await startImageJob(request, { appearance: null, avatar: null }, actual, store);
+  assert.deepEqual({ generations, downloads, stored, status: imageJobStatus("interrupted-picture") }, { generations: 1, downloads: 2, stored: 1, status: "idle" });
+});
+
 test("retry after a permanently unavailable generated URL starts one new generation", async () => {
   stopImageJobs();
   let generations = 0, downloads = 0, stored = 0;
