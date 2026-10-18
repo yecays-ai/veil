@@ -1,4 +1,4 @@
-import { topLevelObjects } from "./maintenance-operations";
+import { extractJsonObject, scanJson, topLevelObjects } from "./maintenance-operations";
 
 /** Where a maintenance request ended. `ok` means the batch committed; it says nothing about how much was written (see counts). */
 export const MAINTENANCE_STAGES = ["ok", "provider-error", "truncated", "json", "format", "commit-failed", "too-large", "preflight", "all-redacted"] as const;
@@ -8,8 +8,23 @@ export const MAINTENANCE_COUNT_KEYS = ["ignored", "created", "updated", "state",
 export type MaintenanceCounts = Record<(typeof MAINTENANCE_COUNT_KEYS)[number], number>;
 /** Numbers and enums describing a response that failed to parse. Never any of its text. */
 export type ShapeEdge = "brace" | "fence" | "other" | "empty";
+/** Category of the JSON parser's complaint, never its message (which can quote the response). */
+export const PARSE_ERRORS = ["control-char", "unterminated-string", "end-of-input", "expected-delimiter", "unexpected-token", "other"] as const;
+export type ParseErrorKind = (typeof PARSE_ERRORS)[number];
 export type MaintenanceShape = { length: number; head: ShapeEdge; tail: ShapeEdge; fenced: boolean; objects: number;
-  finish: "stop" | "length" | "other" | "none"; position?: number };
+  finish: "stop" | "length" | "other" | "none"; position?: number;
+  /** Of the single object when there is one: why it does not parse, and how many known syntax slips it holds. */
+  error?: ParseErrorKind; controlChars?: number; trailingCommas?: number; strayQuotes?: number };
+const DEFECT_KEYS = ["controlChars", "trailingCommas", "strayQuotes"] as const;
+function parseErrorKind(text: string): ParseErrorKind | undefined {
+  try { JSON.parse(text); return undefined; }
+  catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    return /control character/i.test(message) ? "control-char" : /unterminated/i.test(message) ? "unterminated-string"
+      : /end of|eof/i.test(message) ? "end-of-input" : /expected/i.test(message) ? "expected-delimiter"
+        : /unexpected|unrecognized/i.test(message) ? "unexpected-token" : "other";
+  }
+}
 const SHAPE_EDGES: readonly string[] = ["brace", "fence", "other", "empty"], SHAPE_FINISH: readonly string[] = ["stop", "length", "other", "none"];
 export function responseShape(text: string, finish: MaintenanceShape["finish"]): MaintenanceShape {
   const trimmed = text.trim();
@@ -17,8 +32,10 @@ export function responseShape(text: string, finish: MaintenanceShape["finish"]):
   const { spans } = topLevelObjects(text);
   let position: number | undefined;
   try { JSON.parse(text); } catch (error) { const match = /position (\d+)/.exec(error instanceof Error ? error.message : ""); if (match) position = Number(match[1]); }
+  const object = extractJsonObject(text), error = parseErrorKind(object ?? text), { defects } = scanJson(object ?? text);
   return { length: text.length, head: edge(trimmed.slice(0, 1), trimmed.startsWith("```")), tail: edge(trimmed.slice(-1), trimmed.endsWith("```")),
-    fenced: trimmed.includes("```"), objects: spans.length, finish, ...(position !== undefined ? { position } : {}) };
+    fenced: trimmed.includes("```"), objects: spans.length, finish, ...(position !== undefined ? { position } : {}),
+    ...(error ? { error } : {}), ...defects };
 }
 export type MaintenanceDiagnostic = { outcome: "prepared" | "validated" | "rejected" | "commit-failed" | "committed";
   messageCount: number; candidateCount: number; inputCharacters: number; operationCount: number; discarded: number; durationMs: number;
@@ -52,7 +69,9 @@ function sanitize(value: unknown): MaintenanceDiagnostic | undefined {
   const shape: MaintenanceShape | undefined = s && typeof s === "object" && count(s.length) && count(s.objects) && typeof s.fenced === "boolean"
     && SHAPE_EDGES.includes(String(s.head)) && SHAPE_EDGES.includes(String(s.tail)) && SHAPE_FINISH.includes(String(s.finish))
     ? { length: s.length, head: s.head as ShapeEdge, tail: s.tail as ShapeEdge, fenced: s.fenced, objects: s.objects,
-      finish: s.finish as MaintenanceShape["finish"], ...(count(s.position) ? { position: s.position } : {}) } : undefined;
+      finish: s.finish as MaintenanceShape["finish"], ...(count(s.position) ? { position: s.position } : {}),
+      ...(PARSE_ERRORS.some((kind) => kind === s.error) ? { error: s.error as ParseErrorKind } : {}),
+      ...Object.fromEntries(DEFECT_KEYS.flatMap((key) => count(s[key]) ? [[key, s[key]]] : [])) } : undefined;
   return { outcome: v.outcome as MaintenanceDiagnostic["outcome"], messageCount: v.messageCount as number, candidateCount: v.candidateCount as number,
     inputCharacters: v.inputCharacters as number, operationCount: v.operationCount as number, discarded: v.discarded as number,
     durationMs: v.durationMs as number, ...extra, ...(stage ? { stage } : {}), ...(counts ? { counts } : {}), ...(shape ? { shape } : {}) };
@@ -103,7 +122,7 @@ export function describeMaintenanceResult(d: MaintenanceDiagnostic): string {
   const retry = (d.attempt ?? 1) > 1 ? "Retry. " : "";
   if (d.stage && d.stage !== "ok") {
     const x = d.shape;
-    const shape = x ? ` Response: ${x.length} chars, starts ${x.head}, ends ${x.tail}, ${x.fenced ? "code fence, " : ""}${x.objects} JSON object${x.objects === 1 ? "" : "s"}, finish ${x.finish}${x.position !== undefined ? `, error at ${x.position}` : ""}.` : "";
+    const shape = x ? ` Response: ${x.length} chars, starts ${x.head}, ends ${x.tail}, ${x.fenced ? "code fence, " : ""}${x.objects} JSON object${x.objects === 1 ? "" : "s"}, finish ${x.finish}${x.position !== undefined ? `, error at ${x.position}` : ""}${x.error ? `, parser says ${x.error}` : ""}${x.controlChars ? `, ${x.controlChars} raw control char${x.controlChars === 1 ? "" : "s"} in strings` : ""}${x.trailingCommas ? `, ${x.trailingCommas} trailing comma${x.trailingCommas === 1 ? "" : "s"}` : ""}${x.strayQuotes ? `, ${x.strayQuotes} stray quote${x.strayQuotes === 1 ? "" : "s"}` : ""}.` : "";
     // A known failure keeps its range and is retried once automatically; request-unknown stages never are.
     const next = ["truncated", "json", "format"].includes(d.stage) ? (d.attempt ?? 1) >= 2 ? "; no more automatic retries" : "; one automatic retry is allowed" : "";
     return `${retry}Not written: ${STAGE_TEXT[d.stage]}${next}.${shape}`;
