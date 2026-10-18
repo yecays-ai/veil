@@ -10,14 +10,14 @@
 
 ## 谁在改哪里
 
-Claude；分支 `claude/project-thread-18lv2g`；PR 见创建后的链接。
+Claude；分支 `claude/project-thread-18lv2g`；PR：https://github.com/yecays-ai/veil/pull/256。
 涉及：`lib/memory/maintenance-operations.ts`、`lib/memory/maintenance-diagnostics.ts`、`tests/memory-maintenance-results.test.ts`。无持久化结构变更。
 
 ## 已完成
 
 - 诊断：失败形状新增解析器错误类别（枚举，不含报错文本）、字符串内原始控制字符数、结尾多余逗号数、疑似未转义引号数。只有数字和枚举。
 - 容错：严格解析失败、且恰有一个完整对象时，仅做两种有唯一读法的无损修复——字符串内的原始换行/制表等控制字符转为转义，`}`/`]` 前的多余逗号删除；之后仍走原有严格校验。未转义的内部引号有歧义，只计数、不修复。
-- 自动化测试（假模型、fake IndexedDB，无真实模型调用）：计数与修复、含换行文本被原样写入且只发 1 次请求、修复后仍需通过完整校验、引号问题仍判 json 失败并记录类型且不含文本。memory/backup 相关回归 851 项通过；eslint 通过；tsc 仅有已有的 `emoji-picker-react` 缺失报错。
+- 自动化测试（假模型、fake IndexedDB，无真实模型调用）：计数与修复、含换行文本被原样写入且只发 1 次请求、修复后仍需通过完整校验、引号问题仍判 json 失败并记录类型且不含文本。验证于本分支最新提交：`node --test` 运行 `tests/memory-*`、`tests/backup-*` 编译产物（memory/backup 回归，851 项通过）；`npx eslint lib/memory tests/memory-maintenance-results.test.ts`；`npx tsc --noEmit`（仅有已有的 `emoji-picker-react` 缺失报错）。CI 的 `verify` 首次因无关的聊天测试 `chat.unsaved-draft-explicit-retry` 失败，本地单测通过，已重跑一次。
 
 ## 尚未验证
 

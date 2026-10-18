@@ -215,3 +215,9 @@ test("a stray-quote failure records which kind of slip it was, as numbers and en
   assert.ok(!JSON.stringify(f.diagnostics.read()).includes("SECRET-QUOTE-TEXT"));
   assert.match(describeMaintenanceResult(last(f)), /stray quote/);
 });
+
+test("scanJson counts a raw newline after a backslash and repair keeps both the backslash and the newline", () => {
+  const raw = '{"a":"path\\\n"}';
+  assert.equal(scanJson(raw).defects.controlChars, 1);
+  assert.equal(JSON.parse(scanJson(raw, true).text).a, "path\\\n");
+});

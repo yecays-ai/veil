@@ -38,6 +38,7 @@ export function scanJson(text: string, repair = false): { text: string; defects:
   const defects: JsonDefects = { controlChars: 0, trailingCommas: 0, strayQuotes: 0 };
   const next = (from: number) => { let i = from; while (i < text.length && /\s/.test(text[i])) i++; return text[i]; };
   const ESCAPES: Record<string, string> = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
+  const escape = (ch: string) => ESCAPES[ch] ?? `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
   let out = "", inString = false, escaped = false;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -46,7 +47,12 @@ export function scanJson(text: string, repair = false): { text: string; defects:
       else if (ch === "," && ["}", "]"].includes(next(i + 1) ?? "")) { defects.trailingCommas++; if (repair) continue; }
       out += ch; continue;
     }
-    if (escaped) { escaped = false; out += ch; continue; }
+    if (escaped) {
+      escaped = false;
+      // A backslash before a raw control character is a literal backslash: keep it by doubling, then escape the character.
+      if (ch < " ") { defects.controlChars++; out += repair ? `\\${escape(ch)}` : ch; } else out += ch;
+      continue;
+    }
     if (ch === "\\") { escaped = true; out += ch; continue; }
     if (ch === '"') {
       inString = false;
@@ -54,7 +60,7 @@ export function scanJson(text: string, repair = false): { text: string; defects:
       if (after !== undefined && ![",", ":", "}", "]"].includes(after)) defects.strayQuotes++;
       out += ch; continue;
     }
-    if (ch < " ") { defects.controlChars++; out += repair ? ESCAPES[ch] ?? `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}` : ch; continue; }
+    if (ch < " ") { defects.controlChars++; out += repair ? escape(ch) : ch; continue; }
     out += ch;
   }
   return { text: out, defects };
