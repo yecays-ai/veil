@@ -91,7 +91,7 @@ export function jsonBreak(text: string): JsonBreak | undefined {
     return fail("string-end");
   };
   for (;;) {
-    while (i < text.length && /\s/.test(text[i])) i++;
+    while (i < text.length && " \t\n\r".includes(text[i])) i++;
     const ch = text[i];
     if (state === "after") {
       const top = stack.at(-1);

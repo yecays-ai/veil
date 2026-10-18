@@ -269,6 +269,8 @@ test("jsonBreak names the first syntax break as offset, depth and character clas
     ['{"a":"x', { offset: 7, depth: 1, expected: "string-end", found: "end" }],
     ['{"a":01}', { offset: 6, depth: 1, expected: "comma-or-close", found: "digit" }],
     ['{"a":[]} x', { offset: 9, depth: 0, expected: "end", found: "letter" }],
+    ['{"a":\u00a01}', { offset: 5, depth: 1, expected: "value", found: "other" }],
+    ['{"a":1,\u2028"b":2}', { offset: 7, depth: 1, expected: "key", found: "other" }],
   ];
   for (const [text, expected] of cases) {
     assert.deepEqual(jsonBreak(text), expected, text);
