@@ -43,6 +43,18 @@ test("a Preset saved before feature entries gets each one with its default wordi
   assert.deepEqual(filled.promptOrder, legacy().promptOrder);
 });
 
+test("an ordinary prompt that already uses a feature's identifier keeps it, and the feature takes another", () => {
+  const old = legacy();
+  old.prompts.push({ identifier: "feature-voice", name: "My voice notes", role: "system", enabled: true, source: "prompt", content: "Mine" });
+  old.promptOrder.push({ identifier: "feature-voice", enabled: true });
+  const preset = validatePresetDocument({ ...createPresetDocument(), presets: [createBuiltinPreset(), old] }).presets[1];
+  assert.equal(preset.prompts.find((entry) => entry.identifier === "feature-voice")?.source, "prompt");
+  assert.equal(preset.promptOrder.at(-1)?.identifier, "feature-voice");
+  const voice = featurePrompts(preset).find((entry) => entry.feature === "voice")!;
+  assert.equal(voice.identifier, "feature-voice-2");
+  assert.equal(validatePreset(preset).prompts.length, preset.prompts.length);
+});
+
 test("feature entries change only in wording and on/off state, and never join the pipeline", () => {
   const { document, preset } = custom();
   const edited = updateFeaturePrompt(updateFeaturePrompt(preset, "sticker", { content: "Send stickers often." }), "transfer", { enabled: false });

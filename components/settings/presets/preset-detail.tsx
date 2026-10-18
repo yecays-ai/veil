@@ -9,8 +9,8 @@ import { Alert } from "../ui/feedback";
 import { ConfirmDialog } from "../ui/modal";
 import { presetFingerprint, type Preset, type PresetPrompt } from "../../../lib/preset";
 import { buildDisplayedPrompts, copyPreset, deletePrompt, exportPreset, featurePrompts, movePrompt,
-  promptEnabled, setActivePreset, setPromptEnabled, updateFeaturePrompt, updatePreset } from "../../../lib/preset-library";
-import { ALWAYS_ON_FEATURES, FEATURE_NAMES } from "../../../lib/chat/feature-prompts";
+  promptEnabled, setActivePreset, setPromptEnabled, updatePreset } from "../../../lib/preset-library";
+import { ALWAYS_ON_FEATURES, FEATURE_NAMES, type PresetFeature } from "../../../lib/chat/feature-prompts";
 import { usePresetLibrary } from "./use-preset-library";
 import { Switch } from "../ui/switch";
 
@@ -55,6 +55,11 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
         ? { ...entry, identifier: next.identifier } : entry),
     }));
     if (identifier !== next.identifier) setEditingPromptId(next.identifier);
+  }
+  // Kept local like the other draft edits; the whole Preset is validated on Save.
+  function patchFeature(feature: PresetFeature, patch: { content?: string; enabled?: boolean }) {
+    setDraft((current) => ({ ...current, prompts: current.prompts.map((entry) =>
+      entry.source === "feature" && entry.feature === feature ? { ...entry, ...patch } : entry) }));
   }
   function togglePrompt(identifier: string, enabled: boolean) {
     setDraft((current) => setPromptEnabled(current, identifier, enabled));
@@ -160,12 +165,12 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
                 <small>{alwaysOn ? "Feature · always on" : "Feature"}</small></span>
             </button>
             {!alwaysOn && <Switch aria-label={`Enable feature ${FEATURE_NAMES[entry.feature]}`} checked={entry.enabled} disabled={readOnly || busy}
-              onChange={(enabled) => setDraft((current) => updateFeaturePrompt(current, entry.feature, { enabled }))} />}
+              onChange={(enabled) => patchFeature(entry.feature, { enabled })} />}
           </div>
           {expanded && <div className="preset-prompt-editor" id={`prompt-${entry.identifier}`}>
             <fieldset disabled={readOnly || busy} className="settings-editor">
               <label>Content<textarea className="settings-input preset-prompt-content" rows={10} value={entry.content}
-                onChange={(event) => setDraft((current) => updateFeaturePrompt(current, entry.feature, { content: event.target.value }))} /></label>
+                onChange={(event) => patchFeature(entry.feature, { content: event.target.value })} /></label>
             </fieldset>
           </div>}
         </article>;

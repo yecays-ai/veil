@@ -6,11 +6,11 @@
 
 ## 当前任务
 
-把角色自主使用的聊天功能（表情包、语音、生图、转账、礼物、撤回、表情回应、改状态签名备注、改日程、珍藏经历、主动消息）的说明文字放进 Preset，可查看、复制后编辑和开关。待审查。
+把角色自主使用的聊天功能（表情包、语音、生图、转账、礼物、撤回、表情回应、改状态签名备注、改日程、珍藏经历、主动消息）的说明文字放进 Preset，可查看、复制后编辑和开关。待审查（PR #258，CI 通过，处理 CodeRabbit 意见中）。
 
 ## 谁在改哪里
 
-Claude；分支 `claude/preset-feature-prompts`；PR 待创建。涉及 `lib/chat/feature-prompts.ts`（新）、`lib/preset.ts`、`lib/preset-library.ts`、`lib/chat/self-context.ts`、`lib/chat/engine.ts`、`lib/chat/proactive.ts`、`lib/chat/prompt.ts`、`components/settings/presets/*`。
+Claude；分支 `claude/preset-feature-prompts`；PR [#258](https://github.com/yecays-ai/veil/pull/258)。涉及 `lib/chat/feature-prompts.ts`（新）、`lib/preset.ts`、`lib/preset-library.ts`、`lib/chat/self-context.ts`、`lib/chat/engine.ts`、`lib/chat/proactive.ts`、`lib/chat/prompt.ts`、`components/settings/presets/*`。
 
 ## 已完成
 

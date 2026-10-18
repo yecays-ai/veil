@@ -60,7 +60,7 @@ const chatOutputPrompt = (): OrdinaryPrompt => ({
   content: CHAT_OUTPUT_FORMAT,
 });
 
-const featurePrompt = (feature: PresetFeature): FeaturePrompt => ({ identifier: featureIdentifier(feature),
+const featurePrompt = (feature: PresetFeature, identifier = featureIdentifier(feature)): FeaturePrompt => ({ identifier,
   name: FEATURE_NAMES[feature], role: "system", enabled: true, source: "feature", feature, content: FEATURE_DEFAULTS[feature] });
 
 /** The feature wording this Preset gives its Characters; a feature turned off is left out. */
@@ -102,7 +102,7 @@ export function createBuiltinPreset(): Preset {
       chatOutputPrompt(),
       { identifier: "response-directive", name: "Response Directive", role: "system",
         enabled: true, source: "prompt", content: "" },
-      ...PRESET_FEATURES.map(featurePrompt),
+      ...PRESET_FEATURES.map((feature) => featurePrompt(feature)),
     ],
     promptOrder: ["base", "user", "universe", "world-info-before", "character", "relations", "world-info-after", "memory",
       "history", "chat_output_format", "response-directive"].map((identifier) =>
@@ -161,7 +161,7 @@ export function validatePreset(preset: unknown): Preset {
        generation.maxTokens < 1 || generation.maxTokens > 1_000_000))
     throw new Error("Preset max tokens is invalid.");
   const identifiers = new Set<string>();
-  const features = new Set<PresetFeature>();
+  const features = new Set<PresetFeature>(), featureIds = new Set<string>();
   for (const entry of preset.prompts) {
     if (!object(entry) || !text(entry.identifier) || !text(entry.name) ||
         typeof entry.role !== "string" || !roles.has(entry.role) || typeof entry.enabled !== "boolean" ||
@@ -178,10 +178,11 @@ export function validatePreset(preset: unknown): Preset {
         throw new Error("Preset contains an invalid marker prompt.");
     } else if (entry.source === "feature") {
       if (!exactKeys(entry, ["identifier", "name", "role", "enabled", "source", "feature", "content"]) ||
-          !isPresetFeature(entry.feature) || features.has(entry.feature) || entry.identifier !== featureIdentifier(entry.feature) ||
+          !isPresetFeature(entry.feature) || features.has(entry.feature) ||
           entry.role !== "system" || typeof entry.content !== "string")
         throw new Error("Preset contains an invalid feature prompt.");
       features.add(entry.feature);
+      featureIds.add(entry.identifier as string);
     } else throw new Error("Preset contains an unknown prompt source.");
   }
   const ordered = new Set<string>();
@@ -189,7 +190,7 @@ export function validatePreset(preset: unknown): Preset {
     if (!object(entry) || !exactKeys(entry, ["identifier", "enabled"]) ||
         !text(entry.identifier) || typeof entry.enabled !== "boolean" ||
         !identifiers.has(entry.identifier as string) || ordered.has(entry.identifier as string) ||
-        PRESET_FEATURES.some((feature) => featureIdentifier(feature) === entry.identifier))
+        featureIds.has(entry.identifier as string))
       throw new Error("Preset contains an invalid prompt order.");
     ordered.add(entry.identifier as string);
   }
@@ -197,8 +198,11 @@ export function validatePreset(preset: unknown): Preset {
   // Presets saved before feature entries existed get each missing one with its default wording, which is what they used.
   for (const feature of PRESET_FEATURES) {
     if (features.has(feature)) continue;
-    if (identifiers.has(featureIdentifier(feature))) throw new Error("Preset contains an invalid feature prompt.");
-    validated.prompts.push(featurePrompt(feature));
+    // An ordinary prompt saved earlier may already use the usual identifier; it keeps it and the feature takes the next free one.
+    let identifier = featureIdentifier(feature);
+    for (let n = 2; identifiers.has(identifier); n++) identifier = `${featureIdentifier(feature)}-${n}`;
+    identifiers.add(identifier);
+    validated.prompts.push(featurePrompt(feature, identifier));
   }
   return validated;
 }
