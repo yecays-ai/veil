@@ -11,7 +11,7 @@ import { BackupValidationError } from "../lib/backup/format";
 import { createChatEngine } from "./chat-engine-fixture";
 import { backupData, packageFixture } from "./backup-fixture";
 import { ImageGenConfigStorage, imageGenConfigProblem, normalizeImageGenConfig } from "../lib/imagegen/config";
-import { generateImage, IMAGEGEN_MAX_BYTES, ImageGenError, sniffImageType } from "../lib/imagegen/generate";
+import { generateImage, IMAGEGEN_MAX_BYTES, imageGenErrorMessage, ImageGenError, sniffImageType } from "../lib/imagegen/generate";
 import { imageJobStatus, pictureRequest, referencePicture, startImageJob, stopImageJobs, type ImageSource } from "../lib/imagegen/job";
 import type { TextProvider } from "../lib/chat/provider";
 import type { ChatMessage } from "../lib/chat/types";
@@ -44,7 +44,7 @@ test("a picture is asked for with one JSON request and read from base64 by its f
   assert.equal(picture.type, "image/png");
   assert.equal(seen.length, 1);
   assert.equal(seen[0].url, "https://img.test/v1/images/generations");
-  assert.deepEqual(JSON.parse(String(seen[0].init.body)), { model: "gpt-image-1", prompt: "a bowl of noodles", n: 1, size: "1024x1024" });
+  assert.deepEqual(JSON.parse(String(seen[0].init.body)), { model: "gpt-image-1", prompt: "a bowl of noodles", n: 1, response_format: "b64_json", size: "1024x1024" });
   assert.equal((seen[0].init.headers as Record<string, string>).Authorization, "Bearer sk-img");
   assert.equal(seen[0].init.credentials, "omit");
 });
@@ -56,6 +56,7 @@ test("with a reference picture the request goes to /images/edits as a multipart 
   assert.equal(seen[0].url, "https://img.test/v1/images/edits");
   assert.equal(seen[0].body.get("prompt"), "selfie");
   assert.equal(seen[0].body.get("model"), "gpt-image-1");
+  assert.equal(seen[0].body.get("response_format"), "b64_json");
   assert.ok(seen[0].body.get("image") instanceof Blob);
 });
 
@@ -70,7 +71,7 @@ test("a url result is fetched once without credentials; anything that is not a p
   const html = (async () => new Response(JSON.stringify({ data: [{ b64_json: b64(new TextEncoder().encode("<html>nope</html>")) }] }))) as typeof fetch;
   await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: html }), (e) => e instanceof ImageGenError && e.category === "invalid-image");
   const none = (async () => new Response(JSON.stringify({ data: [] }))) as typeof fetch;
-  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: none }), (e) => e instanceof ImageGenError && e.category === "invalid-image");
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: none }), (e) => e instanceof ImageGenError && e.category === "invalid-response" && e.stage === "response");
   assert.equal(sniffImageType(new Uint8Array([0xff, 0xd8, 0xff, 0])), "image/jpeg");
 });
 
@@ -85,6 +86,36 @@ test("errors are classified without the response body or key, and a stop is not 
   await assert.rejects(generateImage(config, { prompt: "x" }, stop.signal, { fetchImpl: hang }), /stopped/);
   const slow = ((_u: string, init: RequestInit) => new Promise((_r, reject) => { init.signal?.addEventListener("abort", () => reject(new Error("x"))); })) as typeof fetch;
   await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: slow, timeoutMs: 5 }), (e) => e instanceof ImageGenError && e.category === "timeout");
+});
+
+test("generation network, response parsing and URL download failures report distinct safe stages", async () => {
+  const generationNetwork = (async () => { throw new TypeError("Failed to fetch https://secret.test/?token=hidden"); }) as typeof fetch;
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: generationNetwork }), (error) => {
+    assert.ok(error instanceof ImageGenError);
+    assert.deepEqual([error.category, error.stage], ["network", "generation"]);
+    const visible = imageGenErrorMessage(error);
+    assert.match(visible, /generation service/);
+    assert.doesNotMatch(visible, /sk-img|secret|token/i);
+    return true;
+  });
+  const malformed = (async () => new Response("not json")) as typeof fetch;
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: malformed }), (error) => {
+    assert.ok(error instanceof ImageGenError);
+    assert.deepEqual([error.category, error.stage], ["invalid-response", "response"]);
+    return true;
+  });
+  const downloadNetwork = (async (url: string) => url.endsWith("/images/generations")
+    ? new Response(JSON.stringify({ data: [{ url: "https://signed.test/a.png?token=hidden" }] }))
+    : Promise.reject(new TypeError("blocked https://signed.test/a.png?token=hidden"))) as typeof fetch;
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: downloadNetwork }), (error) => {
+    assert.ok(error instanceof ImageGenError);
+    assert.deepEqual([error.category, error.stage], ["network", "download"]);
+    assert.equal(typeof error.retryDownload, "function");
+    const visible = imageGenErrorMessage(error);
+    assert.match(visible, /picture was generated/);
+    assert.doesNotMatch(visible, /signed|token|hidden|sk-img/i);
+    return true;
+  });
 });
 
 test("the image action keeps a short prompt and defaults to a picture without the Character in it", () => {
@@ -199,6 +230,27 @@ test("a failed job stores nothing and tells why; a stop leaves no failure; no se
   assert.equal(stored, 1);
 });
 
+test("retry after a generated URL download failure downloads the same picture without another paid generation", async () => {
+  stopImageJobs();
+  let generations = 0, downloads = 0, stored = 0;
+  const fetchImpl = (async (url: string) => {
+    if (url.endsWith("/images/generations")) {
+      generations += 1;
+      return new Response(JSON.stringify({ data: [{ url: "https://signed.test/result.png?token=private" }] }));
+    }
+    downloads += 1;
+    if (downloads === 1) throw new TypeError("Safari blocked the download");
+    return new Response(PNG);
+  }) as typeof fetch;
+  const actual = source({ generate: (c, input, signal) => generateImage(c, input, signal, { fetchImpl }) });
+  const request = message("same-picture");
+  const store = async () => { stored += 1; return true; };
+  await startImageJob(request, { appearance: null, avatar: null }, actual, store);
+  assert.match(imageJobStatus("same-picture"), /picture was generated.*could not download/i);
+  await startImageJob(request, { appearance: null, avatar: null }, actual, store);
+  assert.deepEqual({ generations, downloads, stored, status: imageJobStatus("same-picture") }, { generations: 1, downloads: 2, stored: 1, status: "idle" });
+});
+
 async function engineApp(configured: boolean, requests: { prompt: string; reference: boolean }[]) {
   const storage = new ChatStorage(() => new IDBFactory()), session = await storage.openSession("simulated-character");
   const foundation = defaultFoundation(); foundation.runtime.timeAware = false;
@@ -303,7 +355,7 @@ test("a response or a downloaded picture larger than the limit is dropped while 
     pull(controller) { sent += 1; controller.enqueue(chunk); if (sent > 80) controller.close(); }, cancel() { cancelled = true; } })) }; };
   const big = endless();
   await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: (async () => big.response) as typeof fetch }),
-    (e) => e instanceof ImageGenError && e.category === "invalid-image");
+    (e) => e instanceof ImageGenError && e.category === "invalid-response" && e.stage === "response");
   assert.equal(big.cancelled(), true, "the rest is not downloaded");
   const picture = endless();
   const viaUrl = (async (url: string) => url.endsWith("/images/generations")
@@ -311,7 +363,7 @@ test("a response or a downloaded picture larger than the limit is dropped while 
   await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: viaUrl }), (e) => e instanceof ImageGenError && e.category === "invalid-image");
   assert.equal(picture.cancelled(), true);
   const declared = (async () => new Response("{}", { headers: { "content-length": String(IMAGEGEN_MAX_BYTES * 3) } })) as typeof fetch;
-  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: declared }), (e) => e instanceof ImageGenError && e.category === "invalid-image");
+  await assert.rejects(generateImage(config, { prompt: "x" }, never, { fetchImpl: declared }), (e) => e instanceof ImageGenError && e.category === "invalid-response" && e.stage === "response");
 });
 
 test("asking again with words that cannot be saved shows the reason on the placeholder", async () => {
@@ -343,3 +395,4 @@ test("a picture made from the old words is not stored once the words were change
   assert.equal((await storage.readSession(done[1].sessionId)).messages.find((m) => m.id === done[1].id)?.attachment, undefined);
   assert.equal(await storage.completeGeneratedImage(done[1].id, png(), 3, 3, "new words"), true);
 });
+
