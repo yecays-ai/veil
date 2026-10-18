@@ -1,7 +1,7 @@
 import { compressChatImage, type ChatImage } from "../chat/image-compress";
 import type { ChatMessage } from "../chat/types";
 import { browserImageGenConfigStorage, imageGenConfigProblem, type ImageGenConfig } from "./config";
-import { generateImage, imageGenErrorMessage, ImageGenError, sniffImageType } from "./generate";
+import { generateImage, imageGenErrorMessage, ImageGenError, sniffImageType, type RetryImageDownload } from "./generate";
 
 /** What a picture job needs from outside: the service settings, the request, and shrinking the result like any picture. */
 export type ImageSource = {
@@ -23,6 +23,7 @@ export type PictureSubject = { appearance: string | null; avatar: string | null 
 // One job per picture message, alive only while this page is: a closed page leaves the placeholder asking again.
 const running = new Map<string, AbortController>();
 const failures = new Map<string, string>();
+const pendingDownloads = new Map<string, { prompt: string; retry: RetryImageDownload }>();
 const listeners = new Set<() => void>();
 const notify = () => listeners.forEach((listener) => listener());
 
@@ -34,7 +35,7 @@ export function imageJobStatus(messageId: string): string {
   return failure ? `error:${failure}` : "idle";
 }
 /** Stops every running job and forgets failures: the page is going away or the data is being replaced. */
-export function stopImageJobs() { for (const controller of running.values()) controller.abort(); running.clear(); failures.clear(); notify(); }
+export function stopImageJobs() { for (const controller of running.values()) controller.abort(); running.clear(); failures.clear(); pendingDownloads.clear(); notify(); }
 /** Keeps what went wrong before a job could start (reading the message, saving the new words) where the placeholder shows it. */
 export function recordImageFailure(messageId: string, error: unknown) {
   failures.set(messageId, error instanceof Error && !(error instanceof ImageGenError) ? error.message : imageGenErrorMessage(error));
@@ -76,17 +77,32 @@ export function startImageJob(
   notify();
   return (async () => {
     try {
-      const config = await source.config();
-      if (!config) throw new ImageGenError("Set up Images in Settings first.", "config");
-      const picture = await source.generate(config, pictureRequest(imageGen, subject), controller.signal);
-      const shrunk = await source.process(picture);
+      const pending = pendingDownloads.get(message.id);
+      if (pending && pending.prompt !== imageGen.prompt) pendingDownloads.delete(message.id);
+      let picture: Blob;
+      if (pending?.prompt === imageGen.prompt) picture = await pending.retry(controller.signal);
+      else {
+        const config = await source.config();
+        if (!config) throw new ImageGenError("Set up Images in Settings first.", "config");
+        picture = await source.generate(config, pictureRequest(imageGen, subject), controller.signal);
+      }
+      let shrunk: ChatImage;
+      try { shrunk = await source.process(picture); }
+      catch { throw new ImageGenError("processing", "processing", undefined, "processing"); }
       controller.signal.throwIfAborted();
-      await store(message.id, shrunk, imageGen.prompt);
+      try { await store(message.id, shrunk, imageGen.prompt); }
+      catch { throw new ImageGenError("storage", "storage", undefined, "storage"); }
+      pendingDownloads.delete(message.id);
     } catch (error) {
-      if (!controller.signal.aborted) failures.set(message.id, error instanceof Error && !(error instanceof ImageGenError) ? error.message : imageGenErrorMessage(error));
+      if (!controller.signal.aborted) {
+        if (error instanceof ImageGenError && error.retryDownload) pendingDownloads.set(message.id, { prompt: imageGen.prompt, retry: error.retryDownload });
+        else pendingDownloads.delete(message.id);
+        failures.set(message.id, imageGenErrorMessage(error));
+      }
     } finally {
       running.delete(message.id);
       notify();
     }
   })();
 }
+
