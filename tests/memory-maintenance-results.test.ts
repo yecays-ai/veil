@@ -8,6 +8,7 @@ import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-ty
 import { runMaintenance, type MaintenanceRunnerDependencies } from "../lib/memory/maintenance-runner";
 import { extractJsonObject, parseMaintenanceOperations, scanJson } from "../lib/memory/maintenance-operations";
 import { createMaintenanceDiagnostics, describeMaintenanceResult, pairMaintenanceResults, type MaintenanceDiagnostic, type MaintenanceDiagnosticStore } from "../lib/memory/maintenance-diagnostics";
+import { allowFailedRetry } from "../lib/memory/maintenance-retry";
 import type { TextProvider } from "../lib/chat/provider";
 
 const SECRET_WORDS = ["Peter loves the harbour at dawn", "SECRET-CANDIDATE-TEXT", "RAW-MODEL-RESPONSE-MARKER"];
@@ -220,4 +221,35 @@ test("scanJson counts a raw newline after a backslash and repair keeps both the 
   const raw = '{"a":"path\\\n"}';
   assert.equal(scanJson(raw).defects.controlChars, 1);
   assert.equal(JSON.parse(scanJson(raw, true).text).a, "path\\\n");
+});
+
+test("allowing a retry gives an exhausted failed range exactly one more request, with the same range and no other change", async () => {
+  const f = await fixture(); await f.send("LOST-RANGE content");
+  f.script(bad, bad); await f.run(); await f.send("next one"); await f.run();
+  const lost = (await f.progress())!.batches.find((b) => b.state === "failed")!;
+  assert.equal(lost.attempts, 2);
+  assert.equal(await allowFailedRetry(f.memory, f.locks, "c"), 1);
+  const released = (await f.progress())!.batches.find((b) => b.id === lost.id)!;
+  assert.deepEqual({ ...released, attempts: 2 }, lost, "only the attempt count changes");
+  assert.equal(released.attempts, 1);
+  assert.equal(await allowFailedRetry(f.memory, f.locks, "c"), 0, "a range below the cap is not changed again");
+  f.say(JSON.stringify({ operations: [{ op: "IGNORE" }] }));
+  const calls = f.inputs.length;
+  for (let i = 0; i < 4; i++) await f.run();
+  const retried = f.inputs.slice(calls).filter((text) => text.includes("LOST-RANGE"));
+  assert.equal(retried.length, 1, "exactly one more request carries the released range");
+  assert.ok(!retried[0].includes("next one"), "newer messages are not mixed in");
+  assert.equal((await f.progress())!.batches.find((b) => b.id === lost.id), undefined, "the range completes only after its commit");
+});
+
+test("allowing a retry leaves uncertain and ready ranges alone and does nothing while another tab owns the Character", async () => {
+  const f = await fixture(); await f.send("UNSURE-RANGE content");
+  f.deps.provider = (async function* () { throw new Error("network dropped"); yield ""; }) as TextProvider;
+  await f.run();
+  assert.equal((await f.progress())!.batches[0].state, "uncertain");
+  const snapshot = JSON.stringify(await f.progress());
+  assert.equal(await allowFailedRetry(f.memory, f.locks, "c"), 0);
+  assert.equal(JSON.stringify(await f.progress()), snapshot);
+  const held = await f.protocol.withOwner("c", async () => allowFailedRetry(f.memory, f.locks, "c"));
+  assert.equal(held, undefined);
 });
