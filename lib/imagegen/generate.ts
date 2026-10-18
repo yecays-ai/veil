@@ -17,6 +17,7 @@ export const IMAGEGEN_TIMEOUT_MS = 180_000;
 export const IMAGEGEN_MAX_BYTES = 25 * 1024 * 1024;
 /** The JSON that carries a picture as base64 is about a third larger than the picture. */
 const IMAGEGEN_MAX_RESPONSE_BYTES = Math.ceil(IMAGEGEN_MAX_BYTES * 4 / 3) + 1024 * 1024;
+class BoundedBodyError extends Error {}
 
 /** What the person is told. Response bodies, keys and signed picture URLs are never shown or logged. */
 export function imageGenErrorMessage(error: unknown): string {
@@ -67,16 +68,16 @@ function bytesFromBase64(value: string): Blob {
 /** The body of a response, read in pieces so that one larger than `limit` is dropped without being held whole. */
 async function readBounded(response: Response, limit: number): Promise<Uint8Array<ArrayBuffer>> {
   const declared = Number(response.headers.get("content-length"));
-  if (Number.isFinite(declared) && declared > limit) { void response.body?.cancel().catch(() => {}); throw new Error("body-too-large"); }
+  if (Number.isFinite(declared) && declared > limit) { void response.body?.cancel().catch(() => {}); throw new BoundedBodyError("body-too-large"); }
   const reader = response.body?.getReader();
-  if (!reader) throw new Error("body-unreadable");
+  if (!reader) throw new BoundedBodyError("body-unreadable");
   const chunks: Uint8Array[] = [];
   let total = 0;
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
     total += value.byteLength;
-    if (total > limit) { void reader.cancel().catch(() => {}); throw new Error("body-too-large"); }
+    if (total > limit) { void reader.cancel().catch(() => {}); throw new BoundedBodyError("body-too-large"); }
     chunks.push(value);
   }
   const bytes = new Uint8Array(total);
@@ -104,9 +105,10 @@ async function downloadImage(url: string, signal: AbortSignal, fetchImpl: typeof
     if (!response.ok) throw new ImageGenError("download-http", "http", response.status, "download", transient ? retry : undefined);
     let blob: Blob;
     try { blob = new Blob([await readBounded(response, IMAGEGEN_MAX_BYTES)]); }
-    catch {
+    catch (error) {
       signal.throwIfAborted();
       if (timedOut) throw new ImageGenError("download-timeout", "timeout", undefined, "download", retry);
+      if (!(error instanceof BoundedBodyError)) throw new ImageGenError("download-network", "network", undefined, "download", retry);
       throw new ImageGenError("download-invalid", "invalid-image", undefined, "download");
     }
     if (!blob.size || blob.size > IMAGEGEN_MAX_BYTES) throw new ImageGenError("download-invalid", "invalid-image", undefined, "download");
@@ -163,9 +165,11 @@ export async function generateImage(
       : response.status === 429 ? "rate-limit" : "http", response.status, "generation");
     let body: unknown;
     try { body = JSON.parse(new TextDecoder().decode(await readBounded(response, IMAGEGEN_MAX_RESPONSE_BYTES))); }
-    catch {
+    catch (error) {
       signal.throwIfAborted();
       if (timedOut) throw new ImageGenError("generation-timeout", "timeout", undefined, "response");
+      if (!(error instanceof BoundedBodyError) && !(error instanceof SyntaxError))
+        throw new ImageGenError("response-network", "network", undefined, "response");
       throw new ImageGenError("invalid-response", "invalid-response", undefined, "response");
     }
     const first = (body as { data?: { b64_json?: unknown; url?: unknown }[] } | null)?.data?.[0];
