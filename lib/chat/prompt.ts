@@ -232,7 +232,7 @@ export function assembleChatPrompt(
   };
   for (const ordered of preset.promptOrder) {
     const entry = prompts.get(ordered.identifier);
-    if (!ordered.enabled || !entry?.enabled) continue;
+    if (!ordered.enabled || !entry?.enabled || entry.source === "feature") continue;
     if (entry.source === "marker" && entry.marker === "memory") {
       if (entry.role !== "system" || memoryInjected) continue;
       memoryInjected = true;

@@ -58,7 +58,7 @@ function CreatePromptEditor({ preset, library, backHref }: {
       </Select></label>
       <label className="preset-toggle"><span>Enabled</span><Switch checked={draft.enabled} onChange={(enabled) => update({ enabled })} /></label>
       {draft.source === "prompt" ? <label>Content<textarea className="settings-input preset-prompt-content" rows={14} value={draft.content} onChange={(event) => update({ content: event.target.value })} /></label> :
-        <p className="settings-hint">Marker · {draft.marker}</p>}
+        draft.source === "marker" ? <p className="settings-hint">Marker · {draft.marker}</p> : null}
     </fieldset>
   </PageShell></div>;
 }

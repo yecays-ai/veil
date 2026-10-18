@@ -11,7 +11,8 @@ import { activeMatters } from "../life/matters";
 import { aheadLife, recentLife } from "../life/recent";
 import { topKeepsakes } from "../life/keepsakes";
 import { lifeChoices, type LifeChoice } from "../life/chat-edit";
-import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance } from "../presence/actions";
+import { ACTION_TAG, actionAllowance, noteCooldownRemaining, type ActionAllowance, type CharacterActions } from "../presence/actions";
+import { FEATURE_DEFAULTS, type FeaturePromptTexts, type PresetFeature } from "./feature-prompts";
 
 /** What the Character knows about itself for one reply: read once per request, never stored or sent as history. */
 export type SelfState = {
@@ -58,6 +59,8 @@ export type SelfState = {
   canVoice?: boolean;
   /** An image service is set up on this device, so this reply may carry a picture. */
   canImage?: boolean;
+  /** The Preset's wording for each feature offered above; a feature without one uses VEIL's default wording. */
+  featurePrompts?: FeaturePromptTexts;
 };
 export type ReactionState = { canReact: boolean; notes: UserReactionNote[] };
 
@@ -139,7 +142,7 @@ function remarkLines(state: SelfState): string[] {
   return state.remark ? [`Background, needs no response: the remark the user has saved for you is ${quoted(state.remark)}. Mention it only when it fits naturally.`] : [];
 }
 
-function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false, day: readonly (LifeChoice & { when: string })[] = [], canKeepsake = false, canVoice = false, canImage = false): string[] {
+function actionLines(allow: ActionAllowance | null, canReact = false, stickers: readonly StickerChoice[] = [], recallCandidates: readonly { id: string; content: string }[] = [], canTransfer = false, canGift = false, day: readonly (LifeChoice & { when: string })[] = [], canKeepsake = false, canVoice = false, canImage = false, texts: FeaturePromptTexts = FEATURE_DEFAULTS): string[] {
   const canRecall = recallCandidates.length > 0;
   const own = !!allow && (allow.situation || allow.signature || allow.note);
   if (!own && !canReact && !stickers.length && !canRecall && !canTransfer && !canGift && !day.length && !canKeepsake && !canVoice && !canImage) return [];
@@ -158,23 +161,66 @@ function actionLines(allow: ActionAllowance | null, canReact = false, stickers: 
     canGift ? `"gift":{"icon":string,"content":string} to send a VEIL virtual gift card; "giftAction":{"messageId":string,"action":"accept"|"decline"} to process a gift addressed to you` : null,
   ].filter((field): field is string => field !== null);
   const names = [allow?.signature ? "signature" : null, allow?.note ? "note on the user" : null, allow?.situation ? "situation" : null].filter(Boolean);
+  // The Preset's wording, without blank lines; an emptied entry adds nothing but keeps the feature itself.
+  const wording = (feature: PresetFeature) => (texts[feature] ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  // A list that follows the wording stays on its line, as it did before the wording became editable.
+  const lead = (feature: PresetFeature, rest: string) => {
+    const lines = wording(feature);
+    return lines.length ? [...lines.slice(0, -1), `${lines.at(-1)} ${rest}`] : [rest];
+  };
   return [
-    ...(own ? ["You may change your own " + names.join(", ").replace(/, ([^,]*)$/, " and $1") +
-      " when this conversation really gives you a reason; most replies need no change and you never have to explain one.",
-    "Only for something happening now or about to happen, never for something you merely recall or tell about."] : []),
-    ...(canReact ? ["You may also react to the user's message with one emoji, the way a person reacts to a message, only when it truly moves you; most replies need no reaction."] : []),
-    ...(canKeepsake ? ["Very rarely, when something in your own life (beyond this chat) happens that you know will still matter to you months from now, you may keep it with lifeKeepsake (weight 1 small to 5 life-changing). Most replies keep nothing."] : []),
-    ...(canRecall ? ["You may withdraw any one of your own listed messages sent within the last 2 minutes when you have a clear reason. Choose its exact message ID. The original becomes invisible to the user; you will still remember what you said and that the user can no longer see it."] : []),
-    ...(day.length ? ["You may change your own day once, only when this conversation or something in your life really gives you a reason: delay or cancel a plan that has not started, stop what you are doing now (it ends here), replace what you are doing or a plan with something else, or add one small thing that happened during what you are doing now (only if it has none). A change is a real event in your life; most replies need none. Entries (code = time = title):",
+    ...(own ? ["You may change your own " + names.join(", ").replace(/, ([^,]*)$/, " and $1") + ".", ...wording("self")] : []),
+    ...(canReact ? wording("reaction") : []),
+    ...(canKeepsake ? wording("keepsake") : []),
+    ...(canRecall ? wording("recall") : []),
+    ...(day.length ? [...lead("life", "Entries (code = time = title):"),
       ...day.map((item) => `${item.code} = ${item.when} = ${quoted(item.title)}${item.running ? " (happening now)" : ""}`)] : []),
     ...(canRecall ? ["Eligible messages (ID → your original text):", ...recallCandidates.map((message) => `${message.id} → ${quoted(message.content)}`)] : []),
-    ...(canTransfer ? ["VEIL transfers are virtual chat gestures with no real money or payment. You may send one when it fits. For a transfer addressed to you, wait, talk first, or decide later; use its exact message ID from the conversation to receive or decline a pending transfer, or return one already received. Never claim a real payment occurred."] : []),
-    ...(canGift ? ["You may send a VEIL virtual gift card with an icon and your own short description when it fits the conversation. Its custom text is the gesture's description, even when it mentions money. Gifts never move real money, bank balances, purchases, property, deliveries or inventory. You can joke and respond in character without asking the user to explain that the feature is virtual. For a gift addressed to you, you may talk first or decide later, then accept or decline using the exact gift message ID. Execute acceptance or refusal with giftAction, never by narrating clicks or actions in plain text."] : []),
-    ...(canVoice ? ["You may send one voice message, the way a person sometimes sends a voice message instead of typing: it is your own voice saying the words in \"voice\", after your text or instead of text. Only when speaking truly fits the moment (warmth, a greeting, something said better aloud); most replies need no voice. Write it as natural speech, with no emoji, links or formatting. The user hears these words, so never repeat them in your text."] : []),
-    ...(canImage ? ["You may send one picture, the way a person sends a photo in a chat: after your text or instead of text. Only when a picture truly fits the moment; most replies need none. Two kinds. (1) A picture with yourself in it (a selfie, your outfit, what you look like right now): set \"character\" to true; your look is added for you, so describe only the pose, clothes, place and mood. (2) A picture of your surroundings or something you are doing (your meal, desk, window, the street): set \"character\" to false and do not put yourself in it. Choose per picture; do not default to showing yourself. Describe it as a photo you took, never mention the picture generator, and do not describe the same picture again in your text."] : []),
-    ...(stickers.length ? ["You may send one of your own stickers, the way a person sends a sticker in a chat: after your text, or instead of text (then write no text before the line). Only when it truly fits the moment; most replies need no sticker. Each entry is pack name｜sticker name, so you know whose picture it is. Use only these codes, never invent one:",
+    ...(canTransfer ? wording("transfer") : []),
+    ...(canGift ? wording("gift") : []),
+    ...(canVoice ? wording("voice") : []),
+    ...(canImage ? wording("image") : []),
+    ...(stickers.length ? [...lead("sticker", "Each entry is pack name｜sticker name, so you know whose picture it is. Use only these codes, never invent one:"),
       ...stickers.map((choice) => `${choice.code} = ${choice.label}`)] : []),
     `To change, end the reply with one line <${ACTION_TAG}>{JSON}</${ACTION_TAG}> using only these optional fields: ${fields.join("; ")}. VEIL removes this line before anyone sees the reply; never mention it.`];
+}
+
+/**
+ * The Preset's feature entries applied to what this reply offers: a feature turned off is not offered at all, and the
+ * wording of the rest comes from the Preset.
+ */
+export function withFeaturePrompts(state: SelfState, texts: FeaturePromptTexts): SelfState {
+  const on = (feature: PresetFeature) => texts[feature] !== undefined;
+  const next: SelfState = { ...state, featurePrompts: texts };
+  if (!on("self")) { next.canChange = null; delete next.noteCooldownMinutes; }
+  if (!on("reaction")) delete next.canReact;
+  if (!on("sticker")) delete next.stickers;
+  if (!on("voice")) delete next.canVoice;
+  if (!on("image")) delete next.canImage;
+  if (!on("recall")) delete next.recallCandidates;
+  if (!on("transfer")) delete next.canTransfer;
+  if (!on("gift")) delete next.canGift;
+  if (!on("life")) delete next.lifeChoices;
+  if (!on("keepsake")) delete next.canKeepsake;
+  return next;
+}
+
+/** A parsed reply's actions without any that belong to a feature the Preset turned off. */
+export function withoutDisabledActions(actions: CharacterActions | null, texts: FeaturePromptTexts): CharacterActions | null {
+  if (!actions) return actions;
+  const on = (feature: PresetFeature) => texts[feature] !== undefined;
+  const next = { ...actions };
+  if (!on("self")) { delete next.signature; delete next.userNote; delete next.situation; delete next.endSituation; delete next.cancelUpcoming; }
+  if (!on("reaction")) delete next.reactToUser;
+  if (!on("sticker")) delete next.sticker;
+  if (!on("voice")) delete next.voice;
+  if (!on("image")) delete next.image;
+  if (!on("recall")) delete next.recallMessageId;
+  if (!on("transfer")) { delete next.transfer; delete next.transferAction; }
+  if (!on("gift")) { delete next.gift; delete next.giftAction; }
+  if (!on("life")) delete next.life;
+  if (!on("keepsake")) delete next.lifeKeepsake;
+  return Object.keys(next).length ? next : null;
 }
 
 /** The runtime-fact message for the reply prompt, or null when there is nothing to tell the Character. */
@@ -193,7 +239,7 @@ export function selfStateContent(state: SelfState | undefined): string | null {
     state.noteCooldownMinutes ? `你已经使用过本次修改备注的机会，请在 ${state.noteCooldownMinutes % 60 === 0 ? `${state.noteCooldownMinutes / 60} 小时` : `${state.noteCooldownMinutes} 分钟`}后再试。` : null,
     ...remarkLines(state),
     ...(state.userReactions ?? []).map((note) => `Background, needs no response: the user reacted ${note.emoji} to your message ${quoted(note.preview)}.`),
-    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift, state.lifeChoices, !!state.canKeepsake, !!state.canVoice, !!state.canImage),
+    ...actionLines(state.canChange, !!state.canReact, state.stickers, state.recallCandidates, !!state.canTransfer, !!state.canGift, state.lifeChoices, !!state.canKeepsake, !!state.canVoice, !!state.canImage, state.featurePrompts),
   ].filter((line): line is string => line !== null);
   if (!lines.length) return null;
   return ["Your own state (VEIL runtime facts, not message content):", ...lines,

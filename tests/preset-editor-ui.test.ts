@@ -38,7 +38,7 @@ test("markers explain runtime content without exposing a fake textarea", () => {
   assert.match(detail, /Runtime marker · \{entry\.marker\}/);
   assert.match(detail, /Content is supplied dynamically by VEIL\./);
   assert.match(detail, /entry\.source === "prompt" \? <fieldset/);
-  assert.match(detail, /: <div className="preset-marker-note">/);
+  assert.match(detail, /: entry\.source === "marker" \? <div className="preset-marker-note">/);
 });
 
 test("inline controls synchronize enable and order while built-in controls stay disabled", () => {

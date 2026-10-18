@@ -8,8 +8,9 @@ import { Input, Select } from "../ui/form";
 import { Alert } from "../ui/feedback";
 import { ConfirmDialog } from "../ui/modal";
 import { presetFingerprint, type Preset, type PresetPrompt } from "../../../lib/preset";
-import { buildDisplayedPrompts, copyPreset, deletePrompt, exportPreset, movePrompt,
+import { buildDisplayedPrompts, copyPreset, deletePrompt, exportPreset, featurePrompts, movePrompt,
   promptEnabled, setActivePreset, setPromptEnabled, updatePreset } from "../../../lib/preset-library";
+import { ALWAYS_ON_FEATURES, FEATURE_NAMES, type PresetFeature } from "../../../lib/chat/feature-prompts";
 import { usePresetLibrary } from "./use-preset-library";
 import { Switch } from "../ui/switch";
 
@@ -54,6 +55,11 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
         ? { ...entry, identifier: next.identifier } : entry),
     }));
     if (identifier !== next.identifier) setEditingPromptId(next.identifier);
+  }
+  // Kept local like the other draft edits; the whole Preset is validated on Save.
+  function patchFeature(feature: PresetFeature, patch: { content?: string; enabled?: boolean }) {
+    setDraft((current) => ({ ...current, prompts: current.prompts.map((entry) =>
+      entry.source === "feature" && entry.feature === feature ? { ...entry, ...patch } : entry) }));
   }
   function togglePrompt(identifier: string, enabled: boolean) {
     setDraft((current) => setPromptEnabled(current, identifier, enabled));
@@ -135,13 +141,37 @@ function DetailEditor({ saved, library }: { saved: Preset; library: ReturnType<t
               </Select></label>
               <label>Content<textarea className="settings-input preset-prompt-content" rows={10} value={entry.content}
                 onChange={(event) => updatePrompt(entry.identifier, { ...entry, content: event.target.value })} /></label>
-            </fieldset> : <div className="preset-marker-note"><strong>Runtime marker · {entry.marker}</strong>
-              <p>Content is supplied dynamically by VEIL.</p></div>}
+            </fieldset> : entry.source === "marker" ? <div className="preset-marker-note"><strong>Runtime marker · {entry.marker}</strong>
+              <p>Content is supplied dynamically by VEIL.</p></div> : null}
             <div className="preset-prompt-controls"><span>Move</span>
               <button className="preset-order-button" disabled={readOnly || busy || index === 0} aria-label={`Move ${entry.identifier} up`} onClick={() => setDraft(movePrompt(draft, entry.identifier, -1))}><ArrowUp size={18} /></button>
               <button className="preset-order-button" disabled={readOnly || busy || index === displayedPrompts.length - 1} aria-label={`Move ${entry.identifier} down`} onClick={() => setDraft(movePrompt(draft, entry.identifier, 1))}><ArrowDown size={18} /></button>
               {!readOnly && entry.source === "prompt" && <button className="preset-delete-prompt" type="button" onClick={() => setDeletingPrompt(entry.identifier)}>Delete</button>}
             </div>
+          </div>}
+        </article>;
+      })}</div>
+    </section>
+    <section className="preset-section"><div className="preset-section-heading"><h2>Feature Prompts</h2></div>
+      <p className="settings-hint">What a Character reads before it uses one of its own chat features. A feature that is off is never used by Characters on this Preset. The action format VEIL needs is added for you, so editing the wording cannot break a feature.</p>
+      <div className="preset-pipeline">{featurePrompts(draft).map((entry) => {
+        const expanded = editingPromptId === entry.identifier;
+        const alwaysOn = ALWAYS_ON_FEATURES.has(entry.feature);
+        return <article className="preset-prompt" data-expanded={expanded || undefined} data-enabled={entry.enabled || alwaysOn || undefined} key={entry.identifier}>
+          <div className="preset-prompt-summary">
+            <button className="preset-prompt-expand" type="button" aria-expanded={expanded}
+              aria-controls={`prompt-${entry.identifier}`} onClick={() => setEditingPromptId(expanded ? undefined : entry.identifier)}>
+              <ChevronDown size={17} aria-hidden="true" /><span className="preset-copy"><strong>{FEATURE_NAMES[entry.feature]}</strong>
+                <small>{alwaysOn ? "Feature · always on" : "Feature"}</small></span>
+            </button>
+            {!alwaysOn && <Switch aria-label={`Enable feature ${FEATURE_NAMES[entry.feature]}`} checked={entry.enabled} disabled={readOnly || busy}
+              onChange={(enabled) => patchFeature(entry.feature, { enabled })} />}
+          </div>
+          {expanded && <div className="preset-prompt-editor" id={`prompt-${entry.identifier}`}>
+            <fieldset disabled={readOnly || busy} className="settings-editor">
+              <label>Content<textarea className="settings-input preset-prompt-content" rows={10} value={entry.content}
+                onChange={(event) => patchFeature(entry.feature, { content: event.target.value })} /></label>
+            </fieldset>
           </div>}
         </article>;
       })}</div>
