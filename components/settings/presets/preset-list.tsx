@@ -34,7 +34,7 @@ export function PresetList() {
         <span className="preset-copy"><strong>{preset.name}</strong><span>{preset.description}</span>
           <span className="settings-config-meta"><span className="settings-badge">{preset.builtIn ? "Built-in" : "Custom"}</span>
             {preset.id === document.activePresetId && <span className="settings-badge">Active</span>}
-            <span>{preset.prompts.length} Prompt Entries</span></span>
+            <span>{preset.prompts.filter((entry) => entry.source !== "feature").length} Prompt Entries</span></span>
         </span><ChevronRight size={20} aria-hidden="true" />
       </Link>)}
     </nav>

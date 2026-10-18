@@ -101,8 +101,8 @@ test("Prompt editing and renaming keep order references and enabled layers indep
   assert.equal(edited.prompts.some((entry) => entry.identifier === "response-directive"), false);
   assert.equal(edited.promptOrder.at(-1)?.identifier, "my-directive");
   assert.equal(edited.promptOrder.at(-1)?.enabled, true);
-  assert.equal(edited.prompts.at(-1)?.enabled, false);
-  assert.equal(updatePreset(document, edited).presets[1].prompts.at(-1)?.name, "My Directive");
+  assert.equal(edited.prompts.find((entry) => entry.identifier === "my-directive")?.enabled, false);
+  assert.equal(updatePreset(document, edited).presets[1].prompts.find((entry) => entry.identifier === "my-directive")?.name, "My Directive");
   assert.throws(() => savePrompt(preset, prompt.identifier, { ...prompt, identifier: "base" }), /unique/);
   assert.throws(() => savePrompt(preset, prompt.identifier, { ...prompt, identifier: " " }));
 });

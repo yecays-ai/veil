@@ -1,4 +1,5 @@
 import type { Presence } from "../foundation-types";
+import { FEATURE_DEFAULTS } from "./feature-prompts";
 
 // Provisional trial defaults (lan, 2026-10-14). A model attempt is counted when the request is prepared, whether the
 // Character then writes or stays silent; failed or silent attempts are never retried and an overdue one is never replayed.
@@ -33,8 +34,8 @@ export function maybeSilence(text: string): boolean {
   return !value || SILENCE_TAG.startsWith(value) || value === SILENCE_TAG;
 }
 
-export const PROACTIVE_INSTRUCTION = [
-  "The user has not written to you. Decide, as this Character, whether you would message them right now for a reason that fits your own life, the time, and your history together. Something small that has already happened in your day can be that reason, but it is never required.",
-  `If you would not, reply with exactly ${SILENCE_TAG} and nothing else.`,
-  "If you would, write the message itself in your own voice. Do not mention that you were asked or prompted, and do not repeat what you already said.",
-].join(" ");
+/** The Preset's wording for a proactive turn, followed by how to decline, which VEIL relies on and is not editable. */
+export function proactiveInstruction(wording: string = FEATURE_DEFAULTS.proactive): string {
+  return [wording.trim(), `If you would not, reply with exactly ${SILENCE_TAG} and nothing else.`].filter(Boolean).join(" ");
+}
+export const PROACTIVE_INSTRUCTION = proactiveInstruction();

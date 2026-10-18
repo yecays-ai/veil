@@ -7,7 +7,7 @@ import { DEFAULT_API_CONFIG_ID, type ApiConfig } from "../api-config";
 import { browserFoundationStorage } from "../foundation-storage";
 import { characterNoteEventText } from "../presence/note-events";
 import type { Character, FoundationDocument } from "../foundation-types";
-import { createPresetDocument, presetForBinding, type PresetDocument } from "../preset";
+import { createPresetDocument, presetFeatureTexts, presetForBinding, type PresetDocument } from "../preset";
 import { browserPresetStorage } from "../preset-storage";
 import { loadPromptImages, newestImageTurns } from "./image-input";
 import { imageInputLimit } from "../api-config";
@@ -17,8 +17,8 @@ import { emptyMemoryContext, memoryEntryHash, selectMemoryContext } from "../mem
 import { journalEntry, selectJournal } from "../memory/journal";
 import type { Memory } from "../memory/types";
 import { settleLifeDocument } from "../life/settle";
-import { selfState, type ReactionState, type SelfState } from "./self-context";
-import { isSilence, maybeSilence, PROACTIVE_INSTRUCTION } from "./proactive";
+import { selfState, withFeaturePrompts, withoutDisabledActions, type ReactionState, type SelfState } from "./self-context";
+import { isSilence, maybeSilence, proactiveInstruction } from "./proactive";
 import { browserContactStorage } from "../contact-storage";
 import {
   openAITextProvider,
@@ -297,20 +297,22 @@ export function createChatEngine(
           lastReplyAt: batch.messages.reduce<number | null>((latest, message) =>
             message.role === "assistant" && message.status === "complete" && (latest === null || message.createdAt > latest)
               ? message.createdAt : latest, null) }), controller.signal);
+      // A feature the Preset turned off is never offered, and never applied if the reply carries it anyway.
+      const features = presetFeatureTexts(preset);
       // Stickers are offered like the other own actions: not on Continue, and not twice in a row.
       const previousReply = batch.messages.findLast((message) => message.role === "assistant" && message.status === "complete");
-      const choices = ownState && source !== "continue" && !previousReply?.sticker
+      const choices = ownState && source !== "continue" && !previousReply?.sticker && features.sticker !== undefined
         ? await awaited(stickerSource.menu(character.characterId).catch((): StickerChoice[] => []), controller.signal) : [];
       const recallCandidates = ownState && source !== "continue" ? batch.messages.filter((message) => canRecallMessage(message, "assistant", now().getTime()))
         .map(({ id, content }) => ({ id, content })) : [];
       // A voice bubble is offered only where speech is set up, and not twice in a row, like a sticker.
-      const canVoice = !!ownState && source !== "continue" && !previousReply?.voice
+      const canVoice = !!ownState && source !== "continue" && !previousReply?.voice && features.voice !== undefined
         && await awaited(voiceAvailable().catch(() => false), controller.signal);
       // A picture is offered only where an image service is set up, and not twice in a row.
-      const canImage = !!ownState && source !== "continue" && !previousReply?.imageGen && !previousReply?.attachment
+      const canImage = !!ownState && source !== "continue" && !previousReply?.imageGen && !previousReply?.attachment && features.image !== undefined
         && await awaited(images.config().then((config) => !!config, () => false), controller.signal);
-      const offered = ownState ? { ...ownState, ...(choices.length ? { stickers: choices } : {}), ...(recallCandidates.length ? { recallCandidates } : {}),
-        ...(canVoice ? { canVoice: true } : {}), ...(canImage ? { canImage: true } : {}) } : ownState;
+      const offered = ownState ? withFeaturePrompts({ ...ownState, ...(choices.length ? { stickers: choices } : {}), ...(recallCandidates.length ? { recallCandidates } : {}),
+        ...(canVoice ? { canVoice: true } : {}), ...(canImage ? { canImage: true } : {}) }, features) : ownState;
       const memory = await awaited(memoryRead, controller.signal);
       await storage.generationStage(sessionId, attempt.id, "provider");
       if (!await awaited(storage.generationIsCurrent(sessionId, attempt.id), controller.signal)) controller.abort();
@@ -327,7 +329,7 @@ export function createChatEngine(
       else if (recalledOwn) recentlyRecalledOwn.delete(sessionId);
       if (source === "continue") prompt.messages.push({ role: "system",
         content: "Continue the last assistant turn from where its visible text ended. Output only new continuation text; do not repeat the existing reply." });
-      if (proactive) prompt.messages.push({ role: "system", content: PROACTIVE_INSTRUCTION });
+      if (proactive) prompt.messages.push({ role: "system", content: proactiveInstruction(features.proactive) });
       // Pictures come only from this conversation's own messages, and only when the API was marked as accepting them.
       const owners = new Map(batch.messages.flatMap((message) => message.attachment ? [[message.attachment.assetId, message.id] as const] : []));
       prompt.messages = await awaited(loadPromptImages(newestImageTurns(prompt.messages, imageInputLimit(config)),
@@ -356,7 +358,7 @@ export function createChatEngine(
       await storage.generationStage(sessionId, attempt.id, "finalizing");
       controller.signal.throwIfAborted();
       const split = splitActions(rawContent);
-      const actions = split.actions;
+      const actions = withoutDisabledActions(split.actions, features);
       let replyText = split.text;
       // The Character's choice is checked against the library as it is now; an unknown or no longer bound code is dropped.
       let sticker = actions?.sticker && choices.length

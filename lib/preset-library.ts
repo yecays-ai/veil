@@ -1,7 +1,8 @@
 import {
   BUILTIN_PRESET_ID, createBuiltinPreset, presetFingerprint, validatePreset, validatePresetDocument,
-  type Preset, type PresetDocument, type PresetPrompt,
+  type FeaturePrompt, type Preset, type PresetDocument, type PresetPrompt,
 } from "./preset";
+import { ALWAYS_ON_FEATURES, PRESET_FEATURES, type PresetFeature } from "./chat/feature-prompts";
 
 function custom(document: PresetDocument, id: string) {
   const preset = document.presets.find((item) => item.id === id);
@@ -17,6 +18,12 @@ export function assertPresetUpdate(previous: Preset, next: Preset) {
     const updated = next.prompts.find((entry) => entry.identifier === marker.identifier);
     if (!updated || updated.source !== "marker" || updated.marker !== marker.marker)
       throw new Error("Existing marker identities must remain in the pipeline.");
+  }
+  for (const feature of previous.prompts.filter((entry) => entry.source === "feature")) {
+    const updated = next.prompts.find((entry) => entry.identifier === feature.identifier);
+    if (!updated || updated.source !== "feature" || updated.feature !== feature.feature ||
+        (!updated.enabled && ALWAYS_ON_FEATURES.has(updated.feature)))
+      throw new Error("Feature prompts keep their identity; only their wording and on/off state change.");
   }
 }
 
@@ -71,7 +78,8 @@ export function deletePrompt(preset: Preset, identifier: string): Preset {
 }
 
 export function buildDisplayedPrompts(preset: Preset): PresetPrompt[] {
-  const prompts = new Map(preset.prompts.map((prompt) => [prompt.identifier, prompt]));
+  // Feature wording is not part of the ordered pipeline; it has its own list.
+  const prompts = new Map(preset.prompts.filter((prompt) => prompt.source !== "feature").map((prompt) => [prompt.identifier, prompt]));
   const seen = new Set<string>();
   const displayed: PresetPrompt[] = [];
   const append = (prompt?: PresetPrompt) => {
@@ -81,21 +89,38 @@ export function buildDisplayedPrompts(preset: Preset): PresetPrompt[] {
     }
   };
   for (const entry of preset.promptOrder) append(prompts.get(entry.identifier));
-  for (const prompt of preset.prompts) append(prompt);
+  for (const prompt of prompts.values()) append(prompt);
   return displayed;
+}
+
+/** Feature entries in their fixed order, as the Character's own chat features are listed. */
+export function featurePrompts(preset: Preset): FeaturePrompt[] {
+  return PRESET_FEATURES.flatMap((feature) => preset.prompts.filter((entry): entry is FeaturePrompt =>
+    entry.source === "feature" && entry.feature === feature));
+}
+
+/** Only the wording and on/off state of a feature entry change; its identity is fixed. */
+export function updateFeaturePrompt(preset: Preset, feature: PresetFeature, patch: { content?: string; enabled?: boolean }): Preset {
+  if (preset.builtIn) throw new Error("VEIL Default is read-only.");
+  if (patch.enabled === false && ALWAYS_ON_FEATURES.has(feature)) throw new Error("This feature prompt cannot be turned off.");
+  return validatePreset({ ...preset, prompts: preset.prompts.map((entry) => entry.source === "feature" && entry.feature === feature
+    ? { ...entry, ...(patch.content !== undefined ? { content: patch.content } : {}), ...(patch.enabled !== undefined ? { enabled: patch.enabled } : {}) }
+    : entry) });
 }
 
 export function promptEnabled(preset: Preset, identifier: string) {
   const prompt = preset.prompts.find((item) => item.identifier === identifier);
   if (!prompt) return false;
+  if (prompt.source === "feature") return prompt.enabled;
   const order = preset.promptOrder.find((item) => item.identifier === identifier);
   return prompt.enabled && (order?.enabled ?? false);
 }
 
 export function setPromptEnabled(preset: Preset, identifier: string, enabled: boolean): Preset {
   if (preset.builtIn) throw new Error("VEIL Default is read-only.");
-  if (!preset.prompts.some((item) => item.identifier === identifier))
-    throw new Error("This Prompt no longer exists.");
+  const entry = preset.prompts.find((item) => item.identifier === identifier);
+  if (!entry) throw new Error("This Prompt no longer exists.");
+  if (entry.source === "feature") return updateFeaturePrompt(preset, entry.feature, { enabled });
   return validatePreset({ ...preset,
     prompts: preset.prompts.map((item) => item.identifier === identifier ? { ...item, enabled } : item),
     promptOrder: preset.promptOrder.some((item) => item.identifier === identifier)
