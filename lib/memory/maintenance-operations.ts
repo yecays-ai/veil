@@ -28,17 +28,51 @@ export function extractJsonObject(raw: string): string | undefined {
   const { spans, balanced } = topLevelObjects(raw);
   return balanced && spans.length === 1 ? raw.slice(spans[0][0], spans[0][1]) : undefined;
 }
+export type JsonDefects = { controlChars: number; trailingCommas: number; strayQuotes: number };
+/**
+ * One pass over JSON-like text with string state. Counts three syntax slips that models make, and with `repair` rewrites the two
+ * that have a single unambiguous reading: a raw control character inside a string becomes its escape, a comma before } or ] is dropped.
+ * A quote inside a string that is not followed by , : } or ] is only counted (strayQuotes): which quotes belong to the text is a guess.
+ */
+export function scanJson(text: string, repair = false): { text: string; defects: JsonDefects } {
+  const defects: JsonDefects = { controlChars: 0, trailingCommas: 0, strayQuotes: 0 };
+  const next = (from: number) => { let i = from; while (i < text.length && /\s/.test(text[i])) i++; return text[i]; };
+  const ESCAPES: Record<string, string> = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
+  let out = "", inString = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (!inString) {
+      if (ch === '"') inString = true;
+      else if (ch === "," && ["}", "]"].includes(next(i + 1) ?? "")) { defects.trailingCommas++; if (repair) continue; }
+      out += ch; continue;
+    }
+    if (escaped) { escaped = false; out += ch; continue; }
+    if (ch === "\\") { escaped = true; out += ch; continue; }
+    if (ch === '"') {
+      inString = false;
+      const after = next(i + 1);
+      if (after !== undefined && ![",", ":", "}", "]"].includes(after)) defects.strayQuotes++;
+      out += ch; continue;
+    }
+    if (ch < " ") { defects.controlChars++; out += repair ? ESCAPES[ch] ?? `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}` : ch; continue; }
+    out += ch;
+  }
+  return { text: out, defects };
+}
+/** Strict first; then the one complete object inside words or a fence; then that object with the lossless repairs. Else throws. */
+export function parseJsonLenient(raw: string): unknown {
+  try { return JSON.parse(raw); } catch { /* try the tolerant readings below */ }
+  const extracted = extractJsonObject(raw);
+  if (extracted === undefined) throw new SyntaxError("No single JSON object.");
+  try { return JSON.parse(extracted); } catch { return JSON.parse(scanJson(extracted, true).text); }
+}
 const obj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const str = (v: unknown): v is string => typeof v === "string" && !!v.trim();
 /** No eval, repair request, ID supplied by the model, or trust in prompt-only permissions. */
 export function parseMaintenanceOperations(raw: string, snapshot: MaintenanceSnapshot, createId: () => string = () => crypto.randomUUID(), now: number = Date.now()) {
   if (raw.length > MAINTENANCE_LIMITS.outputCharacters) return invalid();
   let parsed: unknown;
-  try { parsed = JSON.parse(raw); }
-  catch {
-    const extracted = extractJsonObject(raw);
-    try { parsed = JSON.parse(extracted ?? ""); } catch { throw new MaintenanceParseError("json"); }
-  }
+  try { parsed = parseJsonLenient(raw); } catch { throw new MaintenanceParseError("json"); }
   if (!obj(parsed) || Object.keys(parsed).some((key) => key !== "operations") || !Array.isArray(parsed.operations)
     || parsed.operations.length > MAINTENANCE_LIMITS.operations) return invalid();
   const stateOperations = parseStateOperations(parsed.operations.filter((value) => obj(value) && String(value.op).startsWith("STATE_")),

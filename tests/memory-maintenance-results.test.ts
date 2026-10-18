@@ -6,7 +6,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createIndexedDBFoundationStorage, FOUNDATION_STORAGE_KEY } from "../lib/foundation-storage";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { runMaintenance, type MaintenanceRunnerDependencies } from "../lib/memory/maintenance-runner";
-import { extractJsonObject, parseMaintenanceOperations } from "../lib/memory/maintenance-operations";
+import { extractJsonObject, parseMaintenanceOperations, scanJson } from "../lib/memory/maintenance-operations";
 import { createMaintenanceDiagnostics, describeMaintenanceResult, pairMaintenanceResults, type MaintenanceDiagnostic, type MaintenanceDiagnosticStore } from "../lib/memory/maintenance-diagnostics";
 import type { TextProvider } from "../lib/chat/provider";
 
@@ -175,4 +175,43 @@ test("an uncertain range (request may have been received) is never retried autom
   await f.send("another"); await f.run(); await f.send("again"); await f.run();
   assert.ok(f.inputs.every((text) => !text.includes("UNSURE-RANGE")));
   assert.equal((await f.progress())!.batches[0].state, "uncertain");
+});
+
+const withText = (id: string, text: string, tail = "") => `{"operations":[{"op":"CREATE","messageIds":["${id}"],"text":"${text}","kind":"fact","subject":"user"}${tail}]}`;
+
+test("scanJson counts raw control characters, trailing commas and stray quotes, and only repairs the first two", () => {
+  const raw = '{"a":"x\ny\tz","b":[1,2,],"c":"she said "hi" ok"}';
+  const { defects, text } = scanJson(raw, true);
+  assert.deepEqual(defects, { controlChars: 2, trailingCommas: 1, strayQuotes: 1 });
+  assert.ok(!text.includes("\n") && !text.includes(",]") && text.includes('"hi"'), "the stray quotes are left as they were");
+  assert.deepEqual(scanJson('{"ok":"fine, \\"quoted\\" text"}').defects, { controlChars: 0, trailingCommas: 0, strayQuotes: 0 });
+});
+
+test("a raw newline in a memory text or a trailing comma no longer fails the batch, and the text is kept exactly", async () => {
+  const f = await fixture(); const m = await f.send("Peter wrote a two-line note");
+  f.say(withText(m.id, "Line one\nLine two") .replace("}]}", "},]}"));
+  assert.equal(await f.run(), true);
+  assert.equal(last(f).stage, "ok"); assert.equal(last(f).counts!.created, 1);
+  assert.equal((await f.memory.listMemories("c"))[0].text, "Line one\nLine two");
+  assert.equal(f.inputs.length, 1, "one request, no retry needed");
+});
+
+test("an object that is only repaired still has to pass the full contract", async () => {
+  const f = await fixture(); const m = await f.send("anything here");
+  const snapshot = (await f.protocol.withOwner("c", async (owner) => f.protocol.readInput(await f.protocol.prepare(owner, f.session.id, 1, 1, []))))!;
+  assert.throws(() => parseMaintenanceOperations(`{"operations":[{"op":"NOPE","messageIds":["${m.id}"],"text":"a\nb"}]}`, snapshot), { stage: "format" });
+  assert.throws(() => parseMaintenanceOperations(withText(m.id, 'He said "hello" to me'), snapshot), { stage: "json" }, "stray quotes are never guessed");
+});
+
+test("a stray-quote failure records which kind of slip it was, as numbers and enums only", async () => {
+  const f = await fixture(); const m = await f.send("anything here");
+  f.say(withText(m.id, 'SECRET-QUOTE-TEXT "hello" there'));
+  assert.equal(await f.run(), false);
+  const { shape, stage } = last(f);
+  assert.equal(stage, "json");
+  assert.deepEqual([shape!.head, shape!.tail, shape!.objects, shape!.fenced, shape!.finish], ["brace", "brace", 1, false, "none"]);
+  assert.ok(["expected-delimiter", "unexpected-token", "other"].includes(shape!.error!));
+  assert.ok(shape!.strayQuotes! >= 1);
+  assert.ok(!JSON.stringify(f.diagnostics.read()).includes("SECRET-QUOTE-TEXT"));
+  assert.match(describeMaintenanceResult(last(f)), /stray quote/);
 });
