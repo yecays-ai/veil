@@ -6,7 +6,7 @@ import { ChatStorage } from "../lib/chat/storage";
 import { createIndexedDBFoundationStorage, FOUNDATION_STORAGE_KEY } from "../lib/foundation-storage";
 import { defaultFoundation, normalizeCharacterInput } from "../lib/foundation-types";
 import { runMaintenance, type MaintenanceRunnerDependencies } from "../lib/memory/maintenance-runner";
-import { extractJsonObject, parseMaintenanceOperations, scanJson } from "../lib/memory/maintenance-operations";
+import { extractJsonObject, jsonBreak, parseMaintenanceOperations, scanJson } from "../lib/memory/maintenance-operations";
 import { createMaintenanceDiagnostics, describeMaintenanceResult, pairMaintenanceResults, type MaintenanceDiagnostic, type MaintenanceDiagnosticStore } from "../lib/memory/maintenance-diagnostics";
 import { allowFailedRetry } from "../lib/memory/maintenance-retry";
 import type { TextProvider } from "../lib/chat/provider";
@@ -213,6 +213,7 @@ test("a stray-quote failure records which kind of slip it was, as numbers and en
   assert.deepEqual([shape!.head, shape!.tail, shape!.objects, shape!.fenced, shape!.finish], ["brace", "brace", 1, false, "none"]);
   assert.ok(["expected-delimiter", "unexpected-token", "other"].includes(shape!.error!));
   assert.ok(shape!.strayQuotes! >= 1);
+  assert.deepEqual([shape!.breakExpected, shape!.breakFound, shape!.breakDepth], ["comma-or-close", "letter", 3], "the break is where the inner quote closed the string early");
   assert.ok(!JSON.stringify(f.diagnostics.read()).includes("SECRET-QUOTE-TEXT"));
   assert.match(describeMaintenanceResult(last(f)), /stray quote/);
 });
@@ -252,4 +253,40 @@ test("allowing a retry leaves uncertain and ready ranges alone and does nothing 
   assert.equal(JSON.stringify(await f.progress()), snapshot);
   const held = await f.protocol.withOwner("c", async () => allowFailedRetry(f.memory, f.locks, "c"));
   assert.equal(held, undefined);
+});
+
+test("jsonBreak names the first syntax break as offset, depth and character classes, and agrees with JSON.parse on validity", () => {
+  const cases: [string, Omit<NonNullable<ReturnType<typeof jsonBreak>>, never> | undefined][] = [
+    ['{"operations":[{"op":"IGNORE"}]}', undefined],
+    ['{"operations":[{"op":"IGNORE"}', { offset: 30, depth: 2, expected: "comma-or-close", found: "end" }],
+    ['{"a":"x" "b":1}', { offset: 9, depth: 1, expected: "comma-or-close", found: "quote" }],
+    ['{"a":[{"b":1}{"c":2}]}', { offset: 13, depth: 2, expected: "comma-or-close", found: "open-brace" }],
+    ['{"a":IGNORE}', { offset: 5, depth: 1, expected: "value", found: "letter" }],
+    ['{"a":1,}', { offset: 7, depth: 1, expected: "key", found: "close-brace" }],
+    ['{"a" 1}', { offset: 5, depth: 1, expected: "colon", found: "digit" }],
+    ['{"a":"x\\ny"}', undefined],
+    ['{"a":"x\\qy"}', { offset: 8, depth: 1, expected: "string-end", found: "letter" }],
+    ['{"a":"x', { offset: 7, depth: 1, expected: "string-end", found: "end" }],
+    ['{"a":01}', { offset: 6, depth: 1, expected: "comma-or-close", found: "digit" }],
+    ['{"a":[]} x', { offset: 9, depth: 0, expected: "end", found: "letter" }],
+  ];
+  for (const [text, expected] of cases) {
+    assert.deepEqual(jsonBreak(text), expected, text);
+    let valid = true; try { JSON.parse(text); } catch { valid = false; }
+    assert.equal(jsonBreak(text) === undefined, valid, `validity agrees: ${text}`);
+  }
+  assert.equal(jsonBreak('{"a":"x\\u00e9"}'), undefined);
+  assert.equal(jsonBreak("[".repeat(20000))?.found, "end", "deep nesting does not overflow the stack");
+});
+
+test("a malformed reply records where it breaks and the stored line shows it, still without any text", async () => {
+  const f = await fixture(); await f.send("anything here");
+  f.say('{"operations":[{"op":"IGNORE-SECRET"}');
+  assert.equal(await f.run(), false);
+  const { shape } = last(f);
+  assert.deepEqual([shape!.breakAt, shape!.breakDepth, shape!.breakExpected, shape!.breakFound], [37, 2, "comma-or-close", "end"]);
+  assert.ok(!JSON.stringify(f.diagnostics.read()).includes("IGNORE-SECRET"));
+  assert.match(describeMaintenanceResult(last(f)), /breaks at char 37 \(depth 2\): needed comma-or-close, found end/);
+  const forged = createMaintenanceDiagnostics(true, { load: () => JSON.stringify([{ ...last(f), shape: { ...shape, breakExpected: "SECRET", breakFound: "quote" } }]), save: () => undefined });
+  assert.equal(forged.read()[0].shape!.breakAt, undefined, "an unknown enum drops the whole break, never stores it");
 });

@@ -65,6 +65,61 @@ export function scanJson(text: string, repair = false): { text: string; defects:
   }
   return { text: out, defects };
 }
+export const BREAK_EXPECTED = ["value", "key", "colon", "comma-or-close", "string-end", "end"] as const;
+export const BREAK_FOUND = ["end", "quote", "open-brace", "close-brace", "open-bracket", "close-bracket", "comma", "colon", "digit", "letter", "control", "other"] as const;
+/** Where JSON stops being valid: character offset, open-bracket depth, what the grammar needed and the class of the character found. Never the character. */
+export type JsonBreak = { offset: number; depth: number; expected: (typeof BREAK_EXPECTED)[number]; found: (typeof BREAK_FOUND)[number] };
+const foundClass = (ch: string | undefined): JsonBreak["found"] => ch === undefined ? "end" : ch === '"' ? "quote" : ch === "{" ? "open-brace" : ch === "}" ? "close-brace"
+  : ch === "[" ? "open-bracket" : ch === "]" ? "close-bracket" : ch === "," ? "comma" : ch === ":" ? "colon" : /\d/.test(ch) ? "digit" : /\p{L}/u.test(ch) ? "letter"
+    : ch < " " ? "control" : "other";
+/** First syntax break of strict JSON, or undefined when the text is valid. Iterative, so nesting depth cannot overflow the stack. */
+export function jsonBreak(text: string): JsonBreak | undefined {
+  const stack: string[] = [];
+  let i = 0, state: "value" | "value-or-close" | "key-or-close" | "key" | "colon" | "after" = "value";
+  const fail = (expected: JsonBreak["expected"]): JsonBreak => ({ offset: i, depth: stack.length, expected, found: foundClass(text[i]) });
+  const string = (): JsonBreak | undefined => {
+    for (i++; i < text.length; i++) {
+      const ch = text[i];
+      if (ch === '"') { i++; return undefined; }
+      if (ch < " ") return fail("string-end");
+      if (ch === "\\") {
+        const next = text[++i];
+        if (next === "u" ? !/^[0-9a-fA-F]{4}$/.test(text.slice(i + 1, i + 5)) : !next || !'"\\/bfnrt'.includes(next)) return fail("string-end");
+        if (next === "u") i += 4;
+      }
+    }
+    return fail("string-end");
+  };
+  for (;;) {
+    while (i < text.length && /\s/.test(text[i])) i++;
+    const ch = text[i];
+    if (state === "after") {
+      const top = stack.at(-1);
+      if (top === undefined) return i < text.length ? fail("end") : undefined;
+      if (ch === ",") { i++; state = top === "{" ? "key" : "value"; }
+      else if (ch === (top === "{" ? "}" : "]")) { stack.pop(); i++; }
+      else return fail("comma-or-close");
+    } else if (state === "colon") {
+      if (ch !== ":") return fail("colon");
+      i++; state = "value";
+    } else if (state === "key" || state === "key-or-close") {
+      if (state === "key-or-close" && ch === "}") { stack.pop(); i++; state = "after"; continue; }
+      if (ch !== '"') return fail("key");
+      const broken = string(); if (broken) return broken;
+      state = "colon";
+    } else {
+      if (state === "value-or-close" && ch === "]") { stack.pop(); i++; state = "after"; continue; }
+      if (ch === "{") { stack.push("{"); i++; state = "key-or-close"; }
+      else if (ch === "[") { stack.push("["); i++; state = "value-or-close"; }
+      else if (ch === '"') { const broken = string(); if (broken) return broken; state = "after"; }
+      else {
+        const literal = /^(?:-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null)/.exec(text.slice(i));
+        if (!literal) return fail("value");
+        i += literal[0].length; state = "after";
+      }
+    }
+  }
+}
 /** Strict first; then the one complete object inside words or a fence; then that object with the lossless repairs. Else throws. */
 export function parseJsonLenient(raw: string): unknown {
   try { return JSON.parse(raw); } catch { /* try the tolerant readings below */ }
