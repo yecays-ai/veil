@@ -5,6 +5,7 @@ import { browserBindingStorage } from "../../lib/binding-storage";
 import { chatStorage } from "../../lib/chat/storage";
 import { readUsageBaseline, type UsageBaselineRecord } from "../../lib/chat/usage-baseline";
 import { browserMemoryStorage } from "../../lib/memory/browser";
+import { allowFailedRetry } from "../../lib/memory/maintenance-retry";
 import { browserMaintenanceDiagnosticStore, createMaintenanceDiagnostics, describeMaintenanceResult, MAINTENANCE_RESULTS_EVENT, pairMaintenanceResults, type MaintenanceDiagnostic } from "../../lib/memory/maintenance-diagnostics";
 import {
   MAINTENANCE_CONFIG_EVENT, MAINTENANCE_CONSENT_KEY, maintenanceConsentStored, maintenanceReleaseApproved,
@@ -68,6 +69,7 @@ export function MemoryMaintenanceSettings() {
     return { pairs: all.pairs, unpaired: all.unpaired.filter((d) => d.stage === "too-large" || d.stage === "preflight" || d.stage === "all-redacted") };
   }, [requests, results]);
   const [error, setError] = useState("");
+  const [retryNote, setRetryNote] = useState("");
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
 
@@ -108,6 +110,16 @@ export function MemoryMaintenanceSettings() {
     return () => { current = false; };
   }, [ready, release, document.characters, revision]);
 
+  const retryFailed = async (characterId: string) => {
+    setRetryNote("");
+    try {
+      const released = await allowFailedRetry(browserMemoryStorage, navigator.locks, characterId);
+      setRetryNote(released === undefined ? "Memory maintenance is busy. Try again in a moment."
+        : released ? `${released} failed ${released === 1 ? "range" : "ranges"} will be tried once more, one per maintenance check.` : "No failed range needed another try.");
+      refresh();
+    } catch { setRetryNote("Could not allow another try."); }
+  };
+
   const toggle = (enabled: boolean) => {
     setError("");
     try { setMaintenanceConsent(enabled); }
@@ -139,6 +151,8 @@ export function MemoryMaintenanceSettings() {
           <span>{row.model.state === "ready" ? `Model: ${row.model.label}` : `Model unavailable: ${row.model.reason}`}</span>
           {row.progress && <span>{progressLine(row.progress)}</span>}
           {row.progress && <span>{summaryLine(row.summary)}</span>}
+          {row.progress && row.progress.failed > 0 && release?.approved && release.locks && <button type="button" onClick={() => void retryFailed(row.id)}>
+            Allow one more try for failed ranges</button>}
           {row.progress && <span>{!release?.consent || !release.approved || !release.locks ? "Waiting for Memory Maintenance to be available on this device." : row.progress.due ? "A check is due and starts on its own." : `A check starts once ${row.progress.trigger} new messages are waiting (${row.progress.pending} now).`}</span>}
         </li>)}
       </ul>}
@@ -160,6 +174,7 @@ export function MemoryMaintenanceSettings() {
     <button className="settings-card settings-backup-action settings-memory-refresh" type="button" onClick={refresh}>
       <span className="settings-card-copy"><strong>Refresh</strong></span>
     </button>
+    {retryNote && <p role="status">{retryNote}</p>}
     {error && <p role="alert">{error}</p>}
   </section>;
 }
